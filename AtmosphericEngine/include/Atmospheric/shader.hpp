@@ -26,6 +26,7 @@ struct ShaderProgramProps
     std::string frag;
     std::optional<std::string> tesc = std::nullopt;
     std::optional<std::string> tese = std::nullopt;
+    std::optional<std::vector<std::string>> feedbackVaryings = std::nullopt;
 };
 
 class ShaderProgram

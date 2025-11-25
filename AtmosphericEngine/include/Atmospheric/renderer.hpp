@@ -128,6 +128,10 @@ public:
     void SubmitCommand(const RenderCommand& cmd);
     void RenderFrame(GraphicsServer* ctx, float dt);
 
+    void BeginTransformFeedbackPass();
+    void BindTransformFeedbackBuffer(GLuint bufferId, GLuint index = 0);
+    void EndTransformFeedbackPass();
+
     auto& GetOpaqueQueue() {
         return _opaqueQueue;
     }

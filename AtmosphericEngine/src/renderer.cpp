@@ -87,6 +87,21 @@ void Renderer::SubmitCommand(const RenderCommand& cmd) {
     _commandList.push_back(cmd);
 }
 
+void Renderer::BeginTransformFeedbackPass() {
+    glEnable(GL_RASTERIZER_DISCARD);
+    glBeginTransformFeedback(GL_POINTS);
+}
+
+void Renderer::BindTransformFeedbackBuffer(GLuint bufferId, GLuint index) {
+    glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, index, bufferId);
+}
+
+void Renderer::EndTransformFeedbackPass() {
+    glEndTransformFeedback();
+    glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, 0); // Unbind
+    glDisable(GL_RASTERIZER_DISCARD);
+}
+
 void Renderer::SortAndBucket(const glm::vec3& cameraPos) {
     // Clear previous frame's sorted queues
     _opaqueQueue.clear();
@@ -1039,7 +1054,9 @@ void DeferredLightingPass::Execute(GraphicsServer* ctx, Renderer& renderer) {
 }
 
 void TransparentPass::Execute(GraphicsServer* ctx, Renderer& renderer) {
-    // TODO: transparent pass
+    auto& cam = *ctx->GetMainCamera();
+    Atmospheric::CameraInfo camInfo = { .view = cam.GetViewMatrix(), .projection = cam.GetProjectionMatrix(), .position = cam.GetEyePosition() };
+    Atmospheric::ParticleServer::GetInstance().Draw(camInfo);    // TODO: transparent pass
 }
 
 void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer) {

@@ -29,12 +29,20 @@ ShaderProgram::ShaderProgram(const ShaderProgramProps& props) : _program(glCreat
 {
     glAttachShader(_program, Shader(props.vert, ShaderType::VERTEX).shader);
     glAttachShader(_program, Shader(props.frag, ShaderType::FRAGMENT).shader);
-#ifndef __EMSCRIPTEN__
-    if (props.tesc.has_value() && props.tese.has_value()) {
-        glAttachShader(_program, Shader(props.tesc.value(), ShaderType::TESS_CONTROL).shader);
+    if (props.tese.has_value()) {
         glAttachShader(_program, Shader(props.tese.value(), ShaderType::TESS_EVALUATION).shader);
     }
 #endif
+
+    if (props.feedbackVaryings.has_value()) {
+        std::vector<const char*> varyings_c_str;
+        varyings_c_str.reserve(props.feedbackVaryings->size());
+        for (const auto& varying : props.feedbackVaryings.value()) {
+            varyings_c_str.push_back(varying.c_str());
+        }
+        glTransformFeedbackVaryings(_program, varyings_c_str.size(), varyings_c_str.data(), GL_INTERLEAVED_ATTRIBS);
+    }
+
     glLinkProgram(_program);
 }
 

@@ -1,3 +1,9 @@
+#include <Atmospheric/game_object.hpp>
+#include <Atmospheric/particle_emitter.hpp>
+#include <Atmospheric/particle_server.hpp>
+#include "particle_server.hpp"
+#include "particle_emitter.hpp"
+#include "game_object.hpp"
 #include "Atmospheric.hpp"
 
 class HelloWorld : public Application {
