@@ -413,15 +413,10 @@ if(EMSCRIPTEN)
     target_compile_options(AtmosphericEngine PRIVATE)
     if(AE_USE_WEBGPU)
         target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_WEBGPU)
-        # AE_USE_WEBGPU=ON compiles in WebGPU support (emdawnwebgpu).
-        # The actual backend is chosen at runtime by GfxFactory::Init():
-        #   - browser exposes navigator.gpu → attempts WebGPU
-        #   - WebGPU unavailable or device creation fails → falls back to WebGL 2
-        # WebGL 2 flags are therefore kept alongside emdawnwebgpu so the
-        # OpenGL fallback path and ImGui (still imgui_impl_opengl3) continue
-        # to work at runtime.
-        # --closure=1 is recommended in release builds to reduce emdawnwebgpu JS size.
-        # TODO: switch ImGui backend to imgui_impl_wgpu once WebGPU path is stable.
+        # --use-port=emdawnwebgpu must appear in compile flags too so that
+        # Emscripten activates the port's include path (webgpu/webgpu.h) during
+        # the compile step — link-only is not enough.
+        target_compile_options(AtmosphericEngine PUBLIC --use-port=emdawnwebgpu)
         target_link_options(AtmosphericEngine INTERFACE
             -sWASM=1 -O3 -sUSE_GLFW=3
             --use-port=emdawnwebgpu
