@@ -1,5 +1,5 @@
 #include "lua_application.hpp"
-#include "gfx_factory.hpp"
+#include "Atmospheric/gfx_factory.hpp"
 
 // std::filesystem maps to Emscripten's MEMFS on web builds;
 // text files written there by FileSystem::Prefetch() are visible here.
