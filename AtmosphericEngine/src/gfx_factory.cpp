@@ -93,9 +93,9 @@ void GfxFactory::Init() {
     _wgpuQueue  = wgpuDeviceGetQueue(device);
 
     // ── Create surface ────────────────────────────────────────────────────────
-    WGPUSurfaceDescriptorFromCanvasHTMLSelector canvasDesc{};
-    canvasDesc.chain.sType = WGPUSType_SurfaceDescriptorFromCanvasHTMLSelector;
-    canvasDesc.selector    = "#canvas";
+    WGPUSurfaceSourceCanvasHTMLSelector_Emscripten canvasDesc{};
+    canvasDesc.chain.sType = WGPUSType_SurfaceSourceCanvasHTMLSelector_Emscripten;
+    canvasDesc.selector    = { "#canvas", WGPU_STRLEN };
     WGPUSurfaceDescriptor surfDesc{};
     surfDesc.nextInChain   = reinterpret_cast<WGPUChainedStruct*>(&canvasDesc);
     _surface = wgpuInstanceCreateSurface(inst, &surfDesc);
@@ -134,7 +134,7 @@ WGPUTextureView GfxFactory::GetCurrentSwapchainView() {
     if (!_surface) return nullptr;
     WGPUSurfaceTexture st{};
     wgpuSurfaceGetCurrentTexture(_surface, &st);
-    if (st.status != WGPUSurfaceGetCurrentTextureStatus_Success) return nullptr;
+    if (st.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal) return nullptr;
     WGPUTextureView view = wgpuTextureCreateView(st.texture, nullptr);
     wgpuTextureRelease(st.texture);
     return view;
