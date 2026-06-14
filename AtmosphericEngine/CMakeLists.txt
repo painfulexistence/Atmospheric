@@ -82,6 +82,9 @@ if(MSVC)
 else()
     target_compile_options(lua_static PRIVATE -w)
 endif()
+if(EMSCRIPTEN)
+    target_compile_options(lua_static PRIVATE -pthread)
+endif()
 
 # ── sol2 (develop branch, header-only) ────────────────────────────────────────
 # v3.3.0 had a bug in optional_implementation.hpp where tl::optional's CRTP
