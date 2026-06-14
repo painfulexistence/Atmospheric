@@ -40,7 +40,7 @@ void GfxFactory::Init() {
         // Module.preinitializedWebGPUDevice.  We check that value via EM_ASM_INT
         // before calling emscripten_webgpu_get_device() because the latter asserts
         // (not returns null) when the value isn't set.
-        int hasDevice = EM_ASM_INT({ return Module['preinitializedWebGPUDevice'] ? 1 : 0; });
+        int hasDevice = EM_ASM_INT({ return Module["preinitializedWebGPUDevice"] ? 1 : 0; });
         if (hasDevice) {
             WGPUDevice device = emscripten_webgpu_get_device();
             if (device) {
