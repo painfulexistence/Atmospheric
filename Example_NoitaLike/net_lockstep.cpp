@@ -2,14 +2,57 @@
 #include <cstring>
 
 #ifndef __EMSCRIPTEN__
+#if defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+#else
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
+#endif
 
 namespace {
+// ── Platform shims (POSIX sockets vs. Winsock2) ───────────────────────────
+#ifndef __EMSCRIPTEN__
+#if defined(_WIN32)
+inline bool EnsureSocketLib() {
+    static bool ok = [] {
+        WSADATA wsa;
+        return WSAStartup(MAKEWORD(2, 2), &wsa) == 0;
+    }();
+    return ok;
+}
+inline void SetNonBlocking(SocketHandle s) {
+    u_long mode = 1;
+    ::ioctlsocket(s, FIONBIO, &mode);
+}
+inline void CloseSocket(SocketHandle s) {
+    ::closesocket(s);
+}
+#else
+inline bool EnsureSocketLib() {
+    return true;
+}
+inline void SetNonBlocking(SocketHandle s) {
+    int flags = ::fcntl(s, F_GETFL, 0);
+    ::fcntl(s, F_SETFL, flags | O_NONBLOCK);
+}
+inline void CloseSocket(SocketHandle s) {
+    ::close(s);
+}
+#endif
+#endif
+
 constexpr uint32_t MAGIC = 0x4e4c4b31;// "NLK1"
 constexpr uint8_t PKT_HELLO = 1;
 constexpr uint8_t PKT_WELCOME = 2;
@@ -41,22 +84,25 @@ void LockstepNet::StartSolo(uint32_t s) {
 #ifndef __EMSCRIPTEN__
 
 bool LockstepNet::OpenSocket(uint16_t bindPort) {
+    if (!EnsureSocketLib()) {
+        error = "socket subsystem init failed";
+        return false;
+    }
     sock = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock < 0) {
+    if (sock == kInvalidSocket) {
         error = "socket() failed";
         return false;
     }
-    int flags = fcntl(sock, F_GETFL, 0);
-    fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+    SetNonBlocking(sock);
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port = htons(bindPort);
-    if (::bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
+    if (::bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
         error = "bind() failed (port in use?)";
-        ::close(sock);
-        sock = -1;
+        CloseSocket(sock);
+        sock = kInvalidSocket;
         return false;
     }
     return true;
@@ -96,20 +142,20 @@ bool LockstepNet::StartClient(const std::string& ip, uint16_t port) {
 }
 
 void LockstepNet::Shutdown() {
-    if (sock >= 0) {
-        ::close(sock);
-        sock = -1;
+    if (sock != kInvalidSocket) {
+        CloseSocket(sock);
+        sock = kInvalidSocket;
     }
     state = State::Idle;
 }
 
 void LockstepNet::SendRaw(const uint8_t* data, int len) {
-    if (sock < 0 || !havePeer) return;
+    if (sock == kInvalidSocket || !havePeer) return;
     sockaddr_in to{};
     to.sin_family = AF_INET;
     to.sin_addr.s_addr = peerAddr;
     to.sin_port = peerPort;
-    ::sendto(sock, data, size_t(len), 0, reinterpret_cast<sockaddr*>(&to), sizeof(to));
+    ::sendto(sock, reinterpret_cast<const char*>(data), len, 0, reinterpret_cast<sockaddr*>(&to), sizeof(to));
 }
 
 void LockstepNet::SendHello(uint32_t nowMs) {
@@ -229,15 +275,17 @@ void LockstepNet::HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, 
 }
 
 void LockstepNet::Pump(uint32_t nowMs) {
-    if (mode == Mode::Solo || sock < 0) return;
+    if (mode == Mode::Solo || sock == kInvalidSocket) return;
 
     uint8_t buf[1500];
     for (;;) {
         sockaddr_in from{};
         socklen_t fromLen = sizeof(from);
-        ssize_t n = ::recvfrom(sock, buf, sizeof(buf), 0, reinterpret_cast<sockaddr*>(&from), &fromLen);
+        int n = ::recvfrom(
+          sock, reinterpret_cast<char*>(buf), int(sizeof(buf)), 0, reinterpret_cast<sockaddr*>(&from), &fromLen
+        );
         if (n <= 0) break;
-        HandlePacket(buf, int(n), from.sin_addr.s_addr, from.sin_port, nowMs);
+        HandlePacket(buf, n, from.sin_addr.s_addr, from.sin_port, nowMs);
     }
 
     if (mode == Mode::Client && state == State::Connecting) {

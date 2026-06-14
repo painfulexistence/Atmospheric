@@ -78,6 +78,11 @@ else()
         raudio
         SDL3::SDL3
     )
+
+    # Winsock2 for the UDP lockstep transport on Windows.
+    if(WIN32)
+        target_link_libraries(${GAME_NAME} PRIVATE ws2_32)
+    endif()
 endif()
 
 # ── Asset sync for desktop ──
