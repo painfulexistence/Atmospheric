@@ -331,9 +331,7 @@ void Window::MainLoop(std::function<void(float, float)> callback)
         0,
         this
     };
-#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
-    // Single-threaded web: yield control to the browser each frame via
-    // emscripten_set_main_loop so the event loop keeps running.
+#ifdef __EMSCRIPTEN__
     static LoopContext* ctxPtr = &ctx;
     auto em_callback = [](void* arg) {
         auto& ctx = *static_cast<LoopContext*>(arg);
@@ -351,8 +349,6 @@ void Window::MainLoop(std::function<void(float, float)> callback)
     };
     emscripten_set_main_loop_arg(em_callback, ctxPtr, 0, true);
 #else
-    // Native or multi-threaded web (PROXY_TO_PTHREAD): main() runs on a
-    // worker thread, so a blocking loop is safe.
     while (_isRunning) {
         loop(ctx);
     }

@@ -425,7 +425,6 @@ if(EMSCRIPTEN)
             -sFETCH=1
             -sUSE_PTHREADS=1
             "-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency"
-            -sPROXY_TO_PTHREAD=1
             -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])
     else()
         target_link_options(AtmosphericEngine INTERFACE
@@ -434,7 +433,6 @@ if(EMSCRIPTEN)
             -sFETCH=1
             -sUSE_PTHREADS=1
             "-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency"
-            -sPROXY_TO_PTHREAD=1
             -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])
     endif()
 else()
