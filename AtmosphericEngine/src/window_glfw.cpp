@@ -289,6 +289,9 @@ GfxBackend Window::GetActiveBackend() {
 }
 
 void Window::InitImGui() {
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (_webGPUCanvas) return; // TODO: use imgui_impl_wgpu when WebGPU ImGui backend is ready
+#endif
     IMGUI_CHECKVERSION();
 
     ImGui::CreateContext();
@@ -303,17 +306,26 @@ void Window::InitImGui() {
 }
 
 void Window::BeginImGuiFrame() {
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (_webGPUCanvas) return;
+#endif
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 }
 
 void Window::EndImGuiFrame() {
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (_webGPUCanvas) return;
+#endif
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 void Window::DeinitImGui() {
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (_webGPUCanvas) return;
+#endif
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
