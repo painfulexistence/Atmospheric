@@ -35,18 +35,22 @@ void GfxFactory::Init() {
         // mismatched ABI between webgpu.h (old 4-arg callback) and the precompiled
         // libemdawnwebgpu (new 3-arg Future API) — calling them causes a WASM trap.
         //
-        // Instead we use emscripten_webgpu_get_device(), which reads a device that
-        // the HTML shell pre-initialised and stored in Module.preinitializedWebGPUDevice
-        // before WASM started.  If that hasn't been set up the call returns null and
-        // we fall through to WebGL 2.
-        WGPUDevice device = emscripten_webgpu_get_device();
-        if (device) {
-            Console::Get()->Info("[GfxFactory] WebGPU: got pre-initialised device from shell.");
-            _backend = GfxBackend::WebGPU;
-            SetWebGPUDevice(device);
-            return;
+        // Instead, cmake/webgpu_preinit.js (injected via --pre-js) requests the
+        // adapter+device in JS before WASM starts and stores the result in
+        // Module.preinitializedWebGPUDevice.  We check that value via EM_ASM_INT
+        // before calling emscripten_webgpu_get_device() because the latter asserts
+        // (not returns null) when the value isn't set.
+        int hasDevice = EM_ASM_INT({ return Module['preinitializedWebGPUDevice'] ? 1 : 0; });
+        if (hasDevice) {
+            WGPUDevice device = emscripten_webgpu_get_device();
+            if (device) {
+                Console::Get()->Info("[GfxFactory] WebGPU: got pre-initialised device.");
+                _backend = GfxBackend::WebGPU;
+                SetWebGPUDevice(device);
+                return;
+            }
         }
-        Console::Get()->Warn("[GfxFactory] WebGPU available but no pre-initialised device found "
+        Console::Get()->Warn("[GfxFactory] WebGPU available but device not pre-initialised "
                              "(Module.preinitializedWebGPUDevice not set). Falling back to WebGL 2.");
     } else {
         Console::Get()->Warn("[GfxFactory] WebGPU not available in browser. Falling back to WebGL 2.");
