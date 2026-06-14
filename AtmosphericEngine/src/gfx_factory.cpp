@@ -7,8 +7,13 @@
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include <webgpu/webgpu.h>
 #include <emscripten/html5_webgpu.h>
+#include <emscripten/em_js.h>
 #include "gpu_buffer.hpp"
 #include "gpu_render_target.hpp"
+
+EM_JS(int, ae_has_webgpu_device, (), {
+    return Module.preinitializedWebGPUDevice ? 1 : 0;
+});
 #endif
 
 // ── Static member definitions ────────────────────────────────────────────────
@@ -40,7 +45,7 @@ void GfxFactory::Init() {
         // Module.preinitializedWebGPUDevice.  We check that value via EM_ASM_INT
         // before calling emscripten_webgpu_get_device() because the latter asserts
         // (not returns null) when the value isn't set.
-        int hasDevice = EM_ASM_INT(return Module.preinitializedWebGPUDevice ? 1 : 0;);
+        int hasDevice = ae_has_webgpu_device();
         if (hasDevice) {
             WGPUDevice device = emscripten_webgpu_get_device();
             if (device) {
