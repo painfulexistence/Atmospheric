@@ -82,7 +82,13 @@ void GfxFactory::SetWebGPUDevice(WGPUDevice device) {
     canvasDesc.selector    = "canvas";
     WGPUSurfaceDescriptor surfDesc{};
     surfDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&canvasDesc);
-    WGPUInstance inst = wgpuCreateInstance(nullptr);
+    WGPUInstanceDescriptor instDesc{};
+    WGPUInstance inst = wgpuCreateInstance(&instDesc);
+    if (!inst) {
+        Console::Get()->Warn("[GfxFactory] wgpuCreateInstance returned null. Falling back to WebGL 2.");
+        _backend = GfxBackend::OpenGL;
+        return;
+    }
     _surface = wgpuInstanceCreateSurface(inst, &surfDesc);
     wgpuInstanceRelease(inst);
     Console::Get()->Info(fmt::format("[GfxFactory] SetWebGPUDevice: surface={}", (void*)_surface));
