@@ -10,17 +10,24 @@
 #include "sprite_component.hpp"
 #include "text_component.hpp"
 #include "window.hpp"
+#include "gfx_factory.hpp"
 
 EditorLayer::EditorLayer(Application* app, bool showImGui)
     : Layer("EditorLayer"), _app(app), _showImGui(showImGui) {
 }
 
 void EditorLayer::OnUpdate(float dt) {
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     if (ImGui::IsKeyPressed(ImGuiKey_F1))
         _showImGui = !_showImGui;
 }
 
 void EditorLayer::OnRender(float dt) {
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     if (!_showImGui) return;
 
     if (ImGui::BeginMainMenuBar()) {
