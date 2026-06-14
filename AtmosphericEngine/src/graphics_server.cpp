@@ -117,8 +117,16 @@ void GraphicsServer::Process(float dt) {
 // NOTES: this only fills in command buffers, rendering should be done by the renderer
 void GraphicsServer::Render(CameraComponent* camera, float dt) {
     ZoneScopedN("GraphicsServer::Render");
+
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        // WebGPU: canvas draw list is consumed by GPUCanvasPass in the render loop.
+        // No GL renderer to drive here.
+        return;
+    }
+#endif
+
     if (!camera) {
-        // Attempt to use the default camera if none is provided
         camera = defaultCamera;
         if (!camera) return;
     }
