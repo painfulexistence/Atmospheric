@@ -37,6 +37,7 @@ jobs:
             Example_HelloWorld
             Example_VoxelWorld
             Example_Physics2D
+            Example_NoitaLike
             Example_CSB
             Example_MidnightSkyraiders
             Example_RPG
@@ -130,6 +131,7 @@ jobs:
             Example_HelloWorld
             Example_VoxelWorld
             Example_Physics2D
+            Example_NoitaLike
             Example_CSB
             Example_MidnightSkyraiders
             Example_RPG
