@@ -1,5 +1,10 @@
 #include "Atmospheric.hpp"
+#include "ExampleComponents.hpp"
 
+using namespace axex;
+
+// Camera navigation is delegated to the reusable FlyCameraComponent. OnUpdate
+// only streams/renders the voxel world around the camera and handles ESC.
 class VoxelWorldApp : public Application {
     using Application::Application;
 
@@ -15,6 +20,9 @@ class VoxelWorldApp : public Application {
         mainCamera->gameObject->SetPosition(glm::vec3(200.0f, 80.0f, 200.0f));
         mainCamera->gameObject->SetRotation(glm::vec3(glm::radians(-20.0f), 0.0f, 0.0f));
 
+        // WASD move, RF up/down, IJKL look — handled by the component.
+        mainCamera->gameObject->AddComponent<FlyCameraComponent>(/*moveSpeed=*/20.0f, /*lookSpeed=*/1.5f);
+
         _world.Init(this, /*seed=*/1337);
 
         Renderer* renderer = GetGraphicsServer()->renderer;
@@ -29,25 +37,6 @@ class VoxelWorldApp : public Application {
 
     void OnUpdate(float dt, float /*time*/) override {
         glm::vec3 pos = mainCamera->gameObject->GetPosition();
-
-        const float moveSpeed = 20.0f;
-        const float lookSpeed = 1.5f; // radians/sec
-
-        // IJKL look — use CameraComponent's own angle state
-        if (input.IsKeyDown(Key::I)) mainCamera->Pitch( lookSpeed * dt);
-        if (input.IsKeyDown(Key::K)) mainCamera->Pitch(-lookSpeed * dt);
-        if (input.IsKeyDown(Key::J)) mainCamera->Yaw(-lookSpeed * dt);
-        if (input.IsKeyDown(Key::L)) mainCamera->Yaw( lookSpeed * dt);
-
-        // WASD: world-axis movement (not linked to view direction)
-        if (input.IsKeyDown(Key::W)) pos.z -= moveSpeed * dt;
-        if (input.IsKeyDown(Key::S)) pos.z += moveSpeed * dt;
-        if (input.IsKeyDown(Key::A)) pos.x -= moveSpeed * dt;
-        if (input.IsKeyDown(Key::D)) pos.x += moveSpeed * dt;
-        if (input.IsKeyDown(Key::R)) pos.y += moveSpeed * dt;
-        if (input.IsKeyDown(Key::F)) pos.y -= moveSpeed * dt;
-
-        mainCamera->gameObject->SetPosition(pos);
 
         _world.Update(dt, pos);
 

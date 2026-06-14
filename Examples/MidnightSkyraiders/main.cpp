@@ -1,4 +1,5 @@
 #include "Atmospheric.hpp"
+#include "ExampleComponents.hpp"
 
 #include <vector>
 #include <algorithm>
@@ -7,6 +8,8 @@
 #include <sstream>
 #include <iomanip>
 #include <string>
+
+using namespace axex;
 
 // ─────────────────────────────────────────────────────────────
 // Wave data: 24 waves × 5 rows × 8 cols  (0=empty,1-3=enemy type)
@@ -102,11 +105,8 @@ class MidnightSkyraiders : public Application {
     SoundID sfxExp  = 0;
     SoundID sfxOver = 0;
 
-    // Parallax: 3 layers x 2 seamless tiles
-    struct BgPair { GameObject* a = nullptr; GameObject* b = nullptr; };
-    BgPair bg[3];
-    float bgTime = 0.0f;
-    // Scroll speeds in px/s: original -0.005, -0.04, -0.12 px/ms x 1000
+    // Parallax background: 3 layers, each handled by a ParallaxLayerComponent.
+    // Scroll speeds in px/s: original -0.005, -0.04, -0.12 px/ms x 1000.
     static constexpr float BG_SPEED[3] = { 5.0f, 40.0f, 120.0f };
 
     // Title sprite
@@ -164,33 +164,18 @@ class MidnightSkyraiders : public Application {
         sfxExp  = audio.LoadSound("assets/sounds/explosion.wav");
         sfxOver = audio.LoadSound("assets/sounds/game-over.wav");
 
-        // Parallax background tiles
+        // Parallax background: one self-scrolling layer component per texture.
+        // Each ParallaxLayerComponent spawns and animates its own seamless tiles.
+        auto* background = CreateGameObject();
+        background->SetName("Background");
         for (int i = 0; i < 3; i++) {
-            auto makeTile = [&](float startX) -> GameObject* {
-                auto* obj = CreateGameObject(glm::vec2(startX, 0.0f));
-                obj->AddComponent<SpriteComponent>(SpriteProps{
-                    .size      = glm::vec2(WORLD, WORLD),
-                    .pivot     = glm::vec2(0.0f, 0.0f),
-                    .color     = glm::vec4(1,1,1,1),
-                    .textureID = (int)texBg[i],
-                    .layer     = CanvasLayer::LAYER_WORLD_2D,
-                    .flipY     = true,
-                    .zOrder    = i,
-                });
-                return obj;
-            };
-            bg[i].a = makeTile(0.0f);
-            bg[i].b = makeTile(WORLD);
+            background->AddComponent<ParallaxLayerComponent>((int)texBg[i], WORLD, BG_SPEED[i], i);
         }
 
-        bgTime = 0.0f;
         enterTitle();
     }
 
     void OnUpdate(float dt, float /*time*/) override {
-        bgTime += dt;
-        updateParallax();
-
         switch (state) {
         case GameState::Title:    updateTitle(dt);    break;
         case GameState::Playing:  updatePlaying(dt);  break;
@@ -198,17 +183,6 @@ class MidnightSkyraiders : public Application {
         }
 
         if (input.IsKeyDown(Key::ESCAPE)) Quit();
-    }
-
-    // ───────────────── Parallax ───────────────
-    void updateParallax() {
-        for (int i = 0; i < 3; i++) {
-            // Scroll left; fmod keeps value in (-600, 0]
-            float xA = std::fmod(-BG_SPEED[i] * bgTime, WORLD);
-            if (xA > 0.0f) xA -= WORLD; // normalise to (-600, 0]
-            if (bg[i].a) bg[i].a->SetPosition(glm::vec3(xA,          0.0f, 0.0f));
-            if (bg[i].b) bg[i].b->SetPosition(glm::vec3(xA + WORLD,  0.0f, 0.0f));
-        }
     }
 
     // ───────────────── Title ───────────────

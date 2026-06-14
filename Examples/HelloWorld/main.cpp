@@ -1,16 +1,14 @@
 #include "Atmospheric.hpp"
+#include "ExampleComponents.hpp"
 // FileSystem is included via Atmospheric.hpp (Atmospheric/file_system.hpp)
 
+using namespace axex;
+
+// Every animated object in this demo drives itself through a reusable component
+// from ExampleComponents — OnUpdate is left with nothing but global input.
 class HelloWorld : public Application {
     using Application::Application;
 
-    GameObject* cube;
-
-    // World space sprites (rendered by WorldCanvasPass with depth testing)
-    std::vector<GameObject*> worldSprites;
-
-    // Screen space sprites (rendered by CanvasPass, no depth testing)
-    std::vector<GameObject*> screenSprites;
     FontID fontID;
 
     void OnInit() override {
@@ -18,10 +16,6 @@ class HelloWorld : public Application {
     }
 
     void OnLoad() override {
-        cube = nullptr;
-        worldSprites.clear();
-        screenSprites.clear();
-
         // Load font
         fontID = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
 
@@ -39,15 +33,21 @@ class HelloWorld : public Application {
 
         mainCamera->gameObject->SetPosition(glm::vec3(-10.0, 5.0, 0.0));
 
-        // Create rotating cube
+        // === Rotating, bobbing cube ===
         auto cubeMesh = AssetManager::Get().CreateCubeMesh("CubeMesh", 1.0f);
         cubeMesh->SetMaterial(AssetManager::Get().GetMaterials()[0]);
 
-        cube = CreateGameObject();
+        auto* cube = CreateGameObject(glm::vec3(0.0f, 5.0f, 0.0f));
         cube->AddComponent<MeshComponent>(cubeMesh);
+        cube->AddComponent<RotatorComponent>(glm::vec3(0.0f, 0.5f, 1.0f));
+        // Bob along Z; phase pi/2 makes the sine read as cosine (matches the
+        // original cos(time) motion).
+        cube->AddComponent<OscillatorComponent>(glm::vec3(0.0f, 0.0f, 1.0f), 2.0f, 1.0f, glm::half_pi<float>());
+        cube->AddComponent<WorldLabelComponent>(fontID, "Cube");
 
         // === World Space Sprites (WorldCanvasPass) ===
-        // These are rendered with depth testing - occluded by 3D geometry
+        // Rendered with depth testing - occluded by 3D geometry. Each one bobs
+        // up and down via an OscillatorComponent.
         glm::vec4 worldColors[] = {
             { 1.0f, 0.3f, 0.3f, 0.8f },// Red
             { 0.3f, 1.0f, 0.3f, 0.8f },// Green
@@ -56,9 +56,7 @@ class HelloWorld : public Application {
         };
 
         for (int i = 0; i < 4; i++) {
-            auto* spriteObj = CreateGameObject();
-            spriteObj->SetPosition(glm::vec3(i * 2.0f - 3.0f, 2.0f, 3.0f));
-
+            auto* spriteObj = CreateGameObject(glm::vec3(i * 2.0f - 3.0f, 2.0f, 3.0f));
             spriteObj->AddComponent<SpriteComponent>(SpriteProps{
               .size = glm::vec2(1.0f, 1.0f),
               .pivot = glm::vec2(0.5f, 0.5f),
@@ -66,12 +64,12 @@ class HelloWorld : public Application {
               .textureID = -1,
               .layer = CanvasLayer::LAYER_WORLD,
             });
-
-            worldSprites.push_back(spriteObj);
+            spriteObj->AddComponent<OscillatorComponent>(glm::vec3(0.0f, 1.0f, 0.0f), 0.5f, 2.0f, i * 0.5f);
         }
 
         // === 2D Sprites (CanvasPass) ===
-        // These use screen coordinates (pixels), rendered after 3D
+        // Screen coordinates (pixels), rendered after 3D. Each pulses its alpha
+        // via a SpritePulseComponent.
         glm::vec4 sprite2DColors[] = {
             { 1.0f, 0.5f, 0.0f, 0.9f },// Orange
             { 0.5f, 0.0f, 1.0f, 0.9f },// Purple
@@ -79,10 +77,8 @@ class HelloWorld : public Application {
         };
 
         for (int i = 0; i < 3; i++) {
-            auto* spriteObj = CreateGameObject();
             // Screen coordinates: top-left origin, pixels
-            spriteObj->SetPosition(glm::vec3(20.0f + i * 70.0f, 20.0f, 0.0f));
-
+            auto* spriteObj = CreateGameObject(glm::vec3(20.0f + i * 70.0f, 20.0f, 0.0f));
             spriteObj->AddComponent<SpriteComponent>(SpriteProps{
               .size = glm::vec2(50.0f, 50.0f),// Pixels
               .pivot = glm::vec2(0.0f, 0.0f),// Top-left pivot
@@ -90,9 +86,14 @@ class HelloWorld : public Application {
               .textureID = -1,
               // Default layer is LAYER_WORLD_2D (2D screen space)
             });
-
-            screenSprites.push_back(spriteObj);
+            spriteObj->AddComponent<SpritePulseComponent>(0.4f, 1.0f, 3.0f, i * 1.0f);
         }
+
+        // === HUD text ===
+        auto* hud = CreateGameObject();
+        hud->AddComponent<ScreenLabelComponent>(
+          fontID, "Hello World from C++!", glm::vec2(50.0f, 100.0f)
+        );
 
         console.Info(fmt::format("Game fully loaded in {:.1f} seconds", GetWindowTime()));
         console.Info("Press R to reload shaders, ESC to quit");
@@ -100,34 +101,8 @@ class HelloWorld : public Application {
     }
 
     void OnUpdate(float dt, float time) override {
-        cube->SetPosition(glm::vec3(0.0f, 5.0f, std::cos(time) * 2.0f));
-        cube->SetRotation(glm::vec3(0.0, time * 0.5, time * 1.0));
-
-        // Animate world sprites (float up and down in 3D space)
-        for (size_t i = 0; i < worldSprites.size(); i++) {
-            float offset = std::sin(time * 2.0f + i * 0.5f) * 0.5f;
-            worldSprites[i]->SetPosition(glm::vec3(i * 2.0f - 3.0f, 2.0f + offset, 3.0f));
-        }
-
-        // Animate screen sprites (pulse alpha)
-        for (size_t i = 0; i < screenSprites.size(); i++) {
-            float pulse = 0.7f + 0.3f * std::sin(time * 3.0f + i * 1.0f);
-            auto* sprite = screenSprites[i]->GetComponent<SpriteComponent>();
-            glm::vec4 color = sprite->GetColor();
-            color.a = pulse;
-            sprite->SetColor(color);
-        }
-
-        // Draw Hello World text
-        GraphicsServer::Get()->DrawText(
-          fontID, "Hello World from C++!", 50.0f, 100.0f, 1.0f, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
-        );
-
-        // Draw 3D text above cube
-        GraphicsServer::Get()->DrawText3D(
-          fontID, "Cube", cube->GetPosition() + glm::vec3(0.0f, 1.2f, 0.0f), 0.5f, glm::vec4(1.0f, 1.0f, 0.0f, 1.0f)
-        );
-
+        // All per-object animation now lives in components; OnUpdate only deals
+        // with global/application-level input.
         if (input.IsKeyDown(Key::R)) {
             AssetManager::Get().ReloadShaders();
         }
