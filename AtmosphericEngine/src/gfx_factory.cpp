@@ -147,7 +147,10 @@ WGPUTextureView GfxFactory::GetCurrentSwapchainView() {
 }
 
 void GfxFactory::PresentSwapchain() {
+#ifndef __EMSCRIPTEN__
     if (_surface) wgpuSurfacePresent(_surface);
+#endif
+    // On Emscripten the browser's requestAnimationFrame loop handles presentation
 }
 #endif // AE_USE_WEBGPU
 
