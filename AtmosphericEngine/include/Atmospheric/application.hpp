@@ -16,6 +16,7 @@
 // Forward declarations
 class Window;
 class GameObject;
+class EditorLayer;
 
 struct FrameData {
     FrameData(uint64_t number, float time, float deltaTime) {
@@ -97,6 +98,11 @@ public:
         return &audio;
     }
 
+#ifndef NDEBUG
+    bool IsShowingImGui() const;
+    void SetShowImGui(bool show);
+#endif
+
     std::shared_ptr<Window> GetWindow();
     void LoadScene(const SceneDef& scene);
     void LoadScene(const std::string& jsonContent);
@@ -161,6 +167,9 @@ private:
 
     std::vector<Layer*> _layers;
     GameObject* _selectedEntity = nullptr;
+#ifndef NDEBUG
+    EditorLayer* _editorLayer = nullptr;
+#endif
 
     void Update(const FrameData& frame);
     void Render(const FrameData& frame

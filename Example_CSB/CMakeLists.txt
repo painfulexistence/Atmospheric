@@ -46,15 +46,15 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
             ${EM_PRELOAD_STAGING_DIR}/scenes
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts
-            ${EM_PRELOAD_STAGING_DIR}/fonts
+        COMMAND ${CMAKE_COMMAND}
+            -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts
+            -Ddst=${EM_PRELOAD_STAGING_DIR}/fonts
+            -P ${CMAKE_SOURCE_DIR}/cmake/copy_dir_if_exists.cmake
         COMMENT "Staging Emscripten preload assets (shaders, scenes, fonts) for ${GAME_NAME}"
     )
     add_dependencies(${GAME_NAME} stage_${GAME_NAME}_em_preload)
 
-    target_compile_options(${GAME_NAME} PRIVATE)
-    target_link_options(${GAME_NAME} PRIVATE
+    set(_em_link_opts
         -sALLOW_MEMORY_GROWTH=1
         -sASSERTIONS=1
         -sDISABLE_EXCEPTION_CATCHING=0
@@ -62,8 +62,13 @@ if(EMSCRIPTEN)
         -Wl,--undefined=printWasmMemoryStats
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
     )
+    if(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts)
+        list(APPEND _em_link_opts
+            "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
+        )
+    endif()
+    target_link_options(${GAME_NAME} PRIVATE ${_em_link_opts})
 
 else()
     # ── Native build ─────────────────────────────────────────────────────────

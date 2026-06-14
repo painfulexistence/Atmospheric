@@ -84,16 +84,18 @@ void GLRenderTarget::Create() {
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D_MULTISAMPLE, _depthTexture, 0);
         }
     } else {
+#else
+    // TODO: Implement WebGL-compatible offscreen MSAA.
+    // WebGL 2.0 does not support GL_TEXTURE_2D_MULTISAMPLE. To support offscreen MSAA with post-processing 
+    // on Web, we must allocate multisampled Renderbuffers using glRenderbufferStorageMultisample 
+    // and bind them to the framebuffer, then resolve (blit) to a single-sampled texture FBO.
+    if (false) {
+    } else {
 #endif
         glBindTexture(GL_TEXTURE_2D, _colorTexture);
 
-#ifdef __EMSCRIPTEN__
-        GLenum internalFormat = GL_RGBA8;
-        GLenum type           = GL_UNSIGNED_BYTE;
-#else
         GLenum internalFormat = _hdr ? GL_RGBA16F : GL_RGBA8;
         GLenum type           = _hdr ? GL_FLOAT : GL_UNSIGNED_BYTE;
-#endif
         GLenum format         = GL_RGBA;
         glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, _width, _height, 0, format, type, nullptr);
 
@@ -114,8 +116,8 @@ void GLRenderTarget::Create() {
             } else {
                 glGenTextures(1, &_depthTexture);
                 glBindTexture(GL_TEXTURE_2D, _depthTexture);
-                glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, _width, _height, 0,
-                             GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, _width, _height, 0,
+                             GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -124,9 +126,7 @@ void GLRenderTarget::Create() {
                                        GL_TEXTURE_2D, _depthTexture, 0);
             }
         }
-#ifndef __EMSCRIPTEN__
     }
-#endif
 
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (status != GL_FRAMEBUFFER_COMPLETE) {

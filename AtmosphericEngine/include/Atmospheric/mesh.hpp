@@ -11,17 +11,18 @@
 #include <vector>
 
 enum class MeshType {
-    PRIM = 0,
+    PRIM    = 0,
     TERRAIN = 1,
-    SKY = 2,
-    DEBUG = 3,// Debug lines, wireframes
-    CANVAS = 4// UI/Canvas elements
+    SKY     = 2,
+    DEBUG   = 3,  // Debug lines, wireframes
+    CANVAS  = 4,  // UI/Canvas elements
+    VOXEL   = 5   // Voxel chunk meshes
 };
 
 enum class UpdateFrequency {
-    Static,// One-time upload, never changes (normal 3D models)
-    Dynamic,// May change per frame (debug lines, canvas, particles)
-    Stream// Always changes per frame
+    Static,   // One-time upload, never changes (normal 3D models)
+    Dynamic,  // May change per frame (debug lines, canvas, particles)
+    Stream    // Always changes per frame
 };
 
 class Mesh {

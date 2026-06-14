@@ -53,6 +53,9 @@ public:
     void SetUniform(const std::string& uniform, const glm::mat4& val) {
         glUniformMatrix4fv(GetUniform(uniform), 1, GL_FALSE, &val[0][0]);
     };
+    void SetUniform(const std::string& uniform, const glm::vec2& val) {
+        glUniform2fv(GetUniform(uniform), 1, &val[0]);
+    };
     void SetUniform(const std::string& uniform, const glm::vec3& val) {
         glUniform3fv(GetUniform(uniform), 1, &val[0]);
     };

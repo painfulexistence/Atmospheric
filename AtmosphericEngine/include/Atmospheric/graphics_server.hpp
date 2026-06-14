@@ -7,6 +7,7 @@
 #include "mesh_component.hpp"
 #include "buffer.hpp"
 #include "render_target.hpp"
+#include "sun_component.hpp"
 #include "vertex.hpp"
 #include "server.hpp"
 #include "shader.hpp"
@@ -62,6 +63,7 @@ public:
     std::vector<LightComponent*> directionalLights;
     std::vector<LightComponent*> pointLights;
     std::vector<CameraComponent*> cameras;
+    std::vector<SunComponent*> sunComponents;
 
     std::vector<DebugVertex> debugLines;
     std::vector<CanvasVertex> canvasDrawList;
@@ -96,13 +98,18 @@ public:
         return directionalLights.size() > 0 ? directionalLights[0] : defaultLight;
     }
 
+    SunComponent* GetMainSun() const {
+        return sunComponents.empty() ? nullptr : sunComponents[0];
+    }
+
     ShaderProgram* GetShader(const std::string& name) const;
     ShaderProgram* GetShaderByID(uint32_t id) const;
     Mesh* GetMesh(const std::string& name) const;
 
-    MeshComponent*  RegisterMesh(MeshComponent* mesh);
+    MeshComponent*   RegisterMesh(MeshComponent* mesh);
     CameraComponent* RegisterCamera(CameraComponent* camera);
     LightComponent*  RegisterLight(LightComponent* light);
+    SunComponent*    RegisterSun(SunComponent* sun);
     CanvasDrawable*  RegisterCanvasDrawable(CanvasDrawable* drawable);
 
     // ===== Render Target Management =====
@@ -131,6 +138,30 @@ public:
     void DrawRect(float x, float y, float w, float h, const glm::vec4& color);
     void DrawLine(float x1, float y1, float x2, float y2, const glm::vec4& color);
     void DrawCircle(float x, float y, float radius, const glm::vec4& color);
+
+    /// Draw a single tile from a tileset spritesheet.
+    /// @param x,y    Top-left world pixel position of the tile.
+    /// @param w,h    Tile size in pixels (usually tileSize x tileSize).
+    /// @param texID  OpenGL texture ID of the tileset image.
+    /// @param tilesetDims  vec2(numCols, numRows) of the tileset grid.
+    /// @param tileCol,tileRow  Zero-based column and row of the desired tile.
+    void DrawTile(float x, float y, float w, float h,
+                  uint32_t texID,
+                  const glm::vec2& tilesetDims,
+                  int tileCol, int tileRow,
+                  const glm::vec4& color = glm::vec4(1.0f));
+
+    /// Draw a sprite from a spritesheet with explicit UV coordinates.
+    /// @param x,y     Top-left screen pixel position.
+    /// @param w,h     Display size in pixels.
+    /// @param texID   OpenGL texture ID.
+    /// @param uvMin   Bottom-left UV (0-1)
+    /// @param uvMax   Top-right   UV (0-1)
+    void DrawSprite2D(float x, float y, float w, float h,
+                      uint32_t texID,
+                      const glm::vec2& uvMin,
+                      const glm::vec2& uvMax,
+                      const glm::vec4& color = glm::vec4(1.0f));
 
     // ===== Text Rendering =====
     FontID LoadFont(const std::string& path, float baseSize);
@@ -174,6 +205,12 @@ private:
       const glm::vec2& tilesetSize = glm::vec2(1.0f),
       const glm::vec2& tileIndex   = glm::vec2(0.0f));
 
+    // Helper: build UV-mapped BatchDrawCommand and submit to canvas queue.
+    void SubmitUVQuad(float cx, float cy, float w, float h,
+                      uint32_t texID,
+                      const glm::vec2& uvMin, const glm::vec2& uvMax,
+                      const glm::vec4& color);
+
     struct TextCommand {
         FontID fontID;
         std::string text;
@@ -184,4 +221,7 @@ private:
 
 public:
     void RenderBufferedText(BatchRenderer2D* batch);
+    // WebGPU path: converts buffered text commands into BatchDrawCommands
+    // and submits them via SubmitCanvasCommand so CanvasPass can process them.
+    void FlushTextToQueue();
 };

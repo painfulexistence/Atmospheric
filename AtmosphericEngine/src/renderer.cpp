@@ -12,6 +12,10 @@
 #include "physics_server_2d.hpp"
 #include "window.hpp"
 #include <algorithm>
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+#include "gpu_canvas_pass.hpp"
+#include <webgpu/webgpu.h>
+#endif
 #ifdef TRACY_ENABLE
 #include <tracy/Tracy.hpp>
 #endif
@@ -71,12 +75,64 @@ void Renderer::Init(int width, int height) {
     m_BatchRenderer = std::make_unique<BatchRenderer2D>();
     m_BatchRenderer->Init();
 
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    m_GPUCanvasPass = std::make_unique<GPUCanvasPass>();
+#endif
+
+    // Screen-space quad VAO for post-process passes (bloom, etc.)
+    {
+        static const float quadVerts[] = {
+            -1.f, -1.f, 0.f, 0.f,
+             1.f, -1.f, 1.f, 0.f,
+             1.f,  1.f, 1.f, 1.f,
+            -1.f, -1.f, 0.f, 0.f,
+             1.f,  1.f, 1.f, 1.f,
+            -1.f,  1.f, 0.f, 1.f,
+        };
+        GLuint vbo;
+        glGenVertexArrays(1, &screenQuadVAO);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(screenQuadVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        glBindVertexArray(0);
+    }
+
+    // ── Skybox cube VAO ─────────────────────────────────────────────
+    {
+        static const float cubeVerts[] = {
+            -1, -1, -1,  1, -1, -1,  1,  1, -1,  1,  1, -1, -1,  1, -1, -1, -1, -1,
+            -1, -1,  1,  1, -1,  1,  1,  1,  1,  1,  1,  1, -1,  1,  1, -1, -1,  1,
+            -1,  1,  1, -1,  1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  1, -1,  1,  1,
+             1,  1,  1,  1,  1, -1,  1, -1, -1,  1, -1, -1,  1, -1,  1,  1,  1,  1,
+            -1, -1, -1, -1, -1,  1,  1, -1,  1,  1, -1,  1,  1, -1, -1, -1, -1, -1,
+            -1,  1, -1, -1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, -1, -1,  1, -1,
+        };
+        glGenVertexArrays(1, &skyboxVAO);
+        glGenBuffers(1, &skyboxVBO);
+        glBindVertexArray(skyboxVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVerts), cubeVerts, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+        glBindVertexArray(0);
+    }
+
     _renderGraph = std::make_unique<RenderGraph>();
     _renderGraph->AddPass(std::make_unique<ShadowPass>());
     _renderGraph->AddPass(std::make_unique<ForwardOpaquePass>());
+    _renderGraph->AddPass(std::make_unique<SkyboxPass>());   // after clear, fills empty sky pixels
+    _renderGraph->AddPass(std::make_unique<SunPass>());
+    _renderGraph->AddPass(std::make_unique<VoxelChunkPass>());
     _renderGraph->AddPass(std::make_unique<MSAAResolvePass>());
+    _renderGraph->AddPass(std::make_unique<WaterPass>());
     _renderGraph->AddPass(std::make_unique<WorldCanvasPass>());// World sprites with depth testing
     _renderGraph->AddPass(std::make_unique<CanvasPass>());// 2D sprites, world space ortho, with no depth testing
+    _renderGraph->AddPass(std::make_unique<BloomPass>());
     _renderGraph->AddPass(std::make_unique<PostProcessPass>());
     _renderGraph->AddPass(std::make_unique<UIPass>());
 }
@@ -92,6 +148,8 @@ void Renderer::Cleanup() {
     // debug and screen are now std::unique_ptr<Buffer> that auto-destruct
     glDeleteVertexArrays(1, &canvasVAO);
     glDeleteBuffers(1, &canvasVBO);
+    glDeleteVertexArrays(1, &skyboxVAO);
+    glDeleteBuffers(1, &skyboxVBO);
 }
 
 void Renderer::Resize(int width, int height) {
@@ -207,6 +265,7 @@ void Renderer::BucketCommands(const glm::vec3& cameraPos) {
 
 void Renderer::RenderFrame(GraphicsServer* ctx, float dt) {
     ZoneScopedN("Renderer::RenderFrame");
+    frameTime += dt;
     SortAndBucket(ctx->GetMainCamera()->GetEyePosition());
     _renderGraph->Render(ctx, *this);
 
@@ -621,10 +680,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
     auto [width, height] = Window::Get()->GetFramebufferSize();
     glViewport(0, 0, width, height);
 
-    GLuint targetFBO = renderer.postProcessEnabled
-        ? static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID()
-        : renderer.finalFBO;
-    glBindFramebuffer(GL_FRAMEBUFFER, targetFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
     // Bind textures
     auto& assetManager = AssetManager::Get();
     for (int i = 0; i < MAX_UNI_LIGHTS; ++i) {
@@ -663,29 +719,6 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
-        // glEnable(GL_STENCIL_TEST);
-        // glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-        // glStencilFunc(GL_ALWAYS, 1, 0xFF);
-
-        // Outline rendering
-        // glStencilMask(0xFF);
-        // glStencilFunc(GL_ALWAYS, 1, 0xFF);
-        // /*
-        // pass 1
-        // ...
-        //  */
-        // glStencilMask(0x00);
-        // glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-        // glDepthFunc(GL_ALWAYS);
-        // /*
-        // pass 2 (scaled)
-        // ...
-        //  */
-        // glDepthFunc(GL_LESS);
-
-        // glStencilMask(0xFF);
-        // glStencilFunc(GL_ALWAYS, 1, 0xFF);
-
 #ifndef __EMSCRIPTEN__
         if (renderer.wireframeEnabled || mesh->GetMaterial()->polygonMode == GL_LINE)
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -697,8 +730,6 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             glEnable(GL_CULL_FACE);
         else
             glDisable(GL_CULL_FACE);
-
-        // glEnable(GL_PRIMITIVE_RESTART);
 
         switch (mesh->type) {
 
@@ -746,6 +777,10 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
         case MeshType::SKY:
             // TODO: implement skybox rendering
+            break;
+
+        case MeshType::VOXEL:
+            // Handled by VoxelChunkPass before this pass.
             break;
 
         case MeshType::PRIM:
@@ -920,16 +955,7 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
         GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3
     };
     glDrawBuffers(attachments.size(), attachments.data());
-    // for (int i = 0; i < MAX_UNI_LIGHTS; ++i) {
-    //     glActiveTexture(GL_TEXTURE0 + i);
-    //     glBindTexture(GL_TEXTURE_2D, uniShadowMaps[i]);
-    // }
-    // for (int i = 0; i < MAX_OMNI_LIGHTS; ++i) {
-    //     glActiveTexture(GL_TEXTURE0 + UNI_SHADOW_MAP_COUNT + i);
-    //     glBindTexture(GL_TEXTURE_CUBE_MAP, omniShadowMaps[i]);
-    // }
     auto& assetManager = AssetManager::Get();
-    // Global static binding removed; textures are now dynamically bound per draw call
 
     glClearColor(renderer.clearColor.r, renderer.clearColor.g, renderer.clearColor.b, renderer.clearColor.a);
     glClearDepthf(1.0f);
@@ -967,6 +993,9 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
             break;
         case MeshType::SKY:
             // TODO: implement skybox rendering
+            break;
+        case MeshType::VOXEL:
+            // Handled by VoxelChunkPass.
             break;
         case MeshType::PRIM:
         default:
@@ -1052,12 +1081,7 @@ void DeferredLightingPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
     ZoneScopedN("DeferredLightingPass");
     auto [width, height] = Window::Get()->GetFramebufferSize();
     glViewport(0, 0, width, height);
-    {
-        GLuint targetFBO = renderer.postProcessEnabled
-            ? static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID()
-            : renderer.finalFBO;
-        glBindFramebuffer(GL_FRAMEBUFFER, targetFBO);
-    }
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
 
     glClearColor(renderer.clearColor.r, renderer.clearColor.g, renderer.clearColor.b, renderer.clearColor.a);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1117,27 +1141,15 @@ void TransparentPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 
 void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("MSAAResolvePass");
-    if (!renderer.postProcessEnabled) {
-        return;
-    }
     
     auto [width, height] = Window::Get()->GetFramebufferSize();
     glViewport(0, 0, width, height);
  
-    // Resolve MSAA (color + depth)
+    // Resolve MSAA color + depth — both RTs now use GL_DEPTH_COMPONENT32F.
     glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID());
-    
-    GLbitfield mask = GL_COLOR_BUFFER_BIT;
-#ifdef __EMSCRIPTEN__
-    // WebGL 2.0 throws INVALID_OPERATION if blitting depth to the default framebuffer 0
-    if (renderer.postProcessEnabled) {
-        mask |= GL_DEPTH_BUFFER_BIT;
-    }
-#else
-    mask |= GL_DEPTH_BUFFER_BIT;
-#endif
-    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, mask, GL_NEAREST);
+    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
+                      GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST);
  
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
  
@@ -1161,12 +1173,7 @@ void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 
     auto [width, height] = Window::Get()->GetFramebufferSize();
     glViewport(0, 0, width, height);
-    {
-        GLuint targetFBO = renderer.postProcessEnabled
-            ? static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID()
-            : renderer.finalFBO;
-        glBindFramebuffer(GL_FRAMEBUFFER, targetFBO);
-    }
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID());
 
     // Get camera for projection
     CameraComponent* camera = ctx->GetMainCamera();
@@ -1213,6 +1220,29 @@ void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("CanvasPass");
 
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        GPUCanvasPass* gpuPass = renderer.GetGPUCanvasPass();
+        if (!gpuPass) return;
+
+        ctx->FlushTextToQueue(); // convert text commands → BatchDrawCommands in queue
+
+        if (renderer.GetCanvasQueue().empty()) return;
+
+        auto [width, height] = Window::Get()->GetFramebufferSize();
+        const glm::mat4 viewProj = glm::ortho(0.0f, (float)width, (float)height, 0.0f, -1.0f, 1.0f);
+
+        WGPUTextureView targetView = GfxFactory::GetCurrentSwapchainView();
+        if (!targetView) return; // surface not ready (device still initializing)
+
+        gpuPass->Render(targetView, viewProj, renderer.GetCanvasQueue());
+
+        wgpuTextureViewRelease(targetView);
+        GfxFactory::PresentSwapchain();
+        return;
+    }
+#endif
+
     std::vector<CanvasDrawable*> drawables2D;
     for (auto* drawable : ctx->canvasDrawables) {
         if (!drawable->gameObject->isActive) continue;
@@ -1221,16 +1251,19 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         }
     }
 
+    // Sort 2D drawables by layer first, then by z-order
+    std::sort(drawables2D.begin(), drawables2D.end(), [](CanvasDrawable* a, CanvasDrawable* b) {
+        if (a->GetLayer() != b->GetLayer()) {
+            return a->GetLayer() < b->GetLayer();
+        }
+        return a->GetZOrder() < b->GetZOrder();
+    });
+
     if (drawables2D.empty() && renderer.GetCanvasQueue().empty()) return;
 
     auto [width, height] = Window::Get()->GetFramebufferSize();
     glViewport(0, 0, width, height);
-    {
-        GLuint targetFBO = renderer.postProcessEnabled
-            ? static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID()
-            : renderer.finalFBO;
-        glBindFramebuffer(GL_FRAMEBUFFER, targetFBO);
-    }
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID());
 
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
@@ -1249,7 +1282,8 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         // Fallback or perspective camera handling for 2D?
         // For now, if perspective, we might just use screen space or a default ortho.
         // Let's assume default ortho for safety if no 2D camera is set.
-        worldViewProj = glm::ortho(0.0f, (float)width, (float)height, 0.0f, -1.0f, 1.0f);
+        auto [winW, winH] = Window::Get()->GetSize();
+        worldViewProj = glm::ortho(0.0f, (float)winW, (float)winH, 0.0f, -1.0f, 1.0f);
     }
 
     renderer.GetBatchRenderer()->BeginBatch(worldViewProj);
@@ -1260,7 +1294,6 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
     for (const auto& cmd : renderer.GetCanvasQueue()) {
         renderer.GetBatchRenderer()->DrawGeometry(cmd.vertices, cmd.indices, cmd.textureID, cmd.transform);
     }
-    ctx->RenderBufferedText(renderer.GetBatchRenderer());
     renderer.GetBatchRenderer()->EndBatch();
 
     glDisable(GL_BLEND);
@@ -1273,32 +1306,27 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
 void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("PostProcessPass");
-    if (!renderer.postProcessEnabled) {
-        return;
-    }
 
     auto size = Window::Get()->GetFramebufferSize();
-
     glViewport(0, 0, size.width, size.height);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    // glDisable(GL_DEPTH_TEST);
-    // glDisable(GL_BLEND);
-#ifndef __EMSCRIPTEN__
-    // glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-#endif
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, renderer.msaaResolveRT->GetTextureID());
 
     glClearColor(renderer.clearColor.x, renderer.clearColor.y, renderer.clearColor.z, renderer.clearColor.w);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    auto postProcessShader = ctx->GetShader("hdr");
-    postProcessShader->Activate();
-    postProcessShader->SetUniform(std::string("color_map_unit"), (int)0);
-    postProcessShader->SetUniform(std::string("exposure"), 0.5f);
+
+    auto shader = ctx->GetShader("hdr");
+    shader->Activate();
+    shader->SetUniform(std::string("color_map_unit"), (int)0);
+    shader->SetUniform(std::string("exposure"),       tonemapEnabled ? exposure : 1.0f);
+    shader->SetUniform(std::string("u_ca_enabled"),   (int)caEnabled);
+    shader->SetUniform(std::string("u_ca_strength"),  caStrength);
+
     renderer.screenBuffer->Draw(enc, PrimitiveTopology::TriangleStrip);
 
-    renderer.CheckErrors("Post process pass");
+    renderer.CheckErrors("PostProcess pass");
 }
 
 void Renderer::SubmitUICommand(const BatchDrawCommand& cmd) {
@@ -1313,8 +1341,6 @@ void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* en
     ZoneScopedN("UIPass");
     auto* batchRenderer = renderer.GetBatchRenderer();
     auto& queue = renderer.GetUIQueue();
-
-    if (queue.empty()) return;
 
     // Setup OpenGL state for UI
     glDisable(GL_DEPTH_TEST);
@@ -1335,6 +1361,8 @@ void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* en
     for (const auto& cmd : queue) {
         batchRenderer->DrawGeometry(cmd.vertices, cmd.indices, cmd.textureID, cmd.transform);
     }
+
+    ctx->RenderBufferedText(batchRenderer);
 
     batchRenderer->EndBatch();
 

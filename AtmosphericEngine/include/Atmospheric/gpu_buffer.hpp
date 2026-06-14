@@ -34,7 +34,7 @@ public:
     VertexFormat GetFormat() const override { return _format; }
 
 private:
-    WGPUBuffer AllocAndUpload(const void* data, size_t bytes, WGPUBufferUsageFlags usage);
+    WGPUBuffer AllocAndUpload(const void* data, size_t bytes, WGPUBufferUsage usage);
 
     WGPUDevice _device       = nullptr;
     WGPUQueue  _queue        = nullptr;

@@ -78,19 +78,13 @@ jobs:
         run: |
           choco install cmake.portable
 
-      - name: CMake Configure on Unix
-        if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
+      - name: Set up MSVC developer environment
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: CMake Configure
         run: >
           cmake -G Ninja
-          -B ${{ steps.strings.outputs.build-dir }}
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-          -DCMAKE_BUILD_TYPE=${{ matrix.build-type }}
-          -S ${{ github.workspace }}
-
-      - name: CMake Configure on Windows
-        if: matrix.os == 'windows-latest'
-        run: >
-          cmake -G "Visual Studio 17 2022"
           -B ${{ steps.strings.outputs.build-dir }}
           -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
           -DCMAKE_BUILD_TYPE=${{ matrix.build-type }}

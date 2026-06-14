@@ -8,19 +8,29 @@
 #include "mesh_component.hpp"
 #include "rigidbody_component.hpp"
 #include "sprite_component.hpp"
+#include "text_component.hpp"
 #include "window.hpp"
+#include "gfx_factory.hpp"
 
-EditorLayer::EditorLayer(Application* app) : Layer("EditorLayer"), _app(app) {
+EditorLayer::EditorLayer(Application* app, bool showImGui)
+    : Layer("EditorLayer"), _app(app), _showImGui(showImGui) {
+}
+
+void EditorLayer::OnUpdate(float dt) {
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
+    if (ImGui::IsKeyPressed(ImGuiKey_F1))
+        _showImGui = !_showImGui;
 }
 
 void EditorLayer::OnRender(float dt) {
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
+    if (!_showImGui) return;
+
     if (ImGui::BeginMainMenuBar()) {
-        // if (ImGui::BeginMenu("Scene")) {
-        //     ImGui::MenuItem("New Scene");
-        //     ImGui::MenuItem("Open Scene");
-        //     ImGui::MenuItem("Save Scene");
-        //     ImGui::EndMenu();
-        // }
         if (ImGui::BeginMenu("View")) {
             ImGui::MenuItem("System Info", nullptr, &_showSystemInfo);
             ImGui::MenuItem("Engine", nullptr, &_showEngineView);
@@ -93,9 +103,6 @@ void EditorLayer::DrawAppView() {
     {
         ImGui::BeginChild("Scene", ImVec2(200, 400), true);
         ImGui::Text("Scene (%d entities)", (uint32_t)_app->GetEntities().size());
-        // if (ImGui::Button("Rewind All")) {
-        //     _app->RewindAll();
-        // }
         if (ImGui::Button("Reload Scene")) {
             _app->ReloadScene();
         }
@@ -125,6 +132,7 @@ void EditorLayer::DrawAppView() {
 
 void EditorLayer::DrawEntityInspector(GameObject* entity) {
     ImGui::Text("Name: %s", entity->GetName().c_str());
+
     if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
         glm::vec3 pos = entity->GetPosition();
         glm::vec3 rot = entity->GetRotation();
@@ -212,6 +220,35 @@ void EditorLayer::DrawEntityInspector(GameObject* entity) {
             uint8_t minTexIndex = 0, maxTexIndex = graphics->canvasTextures.size() - 1;
             if (ImGui::SliderScalar("Texture ID", ImGuiDataType_U8, &textureID, &minTexIndex, &maxTexIndex)) {
                 drawable2D->SetTextureID(textureID);
+            }
+        }
+    }
+    auto textComp = entity->GetComponent<TextComponent>();
+    if (textComp != nullptr) {
+        if (ImGui::CollapsingHeader("TextComponent", ImGuiTreeNodeFlags_DefaultOpen)) {
+            // Text Content
+            std::string text = textComp->GetText();
+            char buffer[256];
+            strncpy(buffer, text.c_str(), sizeof(buffer));
+            buffer[sizeof(buffer) - 1] = 0;
+            if (ImGui::InputText("Text", buffer, sizeof(buffer))) {
+                textComp->SetText(std::string(buffer));
+            }
+
+            // Font Info
+            ImGui::Text("Font Path: %s", textComp->GetFontPath().c_str());
+            ImGui::Text("Font ID: %d", textComp->GetFontID());
+
+            // Font Size
+            float fontSize = textComp->GetFontSize();
+            if (ImGui::DragFloat("Font Size", &fontSize, 1.0f, 1.0f, 200.0f)) {
+                textComp->SetFontSize(fontSize);
+            }
+
+            // Color
+            glm::vec4 color = textComp->GetColor();
+            if (ImGui::ColorEdit4("Color", &color.r)) {
+                textComp->SetColor(color);
             }
         }
     }

@@ -27,4 +27,8 @@ public:
     bool Intersects(glm::vec3) const;
 
     bool Intersects(std::array<glm::vec3, 8>) const;
+
+    // Sphere test — matches VX's camera.is_visible(bsphere).
+    // Culls only when the sphere is fully outside any single frustum plane.
+    bool IntersectsSphere(glm::vec3 center, float radius) const;
 };

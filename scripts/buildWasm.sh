@@ -85,6 +85,7 @@ emcmake cmake -G Ninja \
   -B "$BUILD_DIR" \
   -S . \
   -DCMAKE_TOOLCHAIN_FILE="$VCPKG_DIR/scripts/buildsystems/vcpkg.cmake" \
+  -DVCPKG_OVERLAY_TRIPLETS="$(pwd)/triplets" \
   -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
   -DAE_USE_WEBGPU="$WEBGPU_SUPPORT"
@@ -102,6 +103,7 @@ echo -e "  - HelloWorld:    ${YELLOW}$BUILD_DIR/HelloWorld/${NC}"
 echo -e "  - Maze 迷宮:     ${YELLOW}$BUILD_DIR/Maze/${NC}"
 echo -e "  - Physics2D 物理:${YELLOW}$BUILD_DIR/Physics2DDemo/${NC}"
 echo -e "  - CSBDemo 角色:  ${YELLOW}$BUILD_DIR/CSBDemo/${NC}"
+echo -e "  - VoxelWorld:    ${YELLOW}$BUILD_DIR/VoxelWorld/${NC}"
 echo -e ""
 
 # 6. 提供啟動本地伺服器的選項以便立即測試
@@ -119,6 +121,7 @@ if [ "$RUN_SERVER" = "y" ] || [ "$RUN_SERVER" = "Y" ]; then
     echo -e "  👉 Maze 迷宮大作:      ${BLUE}http://localhost:$PORT/Maze/Maze.html${NC}"
     echo -e "  👉 Physics2D 物理範例:  ${BLUE}http://localhost:$PORT/Physics2DDemo/Physics2DDemo.html${NC}"
     echo -e "  👉 CSBDemo 角色範例:    ${BLUE}http://localhost:$PORT/CSBDemo/CSBDemo.html${NC}"
+    echo -e "  👉 VoxelWorld 體素範例:  ${BLUE}http://localhost:$PORT/VoxelWorld/VoxelWorld.html${NC}"
     echo -e ""
     echo -e "按下 ${RED}Ctrl+C${NC} 可以停止伺服器。"
     echo -e ""

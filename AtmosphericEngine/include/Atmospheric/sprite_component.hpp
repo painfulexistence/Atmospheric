@@ -91,7 +91,7 @@ public:
         _flipY = flip;
     }
 
-    int GetZOrder() const {
+    int GetZOrder() const override {
         return _zOrder;
     }
     void SetZOrder(int zOrder) {

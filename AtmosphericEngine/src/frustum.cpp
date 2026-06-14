@@ -45,3 +45,12 @@ bool Frustum::Intersects(std::array<glm::vec3, 8> points) const {
     }
     return false;
 }
+
+bool Frustum::IntersectsSphere(glm::vec3 center, float radius) const {
+    // For each plane, the signed distance is (dot(n,p) + d) / |n|.
+    // If signed_dist < -radius the sphere is fully outside that plane.
+    for (const Plane* p : { &_near, &_far, &_top, &_bottom, &_left, &_right }) {
+        if (p->SignedDistance(center) < -radius) return false;
+    }
+    return true;
+}

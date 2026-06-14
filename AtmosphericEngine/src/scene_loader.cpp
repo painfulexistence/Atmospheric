@@ -5,6 +5,7 @@
 #include "asset_manager.hpp"
 #include "game_object.hpp"
 #include "sprite_component.hpp"
+#include "text_component.hpp"
 
 #include "Scene_generated.h"
 
@@ -304,7 +305,34 @@ void SceneLoader::ParseAnimations(
                 ));
             }
         } else if (property == "CColor") {
-            // Color logic pending FadeTo/TintTo implementation
+            for (auto frame : *timeline->frames()) {
+                if (frame->colorFrame() && frame->colorFrame()->color()) {
+                    int currentFrameIndex = frame->colorFrame()->frameIndex();
+                    auto* colorData = frame->colorFrame()->color();
+
+                    glm::vec4 targetColor(
+                      colorData->r() / 255.0f,
+                      colorData->g() / 255.0f,
+                      colorData->b() / 255.0f,
+                      colorData->a() / 255.0f
+                    );
+
+                    int deltaFrames = currentFrameIndex - lastFrameIndex;
+                    float duration = deltaFrames / frameRate / speed;
+                    if (duration < 0.001f) duration = 0.001f;
+
+                    EasingType easing = EasingType::Linear;
+                    if (frame->colorFrame()->easingData()) {
+                        easing = GetEasingType(frame->colorFrame()->easingData()->type());
+                    }
+
+                    auto* action = new ColorTo(duration, targetColor);
+                    action->SetEasing(easing);
+                    sequenceActions.push_back(action);
+
+                    lastFrameIndex = currentFrameIndex;
+                }
+            }
         }
 
         if (!sequenceActions.empty()) {
@@ -403,39 +431,13 @@ GameObject* SceneLoader::ParseNodeTree(
             go->AddComponent<SpriteComponent>(props);
         }
     } else if (classname == "Text") {
-        spdlog::warn(
-          "SceneLoader: Text node '{}' not fully supported, visualizing as placeholder sprite",
-          widgetOptions && widgetOptions->name() ? widgetOptions->name()->c_str() : "Text"
-        );
-
         go = CreateNode(widgetOptions, config);
-        if (widgetOptions && go) {
-            SpriteProps props;
-            if (widgetOptions->size()) {
-                props.size = glm::vec2(widgetOptions->size()->width(), widgetOptions->size()->height());
-            }
-            if (widgetOptions->anchorPoint()) {
-                props.pivot = glm::vec2(widgetOptions->anchorPoint()->scaleX(), widgetOptions->anchorPoint()->scaleY());
-            }
-            if (widgetOptions->color()) {
-                props.color = glm::vec4(
-                  widgetOptions->color()->r() / 255.0f,
-                  widgetOptions->color()->g() / 255.0f,
-                  widgetOptions->color()->b() / 255.0f,
-                  widgetOptions->alpha() / 255.0f * 0.5f// Semi-transparent
-                );
-            } else {
-                props.color = glm::vec4(1.0f, 1.0f, 1.0f, 0.5f);
-            }
-
-            props.layer = config.defaultLayer;
-            props.flipX = widgetOptions->flipX();
-            props.flipY = widgetOptions->flipY();
-            props.zOrder = widgetOptions->zOrder();
-
-            // Allow textureID to be 0 (no texture)
-
-            go->AddComponent<SpriteComponent>(props);
+        if (go) {
+            go->AddComponent<TextComponent>(CreateTextProps(nodeTree, widgetOptions, config));
+            spdlog::debug(
+              "SceneLoader: Created Text node '{}'",
+              widgetOptions && widgetOptions->name() ? widgetOptions->name()->c_str() : "Text"
+            );
         }
     } else if (classname == "Node" || classname == "SingleNode") {
         go = CreateNode(widgetOptions, config);
@@ -650,5 +652,87 @@ int SceneLoader::ResolveTexture(
 }
 
 std::vector<std::string> SceneLoader::GetSupportedNodeTypes() {
-    return { "Node", "SingleNode", "Sprite", "ImageView" };
+    return { "Node", "SingleNode", "Sprite", "ImageView", "Text" };
+}
+
+TextProps SceneLoader::CreateTextProps(
+  const flatbuffers::NodeTree* nodeTree, const flatbuffers::WidgetOptions* widgetOptions, const SceneLoadConfig& config
+) {
+    TextProps props;
+
+    // CSB stores TextOptions in the Options.data field for Text nodes
+    // We can reinterpret the WidgetOptions pointer as TextOptions
+    const flatbuffers::TextOptions* textOptions = nullptr;
+    if (nodeTree && nodeTree->options()) {
+        // The data field is stored as WidgetOptions but actually contains TextOptions for Text nodes
+        textOptions = reinterpret_cast<const flatbuffers::TextOptions*>(nodeTree->options()->data());
+    }
+
+    // Read from TextOptions if available
+    if (textOptions) {
+        // Get text content
+        if (textOptions->text()) {
+            props.text = textOptions->text()->c_str();
+        }
+
+        // Get font settings
+        props.fontSize = static_cast<float>(textOptions->fontSize());
+        if (props.fontSize <= 0) props.fontSize = 24.0f;
+
+        if (textOptions->fontName()) {
+            props.fontPath = textOptions->fontName()->c_str();
+        }
+
+        // Get alignment
+        props.hAlign = static_cast<TextHAlignment>(textOptions->hAlignment());
+        props.vAlign = static_cast<TextVAlignment>(textOptions->vAlignment());
+
+        // Get area size if custom size is enabled
+        if (textOptions->isCustomSize()) {
+            props.size =
+              glm::vec2(static_cast<float>(textOptions->areaWidth()), static_cast<float>(textOptions->areaHeight()));
+        }
+
+        // Get widget options from TextOptions
+        auto* textWidgetOpts = textOptions->widgetOptions();
+        if (textWidgetOpts) {
+            if (!textOptions->isCustomSize() && textWidgetOpts->size()) {
+                props.size = glm::vec2(textWidgetOpts->size()->width(), textWidgetOpts->size()->height());
+            }
+            if (textWidgetOpts->anchorPoint()) {
+                props.pivot =
+                  glm::vec2(textWidgetOpts->anchorPoint()->scaleX(), textWidgetOpts->anchorPoint()->scaleY());
+            }
+            if (textWidgetOpts->color()) {
+                props.color = glm::vec4(
+                  textWidgetOpts->color()->r() / 255.0f,
+                  textWidgetOpts->color()->g() / 255.0f,
+                  textWidgetOpts->color()->b() / 255.0f,
+                  textWidgetOpts->alpha() / 255.0f
+                );
+            }
+            props.zOrder = textWidgetOpts->zOrder();
+        }
+    } else if (widgetOptions) {
+        // Fallback to basic widget options
+        if (widgetOptions->size()) {
+            props.size = glm::vec2(widgetOptions->size()->width(), widgetOptions->size()->height());
+        }
+        if (widgetOptions->anchorPoint()) {
+            props.pivot = glm::vec2(widgetOptions->anchorPoint()->scaleX(), widgetOptions->anchorPoint()->scaleY());
+        }
+        if (widgetOptions->color()) {
+            props.color = glm::vec4(
+              widgetOptions->color()->r() / 255.0f,
+              widgetOptions->color()->g() / 255.0f,
+              widgetOptions->color()->b() / 255.0f,
+              widgetOptions->alpha() / 255.0f
+            );
+        }
+        props.zOrder = widgetOptions->zOrder();
+    }
+
+    props.layer = config.defaultLayer;
+
+    return props;
 }

@@ -8,12 +8,12 @@ class Mesh;
 
 // Face direction enum for voxel meshes
 enum class FaceDir : uint8_t {
-    TOP = 0,// +Y
-    BOTTOM = 1,// -Y
-    RIGHT = 2,// +X
-    LEFT = 3,// -X
-    FRONT = 4,// +Z
-    BACK = 5// -Z
+    TOP    = 0,  // +Y
+    BOTTOM = 1,  // -Y
+    RIGHT  = 2,  // +X
+    LEFT   = 3,  // -X
+    FRONT  = 4,  // +Z
+    BACK   = 5   // -Z
 };
 
 class MeshBuilder {
@@ -24,9 +24,6 @@ public:
     static Mesh* CreateSphere(const float& radius = 0.5f, const int& division = 18);
 
     static Mesh* CreateTerrain(const float& size = 1024.f, const int& resolution = 10);
-
-    // static Mesh* CreateTerrain(const std::vector<float>& heightmap, const float& size = 1024.f, const int& resolution
-    // = 10);
 
     static Mesh* CreateCubeWithPhysics(const float& size = 1.0f);
 
@@ -72,6 +69,18 @@ public:
 
     // Push a full cube (all 6 faces) - use when all faces are visible
     void PushCube(glm::ivec3 pos, uint8_t voxelId);
+
+    // Push a greedy-merged quad.
+    // pos      : base corner in local chunk space (quadPos[axis]=layer,
+    //            quadPos[u_axis]=u_start, quadPos[v_axis]=v_start)
+    // dir      : face direction
+    // voxelId  : voxel type
+    // w        : extent along u_axis
+    // h        : extent along v_axis
+    // u_axis   : 0=X, 1=Y, 2=Z
+    // v_axis   : 0=X, 1=Y, 2=Z  (u_axis != v_axis, both != normal axis)
+    void PushGreedyFace(glm::ivec3 pos, FaceDir dir, uint8_t voxelId,
+                        int w, int h, int u_axis, int v_axis);
 
     // Build and return vertex data
     const std::vector<VoxelVertex>& Build() {

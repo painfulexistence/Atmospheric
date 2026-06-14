@@ -1,13 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 
-# Basis Universal / KTX2 GPU texture compression (auto-enabled for Emscripten builds)
 option(AE_USE_BASIS_UNIVERSAL "Enable Basis Universal transcoder for KTX2 GPU-compressed textures" OFF)
 
-# Must be set before project() so the toolchain is loaded correctly.
-# The vcpkg wasm32-emscripten community triplet sets VCPKG_CHAINLOAD_TOOLCHAIN_FILE
-# automatically, but only when it can locate emcc via EMSCRIPTEN_ROOT or PATH.
-# setup-emsdk sets EMSDK but not always EMSCRIPTEN_ROOT, so we provide an explicit
-# fallback using EMSDK to ensure the Emscripten toolchain is always found in CI.
 if(VCPKG_TARGET_TRIPLET STREQUAL "wasm32-emscripten" AND NOT VCPKG_CHAINLOAD_TOOLCHAIN_FILE)
     if(DEFINED ENV{EMSDK})
         set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE
@@ -18,9 +12,7 @@ endif()
 
 project(AtmosphericEngine VERSION 0.1)
 
-# Emscripten-specific overrides (EMSCRIPTEN is set automatically by the toolchain)
 if(EMSCRIPTEN)
-    # Automatically enable Basis Universal for web builds: KTX2 avoids CPU-side image decoding
     set(AE_USE_BASIS_UNIVERSAL ON CACHE BOOL "Enabled automatically for Emscripten builds" FORCE)
     message(STATUS "Building for Emscripten / WebAssembly")
 endif()
@@ -42,10 +34,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 include(FetchContent)
 
+
 add_subdirectory(AtmosphericEngine)
 add_subdirectory(Example_HelloWorld)
 # add_subdirectory(Example_MazeWorld)
+add_subdirectory(Example_VoxelWorld)
 add_subdirectory(Example_Physics2D)
 add_subdirectory(Example_NoitaLike)
 add_subdirectory(Example_CSB)
+add_subdirectory(Example_RPG)
+add_subdirectory(Example_MidnightSkyraiders)
 add_subdirectory(frontends/lua)

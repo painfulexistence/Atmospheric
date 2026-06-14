@@ -1,4 +1,9 @@
 # Atmospheric Engine
+
+[![Native](https://github.com/painfulexistence/AtmosphericEngine/actions/workflows/ci-native.yml/badge.svg)](https://github.com/painfulexistence/AtmosphericEngine/actions/workflows/ci-native.yml)
+[![Web](https://github.com/painfulexistence/AtmosphericEngine/actions/workflows/ci-web.yml/badge.svg)](https://github.com/painfulexistence/AtmosphericEngine/actions/workflows/ci-web.yml)
+<br />
+
 **Atmospheric Engine** is a cross-platform 3D game engine developed in C++.
 The project is a labor of love, acting as my stepping stone to gain a deeper understanding of graphics programming concepts and practices.
 

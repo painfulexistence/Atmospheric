@@ -8,6 +8,8 @@
 class Application;
 class GameObject;
 
+struct TextProps;
+
 namespace flatbuffers {
     struct CSParseBinary;
     struct NodeTree;
@@ -15,6 +17,7 @@ namespace flatbuffers {
     struct SpriteOptions;
     struct ImageViewOptions;
     struct SingleNodeOptions;
+    struct TextOptions;
     struct NodeAction;
 }// namespace flatbuffers
 
@@ -92,5 +95,12 @@ private:
     // Resolve texture path
     int ResolveTexture(
       const std::string& path, const std::string& plistFile, int resourceType, const SceneLoadConfig& config
+    );
+
+    // Create TextProps from CSB TextOptions
+    TextProps CreateTextProps(
+      const flatbuffers::NodeTree* nodeTree,
+      const flatbuffers::WidgetOptions* widgetOptions,
+      const SceneLoadConfig& config
     );
 };

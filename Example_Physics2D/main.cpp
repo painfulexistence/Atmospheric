@@ -55,7 +55,18 @@ class Physics2DDemo : public Application {
             }
         });
 
-        console.Info("Physics2D Demo - Press SPACE to spawn shapes, R to reset");
+        auto* textObj = CreateGameObject();
+        textObj->SetName("Physics2D Demo");
+        // Screen coordinates: 20, 100
+        textObj->SetPosition(glm::vec3(20.0f, 100.0f, 0.0f));
+
+        textObj->AddComponent<TextComponent>(TextProps{
+          .text = "Physics2D Demo - Press SPACE to spawn shapes, R to reset",
+          //   .fontPath = "assets/fonts/NotoSans-SemiBold.ttf",
+          .fontSize = 64.0f,
+          .color = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+          .layer = CanvasLayer::LAYER_WORLD_2D,
+        });
     }
 
     void CreateGround() {

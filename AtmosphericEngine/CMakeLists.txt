@@ -1,4 +1,24 @@
 option(BUILD_SHARED_LIBS OFF)
+
+# FetchContent_Populate is called directly for lua_src, sol2_src, and
+# basis_universal to avoid running their own CMakeLists.txt (which would
+# conflict with our custom targets).  Suppress the CMP0169 deprecation warning.
+if(POLICY CMP0169)
+    cmake_policy(SET CMP0169 OLD)
+endif()
+
+# ── FastNoiseLite (single-header noise library) ───────────────────────────────
+FetchContent_Declare(
+    FastNoiseLite
+    GIT_REPOSITORY https://github.com/Auburn/FastNoiseLite.git
+    GIT_TAG        v1.1.1
+    GIT_SHALLOW    TRUE
+    UPDATE_DISCONNECTED TRUE
+)
+FetchContent_GetProperties(FastNoiseLite)
+if(NOT FastNoiseLite_POPULATED)
+    FetchContent_Populate(FastNoiseLite)
+endif()
 if(NOT EMSCRIPTEN)
     FetchContent_Declare(
         SDL3
@@ -69,6 +89,9 @@ if(MSVC)
 else()
     target_compile_options(lua_static PRIVATE -w)
 endif()
+if(EMSCRIPTEN)
+    target_compile_options(lua_static PRIVATE -pthread)
+endif()
 
 # ── sol2 (develop branch, header-only) ────────────────────────────────────────
 # v3.3.0 had a bug in optional_implementation.hpp where tl::optional's CRTP
@@ -138,9 +161,11 @@ set(SOURCES
     src/mesh_component.cpp
     src/sprite_component.cpp
     src/sprite_3d_component.cpp
+    src/text_component.cpp
     src/terrain_component.cpp
     src/shader.cpp
     src/graphics_server.cpp
+    src/graphics_server_tile.cpp
     src/renderer.cpp
     src/physics_server.cpp
     src/physics_debug_drawer.cpp
@@ -165,20 +190,22 @@ set(SOURCES
     src/rigidbody_2d_component.cpp
     src/mesh_builder.cpp
     src/shape_renderer_component.cpp
+    src/voxel_chunk_component.cpp
+    src/voxel_world.cpp
+    src/voxel_chunk_pass.cpp
+    src/sun_component.cpp
     src/scene_loader.cpp
     src/scene_transition.cpp
     src/script.cpp
     src/component_registry.cpp
+    src/tilemap_2d.cpp
+    src/lighting_2d.cpp
     ${FLATBUFFERS_GENERATED_DIR}/Scene_generated.h
 )
 # ── Graphics backend selection ────────────────────────────────────────────────
 # Native  : Dawn WebGPU (not yet integrated — falls back to OpenGL 4.1).
 # Web     : browser WebGPU via Emscripten (AE_USE_WEBGPU=ON)
 #           or WebGL 2.0 fallback (AE_USE_WEBGPU=OFF, default).
-#
-# When enabling on Emscripten, also update target_link_options below:
-#   Remove : -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
-#   Add    : -sUSE_WEBGPU=1
 option(AE_USE_WEBGPU "Target WebGPU on Emscripten builds (replaces WebGL2)" OFF)
 
 list(APPEND SOURCES src/gfx_factory.cpp)
@@ -190,6 +217,7 @@ else()
     if(AE_USE_WEBGPU)
         list(APPEND SOURCES src/gpu_buffer.cpp)
         list(APPEND SOURCES src/gpu_render_target.cpp)
+        list(APPEND SOURCES src/gpu_canvas_pass.cpp)
     endif()
 endif()
 # FileSystem: platform-agnostic async I/O with in-process cache.
@@ -247,7 +275,9 @@ if(AE_USE_BASIS_UNIVERSAL)
             add_custom_target(basisu_host_tool)
         else()
             set(_BASISU_HOST_DIR ${CMAKE_BINARY_DIR}/_basisu_host)
-            set(BASISU_EXECUTABLE "${_BASISU_HOST_DIR}/basisu"
+            # basis_universal's CMakeLists hardcodes output to ${SOURCE_DIR}/bin,
+            # so the binary lands in basis_universal_SOURCE_DIR/bin/basisu.
+            set(BASISU_EXECUTABLE "${basis_universal_SOURCE_DIR}/bin/basisu"
                 CACHE INTERNAL "basisu encoder")
             add_custom_command(
                 OUTPUT "${BASISU_EXECUTABLE}"
@@ -330,7 +360,7 @@ function(ae_auto_convert_textures TARGET SRC_DIR DST_DIR)
         add_custom_command(
             OUTPUT "${_KTX2}"
             COMMAND "${CMAKE_COMMAND}" -E make_directory "${_OUT_DIR}"
-            COMMAND "${BASISU_EXECUTABLE}" -ktx2 -mipmap "${_IMG}" -output_path "${_OUT_DIR}"
+            COMMAND "${BASISU_EXECUTABLE}" -ktx2 -mipmap -y_flip "${_IMG}" -output_path "${_OUT_DIR}"
             DEPENDS "${_IMG}" basisu_host_tool
             COMMENT "Converting ${_STEM} → KTX2"
             VERBATIM
@@ -351,6 +381,7 @@ target_include_directories(AtmosphericEngine
         ${CMAKE_CURRENT_SOURCE_DIR}/external/stb
         ${CMAKE_CURRENT_SOURCE_DIR}/include/Atmospheric
         ${FLATBUFFERS_GENERATED_DIR}
+        ${fastnoiselite_SOURCE_DIR}/Cpp
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui
         ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -377,11 +408,22 @@ if(EMSCRIPTEN)
     # spdlog::spdlog : console.cpp and scene_loader.cpp call spdlog directly;
     #   Emscripten maps stdout → browser console so spdlog works fine on web.
     target_compile_definitions(AtmosphericEngine PRIVATE IMGUI_IMPL_OPENGL_ES3)
+    target_compile_definitions(AtmosphericEngine PUBLIC BT_THREADSAFE=1)
     target_link_libraries(AtmosphericEngine PUBLIC spdlog::spdlog)
-    target_compile_options(AtmosphericEngine PRIVATE)
+    # -pthread        : enable WASM threads (SharedArrayBuffer + Atomics)
+    # -sFETCH=1       : enable emscripten_fetch (XHR + IndexedDB persistence)
+    #                   used by FileSystem (web platform implementation)
+    # -sUSE_PTHREADS=1              : compile with pthread support (Web Workers)
+    # -sPTHREAD_POOL_SIZE           : pre-spawn workers to avoid first-use latency
+    # -sPROXY_TO_PTHREAD=1          : run main() on a worker so blocking Wait()
+    #                                 calls do not freeze the browser main thread
+    target_compile_options(AtmosphericEngine PUBLIC -pthread)
     if(AE_USE_WEBGPU)
         target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_WEBGPU)
-        # AE_USE_WEBGPU=ON compiles in WebGPU support (emdawnwebgpu).
+        # --use-port=emdawnwebgpu must appear in both compile and link flags:
+        #   compile: adds the webgpu/ include path so <webgpu/webgpu.h> resolves
+        #   link:    links the emdawnwebgpu JS/WASM glue
+        target_compile_options(AtmosphericEngine PUBLIC --use-port=emdawnwebgpu)
         # The actual backend is chosen at runtime by GfxFactory::Init():
         #   - browser exposes navigator.gpu → attempts WebGPU
         #   - WebGPU unavailable or device creation fails → falls back to WebGL 2
@@ -393,14 +435,19 @@ if(EMSCRIPTEN)
         target_link_options(AtmosphericEngine INTERFACE
             -sWASM=1 -O3 -sUSE_GLFW=3
             --use-port=emdawnwebgpu
+            -sASYNCIFY=1
             -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
             -sFETCH=1
+            -sUSE_PTHREADS=1
+            "-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency"
             -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])
     else()
         target_link_options(AtmosphericEngine INTERFACE
             -sWASM=1 -O3 -sUSE_GLFW=3
             -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
             -sFETCH=1
+            -sUSE_PTHREADS=1
+            "-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency"
             -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])
     endif()
 else()

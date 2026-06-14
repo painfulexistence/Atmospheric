@@ -1,6 +1,7 @@
 #include "action.hpp"
 #include "animator_2d.hpp"// For AnimationClip definition
 #include "sprite_component.hpp"
+#include "text_component.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -445,5 +446,63 @@ void Animate::Update(float t) {
         _currentFrame = frameIndex;
         const auto& frame = _clip->frames[_currentFrame];
         _sprite->SetUVs(frame.uvMin, frame.uvMax);
+    }
+}
+
+// --- ColorTo ---
+
+ColorTo::ColorTo(float duration, const glm::vec4& color) : ActionInterval(duration), _endColor(color) {
+}
+
+void ColorTo::StartWithTarget(GameObject* target) {
+    ActionInterval::StartWithTarget(target);
+    // Try SpriteComponent first, then TextComponent
+    if (auto* sprite = target->GetComponent<SpriteComponent>()) {
+        _startColor = sprite->GetColor();
+    } else if (auto* text = target->GetComponent<TextComponent>()) {
+        _startColor = text->GetColor();
+    } else {
+        _startColor = glm::vec4(1.0f);
+    }
+    _delta = _endColor - _startColor;
+}
+
+void ColorTo::Update(float t) {
+    if (!_target) return;
+    glm::vec4 newColor = _startColor + _delta * t;
+    if (auto* sprite = _target->GetComponent<SpriteComponent>()) {
+        sprite->SetColor(newColor);
+    } else if (auto* text = _target->GetComponent<TextComponent>()) {
+        text->SetColor(newColor);
+    }
+}
+
+// --- FadeTo ---
+
+FadeTo::FadeTo(float duration, float alpha) : ActionInterval(duration), _endAlpha(alpha) {
+}
+
+void FadeTo::StartWithTarget(GameObject* target) {
+    ActionInterval::StartWithTarget(target);
+    if (auto* sprite = target->GetComponent<SpriteComponent>()) {
+        _startAlpha = sprite->GetColor().a;
+    } else if (auto* text = target->GetComponent<TextComponent>()) {
+        _startAlpha = text->GetColor().a;
+    } else {
+        _startAlpha = 1.0f;
+    }
+}
+
+void FadeTo::Update(float t) {
+    if (!_target) return;
+    float newAlpha = _startAlpha + (_endAlpha - _startAlpha) * t;
+    if (auto* sprite = _target->GetComponent<SpriteComponent>()) {
+        glm::vec4 color = sprite->GetColor();
+        color.a = newAlpha;
+        sprite->SetColor(color);
+    } else if (auto* text = _target->GetComponent<TextComponent>()) {
+        glm::vec4 color = text->GetColor();
+        color.a = newAlpha;
+        text->SetColor(color);
     }
 }

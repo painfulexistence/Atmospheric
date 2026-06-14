@@ -15,4 +15,6 @@ public:
     virtual void Draw(BatchRenderer2D* renderer) = 0;
 
     virtual CanvasLayer GetLayer() const = 0;
+
+    virtual int GetZOrder() const { return 0; }
 };

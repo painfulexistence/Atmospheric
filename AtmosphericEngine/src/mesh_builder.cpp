@@ -23,19 +23,7 @@ void CalculateNormalsAndTangents(std::vector<Vertex>& verts, std::vector<uint16_
         verts[tris[i]].bitangent = bitangent;
         verts[tris[i + 1]].bitangent = bitangent;
         verts[tris[i + 2]].bitangent = bitangent;
-        // For TBN debugging
-        // if (glm::dot(glm::cross(tangent, bitangent), normal) < 0.0f) {
-        //     PrintVertex(verts[tris[i]]);
-        //     PrintVertex(verts[tris[i + 1]]);
-        //     PrintVertex(verts[tris[i + 2]]);
-        //     throw std::runtime_error("Triangle is degenerate");
-        // }
     }
-    // (u0 - u1) * T + (v0 - v1) * B = p0 - p1
-    // (u2 - u1) * T + (v2 - v1) * B = p2 - p1
-    // det = (u0 - u1) * (v2 - v1) - (v0 - v1) * (u2 - u1)
-    // T = ((v2 - v1) * (p0 - p1)  - (v0 - v1) * (p2 - p1)) / det
-    // B = ((u0 - u1) * (p2 - p1) - (u2 - u1) * (p0 - p1)) / det
 }
 
 Mesh* MeshBuilder::CreateCube(const float& size) {
@@ -94,17 +82,13 @@ Mesh* MeshBuilder::CreatePlane(float width, float height) {
     float hw = width * 0.5f;
     float hh = height * 0.5f;
 
-    // Normal points up (Y)
     Vertex vertices[] = {
-        { { -hw, 0.0f, hh }, { 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },// Bottom-Left (Front-Left)
-        { { -hw, 0.0f, -hh }, { 0.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },// Top-Left (Back-Left)
-        { { hw, 0.0f, -hh }, { 1.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },// Top-Right (Back-Right)
-        { { hw, 0.0f, hh }, { 1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } }// Bottom-Right (Front-Right)
+        { { -hw, 0.0f, hh }, { 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
+        { { -hw, 0.0f, -hh }, { 0.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },
+        { { hw, 0.0f, -hh }, { 1.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },
+        { { hw, 0.0f, hh }, { 1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } }
     };
-
-    // CCW Winding
     uint16_t indices[] = { 0, 1, 2, 0, 2, 3 };
-
     std::vector<Vertex> verts(vertices, vertices + 4);
     std::vector<uint16_t> tris(indices, indices + 6);
     CalculateNormalsAndTangents(verts, tris);
@@ -122,7 +106,6 @@ Mesh* MeshBuilder::CreatePlane(float width, float height) {
     return plane;
 }
 
-// TODO: make sure the uvs are correct
 Mesh* MeshBuilder::CreateSphere(const float& radius, const int& division) {
     float delta = (float)PI / (float)division;
 
@@ -158,15 +141,13 @@ Mesh* MeshBuilder::CreateSphere(const float& radius, const int& division) {
     tris.resize((6 * division - 6) * (2 * division));
     for (int v = 0, i = 0; v <= division - 1; ++v) {
         for (int h = 0; h <= 2 * division - 1; ++h) {
-            if (v != 0)// top-left triangles except for north pole
-            {
+            if (v != 0) {
                 tris[i] = (2 * division + 1) * v + h;
                 tris[i + 1] = (2 * division + 1) * v + h + 1;
                 tris[i + 2] = (2 * division + 1) * (v + 1) + h;
                 i += 3;
             }
-            if (v != division - 1)// bottom-right triangles except for south pole
-            {
+            if (v != division - 1) {
                 tris[i] = (2 * division + 1) * (v + 1) + h;
                 tris[i + 1] = (2 * division + 1) * v + h + 1;
                 tris[i + 2] = (2 * division + 1) * (v + 1) + h + 1;
@@ -189,25 +170,9 @@ Mesh* MeshBuilder::CreateSphere(const float& radius, const int& division) {
     return sphere;
 }
 
-// TODO: make sure the uvs are correct
-// resolution: number of quads along each side of the terrain
 Mesh* MeshBuilder::CreateTerrain(const float& worldSize, const int& resolution) {
     std::vector<Vertex> verts;
     verts.resize(resolution * resolution * 4);
-
-    // resolution = 3
-    // |-------|-------|-------|   X
-    // |       |       |       |
-    // |   p0  |   p1  |   p2  |
-    // |-------|-------|-------|
-    // |       |       |       |
-    // |   p3  |       |       |
-    // |-------|-------|-------|
-    // |       |       |       |
-    // |       |       |       |
-    // |-------|-------|-------|
-    //
-    // Z
 
     float halfWorldSize = worldSize / 2.f;
     float patchSize = worldSize / float(resolution);
@@ -260,13 +225,10 @@ Mesh* MeshBuilder::CreateSphereWithPhysics(const float& radius, const int& divis
 
 Mesh* MeshBuilder::CreateTerrainWithPhysics(const float& size, const int& resolution, const std::string& heightmap) {
     auto terrain = CreateTerrain(size, resolution);
-    // terrain->SetShape(new btBoxShape(btVector3(size * 0.5f, 0.2f, size * 0.5f)));
 
     auto img = AssetManager::Get().LoadImage(heightmap);
     if (img != nullptr) {
-        std::vector<float>
-          terrainData;// FIXME: this needs to be stored somewhere, or the collision shape data will be deleted
-
+        std::vector<float> terrainData;
         const int terrainDataSize = img->width * img->height;
         terrainData.resize(terrainDataSize);
         for (int i = 0; i < terrainDataSize; ++i) {
@@ -277,12 +239,12 @@ Mesh* MeshBuilder::CreateTerrainWithPhysics(const float& size, const int& resolu
         ));
         terrain->SetShapeLocalScaling(glm::vec3(10.0f, 1.0f, 10.0f));
     }
-
     return terrain;
 }
 
 void MeshBuilder::PushQuad(
-  glm::vec3 position, glm::vec2 size, glm::vec3 normal, glm::quat rotation, glm::vec2 uvMin, glm::vec2 uvMax
+  glm::vec3 position, glm::vec2 size, glm::vec3 normal,
+  glm::quat rotation, glm::vec2 uvMin, glm::vec2 uvMax
 ) {
     uint32_t baseIndex = static_cast<uint32_t>(vertices.size());
 
@@ -314,22 +276,11 @@ void MeshBuilder::PushQuad(
 }
 
 void MeshBuilder::PushCube(glm::vec3 position, glm::vec3 size, glm::quat rotation) {
-    // Front face
-    PushQuad(position + glm::vec3(0, 0, size.z / 2), glm::vec2(size.x, size.y), glm::vec3(0, 0, 1));
-
-    // Back face
+    PushQuad(position + glm::vec3(0, 0, size.z / 2),  glm::vec2(size.x, size.y), glm::vec3(0, 0, 1));
     PushQuad(position + glm::vec3(0, 0, -size.z / 2), glm::vec2(size.x, size.y), glm::vec3(0, 0, -1));
-
-    // Right face
-    PushQuad(position + glm::vec3(size.x / 2, 0, 0), glm::vec2(size.z, size.y), glm::vec3(1, 0, 0));
-
-    // Left face
+    PushQuad(position + glm::vec3(size.x / 2, 0, 0),  glm::vec2(size.z, size.y), glm::vec3(1, 0, 0));
     PushQuad(position + glm::vec3(-size.x / 2, 0, 0), glm::vec2(size.z, size.y), glm::vec3(-1, 0, 0));
-
-    // Top face
-    PushQuad(position + glm::vec3(0, size.y / 2, 0), glm::vec2(size.x, size.z), glm::vec3(0, 1, 0));
-
-    // Bottom face
+    PushQuad(position + glm::vec3(0, size.y / 2, 0),  glm::vec2(size.x, size.z), glm::vec3(0, 1, 0));
     PushQuad(position + glm::vec3(0, -size.y / 2, 0), glm::vec2(size.x, size.z), glm::vec3(0, -1, 0));
 }
 
@@ -345,11 +296,8 @@ void MeshBuilder::Clear() {
 }
 
 std::shared_ptr<Mesh> MeshBuilder::Build() {
-    // CalculateNormalsAndTangents(vertices, indices);
-
     auto mesh = std::make_shared<Mesh>(MeshType::PRIM);
     mesh->Initialize(vertices, indices);
-    // Calculate bounds
     if (!vertices.empty()) {
         glm::vec3 min = vertices[0].position;
         glm::vec3 max = vertices[0].position;
@@ -357,15 +305,18 @@ std::shared_ptr<Mesh> MeshBuilder::Build() {
             min = glm::min(min, v.position);
             max = glm::max(max, v.position);
         }
-        std::array<glm::vec3, 8> bounds = { glm::vec3(min.x, min.y, min.z), glm::vec3(max.x, min.y, min.z),
-                                            glm::vec3(min.x, max.y, min.z), glm::vec3(max.x, max.y, min.z),
-                                            glm::vec3(min.x, min.y, max.z), glm::vec3(max.x, min.y, max.z),
-                                            glm::vec3(min.x, max.y, max.z), glm::vec3(max.x, max.y, max.z) };
+        std::array<glm::vec3, 8> bounds = {
+            glm::vec3(min.x, min.y, min.z), glm::vec3(max.x, min.y, min.z),
+            glm::vec3(min.x, max.y, min.z), glm::vec3(max.x, max.y, min.z),
+            glm::vec3(min.x, min.y, max.z), glm::vec3(max.x, min.y, max.z),
+            glm::vec3(min.x, max.y, max.z), glm::vec3(max.x, max.y, max.z)
+        };
         mesh->SetBoundingBox(bounds);
     }
     return mesh;
 }
-// VoxelMeshBuilder implementation
+
+// ---- VoxelMeshBuilder -------------------------------------------------------
 
 void VoxelMeshBuilder::PushFace(glm::ivec3 pos, FaceDir dir, uint8_t voxelId) {
     uint8_t x = static_cast<uint8_t>(pos.x);
@@ -373,70 +324,120 @@ void VoxelMeshBuilder::PushFace(glm::ivec3 pos, FaceDir dir, uint8_t voxelId) {
     uint8_t z = static_cast<uint8_t>(pos.z);
     uint8_t faceId = static_cast<uint8_t>(dir);
 
-    // Each face has 4 corners, we generate 6 vertices (2 triangles)
-    // Vertex order: v0, v1, v2, v2, v3, v0 (two triangles sharing edge v0-v2)
     VoxelVertex v0, v1, v2, v3;
-
     switch (dir) {
-    case FaceDir::TOP:// +Y
-        v0 = { x, static_cast<uint8_t>(y + 1), z, voxelId, faceId };
-        v1 = { x, static_cast<uint8_t>(y + 1), static_cast<uint8_t>(z + 1), voxelId, faceId };
-        v2 = { static_cast<uint8_t>(x + 1), static_cast<uint8_t>(y + 1), static_cast<uint8_t>(z + 1), voxelId, faceId };
-        v3 = { static_cast<uint8_t>(x + 1), static_cast<uint8_t>(y + 1), z, voxelId, faceId };
+    case FaceDir::TOP:
+        v0 = { x,               (uint8_t)(y+1), z,               voxelId, faceId };
+        v1 = { x,               (uint8_t)(y+1), (uint8_t)(z+1),  voxelId, faceId };
+        v2 = { (uint8_t)(x+1),  (uint8_t)(y+1), (uint8_t)(z+1),  voxelId, faceId };
+        v3 = { (uint8_t)(x+1),  (uint8_t)(y+1), z,               voxelId, faceId };
         break;
-
-    case FaceDir::BOTTOM:// -Y
-        v0 = { static_cast<uint8_t>(x + 1), y, z, voxelId, faceId };
-        v1 = { static_cast<uint8_t>(x + 1), y, static_cast<uint8_t>(z + 1), voxelId, faceId };
-        v2 = { x, y, static_cast<uint8_t>(z + 1), voxelId, faceId };
-        v3 = { x, y, z, voxelId, faceId };
+    case FaceDir::BOTTOM:
+        v0 = { (uint8_t)(x+1),  y,               z,               voxelId, faceId };
+        v1 = { (uint8_t)(x+1),  y,               (uint8_t)(z+1),  voxelId, faceId };
+        v2 = { x,               y,               (uint8_t)(z+1),  voxelId, faceId };
+        v3 = { x,               y,               z,               voxelId, faceId };
         break;
-
-    case FaceDir::RIGHT:// +X
-        v0 = { static_cast<uint8_t>(x + 1), static_cast<uint8_t>(y + 1), static_cast<uint8_t>(z + 1), voxelId, faceId };
-        v1 = { static_cast<uint8_t>(x + 1), y, static_cast<uint8_t>(z + 1), voxelId, faceId };
-        v2 = { static_cast<uint8_t>(x + 1), y, z, voxelId, faceId };
-        v3 = { static_cast<uint8_t>(x + 1), static_cast<uint8_t>(y + 1), z, voxelId, faceId };
+    case FaceDir::RIGHT:
+        v0 = { (uint8_t)(x+1),  (uint8_t)(y+1), (uint8_t)(z+1),  voxelId, faceId };
+        v1 = { (uint8_t)(x+1),  y,               (uint8_t)(z+1),  voxelId, faceId };
+        v2 = { (uint8_t)(x+1),  y,               z,               voxelId, faceId };
+        v3 = { (uint8_t)(x+1),  (uint8_t)(y+1), z,               voxelId, faceId };
         break;
-
-    case FaceDir::LEFT:// -X
-        v0 = { x, static_cast<uint8_t>(y + 1), z, voxelId, faceId };
-        v1 = { x, y, z, voxelId, faceId };
-        v2 = { x, y, static_cast<uint8_t>(z + 1), voxelId, faceId };
-        v3 = { x, static_cast<uint8_t>(y + 1), static_cast<uint8_t>(z + 1), voxelId, faceId };
+    case FaceDir::LEFT:
+        v0 = { x,               (uint8_t)(y+1), z,               voxelId, faceId };
+        v1 = { x,               y,               z,               voxelId, faceId };
+        v2 = { x,               y,               (uint8_t)(z+1),  voxelId, faceId };
+        v3 = { x,               (uint8_t)(y+1), (uint8_t)(z+1),  voxelId, faceId };
         break;
-
-    case FaceDir::FRONT:// +Z
-        v0 = { x, static_cast<uint8_t>(y + 1), static_cast<uint8_t>(z + 1), voxelId, faceId };
-        v1 = { x, y, static_cast<uint8_t>(z + 1), voxelId, faceId };
-        v2 = { static_cast<uint8_t>(x + 1), y, static_cast<uint8_t>(z + 1), voxelId, faceId };
-        v3 = { static_cast<uint8_t>(x + 1), static_cast<uint8_t>(y + 1), static_cast<uint8_t>(z + 1), voxelId, faceId };
+    case FaceDir::FRONT:
+        v0 = { x,               (uint8_t)(y+1), (uint8_t)(z+1),  voxelId, faceId };
+        v1 = { x,               y,               (uint8_t)(z+1),  voxelId, faceId };
+        v2 = { (uint8_t)(x+1),  y,               (uint8_t)(z+1),  voxelId, faceId };
+        v3 = { (uint8_t)(x+1),  (uint8_t)(y+1), (uint8_t)(z+1),  voxelId, faceId };
         break;
-
-    case FaceDir::BACK:// -Z
-        v0 = { static_cast<uint8_t>(x + 1), static_cast<uint8_t>(y + 1), z, voxelId, faceId };
-        v1 = { static_cast<uint8_t>(x + 1), y, z, voxelId, faceId };
-        v2 = { x, y, z, voxelId, faceId };
-        v3 = { x, static_cast<uint8_t>(y + 1), z, voxelId, faceId };
+    case FaceDir::BACK:
+        v0 = { (uint8_t)(x+1),  (uint8_t)(y+1), z,               voxelId, faceId };
+        v1 = { (uint8_t)(x+1),  y,               z,               voxelId, faceId };
+        v2 = { x,               y,               z,               voxelId, faceId };
+        v3 = { x,               (uint8_t)(y+1), z,               voxelId, faceId };
         break;
     }
-
-    // Two triangles: (v0, v1, v2) and (v2, v3, v0)
-    _vertices.push_back(v0);
-    _vertices.push_back(v1);
-    _vertices.push_back(v2);
-    _vertices.push_back(v2);
-    _vertices.push_back(v3);
-    _vertices.push_back(v0);
+    _vertices.push_back(v0); _vertices.push_back(v1); _vertices.push_back(v2);
+    _vertices.push_back(v2); _vertices.push_back(v3); _vertices.push_back(v0);
 }
 
 void VoxelMeshBuilder::PushCube(glm::ivec3 pos, uint8_t voxelId) {
-    PushFace(pos, FaceDir::TOP, voxelId);
+    PushFace(pos, FaceDir::TOP,    voxelId);
     PushFace(pos, FaceDir::BOTTOM, voxelId);
-    PushFace(pos, FaceDir::RIGHT, voxelId);
-    PushFace(pos, FaceDir::LEFT, voxelId);
-    PushFace(pos, FaceDir::FRONT, voxelId);
-    PushFace(pos, FaceDir::BACK, voxelId);
+    PushFace(pos, FaceDir::RIGHT,  voxelId);
+    PushFace(pos, FaceDir::LEFT,   voxelId);
+    PushFace(pos, FaceDir::FRONT,  voxelId);
+    PushFace(pos, FaceDir::BACK,   voxelId);
+}
+
+void VoxelMeshBuilder::PushGreedyFace(glm::ivec3 pos, FaceDir dir, uint8_t voxelId,
+                                       int w, int h, int u_axis, int v_axis)
+{
+    uint8_t faceId = static_cast<uint8_t>(dir);
+    uint8_t x = static_cast<uint8_t>(pos.x);
+    uint8_t y = static_cast<uint8_t>(pos.y);
+    uint8_t z = static_cast<uint8_t>(pos.z);
+
+    VoxelVertex v0, v1, v2, v3;
+
+    // For each face direction, the winding matches PushFace (CCW from outside).
+    // w extends along u_axis, h extends along v_axis.
+    // Axis mapping: 0=X, 1=Y, 2=Z.
+    //
+    // TOP (axis=1, u_axis=2=Z, v_axis=0=X):  pos = {x=v, y=layer, z=u}
+    // BOTTOM same mapping, face at y (no +1)
+    // RIGHT (axis=0, u_axis=1=Y, v_axis=2=Z): pos = {x=layer, y=u, z=v}
+    // LEFT same mapping
+    // FRONT (axis=2, u_axis=0=X, v_axis=1=Y): pos = {x=u, y=v, z=layer}
+    // BACK same mapping
+
+    switch (dir) {
+    case FaceDir::TOP:    // +Y, face at y+1;  w in Z(u_axis=2), h in X(v_axis=0)
+        v0 = { x,               (uint8_t)(y+1), z,               voxelId, faceId };
+        v1 = { x,               (uint8_t)(y+1), (uint8_t)(z+w),  voxelId, faceId };
+        v2 = { (uint8_t)(x+h),  (uint8_t)(y+1), (uint8_t)(z+w),  voxelId, faceId };
+        v3 = { (uint8_t)(x+h),  (uint8_t)(y+1), z,               voxelId, faceId };
+        break;
+    case FaceDir::BOTTOM: // -Y, face at y;    w in Z, h in X
+        v0 = { (uint8_t)(x+h),  y,               z,               voxelId, faceId };
+        v1 = { (uint8_t)(x+h),  y,               (uint8_t)(z+w),  voxelId, faceId };
+        v2 = { x,               y,               (uint8_t)(z+w),  voxelId, faceId };
+        v3 = { x,               y,               z,               voxelId, faceId };
+        break;
+    case FaceDir::RIGHT:  // +X, face at x+1;  w in Y(u_axis=1), h in Z(v_axis=2)
+        v0 = { (uint8_t)(x+1),  (uint8_t)(y+w), (uint8_t)(z+h),  voxelId, faceId };
+        v1 = { (uint8_t)(x+1),  y,               (uint8_t)(z+h),  voxelId, faceId };
+        v2 = { (uint8_t)(x+1),  y,               z,               voxelId, faceId };
+        v3 = { (uint8_t)(x+1),  (uint8_t)(y+w), z,               voxelId, faceId };
+        break;
+    case FaceDir::LEFT:   // -X, face at x;    w in Y, h in Z
+        v0 = { x,               (uint8_t)(y+w), z,               voxelId, faceId };
+        v1 = { x,               y,               z,               voxelId, faceId };
+        v2 = { x,               y,               (uint8_t)(z+h),  voxelId, faceId };
+        v3 = { x,               (uint8_t)(y+w), (uint8_t)(z+h),  voxelId, faceId };
+        break;
+    case FaceDir::FRONT:  // +Z, face at z+1;  w in X(u_axis=0), h in Y(v_axis=1)
+        v0 = { x,               (uint8_t)(y+h), (uint8_t)(z+1),  voxelId, faceId };
+        v1 = { x,               y,               (uint8_t)(z+1),  voxelId, faceId };
+        v2 = { (uint8_t)(x+w),  y,               (uint8_t)(z+1),  voxelId, faceId };
+        v3 = { (uint8_t)(x+w),  (uint8_t)(y+h), (uint8_t)(z+1),  voxelId, faceId };
+        break;
+    case FaceDir::BACK:   // -Z, face at z;    w in X, h in Y
+        v0 = { (uint8_t)(x+w),  (uint8_t)(y+h), z,               voxelId, faceId };
+        v1 = { (uint8_t)(x+w),  y,               z,               voxelId, faceId };
+        v2 = { x,               y,               z,               voxelId, faceId };
+        v3 = { x,               (uint8_t)(y+h), z,               voxelId, faceId };
+        break;
+    }
+
+    _vertices.push_back(v0); _vertices.push_back(v1); _vertices.push_back(v2);
+    _vertices.push_back(v2); _vertices.push_back(v3); _vertices.push_back(v0);
 }
 
 void VoxelMeshBuilder::Clear() {
