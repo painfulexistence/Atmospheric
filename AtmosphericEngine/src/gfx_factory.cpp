@@ -93,8 +93,8 @@ void GfxFactory::Init() {
     _wgpuQueue  = wgpuDeviceGetQueue(device);
 
     // ── Create surface ────────────────────────────────────────────────────────
-    WGPUSurfaceSourceCanvasHTMLSelector_Emscripten canvasDesc{};
-    canvasDesc.chain.sType = WGPUSType_SurfaceSourceCanvasHTMLSelector_Emscripten;
+    WGPUEmscriptenSurfaceSourceCanvasHTMLSelector canvasDesc{};
+    canvasDesc.chain.sType = WGPUSType_EmscriptenSurfaceSourceCanvasHTMLSelector;
     canvasDesc.selector    = { "#canvas", WGPU_STRLEN };
     WGPUSurfaceDescriptor surfDesc{};
     surfDesc.nextInChain   = reinterpret_cast<WGPUChainedStruct*>(&canvasDesc);
