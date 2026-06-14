@@ -1,5 +1,4 @@
 #include "Atmospheric.hpp"
-#include "Atmospheric/shape_renderer_component.hpp"
 
 class CSBDemo : public Application {
     using Application::Application;
@@ -284,30 +283,41 @@ class CSBDemo : public Application {
         ImGui::Text("Test Sprites:");
         ImGui::Separator();
 
-        for (auto* go : testSprites) {
+        std::vector<GameObject*> allDebugNodes = testSprites;
+        allDebugNodes.insert(allDebugNodes.end(), loadedScene.allNodes.begin(), loadedScene.allNodes.end());
+
+        for (auto* go : allDebugNodes) {
             if (!go) continue;
 
-            auto* sprite = go->GetComponent<SpriteComponent>();
-            if (sprite) {
-                ImGui::PushID(go);
+            ImGui::PushID(go);
+            ImGui::TextColored(ImVec4(1, 1, 0, 1), "%s", go->GetName().c_str());
 
-                glm::vec3 pos = go->GetPosition();
+            glm::vec3 pos = go->GetPosition();
+            ImGui::Text("  Pos: (%.0f, %.0f)", pos.x, pos.y);
+
+            if (auto* sprite = go->GetComponent<SpriteComponent>()) {
                 glm::vec3 scale = go->GetScale();
                 glm::vec2 size = sprite->GetSize();
                 glm::vec2 pivot = sprite->GetPivot();
 
-                ImGui::Text("%s", go->GetName().c_str());
-                ImGui::Text("  Pos: (%.0f, %.0f)", pos.x, pos.y);
+                ImGui::Text("  [Sprite]");
                 ImGui::Text("  Size: %.0fx%.0f", size.x, size.y);
                 ImGui::Text("  Scale: %.1fx%.1f", scale.x, scale.y);
-                ImGui::Text("  Final: %.0fx%.0f", size.x * scale.x, size.y * scale.y);
                 ImGui::Text("  Pivot: (%.1f, %.1f)", pivot.x, pivot.y);
-                ImGui::Text("  Flip: X=%d Y=%d", sprite->GetFlipX(), sprite->GetFlipY());
                 ImGui::Text("  zOrder: %d", sprite->GetZOrder());
-                ImGui::Separator();
-
-                ImGui::PopID();
             }
+
+            if (auto* text = go->GetComponent<TextComponent>()) {
+                ImGui::Text("  [Text]");
+                ImGui::Text("  Content: %s", text->GetText().c_str());
+                ImGui::Text("  Font: %s", text->GetFontPath().c_str());
+                ImGui::Text("  Size: %.1f", text->GetFontSize());
+                auto col = text->GetColor();
+                ImGui::Text("  Color: (%.2f, %.2f, %.2f, %.2f)", col.r, col.g, col.b, col.a);
+            }
+
+            ImGui::Separator();
+            ImGui::PopID();
         }
 
         ImGui::End();

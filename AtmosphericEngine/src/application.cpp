@@ -16,6 +16,7 @@
 #include "shape_renderer_component.hpp"
 #include "sprite_3d_component.hpp"
 #include "sprite_component.hpp"
+#include "text_component.hpp"
 #include "action_manager.hpp"
 #include "action.hpp"
 #include "file_system.hpp"
@@ -329,6 +330,18 @@ static Action* ParseAction(const nlohmann::json& val) {
         action->SetEasing(easing);
         return action;
     }
+    else if (type == "ColorTo") {
+        glm::vec4 color = ParseVec4(val.value("color", nlohmann::json::array()), glm::vec4(1.0f));
+        auto* action = new ColorTo(duration, color);
+        action->SetEasing(easing);
+        return action;
+    }
+    else if (type == "FadeTo") {
+        float alpha = val.value("alpha", 1.0f);
+        auto* action = new FadeTo(duration, alpha);
+        action->SetEasing(easing);
+        return action;
+    }
     else if (type == "Sequence") {
         std::vector<FiniteTimeAction*> seqActions;
         if (val.contains("actions") && val["actions"].is_array()) {
@@ -424,6 +437,37 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
                 props.zOrder = compVal.value("zOrder", 0);
 
                 go->AddComponent<SpriteComponent>(props);
+            }
+            else if (type == "TextComponent") {
+                TextProps props;
+                props.text = compVal.value("text", "");
+                props.fontPath = compVal.value("fontPath", "");
+                props.fontSize = compVal.value("fontSize", 24.0f);
+                props.size = ParseVec2(compVal.value("size", nlohmann::json::array()), glm::vec2(100.0f, 100.0f));
+                props.pivot = ParseVec2(compVal.value("pivot", nlohmann::json::array()), glm::vec2(0.0f, 0.0f));
+                props.color = ParseVec4(compVal.value("color", nlohmann::json::array()), glm::vec4(1.0f));
+
+                std::string hAlignStr = compVal.value("hAlign", "Left");
+                if (hAlignStr == "Center") props.hAlign = TextHAlignment::Center;
+                else if (hAlignStr == "Right") props.hAlign = TextHAlignment::Right;
+                else props.hAlign = TextHAlignment::Left;
+
+                std::string vAlignStr = compVal.value("vAlign", "Top");
+                if (vAlignStr == "Center") props.vAlign = TextVAlignment::Center;
+                else if (vAlignStr == "Bottom") props.vAlign = TextVAlignment::Bottom;
+                else props.vAlign = TextVAlignment::Top;
+
+                if (compVal.contains("layer")) {
+                    std::string layerStr = compVal["layer"].get<std::string>();
+                    if (layerStr == "LAYER_BACKGROUND") props.layer = CanvasLayer::LAYER_BACKGROUND;
+                    else if (layerStr == "LAYER_WORLD") props.layer = CanvasLayer::LAYER_WORLD;
+                    else if (layerStr == "LAYER_UI") props.layer = CanvasLayer::LAYER_UI;
+                    else if (layerStr == "LAYER_OVERLAY") props.layer = CanvasLayer::LAYER_OVERLAY;
+                }
+
+                props.zOrder = compVal.value("zOrder", 0);
+
+                go->AddComponent<TextComponent>(props);
             }
             else if (type == "CameraComponent") {
                 CameraProps props;

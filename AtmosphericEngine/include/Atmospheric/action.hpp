@@ -170,6 +170,29 @@ private:
     glm::vec3 _delta;
 };
 
+class ColorTo : public ActionInterval {
+public:
+    ColorTo(float duration, const glm::vec4& color);
+    void StartWithTarget(GameObject* target) override;
+    void Update(float t) override;
+
+private:
+    glm::vec4 _endColor;
+    glm::vec4 _startColor;
+    glm::vec4 _delta;
+};
+
+class FadeTo : public ActionInterval {
+public:
+    FadeTo(float duration, float alpha);
+    void StartWithTarget(GameObject* target) override;
+    void Update(float t) override;
+
+private:
+    float _endAlpha;
+    float _startAlpha;
+};
+
 class Sequence : public ActionInterval {
 public:
     Sequence(const std::vector<FiniteTimeAction*>& actions);

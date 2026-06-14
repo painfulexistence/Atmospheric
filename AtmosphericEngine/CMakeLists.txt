@@ -154,6 +154,7 @@ set(SOURCES
     src/mesh_component.cpp
     src/sprite_component.cpp
     src/sprite_3d_component.cpp
+    src/text_component.cpp
     src/terrain_component.cpp
     src/shader.cpp
     src/graphics_server.cpp
@@ -195,10 +196,6 @@ set(SOURCES
 # Native  : Dawn WebGPU (not yet integrated — falls back to OpenGL 4.1).
 # Web     : browser WebGPU via Emscripten (AE_USE_WEBGPU=ON)
 #           or WebGL 2.0 fallback (AE_USE_WEBGPU=OFF, default).
-#
-# When enabling on Emscripten, also update target_link_options below:
-#   Remove : -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
-#   Add    : -sUSE_WEBGPU=1
 option(AE_USE_WEBGPU "Target WebGPU on Emscripten builds (replaces WebGL2)" OFF)
 
 list(APPEND SOURCES src/gfx_factory.cpp)

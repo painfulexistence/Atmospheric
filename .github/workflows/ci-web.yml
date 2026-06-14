@@ -19,7 +19,7 @@ on:
 
 # Keep in sync with scripts/check-emscripten-version.sh
 env:
-  EMSDK_VERSION: "4.0.10"
+  EMSDK_VERSION: "4.0.18"
 
 jobs:
   build-wasm-webgl:

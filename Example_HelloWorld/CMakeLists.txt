@@ -44,13 +44,15 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/AtmosphericEngine/default_assets/shaders
             ${EM_PRELOAD_STAGING_DIR}/shaders
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts
-            ${EM_PRELOAD_STAGING_DIR}/fonts
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
-            ${EM_PRELOAD_STAGING_DIR}/scenes
-        COMMENT "Staging Emscripten preload assets (shaders, fonts) for ${GAME_NAME}"
+        COMMAND ${CMAKE_COMMAND}
+            -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts
+            -Ddst=${EM_PRELOAD_STAGING_DIR}/fonts
+            -P ${CMAKE_SOURCE_DIR}/cmake/copy_dir_if_exists.cmake
+        COMMAND ${CMAKE_COMMAND}
+            -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
+            -Ddst=${EM_PRELOAD_STAGING_DIR}/scenes
+            -P ${CMAKE_SOURCE_DIR}/cmake/copy_dir_if_exists.cmake
+        COMMENT "Staging Emscripten preload assets (shaders, fonts, scenes) for ${GAME_NAME}"
     )
     add_dependencies(${GAME_NAME} stage_${GAME_NAME}_em_preload)
 

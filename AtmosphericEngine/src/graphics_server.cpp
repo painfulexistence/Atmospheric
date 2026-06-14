@@ -682,7 +682,7 @@ void GraphicsServer::RenderBufferedText(BatchRenderer2D* batch) {
             if (!glyph) continue;
 
             float drawX = cursorX + glyph->xOffset * cmd.scale;
-            float drawY = cmd.y + glyph->yOffset * cmd.scale + font->ascent * cmd.scale;
+            float drawY = cmd.y - (font->ascent + glyph->yOffset + glyph->height) * cmd.scale;
             float drawW = glyph->width * cmd.scale;
             float drawH = glyph->height * cmd.scale;
 
@@ -692,11 +692,13 @@ void GraphicsServer::RenderBufferedText(BatchRenderer2D* batch) {
                 float finalY = drawY + drawH * 0.5f;
 
                 // Create UV coordinates for this glyph
+                // Fix orientation: v0 is top, v1 is bottom in atlas
+                // Quad is BL, BR, TR, TL
                 glm::vec2 uvs[4] = {
-                    { glyph->u0, glyph->v0 },// top-left
-                    { glyph->u1, glyph->v0 },// top-right
-                    { glyph->u1, glyph->v1 },// bottom-right
-                    { glyph->u0, glyph->v1 }// bottom-left
+                    { glyph->u0, glyph->v1 },// bottom-left (v1)
+                    { glyph->u1, glyph->v1 },// bottom-right (v1)
+                    { glyph->u1, glyph->v0 },// top-right (v0)
+                    { glyph->u0, glyph->v0 }// top-left (v0)
                 };
 
                 glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(finalX, finalY, 0.0f));
@@ -743,7 +745,7 @@ void GraphicsServer::DrawText3D(
     // Viewport transform
     auto [width, height] = Window::Get()->GetFramebufferSize();
     float x = (ndc.x + 1.0f) * 0.5f * width;
-    float y = (1.0f - ndc.y) * 0.5f * height;// Flip Y for screen coordinates
+    float y = (ndc.y + 1.0f) * 0.5f * height;// Y-Up standard
 
     DrawText(fontID, text, x, y, scale, color);
 }
