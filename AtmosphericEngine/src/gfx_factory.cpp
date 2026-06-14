@@ -76,21 +76,17 @@ void GfxFactory::SetWebGPUDevice(WGPUDevice device) {
     _wgpuQueue  = wgpuDeviceGetQueue(device);
     Console::Get()->Info(fmt::format("[GfxFactory] SetWebGPUDevice: queue={}", (void*)_wgpuQueue));
 
-    // Create and configure the HTML canvas surface
+    // Create and configure the HTML canvas surface.
+    // In emsdk's WebGPU bindings, wgpuInstanceCreateSurface ignores the
+    // instance and routes entirely through the canvas selector, so we pass
+    // nullptr rather than creating a mismatched WGPUInstance (which would
+    // assert inside wgpuInstanceCreateSurface).
     WGPUSurfaceDescriptorFromCanvasHTMLSelector canvasDesc{};
     canvasDesc.chain.sType = WGPUSType_SurfaceDescriptorFromCanvasHTMLSelector;
-    canvasDesc.selector    = "canvas";
+    canvasDesc.selector    = "#canvas";
     WGPUSurfaceDescriptor surfDesc{};
     surfDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&canvasDesc);
-    WGPUInstanceDescriptor instDesc{};
-    WGPUInstance inst = wgpuCreateInstance(&instDesc);
-    if (!inst) {
-        Console::Get()->Warn("[GfxFactory] wgpuCreateInstance returned null. Falling back to WebGL 2.");
-        _backend = GfxBackend::OpenGL;
-        return;
-    }
-    _surface = wgpuInstanceCreateSurface(inst, &surfDesc);
-    wgpuInstanceRelease(inst);
+    _surface = wgpuInstanceCreateSurface(nullptr, &surfDesc);
     Console::Get()->Info(fmt::format("[GfxFactory] SetWebGPUDevice: surface={}", (void*)_surface));
 
     auto [w, h] = Window::Get()->GetFramebufferSize();
