@@ -34,8 +34,8 @@ jobs:
             -x "DEVLOG.md" \
             -x "CMakeUserPresets.json" \
             -x "docs/*" \
-            -x "AtmosphericEngine/build/*" \
-            -x "AtmosphericEngine/CMakeFiles/*"
+            -x "Engine/build/*" \
+            -x "Engine/CMakeFiles/*"
 
           mkdir -p dist
           mv "${PACKAGE_NAME}.zip" dist/
@@ -55,9 +55,8 @@ jobs:
         with:
           submodules: false
           sparse-checkout: |
-            AtmosphericEngine
-            frontends
-            Example_HelloWorld
+            Engine
+            Examples/HelloWorld
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json

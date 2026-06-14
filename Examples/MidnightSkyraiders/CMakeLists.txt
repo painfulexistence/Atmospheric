@@ -9,7 +9,7 @@ set_target_properties(${GAME_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}
 )
 target_include_directories(${GAME_NAME} PRIVATE
-    ${CMAKE_SOURCE_DIR}/AtmosphericEngine/include
+    ${CMAKE_SOURCE_DIR}/Engine/include
 )
 target_link_libraries(${GAME_NAME} PRIVATE
     AtmosphericEngine
@@ -25,10 +25,10 @@ if(EMSCRIPTEN)
     add_custom_target(stage_${GAME_NAME}_em_preload
         COMMAND ${CMAKE_COMMAND} -E make_directory ${EM_PRELOAD_STAGING_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/AtmosphericEngine/default_assets/shaders
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/shaders
             ${EM_PRELOAD_STAGING_DIR}/shaders
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/AtmosphericEngine/default_assets/fonts
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/fonts
             ${EM_PRELOAD_STAGING_DIR}/fonts
         COMMENT "Staging Emscripten preload assets for ${GAME_NAME}"
     )
@@ -57,7 +57,7 @@ endif()
 # ── Asset sync ───────────────────────────────────────────────────────────────
 add_custom_target(sync_default_assets_${GAME_NAME} ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/AtmosphericEngine/default_assets
+        ${CMAKE_SOURCE_DIR}/Engine/default_assets
         ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets
     COMMENT "Syncing default assets for ${GAME_NAME}"
 )

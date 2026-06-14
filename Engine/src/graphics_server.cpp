@@ -679,7 +679,7 @@ void GraphicsServer::RenderBufferedText(BatchRenderer2D* batch) {
             if (!glyph) continue;
 
             float drawX = cursorX + glyph->xOffset * cmd.scale;
-            float drawY = cmd.y - (font->ascent + glyph->yOffset + glyph->height) * cmd.scale;
+            float drawY = cmd.y + (font->ascent + glyph->yOffset) * cmd.scale;
             float drawW = glyph->width * cmd.scale;
             float drawH = glyph->height * cmd.scale;
 
@@ -689,13 +689,13 @@ void GraphicsServer::RenderBufferedText(BatchRenderer2D* batch) {
                 float finalY = drawY + drawH * 0.5f;
 
                 // Create UV coordinates for this glyph
-                // Fix orientation: v0 is top, v1 is bottom in atlas
-                // Quad is BL, BR, TR, TL
+                // Under Y-down: top is v0, bottom is v1 in atlas
+                // Quad vertices are: 0=TL, 1=TR, 2=BR, 3=BL
                 glm::vec2 uvs[4] = {
-                    { glyph->u0, glyph->v1 },// bottom-left (v1)
-                    { glyph->u1, glyph->v1 },// bottom-right (v1)
+                    { glyph->u0, glyph->v0 },// top-left (v0)
                     { glyph->u1, glyph->v0 },// top-right (v0)
-                    { glyph->u0, glyph->v0 }// top-left (v0)
+                    { glyph->u1, glyph->v1 },// bottom-right (v1)
+                    { glyph->u0, glyph->v1 }// bottom-left (v1)
                 };
 
                 glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(finalX, finalY, 0.0f));

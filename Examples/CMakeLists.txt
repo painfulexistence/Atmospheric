@@ -1,0 +1,8 @@
+add_subdirectory(LuaScripting)
+add_subdirectory(HelloWorld)
+add_subdirectory(SceneLoader)
+add_subdirectory(Physics2D)
+add_subdirectory(MidnightSkyraiders)
+add_subdirectory(RPG)
+add_subdirectory(VoxelWorld)
+#add_subdirectory(MazeFPS)

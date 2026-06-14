@@ -10,7 +10,7 @@ if(VCPKG_TARGET_TRIPLET STREQUAL "wasm32-emscripten" AND NOT VCPKG_CHAINLOAD_TOO
     endif()
 endif()
 
-project(AtmosphericEngine VERSION 0.1)
+project(Atmospheric VERSION 0.2)
 
 if(EMSCRIPTEN)
     set(AE_USE_BASIS_UNIVERSAL ON CACHE BOOL "Enabled automatically for Emscripten builds" FORCE)
@@ -35,12 +35,5 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 include(FetchContent)
 
 
-add_subdirectory(AtmosphericEngine)
-add_subdirectory(Example_HelloWorld)
-# add_subdirectory(Example_MazeWorld)
-add_subdirectory(Example_VoxelWorld)
-add_subdirectory(Example_Physics2D)
-add_subdirectory(Example_CSB)
-add_subdirectory(Example_RPG)
-add_subdirectory(Example_MidnightSkyraiders)
-add_subdirectory(frontends/lua)
+add_subdirectory(Engine)
+add_subdirectory(Examples)
