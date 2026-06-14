@@ -21,9 +21,9 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     _queue  = queue;
 
     // ── Shader module ──────────────────────────────────────────────────────
-    WGPUShaderModuleWGSLDescriptor wgslDesc{};
-    wgslDesc.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
-    wgslDesc.code        = QUAD_WGSL;
+    WGPUShaderSourceWGSL wgslDesc{};
+    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
+    wgslDesc.code        = { QUAD_WGSL, WGPU_STRLEN };
     WGPUShaderModuleDescriptor shaderDesc{};
     shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
     WGPUShaderModule shader = wgpuDeviceCreateShaderModule(device, &shaderDesc);
@@ -70,10 +70,10 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
         d.sampleCount   = 1;
         _whiteTex = wgpuDeviceCreateTexture(device, &d);
         const uint8_t white[4] = { 255, 255, 255, 255 };
-        WGPUImageCopyTexture dst{};
+        WGPUTexelCopyTextureInfo dst{};
         dst.texture = _whiteTex;
         dst.aspect  = WGPUTextureAspect_All;
-        WGPUTextureDataLayout layout{};
+        WGPUTexelCopyBufferLayout layout{};
         layout.bytesPerRow  = 4;
         layout.rowsPerImage = 1;
         WGPUExtent3D extent{ 1, 1, 1 };
@@ -130,10 +130,10 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
 
     // ── Vertex buffer layout (stride 40 = 10 floats) ──────────────────────
     WGPUVertexAttribute attrs[4]{};
-    attrs[0] = { WGPUVertexFormat_Float32x2,  0, 0 };  // pos   vec2
-    attrs[1] = { WGPUVertexFormat_Float32x2,  8, 1 };  // uv    vec2
-    attrs[2] = { WGPUVertexFormat_Float32x4, 16, 2 };  // color vec4
-    attrs[3] = { WGPUVertexFormat_Float32x2, 32, 3 };  // flags vec2
+    attrs[0].format = WGPUVertexFormat_Float32x2; attrs[0].offset =  0; attrs[0].shaderLocation = 0;
+    attrs[1].format = WGPUVertexFormat_Float32x2; attrs[1].offset =  8; attrs[1].shaderLocation = 1;
+    attrs[2].format = WGPUVertexFormat_Float32x4; attrs[2].offset = 16; attrs[2].shaderLocation = 2;
+    attrs[3].format = WGPUVertexFormat_Float32x2; attrs[3].offset = 32; attrs[3].shaderLocation = 3;
     WGPUVertexBufferLayout vbl{};
     vbl.arrayStride    = (uint64_t)FLOATS_PER_VERT * sizeof(float); // 40
     vbl.stepMode       = WGPUVertexStepMode_Vertex;
@@ -155,7 +155,7 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
 
     WGPUFragmentState frag{};
     frag.module      = shader;
-    frag.entryPoint  = "fs";
+    frag.entryPoint  = { "fs", WGPU_STRLEN };
     frag.targetCount = 1;
     frag.targets     = &colorTarget;
 
@@ -163,7 +163,7 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     WGPURenderPipelineDescriptor pd{};
     pd.layout             = pipelineLayout;
     pd.vertex.module      = shader;
-    pd.vertex.entryPoint  = "vs";
+    pd.vertex.entryPoint  = { "vs", WGPU_STRLEN };
     pd.vertex.bufferCount = 1;
     pd.vertex.buffers     = &vbl;
     pd.fragment           = &frag;

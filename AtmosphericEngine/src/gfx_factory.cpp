@@ -184,10 +184,10 @@ uint32_t GfxFactory::UploadTexture2D(const uint8_t* pixels, int w, int h) {
         td.sampleCount   = 1;
         WGPUTexture tex = wgpuDeviceCreateTexture(_wgpuDevice, &td);
 
-        WGPUImageCopyTexture dst{};
+        WGPUTexelCopyTextureInfo dst{};
         dst.texture = tex;
         dst.aspect  = WGPUTextureAspect_All;
-        WGPUTextureDataLayout layout{};
+        WGPUTexelCopyBufferLayout layout{};
         layout.bytesPerRow  = static_cast<uint32_t>(w) * 4;
         layout.rowsPerImage = static_cast<uint32_t>(h);
         WGPUExtent3D extent{ static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
