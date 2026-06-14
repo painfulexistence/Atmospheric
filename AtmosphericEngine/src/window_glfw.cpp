@@ -7,6 +7,7 @@
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "console.hpp"
+#include "gfx_factory.hpp"
 
 static int convertToGlfwKey(Key key) {
     switch (key) {
@@ -122,9 +123,17 @@ Window::Window(WindowProps props) {
 
 #ifdef __EMSCRIPTEN__
 #if defined(AE_USE_WEBGPU)
-    // Do not create a WebGL context — the canvas must be free for WebGPU.
-    // glfwSwapBuffers and glfwMakeContextCurrent become no-ops with NO_API.
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    // Check at runtime whether the browser supports WebGPU.
+    // If yes: leave the canvas free (GLFW_NO_API) so wgpuInstanceCreateSurface can claim it.
+    // If no:  fall back to WebGL 2 as normal.
+    _webGPUCanvas = IsWebGPUAvailable();
+    if (_webGPUCanvas) {
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    } else {
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    }
 #else
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -153,10 +162,10 @@ Window::Window(WindowProps props) {
 
     GLFWwindow* window = static_cast<GLFWwindow*>(this->_internal);
     glfwSetWindowUserPointer(window, this);
-#if !(defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU))
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(props.vsync ? 1 : 0);
-#endif
+    if (!_webGPUCanvas) {
+        glfwMakeContextCurrent(window);
+        glfwSwapInterval(props.vsync ? 1 : 0);
+    }
 
     _instance = this;
 }
@@ -330,7 +339,10 @@ void Window::MainLoop(std::function<void(float, float)> callback)
         ctx.callback(currTime, ctx.deltaTime);
         ctx.window->EndImGuiFrame();
 
-        glfwSwapBuffers(static_cast<GLFWwindow*>(ctx.window->_internal));
+        if (GfxFactory::GetBackend() == GfxBackend::WebGPU)
+            GfxFactory::PresentSwapchain();
+        else
+            glfwSwapBuffers(static_cast<GLFWwindow*>(ctx.window->_internal));
     };
 
     static LoopContext ctx = {
@@ -353,7 +365,10 @@ void Window::MainLoop(std::function<void(float, float)> callback)
         ctx.callback(currTime, ctx.deltaTime);
         ctx.window->EndImGuiFrame();
 
-        glfwSwapBuffers(static_cast<GLFWwindow*>(ctx.window->_internal));
+        if (GfxFactory::GetBackend() == GfxBackend::WebGPU)
+            GfxFactory::PresentSwapchain();
+        else
+            glfwSwapBuffers(static_cast<GLFWwindow*>(ctx.window->_internal));
     };
     emscripten_set_main_loop_arg(em_callback, ctxPtr, 0, true);
 #else
