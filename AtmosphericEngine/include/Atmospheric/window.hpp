@@ -121,6 +121,7 @@ public:
     void DeinitImGui();
 
     void MainLoop(std::function<void(float, float)> callback);
+    void SwapBuffers();
     void ToggleFullscreen();
     void Close();
 

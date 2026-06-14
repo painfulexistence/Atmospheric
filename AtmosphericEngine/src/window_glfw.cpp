@@ -339,10 +339,7 @@ void Window::MainLoop(std::function<void(float, float)> callback)
         ctx.callback(currTime, ctx.deltaTime);
         ctx.window->EndImGuiFrame();
 
-        if (GfxFactory::GetBackend() == GfxBackend::WebGPU)
-            GfxFactory::PresentSwapchain();
-        else
-            glfwSwapBuffers(static_cast<GLFWwindow*>(ctx.window->_internal));
+        ctx.window->SwapBuffers();
     };
 
     static LoopContext ctx = {
@@ -365,10 +362,7 @@ void Window::MainLoop(std::function<void(float, float)> callback)
         ctx.callback(currTime, ctx.deltaTime);
         ctx.window->EndImGuiFrame();
 
-        if (GfxFactory::GetBackend() == GfxBackend::WebGPU)
-            GfxFactory::PresentSwapchain();
-        else
-            glfwSwapBuffers(static_cast<GLFWwindow*>(ctx.window->_internal));
+        ctx.window->SwapBuffers();
     };
     emscripten_set_main_loop_arg(em_callback, ctxPtr, 0, true);
 #else
@@ -583,6 +577,16 @@ void Window::SetClipboardText(const std::string& text) {
 std::string Window::GetClipboardText() {
     const char* text = glfwGetClipboardString(static_cast<GLFWwindow*>(_internal));
     return text ? text : "";
+}
+
+void Window::SwapBuffers() {
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        GfxFactory::PresentSwapchain();
+        return;
+    }
+#endif
+    glfwSwapBuffers(static_cast<GLFWwindow*>(_internal));
 }
 
 void Window::SetMouseCursor(const std::string& cursorName) {
