@@ -14,7 +14,7 @@ set_target_properties(${GAME_NAME} PROPERTIES
 )
 
 target_include_directories(${GAME_NAME} PUBLIC
-    ${CMAKE_SOURCE_DIR}/AtmosphericEngine/include
+    ${CMAKE_SOURCE_DIR}/Engine/include
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
@@ -36,9 +36,11 @@ if(EMSCRIPTEN)
     add_custom_target(stage_${GAME_NAME}_em_preload
         COMMAND ${CMAKE_COMMAND} -E make_directory ${EM_PRELOAD_STAGING_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/AtmosphericEngine/default_assets/shaders
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/shaders
             ${EM_PRELOAD_STAGING_DIR}/shaders
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${EM_PRELOAD_STAGING_DIR}/fonts
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/fonts
+            ${EM_PRELOAD_STAGING_DIR}/fonts
         COMMAND ${CMAKE_COMMAND}
             -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts
             -Ddst=${EM_PRELOAD_STAGING_DIR}/fonts
@@ -69,7 +71,7 @@ endif()
 add_custom_command(
     TARGET ${GAME_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/AtmosphericEngine/default_assets
+        ${CMAKE_SOURCE_DIR}/Engine/default_assets
         ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${GAME_ASSETS_DIR}

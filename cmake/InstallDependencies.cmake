@@ -1,10 +1,10 @@
 # InstallDependencies.cmake
 # Helper script to automatically configure the bundled vcpkg submodule.
-# 
+#
 # Usage in external projects:
-#   include(AtmosphericEngine/cmake/InstallDependencies.cmake)
+#   include(Atmospheric/cmake/InstallDependencies.cmake)
 #   project(MyGame LANGUAGES CXX)
-#   add_subdirectory(AtmosphericEngine)
+#   add_subdirectory(Atmospheric)
 
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_LIST_DIR}/../vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "vcpkg toolchain file")

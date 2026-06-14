@@ -233,6 +233,7 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
         break;
     }
 
+    stbi_set_flip_vertically_on_load(true);
     uint8_t* data = stbi_load_from_memory(fileData.data(), (int)fileData.size(), &width, &height, &numChannels, desiredChannels);
     if (data) {
         auto image = std::make_shared<Image>(width, height, desiredChannels, data);

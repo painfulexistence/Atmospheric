@@ -30,17 +30,11 @@ jobs:
         with:
           submodules: false
           sparse-checkout: |
-            AtmosphericEngine
+            Engine
             cmake
-            frontends
             triplets
-            Example_HelloWorld
-            Example_VoxelWorld
-            Example_Physics2D
             Example_NoitaLike
-            Example_CSB
-            Example_MidnightSkyraiders
-            Example_RPG
+            Examples
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json
@@ -124,17 +118,11 @@ jobs:
         with:
           submodules: false
           sparse-checkout: |
-            AtmosphericEngine
+            Engine
             cmake
-            frontends
             triplets
-            Example_HelloWorld
-            Example_VoxelWorld
-            Example_Physics2D
             Example_NoitaLike
-            Example_CSB
-            Example_MidnightSkyraiders
-            Example_RPG
+            Examples
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json
