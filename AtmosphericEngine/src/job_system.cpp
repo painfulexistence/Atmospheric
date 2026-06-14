@@ -44,7 +44,8 @@ bool JobSystem::GetJob(Job& job, uint32_t thread_index) {
 
 
 JobSystem::JobSystem() {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+    // Single-threaded web build (no pthreads): run jobs inline on the main thread.
     _numThreads = 1;
 #else
     auto numCores = std::thread::hardware_concurrency();
@@ -104,7 +105,7 @@ void JobSystem::Init() {
 }
 
 void JobSystem::Execute(const Job& job) {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
     job(0);
 #else
 #ifdef TRACY_ENABLE
@@ -129,7 +130,7 @@ void JobSystem::Execute(const Job& job) {
 }
 
 bool JobSystem::IsBusy() {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
     return false;
 #else
 #ifdef TRACY_ENABLE
@@ -140,7 +141,7 @@ bool JobSystem::IsBusy() {
 }
 
 void JobSystem::Wait() {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
     return;
 #else
 #ifdef TRACY_ENABLE

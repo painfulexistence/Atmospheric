@@ -89,6 +89,9 @@ if(MSVC)
 else()
     target_compile_options(lua_static PRIVATE -w)
 endif()
+if(EMSCRIPTEN)
+    target_compile_options(lua_static PRIVATE -pthread)
+endif()
 
 # ── sol2 (develop branch, header-only) ────────────────────────────────────────
 # v3.3.0 had a bug in optional_implementation.hpp where tl::optional's CRTP
@@ -405,26 +408,46 @@ if(EMSCRIPTEN)
     # spdlog::spdlog : console.cpp and scene_loader.cpp call spdlog directly;
     #   Emscripten maps stdout → browser console so spdlog works fine on web.
     target_compile_definitions(AtmosphericEngine PRIVATE IMGUI_IMPL_OPENGL_ES3)
+    target_compile_definitions(AtmosphericEngine PUBLIC BT_THREADSAFE=1)
     target_link_libraries(AtmosphericEngine PUBLIC spdlog::spdlog)
-    target_compile_options(AtmosphericEngine PRIVATE)
+    # -pthread        : enable WASM threads (SharedArrayBuffer + Atomics)
+    # -sFETCH=1       : enable emscripten_fetch (XHR + IndexedDB persistence)
+    #                   used by FileSystem (web platform implementation)
+    # -sUSE_PTHREADS=1              : compile with pthread support (Web Workers)
+    # -sPTHREAD_POOL_SIZE           : pre-spawn workers to avoid first-use latency
+    # -sPROXY_TO_PTHREAD=1          : run main() on a worker so blocking Wait()
+    #                                 calls do not freeze the browser main thread
+    target_compile_options(AtmosphericEngine PUBLIC -pthread)
     if(AE_USE_WEBGPU)
         target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_WEBGPU)
-        # --use-port=emdawnwebgpu must appear in compile flags too so that
-        # Emscripten activates the port's include path (webgpu/webgpu.h) during
-        # the compile step — link-only is not enough.
+        # --use-port=emdawnwebgpu must appear in both compile and link flags:
+        #   compile: adds the webgpu/ include path so <webgpu/webgpu.h> resolves
+        #   link:    links the emdawnwebgpu JS/WASM glue
         target_compile_options(AtmosphericEngine PUBLIC --use-port=emdawnwebgpu)
+        # The actual backend is chosen at runtime by GfxFactory::Init():
+        #   - browser exposes navigator.gpu → attempts WebGPU
+        #   - WebGPU unavailable or device creation fails → falls back to WebGL 2
+        # WebGL 2 flags are therefore kept alongside emdawnwebgpu so the
+        # OpenGL fallback path and ImGui (still imgui_impl_opengl3) continue
+        # to work at runtime.
+        # --closure=1 is recommended in release builds to reduce emdawnwebgpu JS size.
+        # TODO: switch ImGui backend to imgui_impl_wgpu once WebGPU path is stable.
         target_link_options(AtmosphericEngine INTERFACE
             -sWASM=1 -O3 -sUSE_GLFW=3
             --use-port=emdawnwebgpu
             -sASYNCIFY=1
             -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
             -sFETCH=1
+            -sUSE_PTHREADS=1
+            "-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency"
             -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])
     else()
         target_link_options(AtmosphericEngine INTERFACE
             -sWASM=1 -O3 -sUSE_GLFW=3
             -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
             -sFETCH=1
+            -sUSE_PTHREADS=1
+            "-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency"
             -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])
     endif()
 else()

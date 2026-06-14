@@ -85,6 +85,7 @@ emcmake cmake -G Ninja \
   -B "$BUILD_DIR" \
   -S . \
   -DCMAKE_TOOLCHAIN_FILE="$VCPKG_DIR/scripts/buildsystems/vcpkg.cmake" \
+  -DVCPKG_OVERLAY_TRIPLETS="$(pwd)/triplets" \
   -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
   -DAE_USE_WEBGPU="$WEBGPU_SUPPORT"
