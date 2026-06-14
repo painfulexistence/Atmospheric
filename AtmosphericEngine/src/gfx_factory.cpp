@@ -76,16 +76,48 @@ void GfxFactory::SetWebGPUDevice(WGPUDevice device) {
     _wgpuQueue  = wgpuDeviceGetQueue(device);
     Console::Get()->Info(fmt::format("[GfxFactory] SetWebGPUDevice: queue={}", (void*)_wgpuQueue));
 
-    // emsdk 4.x: wgpuInstanceCreateSurface asserts when the WGPUDevice was
-    // obtained via emscripten_webgpu_get_device() (pre-init JS path) because
-    // there is no matching C-side WGPUInstance.  Proper surface creation
-    // requires Dawn as a submodule (see Chrome WebGPU article).
-    // For now fall back to WebGL 2 so the engine stays functional.
-    Console::Get()->Warn("[GfxFactory] WebGPU surface creation not supported with "
-                         "emscripten_webgpu_get_device() in emsdk 4.x. Falling back to WebGL 2.");
-    _wgpuDevice = nullptr;
-    _wgpuQueue  = nullptr;
-    _backend    = GfxBackend::OpenGL;
+    // Create surface via a fresh WGPUInstance (emsdk bundles Dawn; the instance
+    // used for surface creation does not need to match the pre-init JS device).
+    WGPUInstanceDescriptor instDesc{};
+    WGPUInstance inst = wgpuCreateInstance(&instDesc);
+    if (!inst) {
+        Console::Get()->Warn("[GfxFactory] wgpuCreateInstance returned null. Falling back to WebGL 2.");
+        _wgpuDevice = nullptr;
+        _wgpuQueue  = nullptr;
+        _backend    = GfxBackend::OpenGL;
+        return;
+    }
+
+    WGPUSurfaceDescriptorFromCanvasHTMLSelector canvasDesc{};
+    canvasDesc.chain.sType = WGPUSType_SurfaceDescriptorFromCanvasHTMLSelector;
+    canvasDesc.selector    = "#canvas";
+    WGPUSurfaceDescriptor surfDesc{};
+    surfDesc.nextInChain   = reinterpret_cast<WGPUChainedStruct*>(&canvasDesc);
+    _surface = wgpuInstanceCreateSurface(inst, &surfDesc);
+    wgpuInstanceRelease(inst);
+
+    if (!_surface) {
+        Console::Get()->Warn("[GfxFactory] wgpuInstanceCreateSurface returned null. Falling back to WebGL 2.");
+        _wgpuDevice = nullptr;
+        _wgpuQueue  = nullptr;
+        _backend    = GfxBackend::OpenGL;
+        return;
+    }
+    Console::Get()->Info(fmt::format("[GfxFactory] SetWebGPUDevice: surface={}", (void*)_surface));
+
+    auto [w, h] = Window::Get()->GetFramebufferSize();
+    _swapchainFormat = WGPUTextureFormat_BGRA8Unorm;
+    WGPUSurfaceConfiguration cfg{};
+    cfg.device      = device;
+    cfg.format      = _swapchainFormat;
+    cfg.usage       = WGPUTextureUsage_RenderAttachment;
+    cfg.width       = static_cast<uint32_t>(w);
+    cfg.height      = static_cast<uint32_t>(h);
+    cfg.presentMode = WGPUPresentMode_Fifo;
+    cfg.alphaMode   = WGPUCompositeAlphaMode_Opaque;
+    wgpuSurfaceConfigure(_surface, &cfg);
+
+    Console::Get()->Info("[GfxFactory] WebGPU device ready. Surface configured.");
 }
 
 WGPUTextureView GfxFactory::GetCurrentSwapchainView() {
