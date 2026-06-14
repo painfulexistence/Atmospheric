@@ -465,7 +465,18 @@ glm::vec2 Window::GetMousePosition()
 {
     double x, y;
     glfwGetCursorPos(static_cast<GLFWwindow*>(_internal), &x, &y);
-    return glm::vec2((float)x, (float)y);
+#ifdef __EMSCRIPTEN__
+    // glfwGetCursorPos returns CSS pixels; glfwGetWindowContentScale returns 1.0 on
+    // Emscripten regardless of devicePixelRatio, so derive scale from framebuffer vs window size.
+    auto logical = GetSize();
+    auto physical = GetFramebufferSize();
+    float scaleX = logical.width  > 0 ? float(physical.width)  / float(logical.width)  : 1.0f;
+    float scaleY = logical.height > 0 ? float(physical.height) / float(logical.height) : 1.0f;
+    return glm::vec2((float)x * scaleX, (float)y * scaleY);
+#else
+    glm::vec2 scale = GetDPI();
+    return glm::vec2((float)x * scale.x, (float)y * scale.y);
+#endif
 }
 
 // TODO: implement mouse button state

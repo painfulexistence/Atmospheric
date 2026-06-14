@@ -471,7 +471,8 @@ glm::vec2 Window::GetDPI() {
 glm::vec2 Window::GetMousePosition() {
     float x, y;
     SDL_GetMouseState(&x, &y);
-    return glm::vec2(x, y);
+    glm::vec2 scale = GetDPI();
+    return glm::vec2(x * scale.x, y * scale.y);
 }
 
 // TODO: implement mouse button state
