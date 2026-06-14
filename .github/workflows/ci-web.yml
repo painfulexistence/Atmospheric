@@ -33,6 +33,7 @@ jobs:
             AtmosphericEngine
             cmake
             frontends
+            triplets
             Example_HelloWorld
             Example_VoxelWorld
             Example_Physics2D
@@ -67,28 +68,32 @@ jobs:
       - name: Bootstrap vcpkg
         run: ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
-      # Cache installed packages keyed on vcpkg.json so a lockfile change
-      # triggers a full rebuild, but unchanged deps reuse the cache.
+      # Cache key includes the triplet file so that changing compile flags
+      # (e.g. adding -pthread) correctly invalidates the cached libraries.
       - name: Cache vcpkg installed packages
         uses: actions/cache@v4
         with:
           path: |
             ${{ github.workspace }}/vcpkg/installed
             ${{ github.workspace }}/vcpkg/packages
-          key: vcpkg-wasm32-emscripten-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-wasm32-emscripten-pthread-${{ hashFiles('vcpkg.json', 'triplets/wasm32-emscripten.cmake') }}
           restore-keys: |
-            vcpkg-wasm32-emscripten-
+            vcpkg-wasm32-emscripten-pthread-
 
       # ── Configure ──────────────────────────────────────────────────────────
       # Emscripten builds use GLFW (-sUSE_GLFW=3) from the Emscripten sysroot;
       # SDL3 is native-only. AE_USE_BASIS_UNIVERSAL is auto-enabled by CMake
       # when EMSCRIPTEN is detected (see root CMakeLists.txt).
+      # VCPKG_OVERLAY_TRIPLETS points vcpkg at our custom triplet which adds
+      # -pthread/-matomics/-mbulk-memory so libraries are compatible with
+      # -sUSE_PTHREADS=1 / --shared-memory at link time.
       - name: CMake Configure
         run: >
           cmake -G Ninja
           -B ${{ github.workspace }}/build
           -S ${{ github.workspace }}
           -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/triplets
           -DVCPKG_TARGET_TRIPLET=wasm32-emscripten
           -DCMAKE_BUILD_TYPE=MinSizeRel
 
@@ -120,6 +125,7 @@ jobs:
             AtmosphericEngine
             cmake
             frontends
+            triplets
             Example_HelloWorld
             Example_VoxelWorld
             Example_Physics2D
@@ -155,9 +161,9 @@ jobs:
           path: |
             ${{ github.workspace }}/vcpkg/installed
             ${{ github.workspace }}/vcpkg/packages
-          key: vcpkg-wasm32-emscripten-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-wasm32-emscripten-pthread-${{ hashFiles('vcpkg.json', 'triplets/wasm32-emscripten.cmake') }}
           restore-keys: |
-            vcpkg-wasm32-emscripten-
+            vcpkg-wasm32-emscripten-pthread-
 
       - name: CMake Configure (WebGPU)
         run: >
@@ -165,6 +171,7 @@ jobs:
           -B ${{ github.workspace }}/build
           -S ${{ github.workspace }}
           -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DVCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/triplets
           -DVCPKG_TARGET_TRIPLET=wasm32-emscripten
           -DCMAKE_BUILD_TYPE=MinSizeRel
           -DAE_USE_WEBGPU=ON
