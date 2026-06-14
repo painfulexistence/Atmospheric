@@ -3,18 +3,9 @@ set(VCPKG_CRT_LINKAGE dynamic)
 set(VCPKG_LIBRARY_LINKAGE static)
 set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
 
-# Point vcpkg at the Emscripten CMake toolchain (same as the community triplet).
-# setup-emsdk exports $EMSDK; fall back to $EMSCRIPTEN if available.
-if(DEFINED ENV{EMSDK})
-    set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE
-        "$ENV{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake")
-elseif(DEFINED ENV{EMSCRIPTEN})
-    set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE
-        "$ENV{EMSCRIPTEN}/cmake/Modules/Platform/Emscripten.cmake")
-endif()
-
-# Pass -matomics -mbulk-memory directly so every port's object files support
-# WASM shared memory.  -pthread alone may be silently dropped by Emscripten's
-# CMake integration when building static libraries via vcpkg.
-set(VCPKG_C_FLAGS "-matomics -mbulk-memory")
-set(VCPKG_CXX_FLAGS "-matomics -mbulk-memory")
+# Use a wrapper toolchain that chains Emscripten.cmake and then appends
+# -matomics / -mbulk-memory AFTER, so the flags survive Emscripten's own
+# CMAKE_C_FLAGS_INIT assignments.  VCPKG_C_FLAGS alone is not sufficient
+# because the chainloaded Emscripten toolchain can overwrite it.
+set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE
+    "${CMAKE_CURRENT_LIST_DIR}/../platforms/emscripten-threads.cmake")
