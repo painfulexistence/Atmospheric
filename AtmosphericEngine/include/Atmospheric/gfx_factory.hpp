@@ -26,12 +26,10 @@ struct SDL_Window;
 class GfxFactory {
 public:
 #ifdef __EMSCRIPTEN__
-    // Web: checks WebGPU availability at runtime; falls back to WebGL 2.
+    // Web: requests WebGPU adapter+device synchronously (requires -sASYNCIFY=1);
+    // falls back to WebGL 2 if WebGPU is unavailable or any step fails.
     static void Init();
 #if defined(AE_USE_WEBGPU)
-    // Called from the adapter/device request callback.
-    // Passing nullptr falls back to WebGL 2.
-    static void SetWebGPUDevice(WGPUDevice device);
     static WGPUDevice        GetWebGPUDevice()      { return _wgpuDevice; }
     static WGPUQueue         GetWebGPUQueue()        { return _wgpuQueue; }
     static WGPUTextureFormat GetSwapchainFormat()    { return _swapchainFormat; }

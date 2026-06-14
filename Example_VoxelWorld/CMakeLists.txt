@@ -57,7 +57,6 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
     )
-    ae_target_webgpu_preinit(${GAME_NAME})
 
 else()
     # ── Native build ─────────────────────────────────────────────────────────

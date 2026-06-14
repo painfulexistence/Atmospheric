@@ -34,16 +34,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 include(FetchContent)
 
-# ae_target_webgpu_preinit(<target>)
-# Injects cmake/webgpu_preinit.js via --pre-js so the WASM module waits for
-# a WebGPU adapter+device before calling main().  Call this for every
-# Emscripten executable target when AE_USE_WEBGPU=ON.
-function(ae_target_webgpu_preinit target)
-    if(EMSCRIPTEN AND AE_USE_WEBGPU)
-        target_link_options(${target} PRIVATE
-            "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/cmake/webgpu_preinit.js")
-    endif()
-endfunction()
 
 add_subdirectory(AtmosphericEngine)
 add_subdirectory(Example_HelloWorld)

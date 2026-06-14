@@ -416,6 +416,7 @@ if(EMSCRIPTEN)
         target_link_options(AtmosphericEngine INTERFACE
             -sWASM=1 -O3 -sUSE_GLFW=3
             --use-port=emdawnwebgpu
+            -sASYNCIFY=1
             -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
             -sFETCH=1
             -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])

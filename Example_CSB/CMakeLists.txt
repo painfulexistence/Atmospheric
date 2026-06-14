@@ -69,7 +69,6 @@ if(EMSCRIPTEN)
         )
     endif()
     target_link_options(${GAME_NAME} PRIVATE ${_em_link_opts})
-    ae_target_webgpu_preinit(${GAME_NAME})
 
 else()
     # ── Native build ─────────────────────────────────────────────────────────

@@ -82,7 +82,6 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
     )
-    ae_target_webgpu_preinit(${TARGET_NAME})
 
 else()
     # ── Native build ─────────────────────────────────────────────────────────

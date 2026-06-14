@@ -6,14 +6,8 @@
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include <webgpu/webgpu.h>
-#include <emscripten/html5_webgpu.h>
-#include <emscripten/em_js.h>
 #include "gpu_buffer.hpp"
 #include "gpu_render_target.hpp"
-
-EM_JS(int, ae_has_webgpu_device, (), {
-    return Module.preinitializedWebGPUDevice ? 1 : 0;
-});
 #endif
 
 // ── Static member definitions ────────────────────────────────────────────────
@@ -35,59 +29,70 @@ SDL_Window* GfxFactory::_sdlWindow = nullptr;
 
 void GfxFactory::Init() {
 #if defined(AE_USE_WEBGPU)
-    if (Window::IsWebGPUAvailable()) {
-        // wgpuInstanceRequestAdapter / wgpuAdapterRequestDevice in emsdk 4.x have a
-        // mismatched ABI between webgpu.h (old 4-arg callback) and the precompiled
-        // libemdawnwebgpu (new 3-arg Future API) — calling them causes a WASM trap.
-        //
-        // Instead, cmake/webgpu_preinit.js (injected via --pre-js) requests the
-        // adapter+device in JS before WASM starts and stores the result in
-        // Module.preinitializedWebGPUDevice.  We check that value via EM_ASM_INT
-        // before calling emscripten_webgpu_get_device() because the latter asserts
-        // (not returns null) when the value isn't set.
-        int hasDevice = ae_has_webgpu_device();
-        if (hasDevice) {
-            WGPUDevice device = emscripten_webgpu_get_device();
-            if (device) {
-                Console::Get()->Info("[GfxFactory] WebGPU: got pre-initialised device.");
-                _backend = GfxBackend::WebGPU;
-                SetWebGPUDevice(device);
-                return;
-            }
-        }
-        Console::Get()->Warn("[GfxFactory] WebGPU available but device not pre-initialised "
-                             "(Module.preinitializedWebGPUDevice not set). Falling back to WebGL 2.");
-    } else {
-        Console::Get()->Warn("[GfxFactory] WebGPU not available in browser. Falling back to WebGL 2.");
-    }
-#endif
-    _backend = GfxBackend::OpenGL;
-}
-
-#if defined(AE_USE_WEBGPU)
-void GfxFactory::SetWebGPUDevice(WGPUDevice device) {
-    if (!device) {
-        Console::Get()->Warn("[GfxFactory] SetWebGPUDevice: device is null. Falling back to WebGL 2.");
-        _backend = GfxBackend::OpenGL;
-        return;
-    }
-    Console::Get()->Info(fmt::format("[GfxFactory] SetWebGPUDevice: got device={}", (void*)device));
-    _wgpuDevice = device;
-    _wgpuQueue  = wgpuDeviceGetQueue(device);
-    Console::Get()->Info(fmt::format("[GfxFactory] SetWebGPUDevice: queue={}", (void*)_wgpuQueue));
-
-    // Create surface via a fresh WGPUInstance (emsdk bundles Dawn; the instance
-    // used for surface creation does not need to match the pre-init JS device).
+    // ── Create instance ───────────────────────────────────────────────────────
     WGPUInstanceDescriptor instDesc{};
     WGPUInstance inst = wgpuCreateInstance(&instDesc);
     if (!inst) {
-        Console::Get()->Warn("[GfxFactory] wgpuCreateInstance returned null. Falling back to WebGL 2.");
-        _wgpuDevice = nullptr;
-        _wgpuQueue  = nullptr;
-        _backend    = GfxBackend::OpenGL;
+        Console::Get()->Warn("[GfxFactory] wgpuCreateInstance failed. Falling back to WebGL 2.");
+        _backend = GfxBackend::OpenGL;
         return;
     }
 
+    // ── Request adapter (Future API — requires -sASYNCIFY=1) ─────────────────
+    WGPURequestAdapterOptions adapterOpts{};
+    adapterOpts.powerPreference = WGPUPowerPreference_HighPerformance;
+
+    WGPUAdapter adapter = nullptr;
+    WGPURequestAdapterCallbackInfo adapterCbInfo{};
+    adapterCbInfo.mode     = WGPUCallbackMode_WaitAnyOnly;
+    adapterCbInfo.callback = [](WGPURequestAdapterStatus status, WGPUAdapter a,
+                                WGPUStringView, void* ud1, void*) {
+        if (status == WGPURequestAdapterStatus_Success)
+            *static_cast<WGPUAdapter*>(ud1) = a;
+    };
+    adapterCbInfo.userdata1 = &adapter;
+
+    WGPUFutureWaitInfo adapterWait{};
+    adapterWait.future = wgpuInstanceRequestAdapter(inst, &adapterOpts, adapterCbInfo);
+    wgpuInstanceWaitAny(inst, 1, &adapterWait, UINT64_MAX);
+
+    if (!adapter) {
+        Console::Get()->Warn("[GfxFactory] No WebGPU adapter. Falling back to WebGL 2.");
+        wgpuInstanceRelease(inst);
+        _backend = GfxBackend::OpenGL;
+        return;
+    }
+
+    // ── Request device ────────────────────────────────────────────────────────
+    WGPUDevice device = nullptr;
+    WGPURequestDeviceCallbackInfo deviceCbInfo{};
+    deviceCbInfo.mode     = WGPUCallbackMode_WaitAnyOnly;
+    deviceCbInfo.callback = [](WGPURequestDeviceStatus status, WGPUDevice d,
+                               WGPUStringView, void* ud1, void*) {
+        if (status == WGPURequestDeviceStatus_Success)
+            *static_cast<WGPUDevice*>(ud1) = d;
+    };
+    deviceCbInfo.userdata1 = &device;
+
+    WGPUDeviceDescriptor deviceDesc{};
+    WGPUFutureWaitInfo deviceWait{};
+    deviceWait.future = wgpuAdapterRequestDevice(adapter, &deviceDesc, deviceCbInfo);
+    wgpuInstanceWaitAny(inst, 1, &deviceWait, UINT64_MAX);
+    wgpuAdapterRelease(adapter);
+
+    if (!device) {
+        Console::Get()->Warn("[GfxFactory] WebGPU device creation failed. Falling back to WebGL 2.");
+        wgpuInstanceRelease(inst);
+        _backend = GfxBackend::OpenGL;
+        return;
+    }
+
+    Console::Get()->Info("[GfxFactory] WebGPU adapter and device acquired.");
+    _backend    = GfxBackend::WebGPU;
+    _wgpuDevice = device;
+    _wgpuQueue  = wgpuDeviceGetQueue(device);
+
+    // ── Create surface ────────────────────────────────────────────────────────
     WGPUSurfaceDescriptorFromCanvasHTMLSelector canvasDesc{};
     canvasDesc.chain.sType = WGPUSType_SurfaceDescriptorFromCanvasHTMLSelector;
     canvasDesc.selector    = "#canvas";
@@ -97,14 +102,15 @@ void GfxFactory::SetWebGPUDevice(WGPUDevice device) {
     wgpuInstanceRelease(inst);
 
     if (!_surface) {
-        Console::Get()->Warn("[GfxFactory] wgpuInstanceCreateSurface returned null. Falling back to WebGL 2.");
+        Console::Get()->Warn("[GfxFactory] wgpuInstanceCreateSurface failed. Falling back to WebGL 2.");
+        wgpuDeviceRelease(device);
         _wgpuDevice = nullptr;
         _wgpuQueue  = nullptr;
         _backend    = GfxBackend::OpenGL;
         return;
     }
-    Console::Get()->Info(fmt::format("[GfxFactory] SetWebGPUDevice: surface={}", (void*)_surface));
 
+    // ── Configure surface ─────────────────────────────────────────────────────
     auto [w, h] = Window::Get()->GetFramebufferSize();
     _swapchainFormat = WGPUTextureFormat_BGRA8Unorm;
     WGPUSurfaceConfiguration cfg{};
@@ -117,9 +123,13 @@ void GfxFactory::SetWebGPUDevice(WGPUDevice device) {
     cfg.alphaMode   = WGPUCompositeAlphaMode_Opaque;
     wgpuSurfaceConfigure(_surface, &cfg);
 
-    Console::Get()->Info("[GfxFactory] WebGPU device ready. Surface configured.");
+    Console::Get()->Info("[GfxFactory] WebGPU initialized successfully.");
+    return;
+#endif
+    _backend = GfxBackend::OpenGL;
 }
 
+#if defined(AE_USE_WEBGPU)
 WGPUTextureView GfxFactory::GetCurrentSwapchainView() {
     if (!_surface) return nullptr;
     WGPUSurfaceTexture st{};
@@ -156,7 +166,6 @@ void GfxFactory::Shutdown() {
     _wgpuQueue = nullptr;
 #elif !defined(__EMSCRIPTEN__)
     _sdlWindow = nullptr;
-    // TODO: release Dawn instance / device / surface here.
 #endif
 }
 

@@ -43,7 +43,6 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
     )
-    ae_target_webgpu_preinit(${GAME_NAME})
 else()
     find_package(spdlog CONFIG REQUIRED)
     find_package(glad CONFIG REQUIRED)
