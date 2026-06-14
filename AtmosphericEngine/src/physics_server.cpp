@@ -7,6 +7,7 @@
 #include "rigidbody_component.hpp"
 #include <BulletCollision/CollisionDispatch/btCollisionDispatcherMt.h>
 #include <BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolverMt.h>
+#include <spdlog/spdlog.h>
 
 class RaycastCallback : public btCollisionWorld::ClosestRayResultCallback {
 private:
@@ -56,6 +57,11 @@ void PhysicsServer::Init(Application* app) {
     // Create and set the custom task scheduler
     _taskScheduler = std::make_unique<BulletTaskScheduler>(*JobSystem::Get());
     btSetTaskScheduler(_taskScheduler.get());
+
+    auto* scheduler = btGetTaskScheduler();
+    spdlog::info("[Physics] Bullet worker threads: {}",
+        scheduler ? scheduler->getNumThreads() : 0);
+    spdlog::info("[Physics] JobSystem threads: {}", JobSystem::Get()->GetThreadCount());
 
     _config = new btDefaultCollisionConfiguration();
     // Use multithreaded dispatcher if thread safe
