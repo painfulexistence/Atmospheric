@@ -45,42 +45,15 @@ void GraphicsServer::Init(Application* app) {
     stbi_set_flip_vertically_on_load(true);
 
 #ifndef __EMSCRIPTEN__
-    // Note that OpenGL extensions must NOT be initialzed before the window creation
     if (gladLoadGLLoader((GLADloadproc)Window::GetProcAddress()) <= 0)
         throw std::runtime_error("Failed to initialize OpenGL!");
+#endif
     GfxFactory::Init();
-#else
-    GfxFactory::Init();
-#endif
-
-    // Ensure default shaders are loaded before initializing renderers that depend on them
-    AssetManager::Get().LoadDefaultShaders();
-
-#ifndef __EMSCRIPTEN__
-    glPrimitiveRestartIndex(0xFFFF);
-#endif
-
-#ifndef __EMSCRIPTEN__
-    glPatchParameteri(GL_PATCH_VERTICES, 4);
-#endif
-
-    glLineWidth(2.0f);
-
-    glCullFace(GL_BACK);
-#if MSAA_ON
-#ifndef __EMSCRIPTEN__
-    glEnable(GL_MULTISAMPLE);
-#endif
-#endif
 
     auto window = Window::Get();
     auto [width, height] = window->GetFramebufferSize();
 
-    renderer = new Renderer();
-    renderer->Init(width, height);
-    window->AddFramebufferResizeCallback([this](int newWidth, int newHeight) { renderer->Resize(newWidth, newHeight); }
-    );
-
+    // ── Common scene objects (backend-independent) ────────────────────────────
     canvasDrawList.reserve(1 << 16);
     debugLines.reserve(1 << 16);
 
@@ -101,24 +74,40 @@ void GraphicsServer::Init(Application* app) {
       .intensity = 1.0f,
       .castShadow = false }));
 
-    // Initialize meshes for immediate mode geometry
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        // WebGPU path: GPUCanvasPass handles all rendering; no GL objects needed.
+        return;
+    }
+#endif
+
+    // ── OpenGL / WebGL 2 path ─────────────────────────────────────────────────
+    AssetManager::Get().LoadDefaultShaders();
+
+#ifndef __EMSCRIPTEN__
+    glPrimitiveRestartIndex(0xFFFF);
+    glPatchParameteri(GL_PATCH_VERTICES, 4);
+#endif
+    glLineWidth(2.0f);
+    glCullFace(GL_BACK);
+#if MSAA_ON && !defined(__EMSCRIPTEN__)
+    glEnable(GL_MULTISAMPLE);
+#endif
+
+    renderer = new Renderer();
+    renderer->Init(width, height);
+    window->AddFramebufferResizeCallback([this](int newWidth, int newHeight) {
+        renderer->Resize(newWidth, newHeight);
+    });
+
     debugLineMesh = new Mesh(MeshType::DEBUG);
     debugLineMesh->updateFreq = UpdateFrequency::Dynamic;
 
     canvasMesh = new Mesh(MeshType::CANVAS);
     canvasMesh->updateFreq = UpdateFrequency::Dynamic;
 
-    try {
-        debugShader = AssetManager::Get().GetShader("debug_line");
-    } catch (...) {
-        debugShader = nullptr;
-    }
-
-    try {
-        canvasShader = AssetManager::Get().GetShader("canvas");
-    } catch (...) {
-        canvasShader = nullptr;
-    }
+    try { debugShader = AssetManager::Get().GetShader("debug_line"); } catch (...) { debugShader = nullptr; }
+    try { canvasShader = AssetManager::Get().GetShader("canvas"); }     catch (...) { canvasShader = nullptr; }
 }
 
 void GraphicsServer::Process(float dt) {
@@ -128,8 +117,16 @@ void GraphicsServer::Process(float dt) {
 // NOTES: this only fills in command buffers, rendering should be done by the renderer
 void GraphicsServer::Render(CameraComponent* camera, float dt) {
     ZoneScopedN("GraphicsServer::Render");
+
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        // WebGPU: canvas draw list is consumed by GPUCanvasPass in the render loop.
+        // No GL renderer to drive here.
+        return;
+    }
+#endif
+
     if (!camera) {
-        // Attempt to use the default camera if none is provided
         camera = defaultCamera;
         if (!camera) return;
     }
@@ -706,6 +703,41 @@ void GraphicsServer::RenderBufferedText(BatchRenderer2D* batch) {
                 batch->DrawQuad(transform, font->textureID, uvs, cmd.color);
             }
 
+            cursorX += glyph->advance * cmd.scale;
+        }
+    }
+    _textCommands.clear();
+}
+
+void GraphicsServer::FlushTextToQueue() {
+    for (const auto& cmd : _textCommands) {
+        Font* font = _fontManager.GetFont(cmd.fontID);
+        if (!font) continue;
+        float cursorX = cmd.x;
+        for (char c : cmd.text) {
+            const Glyph* glyph = _fontManager.GetGlyph(cmd.fontID, static_cast<int>(c));
+            if (!glyph) continue;
+            float drawX = cursorX + glyph->xOffset * cmd.scale;
+            float drawY = cmd.y + glyph->yOffset * cmd.scale + font->ascent * cmd.scale;
+            float drawW = glyph->width  * cmd.scale;
+            float drawH = glyph->height * cmd.scale;
+            if (drawW > 0 && drawH > 0) {
+                float finalX = drawX + drawW * 0.5f;
+                float finalY = drawY + drawH * 0.5f;
+                glm::vec2 uvs[4] = {
+                    { glyph->u0, glyph->v0 },
+                    { glyph->u1, glyph->v0 },
+                    { glyph->u1, glyph->v1 },
+                    { glyph->u0, glyph->v1 },
+                };
+                glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(finalX, finalY, 0.0f));
+                transform = glm::scale(transform, glm::vec3(drawW, drawH, 1.0f));
+                BatchDrawCommand bdc;
+                bdc.textureID = font->textureID;
+                bdc.transform = glm::mat4(1.0f);
+                CreateQuad(bdc.vertices, bdc.indices, transform, cmd.color, uvs);
+                renderer->SubmitCanvasCommand(bdc);
+            }
             cursorX += glyph->advance * cmd.scale;
         }
     }

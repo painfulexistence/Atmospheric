@@ -1,5 +1,12 @@
 option(BUILD_SHARED_LIBS OFF)
 
+# FetchContent_Populate is called directly for lua_src, sol2_src, and
+# basis_universal to avoid running their own CMakeLists.txt (which would
+# conflict with our custom targets).  Suppress the CMP0169 deprecation warning.
+if(POLICY CMP0169)
+    cmake_policy(SET CMP0169 OLD)
+endif()
+
 # ── FastNoiseLite (single-header noise library) ───────────────────────────────
 FetchContent_Declare(
     FastNoiseLite
@@ -158,6 +165,7 @@ set(SOURCES
     src/terrain_component.cpp
     src/shader.cpp
     src/graphics_server.cpp
+    src/graphics_server_tile.cpp
     src/renderer.cpp
     src/physics_server.cpp
     src/physics_debug_drawer.cpp
@@ -190,6 +198,8 @@ set(SOURCES
     src/scene_transition.cpp
     src/script.cpp
     src/component_registry.cpp
+    src/tilemap_2d.cpp
+    src/lighting_2d.cpp
     ${FLATBUFFERS_GENERATED_DIR}/Scene_generated.h
 )
 # ── Graphics backend selection ────────────────────────────────────────────────
@@ -207,6 +217,7 @@ else()
     if(AE_USE_WEBGPU)
         list(APPEND SOURCES src/gpu_buffer.cpp)
         list(APPEND SOURCES src/gpu_render_target.cpp)
+        list(APPEND SOURCES src/gpu_canvas_pass.cpp)
     endif()
 endif()
 # FileSystem: platform-agnostic async I/O with in-process cache.
@@ -424,6 +435,7 @@ if(EMSCRIPTEN)
         target_link_options(AtmosphericEngine INTERFACE
             -sWASM=1 -O3 -sUSE_GLFW=3
             --use-port=emdawnwebgpu
+            -sASYNCIFY=1
             -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
             -sFETCH=1
             -sUSE_PTHREADS=1

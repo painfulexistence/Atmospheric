@@ -139,6 +139,30 @@ public:
     void DrawLine(float x1, float y1, float x2, float y2, const glm::vec4& color);
     void DrawCircle(float x, float y, float radius, const glm::vec4& color);
 
+    /// Draw a single tile from a tileset spritesheet.
+    /// @param x,y    Top-left world pixel position of the tile.
+    /// @param w,h    Tile size in pixels (usually tileSize x tileSize).
+    /// @param texID  OpenGL texture ID of the tileset image.
+    /// @param tilesetDims  vec2(numCols, numRows) of the tileset grid.
+    /// @param tileCol,tileRow  Zero-based column and row of the desired tile.
+    void DrawTile(float x, float y, float w, float h,
+                  uint32_t texID,
+                  const glm::vec2& tilesetDims,
+                  int tileCol, int tileRow,
+                  const glm::vec4& color = glm::vec4(1.0f));
+
+    /// Draw a sprite from a spritesheet with explicit UV coordinates.
+    /// @param x,y     Top-left screen pixel position.
+    /// @param w,h     Display size in pixels.
+    /// @param texID   OpenGL texture ID.
+    /// @param uvMin   Bottom-left UV (0-1)
+    /// @param uvMax   Top-right   UV (0-1)
+    void DrawSprite2D(float x, float y, float w, float h,
+                      uint32_t texID,
+                      const glm::vec2& uvMin,
+                      const glm::vec2& uvMax,
+                      const glm::vec4& color = glm::vec4(1.0f));
+
     // ===== Text Rendering =====
     FontID LoadFont(const std::string& path, float baseSize);
     void UnloadFont(FontID id);
@@ -181,6 +205,12 @@ private:
       const glm::vec2& tilesetSize = glm::vec2(1.0f),
       const glm::vec2& tileIndex   = glm::vec2(0.0f));
 
+    // Helper: build UV-mapped BatchDrawCommand and submit to canvas queue.
+    void SubmitUVQuad(float cx, float cy, float w, float h,
+                      uint32_t texID,
+                      const glm::vec2& uvMin, const glm::vec2& uvMax,
+                      const glm::vec4& color);
+
     struct TextCommand {
         FontID fontID;
         std::string text;
@@ -191,4 +221,7 @@ private:
 
 public:
     void RenderBufferedText(BatchRenderer2D* batch);
+    // WebGPU path: converts buffered text commands into BatchDrawCommands
+    // and submits them via SubmitCanvasCommand so CanvasPass can process them.
+    void FlushTextToQueue();
 };

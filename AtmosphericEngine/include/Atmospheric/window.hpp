@@ -121,6 +121,7 @@ public:
     void DeinitImGui();
 
     void MainLoop(std::function<void(float, float)> callback);
+    void SwapBuffers();
     void ToggleFullscreen();
     void Close();
 
@@ -168,6 +169,7 @@ private:
     void* _internal = nullptr;
     bool _isRunning = true;
     bool _isFullscreen = false;
+    bool _webGPUCanvas = false; // true if canvas was left free for WebGPU (no GL context)
     int _windowedX;
     int _windowedY;
     int _windowedWidth;

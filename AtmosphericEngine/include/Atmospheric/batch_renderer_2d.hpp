@@ -27,6 +27,13 @@ struct BatchVertex {
     float entityID;// For picking or other identification
 };
 
+struct BatchDrawCommand {
+    std::vector<BatchVertex> vertices;
+    std::vector<uint32_t> indices;
+    uint32_t textureID = 0;
+    glm::mat4 transform = glm::mat4(1.0f);
+};
+
 struct BatchStats {
     uint32_t drawCalls = 0;
     uint32_t quadCount = 0;

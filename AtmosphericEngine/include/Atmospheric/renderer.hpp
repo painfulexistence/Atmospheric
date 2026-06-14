@@ -19,12 +19,9 @@ struct RenderCommand {
     glm::mat4 transform;
 };
 
-struct BatchDrawCommand {
-    std::vector<BatchVertex> vertices;
-    std::vector<uint32_t> indices;
-    uint32_t textureID;
-    glm::mat4 transform;
-};
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+#include "gpu_canvas_pass.hpp"
+#endif
 
 class RenderPass {
 public:
@@ -316,8 +313,16 @@ private:
 
     std::unique_ptr<BatchRenderer2D> m_BatchRenderer;
 
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    std::unique_ptr<GPUCanvasPass> m_GPUCanvasPass;
+#endif
+
 public:
     BatchRenderer2D* GetBatchRenderer() const {
         return m_BatchRenderer.get();
     }
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    GPUCanvasPass* GetGPUCanvasPass() const { return m_GPUCanvasPass.get(); }
+#endif
 };

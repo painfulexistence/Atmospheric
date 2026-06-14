@@ -15,7 +15,7 @@ void GPUBuffer::Initialize(VertexFormat format, BufferUsage /*usage*/) {
 }
 
 WGPUBuffer GPUBuffer::AllocAndUpload(const void* data, size_t bytes,
-                                      WGPUBufferUsageFlags usage) {
+                                      WGPUBufferUsage usage) {
     WGPUBufferDescriptor desc{};
     desc.usage            = usage | WGPUBufferUsage_CopyDst;
     desc.size             = bytes;

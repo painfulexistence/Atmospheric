@@ -39,6 +39,7 @@ jobs:
             Example_Physics2D
             Example_CSB
             Example_MidnightSkyraiders
+            Example_RPG
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json
@@ -131,6 +132,7 @@ jobs:
             Example_Physics2D
             Example_CSB
             Example_MidnightSkyraiders
+            Example_RPG
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json

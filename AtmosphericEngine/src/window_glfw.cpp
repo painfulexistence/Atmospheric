@@ -7,6 +7,7 @@
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_opengl3.h"
 #include "console.hpp"
+#include "gfx_factory.hpp"
 
 static int convertToGlfwKey(Key key) {
     switch (key) {
@@ -121,9 +122,23 @@ Window::Window(WindowProps props) {
     }
 
 #ifdef __EMSCRIPTEN__
+#if defined(AE_USE_WEBGPU)
+    // Check at runtime whether the browser supports WebGPU.
+    // If yes: leave the canvas free (GLFW_NO_API) so wgpuInstanceCreateSurface can claim it.
+    // If no:  fall back to WebGL 2 as normal.
+    _webGPUCanvas = IsWebGPUAvailable();
+    if (_webGPUCanvas) {
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    } else {
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    }
+#else
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+#endif
 #else
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
@@ -147,8 +162,10 @@ Window::Window(WindowProps props) {
 
     GLFWwindow* window = static_cast<GLFWwindow*>(this->_internal);
     glfwSetWindowUserPointer(window, this);
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(props.vsync ? 1 : 0);
+    if (!_webGPUCanvas) {
+        glfwMakeContextCurrent(window);
+        glfwSwapInterval(props.vsync ? 1 : 0);
+    }
 
     _instance = this;
 }
@@ -272,6 +289,9 @@ GfxBackend Window::GetActiveBackend() {
 }
 
 void Window::InitImGui() {
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (_webGPUCanvas) return; // TODO: use imgui_impl_wgpu when WebGPU ImGui backend is ready
+#endif
     IMGUI_CHECKVERSION();
 
     ImGui::CreateContext();
@@ -286,17 +306,26 @@ void Window::InitImGui() {
 }
 
 void Window::BeginImGuiFrame() {
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (_webGPUCanvas) return;
+#endif
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 }
 
 void Window::EndImGuiFrame() {
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (_webGPUCanvas) return;
+#endif
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
 void Window::DeinitImGui() {
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (_webGPUCanvas) return;
+#endif
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
@@ -322,7 +351,7 @@ void Window::MainLoop(std::function<void(float, float)> callback)
         ctx.callback(currTime, ctx.deltaTime);
         ctx.window->EndImGuiFrame();
 
-        glfwSwapBuffers(static_cast<GLFWwindow*>(ctx.window->_internal));
+        ctx.window->SwapBuffers();
     };
 
     static LoopContext ctx = {
@@ -345,7 +374,7 @@ void Window::MainLoop(std::function<void(float, float)> callback)
         ctx.callback(currTime, ctx.deltaTime);
         ctx.window->EndImGuiFrame();
 
-        glfwSwapBuffers(static_cast<GLFWwindow*>(ctx.window->_internal));
+        ctx.window->SwapBuffers();
     };
     emscripten_set_main_loop_arg(em_callback, ctxPtr, 0, true);
 #else
@@ -560,6 +589,16 @@ void Window::SetClipboardText(const std::string& text) {
 std::string Window::GetClipboardText() {
     const char* text = glfwGetClipboardString(static_cast<GLFWwindow*>(_internal));
     return text ? text : "";
+}
+
+void Window::SwapBuffers() {
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        GfxFactory::PresentSwapchain();
+        return;
+    }
+#endif
+    glfwSwapBuffers(static_cast<GLFWwindow*>(_internal));
 }
 
 void Window::SetMouseCursor(const std::string& cursorName) {

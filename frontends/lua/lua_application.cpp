@@ -1,4 +1,5 @@
 #include "lua_application.hpp"
+#include "Atmospheric/gfx_factory.hpp"
 
 // std::filesystem maps to Emscripten's MEMFS on web builds;
 // text files written there by FileSystem::Prefetch() are visible here.
@@ -21,7 +22,10 @@ LuaApplication::~LuaApplication() {
 void LuaApplication::OnInit() {
     GoScene("main", [this]{ OnLoad(); });
 
-    // Load default shaders and textures
+    // Load default shaders and textures (skip in WebGPU mode — no GL context)
+#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
+    if (GfxFactory::GetBackend() != GfxBackend::WebGPU)
+#endif
     AssetManager::Get().LoadDefaultShaders();
     AssetManager::Get().LoadDefaultTextures();
 

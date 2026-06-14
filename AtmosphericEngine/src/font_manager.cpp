@@ -2,6 +2,7 @@
 #include "stb_truetype.h"
 
 #include "Atmospheric/font_manager.hpp"
+#include "Atmospheric/gfx_factory.hpp"
 #include <cmath>
 #include <fmt/format.h>
 #include <fstream>
@@ -10,11 +11,12 @@ FontManager::FontManager() {
 }
 
 FontManager::~FontManager() {
-    // Clean up all font textures
     for (auto& [id, font] : _fonts) {
-        if (font.textureID != 0) {
-            glDeleteTextures(1, &font.textureID);
-        }
+        if (font.textureID == 0) continue;
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+        if (GfxFactory::GetBackend() == GfxBackend::WebGPU) continue; // released by GfxFactory::Shutdown
+#endif
+        glDeleteTextures(1, &font.textureID);
     }
 }
 
@@ -195,28 +197,31 @@ bool FontManager::BakeFontAtlas(
         if (glyphHeight > rowHeight) rowHeight = glyphHeight;
     }
 
-    // Create OpenGL texture
-    glGenTextures(1, &font.textureID);
-    glBindTexture(GL_TEXTURE_2D, font.textureID);
-
-    // Use linear filtering for resolution independence
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
     // Convert single-channel to RGBA (white text with alpha)
     std::vector<unsigned char> rgbaData(atlasSize * atlasSize * 4);
     for (int i = 0; i < atlasSize * atlasSize; i++) {
-        rgbaData[i * 4 + 0] = 255;// R
-        rgbaData[i * 4 + 1] = 255;// G
-        rgbaData[i * 4 + 2] = 255;// B
-        rgbaData[i * 4 + 3] = atlasBitmap[i];// A (from grayscale)
+        rgbaData[i * 4 + 0] = 255;
+        rgbaData[i * 4 + 1] = 255;
+        rgbaData[i * 4 + 2] = 255;
+        rgbaData[i * 4 + 3] = atlasBitmap[i];
     }
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, atlasSize, atlasSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgbaData.data());
-
-    glBindTexture(GL_TEXTURE_2D, 0);
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        font.textureID = GfxFactory::UploadTexture2D(rgbaData.data(), atlasSize, atlasSize);
+    } else
+#endif
+    {
+        // OpenGL path
+        glGenTextures(1, &font.textureID);
+        glBindTexture(GL_TEXTURE_2D, font.textureID);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, atlasSize, atlasSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgbaData.data());
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
 
     return true;
 }
