@@ -30,7 +30,12 @@ SDL_Window* GfxFactory::_sdlWindow = nullptr;
 void GfxFactory::Init() {
 #if defined(AE_USE_WEBGPU)
     // ── Create instance ───────────────────────────────────────────────────────
+    // timedWaitAnyEnable must be set for wgpuInstanceWaitAny with non-zero timeout.
+    WGPUInstanceFeatures instFeatures{};
+    instFeatures.timedWaitAnyEnable   = true;
+    instFeatures.timedWaitAnyMaxCount = 1;
     WGPUInstanceDescriptor instDesc{};
+    instDesc.features = instFeatures;
     WGPUInstance inst = wgpuCreateInstance(&instDesc);
     if (!inst) {
         Console::Get()->Warn("[GfxFactory] wgpuCreateInstance failed. Falling back to WebGL 2.");
