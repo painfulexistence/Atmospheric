@@ -121,9 +121,15 @@ Window::Window(WindowProps props) {
     }
 
 #ifdef __EMSCRIPTEN__
+#if defined(AE_USE_WEBGPU)
+    // Do not create a WebGL context — the canvas must be free for WebGPU.
+    // glfwSwapBuffers and glfwMakeContextCurrent become no-ops with NO_API.
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+#else
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+#endif
 #else
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
@@ -147,8 +153,10 @@ Window::Window(WindowProps props) {
 
     GLFWwindow* window = static_cast<GLFWwindow*>(this->_internal);
     glfwSetWindowUserPointer(window, this);
+#if !(defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU))
     glfwMakeContextCurrent(window);
     glfwSwapInterval(props.vsync ? 1 : 0);
+#endif
 
     _instance = this;
 }
