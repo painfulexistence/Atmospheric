@@ -76,33 +76,16 @@ void GfxFactory::SetWebGPUDevice(WGPUDevice device) {
     _wgpuQueue  = wgpuDeviceGetQueue(device);
     Console::Get()->Info(fmt::format("[GfxFactory] SetWebGPUDevice: queue={}", (void*)_wgpuQueue));
 
-    // Create and configure the HTML canvas surface.
-    // In emsdk's WebGPU bindings, wgpuInstanceCreateSurface ignores the
-    // instance and routes entirely through the canvas selector, so we pass
-    // nullptr rather than creating a mismatched WGPUInstance (which would
-    // assert inside wgpuInstanceCreateSurface).
-    WGPUSurfaceDescriptorFromCanvasHTMLSelector canvasDesc{};
-    canvasDesc.chain.sType = WGPUSType_SurfaceDescriptorFromCanvasHTMLSelector;
-    canvasDesc.selector    = "#canvas";
-    WGPUSurfaceDescriptor surfDesc{};
-    surfDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&canvasDesc);
-    _surface = wgpuInstanceCreateSurface(nullptr, &surfDesc);
-    Console::Get()->Info(fmt::format("[GfxFactory] SetWebGPUDevice: surface={}", (void*)_surface));
-
-    auto [w, h] = Window::Get()->GetFramebufferSize();
-    Console::Get()->Info(fmt::format("[GfxFactory] SetWebGPUDevice: configuring surface {}x{}", w, h));
-    _swapchainFormat = WGPUTextureFormat_BGRA8Unorm;
-    WGPUSurfaceConfiguration cfg{};
-    cfg.device      = device;
-    cfg.format      = _swapchainFormat;
-    cfg.usage       = WGPUTextureUsage_RenderAttachment;
-    cfg.width       = static_cast<uint32_t>(w);
-    cfg.height      = static_cast<uint32_t>(h);
-    cfg.presentMode = WGPUPresentMode_Fifo;
-    cfg.alphaMode   = WGPUCompositeAlphaMode_Opaque;
-    wgpuSurfaceConfigure(_surface, &cfg);
-
-    Console::Get()->Info("[GfxFactory] WebGPU device ready. Surface configured.");
+    // emsdk 4.x: wgpuInstanceCreateSurface asserts when the WGPUDevice was
+    // obtained via emscripten_webgpu_get_device() (pre-init JS path) because
+    // there is no matching C-side WGPUInstance.  Proper surface creation
+    // requires Dawn as a submodule (see Chrome WebGPU article).
+    // For now fall back to WebGL 2 so the engine stays functional.
+    Console::Get()->Warn("[GfxFactory] WebGPU surface creation not supported with "
+                         "emscripten_webgpu_get_device() in emsdk 4.x. Falling back to WebGL 2.");
+    _wgpuDevice = nullptr;
+    _wgpuQueue  = nullptr;
+    _backend    = GfxBackend::OpenGL;
 }
 
 WGPUTextureView GfxFactory::GetCurrentSwapchainView() {
