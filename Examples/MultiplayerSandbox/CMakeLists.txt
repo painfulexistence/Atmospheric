@@ -1,4 +1,4 @@
-set(GAME_NAME NoitaLikeDemo)
+set(GAME_NAME MultiplayerSandbox)
 
 find_package(glm CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)

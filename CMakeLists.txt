@@ -37,4 +37,3 @@ include(FetchContent)
 
 add_subdirectory(Engine)
 add_subdirectory(Examples)
-add_subdirectory(Example_NoitaLike)
