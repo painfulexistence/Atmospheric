@@ -409,7 +409,10 @@ if(EMSCRIPTEN)
     target_compile_options(AtmosphericEngine PUBLIC -pthread)
     if(AE_USE_WEBGPU)
         target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_WEBGPU)
-        # AE_USE_WEBGPU=ON compiles in WebGPU support (emdawnwebgpu).
+        # --use-port=emdawnwebgpu must appear in both compile and link flags:
+        #   compile: adds the webgpu/ include path so <webgpu/webgpu.h> resolves
+        #   link:    links the emdawnwebgpu JS/WASM glue
+        target_compile_options(AtmosphericEngine PUBLIC --use-port=emdawnwebgpu)
         # The actual backend is chosen at runtime by GfxFactory::Init():
         #   - browser exposes navigator.gpu → attempts WebGPU
         #   - WebGPU unavailable or device creation fails → falls back to WebGL 2
