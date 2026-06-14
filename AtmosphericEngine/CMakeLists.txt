@@ -406,7 +406,7 @@ if(EMSCRIPTEN)
     # -sPTHREAD_POOL_SIZE           : pre-spawn workers to avoid first-use latency
     # -sPROXY_TO_PTHREAD=1          : run main() on a worker so blocking Wait()
     #                                 calls do not freeze the browser main thread
-    target_compile_options(AtmosphericEngine PRIVATE -pthread)
+    target_compile_options(AtmosphericEngine PUBLIC -pthread)
     if(AE_USE_WEBGPU)
         target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_WEBGPU)
         # AE_USE_WEBGPU=ON compiles in WebGPU support (emdawnwebgpu).
