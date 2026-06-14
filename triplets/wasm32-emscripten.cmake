@@ -8,4 +8,4 @@ set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
 # CMAKE_C_FLAGS_INIT assignments.  VCPKG_C_FLAGS alone is not sufficient
 # because the chainloaded Emscripten toolchain can overwrite it.
 set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE
-    "${CMAKE_CURRENT_LIST_DIR}/../platforms/emscripten-threads.cmake")
+    "${CMAKE_CURRENT_LIST_DIR}/../cmake/emscripten-threads.cmake")

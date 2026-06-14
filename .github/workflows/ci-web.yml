@@ -34,7 +34,6 @@ jobs:
             cmake
             frontends
             triplets
-            platforms
             Example_HelloWorld
             Example_VoxelWorld
             Example_Physics2D
@@ -127,7 +126,6 @@ jobs:
             cmake
             frontends
             triplets
-            platforms
             Example_HelloWorld
             Example_VoxelWorld
             Example_Physics2D
