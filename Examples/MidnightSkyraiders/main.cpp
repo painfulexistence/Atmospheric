@@ -1,5 +1,4 @@
 #include "Atmospheric.hpp"
-#include "ExampleComponents.hpp"
 
 #include <vector>
 #include <algorithm>
@@ -10,7 +9,43 @@
 #include <string>
 #include <functional>
 
-using namespace axex;
+// ─── Local components ─────────────────────────────────────────────────────────
+
+// A single horizontally-scrolling background layer. Spawns two seamless tiles
+// on attach and scrolls them left at `speed` px/s, wrapping continuously.
+class ParallaxLayerComponent : public Component {
+    int _textureID; float _worldSize, _speed; int _zOrder;
+    GameObject* _tiles[2] = {};
+    float _t = 0;
+public:
+    ParallaxLayerComponent(GameObject* go, int textureID, float worldSize, float speed, int zOrder)
+        : _textureID(textureID), _worldSize(worldSize), _speed(speed), _zOrder(zOrder) {
+        gameObject = go;
+    }
+    std::string GetName() const override { return "ParallaxLayerComponent"; }
+    void OnAttach() override {
+        auto* app = gameObject->GetApp();
+        for (int i = 0; i < 2; i++) {
+            _tiles[i] = app->CreateGameObject(glm::vec2(i * _worldSize, 0.0f));
+            _tiles[i]->AddComponent<SpriteComponent>(SpriteProps{
+                .size = glm::vec2(_worldSize, _worldSize),
+                .pivot = glm::vec2(0.0f, 0.0f),
+                .color = glm::vec4(1.0f),
+                .textureID = _textureID,
+                .layer = CanvasLayer::LAYER_WORLD_2D,
+                .flipY = true,
+                .zOrder = _zOrder,
+            });
+        }
+    }
+    void OnTick(float dt) override {
+        _t += dt;
+        float xA = std::fmod(-_speed * _t, _worldSize);
+        if (xA > 0.0f) xA -= _worldSize;
+        if (_tiles[0]) _tiles[0]->SetPosition(glm::vec3(xA, 0.0f, 0.0f));
+        if (_tiles[1]) _tiles[1]->SetPosition(glm::vec3(xA + _worldSize, 0.0f, 0.0f));
+    }
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Wave data: 24 waves × 5 rows × 8 cols  (0=empty, 1-3=enemy type)

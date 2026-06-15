@@ -8,7 +8,6 @@
 #include "Atmospheric/game_object.hpp"
 #include "Atmospheric/graphics_server.hpp"
 #include "Atmospheric/input.hpp"
-#include "Atmospheric/motion_components.hpp"
 #include "Atmospheric/particle_emitter.hpp"
 #include "Atmospheric/particle_server.hpp"
 #include "Atmospheric/physics_server.hpp"

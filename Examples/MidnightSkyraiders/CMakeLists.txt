@@ -13,7 +13,6 @@ target_include_directories(${GAME_NAME} PRIVATE
 )
 target_link_libraries(${GAME_NAME} PRIVATE
     AtmosphericEngine
-    ExampleComponents
     glm::glm
     fmt::fmt
     BulletSoftBody BulletDynamics BulletCollision LinearMath

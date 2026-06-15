@@ -1,4 +1,3 @@
-add_subdirectory(Common)
 add_subdirectory(LuaScripting)
 add_subdirectory(HelloWorld)
 add_subdirectory(SceneLoader)
