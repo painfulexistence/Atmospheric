@@ -346,6 +346,17 @@ class CardBattleGame : public Application {
         const auto& hand = _mgr->deck()->Hand();
         int energy = _mgr->energy()->Energy();
 
+        if (_handRects.size() < hand.size()) {
+            _handRects.clear();
+            const float CW = 116.0f, CH = 166.0f, cgap = 12.0f;
+            int hn = (int)hand.size();
+            float htotal = hn * CW + std::max(0, hn - 1) * cgap;
+            float hstart = (W - htotal) * 0.5f;
+            float baseY = H - CH - 24.0f;
+            for (int i = 0; i < hn; ++i)
+                _handRects.push_back({ hstart + i * (CW + cgap), baseY, CW, CH });
+        }
+
         for (int i = 0; i < (int)hand.size(); ++i) {
             const CardDef& card = GetCard(hand[i]);
             Rect r = _handRects[i];
@@ -447,6 +458,17 @@ class CardBattleGame : public Application {
         drawTextCentered("Choose a card to add to your deck", W * 0.5f, 140, 0.8f, COL_SELECT);
 
         const auto& rc = _mgr->rewardCards();
+
+        if (_rewardRects.size() < rc.size()) {
+            _rewardRects.clear();
+            const float CW = 116.0f, CH = 166.0f;
+            int rn = (int)rc.size();
+            float rtotal = rn * CW + std::max(0, rn - 1) * 40.0f;
+            float rstart = (W - rtotal) * 0.5f;
+            for (int i = 0; i < rn; ++i)
+                _rewardRects.push_back({ rstart + i * (CW + 40.0f), H * 0.5f - CH * 0.5f, CW, CH });
+        }
+
         for (int i = 0; i < (int)rc.size(); ++i) {
             const CardDef& card = GetCard(rc[i]);
             Rect r = _rewardRects[i];
