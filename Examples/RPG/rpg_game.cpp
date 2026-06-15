@@ -1,4 +1,5 @@
 #include "rpg_game.hpp"
+#include <Atmospheric/component.hpp>
 #include <Atmospheric/graphics_server.hpp>
 #include <Atmospheric/gfx_factory.hpp>
 #include <Atmospheric/input.hpp>
@@ -8,6 +9,107 @@
 
 using glm::vec2;
 using glm::vec4;
+
+// ============================================================================
+// Game-specific components (defined here — not promoted to the shared library
+// because they are tightly coupled to the RPG data structs).
+// ============================================================================
+
+// Handles WASD movement for the player with axis-separated tilemap collision.
+// Writes directly to Player::x/y so the draw and camera code are unaffected.
+class PlayerMovementComponent : public Component {
+    Player* _player;
+    std::function<bool(float, float)> _isSolid;
+public:
+    PlayerMovementComponent(GameObject* go, Player* player,
+                            std::function<bool(float, float)> isSolid)
+        : _player(player), _isSolid(std::move(isSolid)) {}
+
+    std::string GetName() const override { return "PlayerMovementComponent"; }
+
+    void OnTick(float dt) override {
+        auto* inp = gameObject->GetApp()->GetInput();
+        float ax = 0, ay = 0;
+        if (inp->IsKeyDown(Key::LEFT)  || inp->IsKeyDown(Key::A)) ax -= 1;
+        if (inp->IsKeyDown(Key::RIGHT) || inp->IsKeyDown(Key::D)) ax += 1;
+        if (inp->IsKeyDown(Key::UP)    || inp->IsKeyDown(Key::W)) ay -= 1;
+        if (inp->IsKeyDown(Key::DOWN)  || inp->IsKeyDown(Key::S)) ay += 1;
+
+        Player& p = *_player;
+        p.moving = (ax || ay);
+        if (!p.moving) return;
+
+        float len = std::sqrt(ax*ax + ay*ay);
+        float nx = ax/len, ny = ay/len;
+        float newX = p.x + nx * p.speed * dt;
+        float newY = p.y + ny * p.speed * dt;
+
+        if (!_isSolid(newX, p.y)         && !_isSolid(newX + p.w - 1, p.y) &&
+            !_isSolid(newX, p.y + p.h-1) && !_isSolid(newX + p.w-1, p.y + p.h-1))
+            p.x = newX;
+        if (!_isSolid(p.x, newY)         && !_isSolid(p.x + p.w - 1, newY) &&
+            !_isSolid(p.x, newY + p.h-1) && !_isSolid(p.x + p.w-1, p.y + p.h-1))
+            p.y = newY;
+
+        if (ax) p.facing = (ax > 0) ? 1.0f : -1.0f;
+    }
+};
+
+// Drives a single enemy: aggro detection, movement toward the player (with
+// tilemap collision), sprite-animation selection, and battle trigger on contact.
+// Writes directly to Enemy::x/y/aggro so the draw and lighting code are unaffected.
+struct EnemyAICallbacks {
+    std::function<vec2()>              getPlayerCenter;
+    std::function<AABB()>              getPlayerAABB;
+    std::function<bool(float, float)>  isSolid;
+    std::function<bool()>              isExploring;  // gate: skip AI during battle
+    std::function<void(int)>           onContact;    // arg: enemy index
+};
+
+class EnemyAIComponent : public Component {
+    Enemy*          _data;
+    SpriteAnimator* _anim;
+    int             _idx;
+    EnemyAICallbacks _cb;
+public:
+    EnemyAIComponent(GameObject* go, Enemy* data, SpriteAnimator* anim,
+                     int idx, EnemyAICallbacks cbs)
+        : _data(data), _anim(anim), _idx(idx), _cb(std::move(cbs)) {}
+
+    std::string GetName() const override { return "EnemyAIComponent"; }
+
+    void OnTick(float dt) override {
+        if (!_data->alive || !_cb.isExploring()) return;
+
+        vec2 pc = _cb.getPlayerCenter();
+        float dx = pc.x - _data->cx(), dy = pc.y - _data->cy();
+        float dist = std::sqrt(dx*dx + dy*dy);
+
+        if (dist < _data->aggroR) {
+            _data->aggro = true;
+            float nx = dx/dist, ny = dy/dist;
+            float newX = _data->x + nx * 30.0f * dt;
+            float newY = _data->y + ny * 30.0f * dt;
+
+            if (!_cb.isSolid(newX, _data->y)             && !_cb.isSolid(newX + _data->w-1, _data->y) &&
+                !_cb.isSolid(newX, _data->y + _data->h-1) && !_cb.isSolid(newX + _data->w-1, _data->y + _data->h-1))
+                _data->x = newX;
+            if (!_cb.isSolid(_data->x, newY)              && !_cb.isSolid(_data->x + _data->w-1, newY) &&
+                !_cb.isSolid(_data->x, newY + _data->h-1) && !_cb.isSolid(_data->x + _data->w-1, _data->y + _data->h-1))
+                _data->y = newY;
+
+            _anim->play("walk");
+        } else {
+            _data->aggro = false;
+            _anim->play("idle");
+        }
+        _anim->update(dt);
+
+        if (AABBOverlaps(_cb.getPlayerAABB(), _data->aabb())) {
+            _cb.onContact(_idx);
+        }
+    }
+};
 
 // ============================================================================
 // Construction
@@ -97,7 +199,7 @@ void RPGGame::OnLoad() {
     const uint8_t npcPx[4]={180,200,80,255};
     _npcTex = GfxFactory::UploadTexture2D(npcPx,1,1);
 
-    // Player
+    // Player data
     _player.x = 3*TS; _player.y = 3*TS; _player.w = _player.h = CS;
     _player.initSkills(); _player.initItems();
     _playerAnim.addClip("idle",   MakeClip(0,{0,1},0.4f));
@@ -105,7 +207,6 @@ void RPGGame::OnLoad() {
     _playerAnim.addClip("attack", MakeClip(1,{0,1,2},0.1f,false));
     _playerAnim.play("idle");
 
-    // Battle state: link player stats
     _battle.playerStats = &_player.stats;
     _battle.level = 1; _battle.exp = 0; _battle.expToNext = 20; _battle.gold = 0;
 
@@ -115,7 +216,7 @@ void RPGGame::OnLoad() {
         def.name = "Slime";
         def.stats = {30,30,0,0,8,5,6,};
         def.expReward = 8; def.goldReward = 3;
-        def.chooseAction = [](const Stats&, const Stats&) { return -1; }; // always attack
+        def.chooseAction = [](const Stats&, const Stats&) { return -1; };
         return Enemy(ex, ey, std::move(def));
     };
     auto makeGoblin = [&](float ex, float ey) {
@@ -123,10 +224,7 @@ void RPGGame::OnLoad() {
         def.name = "Goblin";
         def.stats = {45,45,0,0,12,6,10};
         def.expReward = 12; def.goldReward = 5;
-        // Goblin: attack twice if hp > 50%
-        def.chooseAction = [](const Stats& self, const Stats&) {
-            return (self.hp > self.maxHp/2) ? -1 : -1;
-        };
+        def.chooseAction = [](const Stats&, const Stats&) { return -1; };
         return Enemy(ex, ey, std::move(def));
     };
     auto makeOrc = [&](float ex, float ey) {
@@ -168,9 +266,36 @@ void RPGGame::OnLoad() {
         "Merchant: (Shop not yet open)",
     }));
 
-    // Lighting — mild darkness so tiles are still readable, lights pop in dark spots
+    // Lighting
     _lighting.ambientR = 0.25f; _lighting.ambientG = 0.28f;
     _lighting.ambientB = 0.40f; _lighting.ambientA = 1.0f;
+
+    // ── Attach components ─────────────────────────────────────────────────────
+
+    // Player movement component — updates _player.x/y each tick.
+    auto* playerObj = CreateGameObject();
+    playerObj->SetName("Player");
+    playerObj->AddComponent<PlayerMovementComponent>(
+        &_player,
+        [this](float x, float y) { return _tilemap->IsSolidWorld(x, y); }
+    );
+
+    // Enemy AI components — update _enemies[i].x/y/aggro each tick and
+    // trigger battles on player contact.
+    for (size_t i = 0; i < _enemies.size(); i++) {
+        auto* eObj = CreateGameObject();
+        eObj->SetName("Enemy_" + std::to_string(i));
+        eObj->AddComponent<EnemyAIComponent>(
+            &_enemies[i], &_enemyAnims[i], (int)i,
+            EnemyAICallbacks{
+                [this]()           { return vec2(_player.cx(), _player.cy()); },
+                [this]()           { return _player.aabb(); },
+                [this](float x, float y) { return _tilemap->IsSolidWorld(x, y); },
+                [this]()           { return _mode == GameMode::Explore; },
+                [this](int k)      { if (_mode == GameMode::Explore) StartBattle(k); },
+            }
+        );
+    }
 }
 
 // ============================================================================
@@ -241,7 +366,6 @@ void RPGGame::OnUpdate(float dt, float /*time*/) {
         break;
     }
 
-    // Global fade-in
     if (_fadeIn > 0.01f) {
         auto* gfx = GetGraphicsServer();
         gfx->DrawQuad(0,0,(float)_screenW,(float)_screenH,0,vec4(0,0,0,_fadeIn));
@@ -254,18 +378,20 @@ void RPGGame::OnUpdate(float dt, float /*time*/) {
 
 void RPGGame::UpdateExplore(float dt) {
     auto* inp = GetInput();
-    Player& p = _player;
 
-    float ax=0, ay=0;
-    if (inp->IsKeyDown(Key::LEFT)  || inp->IsKeyDown(Key::A)) ax -= 1;
-    if (inp->IsKeyDown(Key::RIGHT) || inp->IsKeyDown(Key::D)) ax += 1;
-    if (inp->IsKeyDown(Key::UP)    || inp->IsKeyDown(Key::W)) ay -= 1;
-    if (inp->IsKeyDown(Key::DOWN)  || inp->IsKeyDown(Key::S)) ay += 1;
+    // Player movement and enemy AI are now handled by components (ticked by
+    // GameLayer::OnUpdate after this method). UpdateExplore handles only
+    // player-initiated actions and camera/lighting.
 
-    // NPC interaction
+    // Player animation is driven here (reads _player.moving set by the component
+    // last tick — one frame behind, imperceptible at 60fps).
+    _playerAnim.play(_player.moving ? "walk" : "idle");
+    _playerAnim.update(dt);
+
+    // NPC interaction (player-initiated; not appropriate as an NPC component)
     if (inp->IsKeyPressed(Key::E)) {
         for (auto& npc : _npcs) {
-            float dx = npc.cx()-p.cx(), dy = npc.cy()-p.cy();
+            float dx = npc.cx()-_player.cx(), dy = npc.cy()-_player.cy();
             if (std::sqrt(dx*dx+dy*dy) < npc.talkR) {
                 _dialogText  = npc.dialogue[npc.dialogIdx % (int)npc.dialogue.size()];
                 npc.dialogIdx++;
@@ -275,65 +401,18 @@ void RPGGame::UpdateExplore(float dt) {
         }
     }
 
-    p.moving = (ax||ay);
-    _playerAnim.play(p.moving ? "walk" : "idle");
-    _playerAnim.update(dt);
-
-    if (ax||ay) {
-        float len = std::sqrt(ax*ax+ay*ay);
-        float nx = ax/len, ny = ay/len;
-        float newX = p.x + nx*p.speed*dt;
-        float newY = p.y + ny*p.speed*dt;
-        auto solid = [&](float wx,float wy){ return _tilemap->IsSolidWorld(wx,wy); };
-        if (!solid(newX,p.y)&&!solid(newX+p.w-1,p.y)&&
-            !solid(newX,p.y+p.h-1)&&!solid(newX+p.w-1,p.y+p.h-1)) p.x = newX;
-        if (!solid(p.x,newY)&&!solid(p.x+p.w-1,newY)&&
-            !solid(p.x,newY+p.h-1)&&!solid(p.x+p.w-1,p.y+p.h-1)) p.y = newY;
-        if (ax) p.facing = (ax>0)?1.0f:-1.0f;
-    }
-
-    for (size_t i = 0; i < _enemies.size(); i++) {
-        Enemy& e = _enemies[i];
-        if (!e.alive) continue;
-        _enemyAnims[i].update(dt);
-
-        float dx = p.cx()-e.cx(), dy = p.cy()-e.cy();
-        float dist = std::sqrt(dx*dx+dy*dy);
-
-        // Aggro movement
-        if (dist < e.aggroR) {
-            e.aggro = true;
-            float nx = dx/dist, ny = dy/dist;
-            float newX = e.x + nx*30.0f*dt;
-            float newY = e.y + ny*30.0f*dt;
-            auto solid = [&](float wx,float wy){ return _tilemap->IsSolidWorld(wx,wy); };
-            if (!solid(newX,e.y)&&!solid(newX+e.w-1,e.y)&&
-                !solid(newX,e.y+e.h-1)&&!solid(newX+e.w-1,e.y+e.h-1)) e.x = newX;
-            if (!solid(e.x,newY)&&!solid(e.x+e.w-1,newY)&&
-                !solid(e.x,newY+e.h-1)&&!solid(e.x+e.w-1,e.y+e.h-1)) e.y = newY;
-            _enemyAnims[i].play("walk");
-        } else {
-            e.aggro = false;
-            _enemyAnims[i].play("idle");
-        }
-
-        // Contact → start battle
-        if (AABBOverlaps(p.aabb(), e.aabb())) {
-            StartBattle((int)i);
-            return;
-        }
-    }
-
     // Camera
-    CameraFollow(p.cx(), p.cy());
+    CameraFollow(_player.cx(), _player.cy());
     CameraClamp(_tilemap->GetPixelWidth(), _tilemap->GetPixelHeight());
 
-    // Lighting
+    // Lighting — updated here so it reflects the same frame's positions used
+    // for drawing (enemy animations are one tick behind in _enemyAnims, which
+    // is updated by EnemyAIComponent::OnTick)
     _lighting.lights.clear();
-    _lighting.lights.push_back({p.cx()-_camX, p.cy()-_camY, 1.0f,0.9f,0.7f, 120.0f, 1.5f});
+    _lighting.lights.push_back({_player.cx()-_camX, _player.cy()-_camY, 1.0f,0.9f,0.7f, 120.0f, 1.5f});
     for (const auto& e : _enemies) {
         if (!e.alive||!e.aggro) continue;
-        float dx=e.cx()-p.cx(), dy=e.cy()-p.cy();
+        float dx=e.cx()-_player.cx(), dy=e.cy()-_player.cy();
         if (dx*dx+dy*dy > 250.0f*250.0f) continue;
         _lighting.lights.push_back({e.cx()-_camX,e.cy()-_camY,1,0.3f,0.2f,80,0.7f});
     }
@@ -415,29 +494,23 @@ void RPGGame::StartBattle(int enemyIdx) {
     _battle.enemyNames.push_back(e.def.name);
     _battle.enemyIndices.push_back(enemyIdx);
 
-    // Push enemy slightly away so contact doesn't re-trigger
     float dx = e.cx()-_player.cx(), dy = e.cy()-_player.cy();
     float len = std::sqrt(dx*dx+dy*dy);
     if (len > 0) { e.x += dx/len*32; e.y += dy/len*32; }
 
     _battle.pushLog(fmt::format("A {} appeared!", e.def.name));
-
-    // SPD comparison for turn order
     _battle.playerFirst = (_player.stats.spd >= e.def.stats.spd);
 }
 
 void RPGGame::EndBattle(bool victory) {
     if (victory) {
-        // Apply exp/gold
         _battle.exp  += _battle.expGained;
         _battle.gold += _battle.goldGained;
 
-        // Level up
         while (_battle.exp >= _battle.expToNext) {
             _battle.exp -= _battle.expToNext;
             _battle.level++;
             _battle.expToNext = (int)(_battle.expToNext * 1.5f);
-            // Stat increase
             _player.stats.maxHp  += 8;
             _player.stats.maxMp  += 4;
             _player.stats.atk    += 2;
@@ -448,7 +521,6 @@ void RPGGame::EndBattle(bool victory) {
             _battle.pushLog(fmt::format("Level up! Now LV{}!", _battle.level));
         }
 
-        // Mark world enemy dead
         for (int idx : _battle.enemyIndices) {
             if (idx >= 0 && idx < (int)_enemies.size())
                 _enemies[idx].alive = false;
@@ -500,7 +572,7 @@ void RPGGame::ExecutePlayerSkill(int idx) {
         _battle.pushLog(fmt::format("{} hits all for ~{} dmg!", sk.name, total/(int)_battle.enemyStats.size()));
     } else if (sk.target == SkillTarget::Self) {
         int v = sk.calc(_player.stats, _player.stats);
-        _player.stats.heal(-v); // calc returns negative for heal
+        _player.stats.heal(-v);
         _battle.pushLog(fmt::format("{}: restored {} HP!", sk.name, -v));
     } else {
         Stats& es = _battle.enemyStats[_battle.targetIdx];
@@ -530,14 +602,12 @@ void RPGGame::ExecutePlayerItem(int idx) {
 }
 
 void RPGGame::ExecuteEnemyTurn() {
-    // Find first living enemy
     int actorIdx = -1;
     for (int i=0; i<(int)_battle.enemyStats.size(); i++)
         if (!_battle.enemyStats[i].isDead()) { actorIdx = i; break; }
     if (actorIdx < 0) return;
 
     const Enemy& worldE = _enemies[_battle.enemyIndices[actorIdx]];
-    Stats& es = _battle.enemyStats[actorIdx];
     int dmg = CalcDamage(worldE.def.stats.atk, _player.stats.def);
     _player.stats.takeDamage(dmg);
     _battle.pushLog(fmt::format("{} attacks for {} dmg!", worldE.def.name, dmg));
@@ -548,7 +618,6 @@ void RPGGame::UpdateBattle(float dt) {
     auto* inp = GetInput();
     BattleState& b = _battle;
 
-    // Screen shake
     if (_shakeTimer > 0) _shakeTimer -= dt;
     else _shakeMag = 0;
 
@@ -590,7 +659,6 @@ void RPGGame::UpdateBattle(float dt) {
         b.actionTimer -= dt;
         if (b.actionTimer <= 0) {
             if (b.allEnemiesDead()) {
-                // Tally rewards
                 for (int idx : b.enemyIndices) {
                     if (idx<(int)_enemies.size()) {
                         b.expGained  += _enemies[idx].def.expReward;
@@ -616,7 +684,6 @@ void RPGGame::UpdateBattle(float dt) {
     case BattlePhase::Defeat:
         b.actionTimer -= dt;
         if (b.actionTimer <= 0) {
-            // Revive with 1 HP and go back to explore
             _player.stats.hp = 1;
             EndBattle(false);
         }
@@ -640,23 +707,19 @@ void RPGGame::DrawBattle() {
     auto* gfx = GetGraphicsServer();
     const float W = (float)_screenW, H = (float)_screenH;
 
-    // Background
     gfx->DrawQuad(W*0.5f, H*0.5f, W, H, 0, vec4(0.08f,0.06f,0.14f,1));
 
-    // Subtle grid lines
     for (int i=0; i<8; i++) {
         float y = i * H/8.0f;
         gfx->DrawRect(0, y, W, 1, vec4(0.15f,0.12f,0.22f,0.5f));
     }
 
-    // Screen shake offset
     float shakeX = 0, shakeY = 0;
     if (_shakeTimer > 0) {
         std::uniform_real_distribution<float> d(-_shakeMag, _shakeMag);
         shakeX = d(_rng); shakeY = d(_rng);
     }
 
-    // Enemy sprites (right side)
     constexpr int CCOLS=4, CROWS=2;
     for (int i=0; i<(int)_battle.enemyStats.size(); i++) {
         const Stats& es = _battle.enemyStats[i];
@@ -668,12 +731,10 @@ void RPGGame::DrawBattle() {
         gfx->DrawSprite2D(ex-sz*0.5f, ey-sz*0.5f, sz, sz, _enemyTex, uv0, uv1,
                            (_battle.targetIdx==i) ? vec4(1,0.7f,0.7f,1) : vec4(1));
 
-        // Enemy name + HP bar above
         gfx->DrawText(_fontID, _battle.enemyNames[i], ex-30, ey-sz*0.5f-28, 0.6f, vec4(1,0.8f,0.8f,1));
         DrawHPBar(ex-50, ey-sz*0.5f-14, 100, 8, es.hp, es.maxHp, vec4(0.9f,0.2f,0.2f,1));
     }
 
-    // Player sprite (left side)
     {
         auto [fc,fr] = _playerAnim.currentFrame();
         float px = W*0.25f, py = H*0.42f, sz = 72;
@@ -686,7 +747,6 @@ void RPGGame::DrawBattle() {
     DrawBattleMenu();
     DrawBattleLog();
 
-    // Phase overlay text
     if (_battle.phase == BattlePhase::Victory) {
         DrawPanel(W*0.5f-120, H*0.5f-30, 240, 60, vec4(0.05f,0.2f,0.05f,0.95f));
         gfx->DrawText(_fontID, "VICTORY!", W*0.5f-55, H*0.5f-14, 1.0f, vec4(0.3f,1,0.4f,1));

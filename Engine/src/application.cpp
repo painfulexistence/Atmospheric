@@ -677,11 +677,24 @@ void Application::Quit() {
     _window->Close();
 }
 
+void Application::DeferSpawn(std::function<void()> cmd) {
+    _spawnQueue.push_back(std::move(cmd));
+}
+
 void Application::Update(const FrameData& props) {
 #ifdef TRACY_ENABLE
     ZoneScopedN("Application::Update");
 #endif
     if (!_sceneReady) return;
+
+    // Flush deferred spawns queued by component OnTick last frame.
+    // This runs before OnUpdate and GameLayer::OnUpdate, so _entities is not
+    // being iterated and CreateGameObject is safe to call here.
+    {
+        std::vector<std::function<void()>> queue;
+        queue.swap(_spawnQueue);
+        for (auto& cmd : queue) cmd();
+    }
 
     float dt = props.deltaTime;
 

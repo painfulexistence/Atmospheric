@@ -8,15 +8,14 @@
 #include <sstream>
 #include <iomanip>
 #include <string>
+#include <functional>
 
 using namespace axex;
 
-// ─────────────────────────────────────────────────────────────
-// Wave data: 24 waves × 5 rows × 8 cols  (0=empty,1-3=enemy type)
-// Source: painfulexistence/midnight-skyraiders
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Wave data: 24 waves × 5 rows × 8 cols  (0=empty, 1-3=enemy type)
+// ─────────────────────────────────────────────────────────────────────────────
 static const int WAVES[24][5][8] = {
-    // Easy 0-7
     {{0,1,1,0,0,0,0,0},{0,0,0,0,0,0,0,0},{0,0,0,0,0,0,0,0},{0,0,0,0,0,0,0,0},{0,1,1,0,0,0,0,0}},
     {{0,0,1,0,0,0,0,0},{0,1,0,0,0,0,0,0},{0,0,0,0,0,0,0,0},{0,1,0,0,0,0,0,0},{0,0,1,0,0,0,0,0}},
     {{0,1,0,1,0,0,0,0},{0,0,0,0,0,0,0,0},{0,0,0,0,0,0,0,0},{0,0,0,0,0,0,0,0},{0,1,0,1,0,0,0,0}},
@@ -25,7 +24,6 @@ static const int WAVES[24][5][8] = {
     {{1,0,0,0,0,0,0,0},{0,1,0,0,0,0,0,0},{0,0,0,0,0,0,0,0},{0,1,0,0,0,0,0,0},{0,0,1,0,0,0,0,0}},
     {{0,0,1,0,0,0,0,0},{0,1,0,0,0,0,0,0},{0,0,0,0,0,0,0,0},{0,1,0,0,0,0,0,0},{1,0,0,0,0,0,0,0}},
     {{0,0,0,0,0,0,0,0},{1,0,1,0,0,0,0,0},{0,0,0,0,0,0,0,0},{1,0,1,0,0,0,0,0},{0,0,0,0,0,0,0,0}},
-    // Medium 8-18
     {{0,0,1,0,1,0,0,0},{0,1,0,1,0,0,0,0},{1,0,1,0,0,0,0,0},{0,1,0,1,0,0,0,0},{0,0,1,0,1,0,0,0}},
     {{0,0,1,0,2,0,0,0},{0,1,0,1,0,0,0,0},{1,0,1,0,0,0,0,0},{0,1,0,1,0,0,0,0},{0,0,1,0,2,0,0,0}},
     {{0,0,0,0,0,0,0,0},{0,1,0,0,1,0,0,0},{1,1,1,1,1,1,0,0},{0,1,0,0,1,0,0,0},{0,0,0,0,0,0,0,0}},
@@ -37,7 +35,6 @@ static const int WAVES[24][5][8] = {
     {{1,0,0,0,1,0,0,0},{0,2,0,2,0,0,0,0},{0,0,3,0,0,0,0,0},{0,2,0,2,0,0,0,0},{1,0,0,0,1,0,0,0}},
     {{0,0,0,0,0,0,0,0},{0,1,1,1,0,0,0,0},{0,1,0,1,0,0,0,0},{0,1,1,1,0,0,0,0},{0,0,0,0,0,0,0,0}},
     {{0,0,0,0,0,0,0,0},{0,1,1,1,0,0,0,0},{0,1,3,1,0,0,0,0},{0,1,1,1,0,0,0,0},{0,0,0,0,0,0,0,0}},
-    // Hard 19-23
     {{0,0,0,0,0,0,0,0},{0,2,0,1,0,2,0,1},{0,1,0,1,0,1,0,1},{0,1,0,2,0,1,0,2},{0,0,0,0,0,0,0,0}},
     {{1,0,0,0,0,0,1,0},{0,1,0,1,0,1,0,0},{0,0,1,0,1,0,0,0},{0,1,0,1,0,1,0,0},{1,0,0,0,0,0,1,0}},
     {{1,0,0,0,0,0,1,0},{0,1,0,1,0,1,0,0},{0,0,3,0,3,0,0,0},{0,1,0,1,0,1,0,0},{1,0,0,0,0,0,1,0}},
@@ -50,42 +47,176 @@ static float rnd() {
     return std::uniform_real_distribution<float>(0.0f, 1.0f)(g_rng);
 }
 
-// World size: 600x600, screen-space coordinates (top-left origin, y-down).
-// The original game uses center origin (0,0) with y-down.
-// Conversion: eng_x = orig_x + 300;  eng_y = orig_y + 300
+// World is 600×600 screen-space; original game uses center origin, y-down.
+// Conversion: eng_x = orig_x + 300, eng_y = orig_y + 300.
 static constexpr float WORLD = 600.0f;
 static constexpr float HALF  = WORLD * 0.5f;
 
 static float toEngX(float ox) { return ox + HALF; }
-static float toEngY(float oy) { return oy + HALF; } // screen-space y-down
+static float toEngY(float oy) { return oy + HALF; }
 
 enum class GameState { Title, Playing, GameOver };
 
-struct BulletData {
-    GameObject* obj = nullptr;
-    int   type      = 0;
-    float x         = 0.0f;
-    float y         = 0.0f;
-    float lifetime  = 0.0f;
-    float maxLife   = 99999.0f;
-    bool  alive     = true;
+// ─────────────────────────────────────────────────────────────────────────────
+// Game-specific components
+//
+// These are defined here rather than in ExampleComponents because they are
+// tightly coupled to this game's coordinate system and bullet-type enum.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Moves a bullet each tick according to its type; self-deactivates when done.
+// Negative types are enemy bullets; non-negative are player bullets.
+class BulletMovementComponent : public Component {
+    int   _type;
+    float _bx, _by;
+    float _lifetime = 0.0f, _maxLife;
+public:
+    BulletMovementComponent(GameObject* go, int type, float x, float y, float maxLife)
+        : _type(type), _bx(x), _by(y), _maxLife(maxLife) {}
+
+    std::string GetName() const override { return "BulletMovementComponent"; }
+    int GetType() const { return _type; }
+
+    void OnTick(float dt) override {
+        _lifetime += dt;
+        if (_lifetime >= _maxLife) { gameObject->SetActive(false); return; }
+
+        const float lt = _lifetime;
+        switch (_type) {
+        case 0:  // player normal — straight right
+            _bx += 800.0f * dt;
+            break;
+        case 1:  // player circle — fast + random y jitter
+            _bx += 1200.0f * dt;
+            _by += (rnd() * 2.0f - 1.0f) * 300.0f * dt;
+            break;
+        case 2: { // player orbit — sinusoidal spiral
+            _bx += (10.0f * std::sin(20.0f * lt) + 200.0f) * dt;
+            _by += 300.0f * -std::cos(20.0f * lt) * dt;
+            break;
+        }
+        case -1: case -2:  // enemy straight — moves left
+            _bx -= 600.0f * dt;
+            break;
+        case -3: { // enemy spiral
+            const float ltMs = lt * 1000.0f;
+            _bx += ltMs * 0.002f * std::cos(5.0f * lt) * 60.0f * dt;
+            _by += ltMs * 0.002f * std::sin(5.0f * lt) * 60.0f * dt;
+            break;
+        }
+        }
+
+        if (_bx > WORLD + 50.0f || _bx < -50.0f ||
+            _by < -50.0f        || _by > WORLD + 50.0f) {
+            gameObject->SetActive(false);
+            return;
+        }
+        gameObject->SetPosition(glm::vec3(_bx, _by, 0.0f));
+    }
 };
 
-struct EnemyData {
-    GameObject* obj      = nullptr;
-    int   type           = 1;
-    int   level          = 1;
-    float x              = 0.0f;
-    float y              = 0.0f;
-    float speed          = 0.0f;
-    float fireCooldown   = 2.0f;
-    float fireTimer      = 0.0f;
-    float raidDistance   = 0.0f;
-    float raidStartTimer = 0.0f;
-    float raidEndTimer   = 0.0f;
-    float raidDuration   = 0.0f;
-    bool  alive          = true;
+// Drives an enemy's horizontal scroll + optional vertical raid each tick.
+// Self-deactivates when the enemy scrolls off the left edge.
+class EnemyMovementComponent : public Component {
+    int   _type, _level;
+    float _speed;
+    float _raidDist, _raidStart, _raidEnd, _raidDur;
+public:
+    EnemyMovementComponent(GameObject* go, int type, int level, float speed,
+                           float raidDist, float raidStart, float raidDur)
+        : _type(type), _level(level), _speed(speed),
+          _raidDist(raidDist), _raidStart(raidStart), _raidEnd(raidDur), _raidDur(raidDur) {}
+
+    std::string GetName() const override { return "EnemyMovementComponent"; }
+    int GetLevel()     const { return _level; }
+    int GetEnemyType() const { return _type; }
+
+    void OnTick(float dt) override {
+        glm::vec3 pos = gameObject->GetPosition();
+        pos.x -= _speed * dt;
+
+        _raidStart -= dt;
+        if (_raidStart <= 0.0f && _raidEnd > 0.0f && _raidDur > 0.0f) {
+            pos.y += (_raidDist / _raidDur) * dt;
+            _raidEnd -= dt;
+        }
+
+        if (pos.x < -48.0f) { gameObject->SetActive(false); return; }
+        gameObject->SetPosition(pos);
+    }
 };
+
+// Counts down a fire timer and invokes onFire when ready. The callback uses
+// DeferSpawn to create the bullet object safely outside the tick loop.
+class EnemyFireComponent : public Component {
+    int   _type;
+    float _fireCD, _fireTimer;
+    float* _sysFireTimer;
+    std::function<void(int, float, float)> _onFire;
+public:
+    EnemyFireComponent(GameObject* go, int type, float fireCD, float initTimer,
+                       float* sysFireTimer,
+                       std::function<void(int, float, float)> onFire)
+        : _type(type), _fireCD(fireCD), _fireTimer(initTimer),
+          _sysFireTimer(sysFireTimer), _onFire(std::move(onFire)) {}
+
+    std::string GetName() const override { return "EnemyFireComponent"; }
+
+    void OnTick(float dt) override {
+        _fireTimer -= dt;
+        if (_fireTimer > 0.0f) return;
+
+        bool sysOk = (*_sysFireTimer <= 0.0f && rnd() < 0.5f);
+        if (_type == 3 || sysOk) {
+            glm::vec3 pos = gameObject->GetPosition();
+            int bt = (_type == 1) ? -1 : (_type == 2 ? -2 : -3);
+            if (_onFire) _onFire(bt, pos.x - 16.0f, pos.y);
+            _fireTimer    = _fireCD;
+            *_sysFireTimer = 0.5f;
+        }
+    }
+};
+
+// Handles WASD player movement and triggers auto-fire via onFire callback.
+// Holds a pointer to fireCooldown so level-up changes are reflected immediately.
+class PlayerInputComponent : public Component {
+    float  _speed = 500.0f;
+    float  _plW, _plH;
+    float* _fireCDPtr;
+    float  _fireTimer;
+    std::function<void(float, float)> _onFire;
+public:
+    PlayerInputComponent(GameObject* go, float* fireCDPtr, float w, float h,
+                         std::function<void(float, float)> onFire)
+        : _plW(w), _plH(h), _fireCDPtr(fireCDPtr), _fireTimer(*fireCDPtr),
+          _onFire(std::move(onFire)) {}
+
+    std::string GetName() const override { return "PlayerInputComponent"; }
+
+    void OnTick(float dt) override {
+        auto* inp = gameObject->GetApp()->GetInput();
+        float dx = 0, dy = 0;
+        if (inp->IsKeyDown(Key::LEFT))  dx = -_speed * dt;
+        if (inp->IsKeyDown(Key::RIGHT)) dx = +_speed * dt;
+        if (inp->IsKeyDown(Key::UP))    dy = -_speed * dt;
+        if (inp->IsKeyDown(Key::DOWN))  dy = +_speed * dt;
+
+        glm::vec3 pos = gameObject->GetPosition();
+        pos.x = std::clamp(pos.x + dx, _plW * 0.5f, WORLD - _plW * 0.5f);
+        pos.y = std::clamp(pos.y + dy, _plH * 0.5f, WORLD - _plH * 0.5f);
+        gameObject->SetPosition(pos);
+
+        _fireTimer -= dt;
+        if (_fireTimer <= 0.0f) {
+            _fireTimer = *_fireCDPtr;
+            if (_onFire) _onFire(pos.x, pos.y);
+        }
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Application
+// ─────────────────────────────────────────────────────────────────────────────
 
 class MidnightSkyraiders : public Application {
     using Application::Application;
@@ -100,49 +231,42 @@ class MidnightSkyraiders : public Application {
     GLuint texTitle   = 0;
     FontID fontID     = 0;
 
-    // Audio
     MusicID bgm     = 0;
     SoundID sfxExp  = 0;
     SoundID sfxOver = 0;
 
-    // Parallax background: 3 layers, each handled by a ParallaxLayerComponent.
-    // Scroll speeds in px/s: original -0.005, -0.04, -0.12 px/ms x 1000.
     static constexpr float BG_SPEED[3] = { 5.0f, 40.0f, 120.0f };
 
-    // Title sprite
-    GameObject* titleObj = nullptr;
+    // Title
+    GameObject* titleObj  = nullptr;
 
-    // Player (positions are screen-space centers)
+    // Player
     GameObject* playerObj = nullptr;
-    // Original top-left (-280, -32), 32x32 -> center (-264, -16) -> screen (36, 284)
-    float plX = toEngX(-264.0f);
-    float plY = toEngY(-16.0f);
     static constexpr float PL_W = 32.0f, PL_H = 32.0f;
-    float fireCooldown = 0.5f;
-    float fireTimer    = 0.0f;
-    int   plLevel = 1;
-    float plXP    = 0.0f;
-    float nextXP  = 100.0f;
+    float fireCooldown    = 0.5f;
+    int   plLevel         = 1;
+    float plXP            = 0.0f;
+    float nextXP          = 100.0f;
 
-    // Entities
-    std::vector<BulletData> bullets;
-    std::vector<EnemyData>  enemies;
+    // Entity tracking for collision + cleanup (behavior lives in components)
+    std::vector<GameObject*> _bullets;
+    std::vector<GameObject*> _enemies;
     float waveTimer         = 0.0f;
     int   waveCount         = 0;
     float enemySysFireTimer = 0.0f;
 
     // Score
-    double   score   = 0.0;
-    int      kills   = 0;
+    double    score   = 0.0;
+    int       kills   = 0;
     long long hiScore = 0;
 
-    // ───────────────────────────────────────────
+    // ── lifecycle ──────────────────────────────────────────────────────────────
+
     void OnInit() override {
         GoScene("main", [this]{ OnLoad(); });
     }
 
     void OnLoad() override {
-        // Load textures
         auto& am = AssetManager::Get();
         texPlayer  = am.CreateTexture("assets/images/player.png");
         texEnemy1  = am.CreateTexture("assets/images/enemy1.png");
@@ -164,8 +288,6 @@ class MidnightSkyraiders : public Application {
         sfxExp  = audio.LoadSound("assets/sounds/explosion.wav");
         sfxOver = audio.LoadSound("assets/sounds/game-over.wav");
 
-        // Parallax background: one self-scrolling layer component per texture.
-        // Each ParallaxLayerComponent spawns and animates its own seamless tiles.
         auto* background = CreateGameObject();
         background->SetName("Background");
         for (int i = 0; i < 3; i++) {
@@ -181,11 +303,11 @@ class MidnightSkyraiders : public Application {
         case GameState::Playing:  updatePlaying(dt);  break;
         case GameState::GameOver: updateGameOver(dt); break;
         }
-
         if (input.IsKeyDown(Key::ESCAPE)) Quit();
     }
 
-    // ───────────────── Title ───────────────
+    // ── title ─────────────────────────────────────────────────────────────────
+
     void enterTitle() {
         state = GameState::Title;
         titleObj = CreateGameObject(glm::vec2(HALF, HALF));
@@ -201,9 +323,9 @@ class MidnightSkyraiders : public Application {
     }
 
     void updateTitle(float /*dt*/) {
-        auto* gs = GraphicsServer::Get();
-        gs->DrawText(fontID, "Press SPACE or ENTER to start",
-            HALF - 140.0f, WORLD - 60.0f, 0.8f, glm::vec4(1.0f,1.0f,0.0f,1.0f));
+        GraphicsServer::Get()->DrawText(fontID,
+            "Press SPACE or ENTER to start",
+            HALF - 140.0f, WORLD - 60.0f, 0.8f, glm::vec4(1,1,0,1));
 
         if (input.IsKeyPressed(Key::SPACE) || input.IsKeyPressed(Key::ENTER)) {
             if (titleObj) { titleObj->SetActive(false); titleObj = nullptr; }
@@ -211,23 +333,20 @@ class MidnightSkyraiders : public Application {
         }
     }
 
-    // ───────────────── Game ───────────────
+    // ── game ──────────────────────────────────────────────────────────────────
+
     void startGame() {
-        // Clean up any objects from a previous session
-        for (auto& b : bullets) if (b.obj) b.obj->SetActive(false);
-        for (auto& e : enemies) if (e.obj) e.obj->SetActive(false);
+        for (auto* b : _bullets) b->SetActive(false);
+        for (auto* e : _enemies) e->SetActive(false);
         if (playerObj) { playerObj->SetActive(false); playerObj = nullptr; }
-        bullets.clear();
-        enemies.clear();
+        _bullets.clear();
+        _enemies.clear();
 
-        // Reset game state
         score = 0.0; kills = 0; plLevel = 1; plXP = 0.0f; nextXP = 100.0f;
-        fireCooldown = 0.5f; fireTimer = 0.0f;
+        fireCooldown = 0.5f;
         waveTimer = 0.0f; waveCount = 0; enemySysFireTimer = 0.0f;
-        plX = toEngX(-264.0f); plY = toEngY(-16.0f);
 
-        // Spawn player sprite
-        playerObj = CreateGameObject(glm::vec2(plX, plY));
+        playerObj = CreateGameObject(glm::vec2(toEngX(-264.0f), toEngY(-16.0f)));
         playerObj->AddComponent<SpriteComponent>(SpriteProps{
             .size      = glm::vec2(PL_W, PL_H),
             .pivot     = glm::vec2(0.5f, 0.5f),
@@ -237,64 +356,50 @@ class MidnightSkyraiders : public Application {
             .flipY     = true,
             .zOrder    = 5,
         });
+        playerObj->AddComponent<PlayerInputComponent>(
+            &fireCooldown, PL_W, PL_H,
+            [this](float px, float py) { spawnPlayerBulletsDeferred(px, py); }
+        );
 
         spawnWave();
         audio.PlayMusic(bgm);
         state = GameState::Playing;
     }
 
+    // OnUpdate runs before the entity tick loop, so cross-entity work goes here.
     void updatePlaying(float dt) {
-        score += dt * 100.0; // 100 pts/s (original: dt_ms * 0.1)
-
-        handleInput(dt);
+        score += dt * 100.0;
 
         waveTimer += dt;
         if (waveTimer >= 10.0f) { waveTimer = 0.0f; spawnWave(); }
 
         enemySysFireTimer -= dt;
-        for (auto& e : enemies) if (e.alive) updateEnemy(e, dt);
-        for (auto& b : bullets) if (b.alive) updateBullet(b, dt);
 
         checkCollisions();
         flushDead();
         drawHUD();
     }
 
-    void handleInput(float dt) {
-        float dx = 0.0f, dy = 0.0f;
-        if (input.IsKeyDown(Key::LEFT))  dx = -500.0f * dt;
-        if (input.IsKeyDown(Key::RIGHT)) dx = +500.0f * dt;
-        if (input.IsKeyDown(Key::UP))    dy = -500.0f * dt; // screen-space: UP = -y
-        if (input.IsKeyDown(Key::DOWN))  dy = +500.0f * dt;
+    // ── spawn ─────────────────────────────────────────────────────────────────
 
-        plX = std::clamp(plX + dx, PL_W * 0.5f, WORLD - PL_W * 0.5f);
-        plY = std::clamp(plY + dy, PL_H * 0.5f, WORLD - PL_H * 0.5f);
-        playerObj->SetPosition(glm::vec3(plX, plY, 0.0f));
-
-        fireTimer -= dt;
-        if (fireTimer <= 0.0f) {
-            fireTimer = fireCooldown;
-            spawnPlayerBullets();
-        }
-    }
-
-    void spawnPlayerBullets() {
-        float bx = plX + PL_W * 0.5f; // right edge of player
-        float by = plY;
-        spawnBullet(0, bx, by);
-        spawnBullet(1, bx, by);
-        spawnBullet(2, bx, by);
+    // Called from PlayerInputComponent::OnTick — must defer because we are
+    // inside the entity tick loop and CreateGameObject would invalidate it.
+    void spawnPlayerBulletsDeferred(float px, float py) {
+        float bx = px + PL_W * 0.5f;
+        DeferSpawn([this, bx, py]{ spawnBullet(0, bx, py); });
+        DeferSpawn([this, bx, py]{ spawnBullet(1, bx, py); });
+        DeferSpawn([this, bx, py]{ spawnBullet(2, bx, py); });
     }
 
     void spawnBullet(int type, float x, float y) {
         float maxLife = 99999.0f;
-        if (type == 2)  maxLife = 2.0f;  // orbit: 2000ms
-        if (type == -3) maxLife = 2.5f;  // spiral: 2500ms
+        if (type ==  2) maxLife = 2.0f;
+        if (type == -3) maxLife = 2.5f;
 
         GLuint tex = texBullet;
         switch (type) {
-        case 1:  tex = texCircle;  break;
-        case 2:  tex = texOrbit;   break;
+        case  1: tex = texCircle;  break;
+        case  2: tex = texOrbit;   break;
         case -1: tex = texECircle; break;
         case -2: tex = texEBullet; break;
         case -3: tex = texECircle; break;
@@ -310,148 +415,32 @@ class MidnightSkyraiders : public Application {
             .flipY     = true,
             .zOrder    = 3,
         });
-        bullets.push_back({ obj, type, x, y, 0.0f, maxLife, true });
-    }
-
-    void updateBullet(BulletData& b, float dt) {
-        b.lifetime += dt;
-        if (b.lifetime >= b.maxLife) { b.alive = false; return; }
-
-        const float lt = b.lifetime;
-        switch (b.type) {
-        case 0:  // Player normal -- straight right
-            b.x += 800.0f * dt;
-            break;
-        case 1:  // Player circle -- fast + random y jitter
-            b.x += 1200.0f * dt;
-            b.y += (rnd() * 2.0f - 1.0f) * 300.0f * dt;
-            break;
-        case 2: { // Player orbit -- sinusoidal spiral
-            // Original: dx = 10*sin(0.02*ltMs) + 0.2*dt, dy = 10*-cos(0.02*ltMs)
-            // Engine: orbit speed 20 rad/s (0.02 rad/ms x 1000)
-            b.x += (10.0f * std::sin(20.0f * lt) + 200.0f) * dt;
-            b.y += 300.0f * -std::cos(20.0f * lt) * dt;
-            break;
-        }
-        case -1: case -2: // Enemy straight -- moves left
-            b.x -= 600.0f * dt;
-            break;
-        case -3: { // Enemy spiral -- expanding outward
-            // Original (unscaled by dt, ~60fps): dx = lt_ms*0.002*cos(0.005*lt_ms)
-            // Approximated with dt compensation:
-            const float ltMs = lt * 1000.0f;
-            b.x += ltMs * 0.002f * std::cos(5.0f * lt) * 60.0f * dt;
-            b.y += ltMs * 0.002f * std::sin(5.0f * lt) * 60.0f * dt;
-            break;
-        }
-        }
-
-        // Despawn when off-screen
-        if (b.x > WORLD + 50.0f || b.x < -50.0f ||
-            b.y < -50.0f       || b.y > WORLD + 50.0f) {
-            b.alive = false;
-            return;
-        }
-        b.obj->SetPosition(glm::vec3(b.x, b.y, 0.0f));
-    }
-
-    void updateEnemy(EnemyData& e, float dt) {
-        // Horizontal movement
-        e.x -= e.speed * dt;
-
-        // Vertical raid movement
-        e.raidStartTimer -= dt;
-        if (e.raidStartTimer <= 0.0f && e.raidEndTimer > 0.0f && e.raidDuration > 0.0f) {
-            e.y += (e.raidDistance / e.raidDuration) * dt;
-            e.raidEndTimer -= dt;
-        }
-
-        // Firing
-        e.fireTimer -= dt;
-        if (e.fireTimer <= 0.0f) {
-            bool sysOk = (enemySysFireTimer <= 0.0f && rnd() < 0.5f);
-            if (e.type == 3 || sysOk) {
-                int bt = (e.type == 1) ? -1 : (e.type == 2 ? -2 : -3);
-                spawnBullet(bt, e.x - 16.0f, e.y);
-                e.fireTimer      = e.fireCooldown;
-                enemySysFireTimer = 0.5f;
-            }
-        }
-
-        // Remove when fully off left edge
-        if (e.x < -48.0f) { e.alive = false; return; }
-        e.obj->SetPosition(glm::vec3(e.x, e.y, 0.0f));
-    }
-
-    void checkCollisions() {
-        for (auto& b : bullets) {
-            if (!b.alive || b.type < 0) continue;
-            for (auto& e : enemies) {
-                if (!e.alive) continue;
-                if (aabb(b.x, b.y, 8.0f, 8.0f, e.x, e.y, 32.0f, 32.0f)) {
-                    b.alive = false;
-                    killEnemy(e);
-                }
-            }
-        }
-        // Note: player death is intentionally disabled (isInvincible = true in original).
-        // Uncomment the block below to enable it:
-        //
-        // for (auto& b : bullets) {
-        //     if (!b.alive || b.type >= 0) continue;
-        //     if (aabb(b.x, b.y, 8, 8, plX, plY, PL_W, PL_H)) {
-        //         b.alive = false;
-        //         triggerGameOver();
-        //     }
-        // }
-    }
-
-    void killEnemy(EnemyData& e) {
-        e.alive = false;
-        score  += 100.0;
-        kills++;
-        plXP += 5.0f * e.level + 5.0f;
-        audio.PlaySoundVariation(sfxExp, 0.1f, 0.05f);
-
-        while (plXP >= nextXP) {
-            plXP -= nextXP;
-            plLevel++;
-            nextXP       = 50.0f * plLevel * plLevel + 50.0f;
-            fireCooldown = std::max(0.55f - plLevel * 0.05f, 0.05f);
-        }
+        obj->AddComponent<BulletMovementComponent>(type, x, y, maxLife);
+        _bullets.push_back(obj);
     }
 
     void spawnWave() {
         waveCount++;
-        // Matches original off-by-one: floor(random*(24-1)) -> 0..22
-        int idx  = (int)(rnd() * 23);
-        float ox = (rnd() - 0.5f) * 30.0f;
-        float oy = (rnd() - 0.5f) * 30.0f;
+        int   idx = (int)(rnd() * 23);
+        float ox  = (rnd() - 0.5f) * 30.0f;
+        float oy  = (rnd() - 0.5f) * 30.0f;
 
         for (int row = 0; row < 5; row++) {
             for (int col = 0; col < 8; col++) {
                 int cell = WAVES[idx][row][col];
                 if (cell == 0) continue;
-                // Original grid position (center origin, y-down)
-                float origX = col * 90.0f - 300.0f + ox;
-                float origY = row * 90.0f - 300.0f + 100.0f + oy;
-                // Screen-space position; spawn off right edge
-                float ex = toEngX(origX) + WORLD;
-                float ey = toEngY(origY);
+                float ex = toEngX(col * 90.0f - 300.0f + ox) + WORLD;
+                float ey = toEngY(row * 90.0f - 300.0f + 100.0f + oy);
                 spawnEnemy(cell, ex, ey, waveCount);
             }
         }
     }
 
     void spawnEnemy(int type, float x, float y, int lvl) {
-        // Speed: original 0.05*(floor(lvl/5)+1) px/ms x 1000 = px/s, capped at 500
-        float spd     = std::min(std::floor(lvl / 5.0f + 1.0f) * 50.0f, 500.0f);
-        float fireCD  = std::max(2.0f - 0.1f * lvl, 0.5f);
-        float raidDur = (type == 1) ? 0.0f : (type == 2 ? 1.0f : 2.0f);
-        // Raid direction: move toward vertical center
+        float spd      = std::min(std::floor(lvl / 5.0f + 1.0f) * 50.0f, 500.0f);
+        float fireCD   = std::max(2.0f - 0.1f * lvl, 0.5f);
+        float raidDur  = (type == 1) ? 0.0f : (type == 2 ? 1.0f : 2.0f);
         float raidDist = (y < HALF ? +1.0f : -1.0f) * 600.0f * rnd();
-        // Raid start delay: original (1000/speed_px_ms)*rnd() ms
-        //                   engine: (1000/spd)*rnd() seconds
         float raidStart = (raidDur > 0.0f) ? (1000.0f / spd) * rnd() : 0.0f;
 
         GLuint tex = (type == 1) ? texEnemy1 : (type == 2 ? texEnemy2 : texEnemy3);
@@ -465,30 +454,68 @@ class MidnightSkyraiders : public Application {
             .flipY     = true,
             .zOrder    = 4,
         });
-
-        enemies.push_back({
-            obj, type, lvl, x, y,
-            spd, fireCD, fireCD * rnd(),
-            raidDist, raidStart, 1.0f, raidDur,
-            true
-        });
+        obj->AddComponent<EnemyMovementComponent>(type, lvl, spd, raidDist, raidStart, raidDur);
+        // Enemy bullets are deferred: EnemyFireComponent is inside the tick loop.
+        obj->AddComponent<EnemyFireComponent>(
+            type, fireCD, fireCD * rnd(),
+            &enemySysFireTimer,
+            [this](int bt, float fx, float fy) {
+                DeferSpawn([this, bt, fx, fy]{ spawnBullet(bt, fx, fy); });
+            }
+        );
+        _enemies.push_back(obj);
     }
 
+    // ── collision + cleanup ────────────────────────────────────────────────────
+
+    // Runs in OnUpdate (before entity ticks), so it sees positions from last frame.
+    // At 60fps the one-frame lag is imperceptible.
+    void checkCollisions() {
+        for (auto* b : _bullets) {
+            if (!b->isActive) continue;
+            auto* bm = b->GetComponent<BulletMovementComponent>();
+            if (!bm || bm->GetType() < 0) continue;  // skip enemy bullets
+
+            glm::vec3 bpos = b->GetPosition();
+            for (auto* e : _enemies) {
+                if (!e->isActive) continue;
+                glm::vec3 epos = e->GetPosition();
+                if (aabb(bpos.x, bpos.y, 8, 8, epos.x, epos.y, 32, 32)) {
+                    b->SetActive(false);
+                    killEnemy(e);
+                }
+            }
+        }
+        // Player invincibility is preserved from the original (no friendly-fire check).
+    }
+
+    void killEnemy(GameObject* enemy) {
+        enemy->SetActive(false);
+        auto* em = enemy->GetComponent<EnemyMovementComponent>();
+        int level = em ? em->GetLevel() : 1;
+
+        score  += 100.0;
+        kills++;
+        plXP += 5.0f * level + 5.0f;
+        audio.PlaySoundVariation(sfxExp, 0.1f, 0.05f);
+
+        while (plXP >= nextXP) {
+            plXP -= nextXP;
+            plLevel++;
+            nextXP       = 50.0f * plLevel * plLevel + 50.0f;
+            fireCooldown = std::max(0.55f - plLevel * 0.05f, 0.05f);
+        }
+    }
+
+    // Remove inactive entries from tracking vectors; the GameObjects themselves
+    // remain in _entities (owned by Application) but will not tick.
     void flushDead() {
-        for (auto& b : bullets)
-            if (!b.alive && b.obj) { b.obj->SetActive(false); b.obj = nullptr; }
-        bullets.erase(
-            std::remove_if(bullets.begin(), bullets.end(),
-                [](const BulletData& b){ return !b.alive; }),
-            bullets.end());
-
-        for (auto& e : enemies)
-            if (!e.alive && e.obj) { e.obj->SetActive(false); e.obj = nullptr; }
-        enemies.erase(
-            std::remove_if(enemies.begin(), enemies.end(),
-                [](const EnemyData& e){ return !e.alive; }),
-            enemies.end());
+        auto inactive = [](GameObject* g) { return !g->isActive; };
+        _bullets.erase(std::remove_if(_bullets.begin(), _bullets.end(), inactive), _bullets.end());
+        _enemies.erase(std::remove_if(_enemies.begin(), _enemies.end(), inactive), _enemies.end());
     }
+
+    // ── HUD ───────────────────────────────────────────────────────────────────
 
     void drawHUD() {
         auto* gs = GraphicsServer::Get();
@@ -498,10 +525,11 @@ class MidnightSkyraiders : public Application {
             << "  Lv." << plLevel
             << " (" << std::fixed << std::setprecision(1)
             << (plXP / nextXP * 100.0f) << "%)";
-        gs->DrawText(fontID, oss.str(), 10.0f, 10.0f, 0.8f, glm::vec4(1.0f,1.0f,0.0f,1.0f));
+        gs->DrawText(fontID, oss.str(), 10.0f, 10.0f, 0.8f, glm::vec4(1,1,0,1));
     }
 
-    // ───────────────── Game Over ───────────────
+    // ── game over ─────────────────────────────────────────────────────────────
+
     void triggerGameOver() {
         if ((long long)score > hiScore) hiScore = (long long)score;
         audio.StopMusic(bgm);
@@ -512,26 +540,30 @@ class MidnightSkyraiders : public Application {
     void updateGameOver(float /*dt*/) {
         auto* gs = GraphicsServer::Get();
         gs->DrawText(fontID, "GAME  OVER",
-            HALF - 80.0f, WORLD * 0.30f, 1.5f, glm::vec4(1.0f,0.2f,0.2f,1.0f));
+            HALF - 80.0f, WORLD * 0.30f, 1.5f, glm::vec4(1,0.2f,0.2f,1));
         gs->DrawText(fontID, "Score: " + std::to_string((long long)score),
             HALF - 80.0f, WORLD * 0.45f, 1.0f, glm::vec4(1,1,1,1));
         gs->DrawText(fontID, "Best:  " + std::to_string(hiScore),
-            HALF - 80.0f, WORLD * 0.52f, 1.0f, glm::vec4(1.0f,1.0f,0.0f,1.0f));
+            HALF - 80.0f, WORLD * 0.52f, 1.0f, glm::vec4(1,1,0,1));
         gs->DrawText(fontID, "Press SPACE or ENTER to play again",
-            HALF - 150.0f, WORLD * 0.65f, 0.8f, glm::vec4(0.8f,0.8f,0.8f,1.0f));
-
+            HALF - 150.0f, WORLD * 0.65f, 0.8f, glm::vec4(0.8f,0.8f,0.8f,1));
         if (input.IsKeyPressed(Key::SPACE) || input.IsKeyPressed(Key::ENTER)) {
             startGame();
         }
     }
 
-    // ───────────────── Helpers ───────────────
+    // ── helpers ───────────────────────────────────────────────────────────────
+
     static bool aabb(float ax, float ay, float aw, float ah,
                      float bx, float by, float bw, float bh) {
         return std::abs(ax - bx) < (aw + bw) * 0.5f &&
                std::abs(ay - by) < (ah + bh) * 0.5f;
     }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Entry points
+// ─────────────────────────────────────────────────────────────────────────────
 
 #ifdef __EMSCRIPTEN__
 static const std::vector<std::string> kAssets = {
