@@ -44,6 +44,10 @@ class CardBattleGame : public Application {
 
     bool  _prevMouseDown = false;
 
+    glm::vec2 getMousePos() {
+        return input.GetMousePosition() / Window::Get()->GetDPI();
+    }
+
     // ---- palette -----------------------------------------------------------
     const vec4 COL_BG      {0.10f, 0.09f, 0.13f, 1.0f};
     const vec4 COL_PANEL   {0.18f, 0.17f, 0.24f, 1.0f};
@@ -110,7 +114,7 @@ class CardBattleGame : public Application {
             _handRects.push_back({ hstart + i * (CW + cgap), baseY, CW, CH });
 
         // hovered card
-        vec2 m = input.GetMousePosition();
+        vec2 m = getMousePos();
         _hoverCard = -1;
         for (int i = hn - 1; i >= 0; --i)
             if (_handRects[i].Contains(m)) { _hoverCard = i; break; }
@@ -134,7 +138,7 @@ class CardBattleGame : public Application {
     //  input  ->  intents on the battle manager
     // ========================================================================
     void handleInput() {
-        vec2 m = input.GetMousePosition();
+        vec2 m = getMousePos();
         bool down  = Window::Get()->GetMouseButtonState();
         bool click = down && !_prevMouseDown;
         _prevMouseDown = down;
@@ -452,7 +456,7 @@ class CardBattleGame : public Application {
                 case CardKind::Skill:  base = vec4(0.22f,0.30f,0.45f,1); break;
                 case CardKind::Power:  base = vec4(0.45f,0.38f,0.18f,1); break;
             }
-            bool hov = r.Contains(input.GetMousePosition());
+            bool hov = r.Contains(getMousePos());
             drawPanel(r, base, hov ? COL_SELECT : COL_BORDER);
             g->DrawCircle(r.x + 16, r.y + 16, 14, vec4(0.15f,0.15f,0.25f,1));
             drawTextCentered(std::to_string(card.cost), r.x + 16, r.y + 6, 0.5f, COL_WHITE);
