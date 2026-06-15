@@ -1,9 +1,8 @@
 #include "lua_application.hpp"
 #include "Atmospheric/gfx_factory.hpp"
 
-// std::filesystem maps to Emscripten's MEMFS on web builds;
-// text files written there by FileSystem::Prefetch() are visible here.
 #include <filesystem>
+#include "Atmospheric/file_system.hpp"
 
 // Forward declarations for binding functions
 void BindCoreTypes(sol::state& lua);
@@ -20,8 +19,6 @@ LuaApplication::~LuaApplication() {
 }
 
 void LuaApplication::OnInit() {
-    GoScene("main", [this]{ OnLoad(); });
-
     // Load default shaders and textures (skip in WebGPU mode — no GL context)
 #if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
     if (GfxFactory::GetBackend() != GfxBackend::WebGPU)
@@ -38,6 +35,11 @@ void LuaApplication::OnInit() {
     BindEngineAPIs();
     LoadUserScripts();
     CacheCallbacks();
+
+    // GoScene must be called AFTER CacheCallbacks() so that _luaLoad is valid
+    // when OnLoad() fires. On native, Prefetch is synchronous, meaning the
+    // onReady callback (→ OnLoad → Lua load()) executes immediately inside GoScene.
+    GoScene("main", [this]{ OnLoad(); });
 }
 
 void LuaApplication::OnLoad() {
@@ -77,12 +79,16 @@ void LuaApplication::InitializeLua() {
       sol::lib::debug
     );
 
-    // Set up package path for require().
-    // This makes require("components.player") find
-    // ./assets/scripts/components/player.lua in MEMFS (web) or on disk (native).
     std::string packagePath = _lua["package"]["path"];
-    packagePath += ";./assets/scripts/?.lua";
-    packagePath += ";./assets/scripts/?/init.lua";
+    // Add relative paths first to prioritize the current working directory
+    packagePath += ";./assets/scripts/?.lua;./assets/scripts/?/init.lua";
+    packagePath += ";./assets/?.lua;./assets/?/init.lua";
+    packagePath += ";./?.lua;./?/init.lua";
+
+    // Add resolved fallback paths next
+    std::string baseScripts = FileSystem::Get().ResolvePath("assets/scripts");
+    packagePath += ";" + baseScripts + "/?.lua";
+    packagePath += ";" + baseScripts + "/?/init.lua";
     _lua["package"]["path"] = packagePath;
 
     ENGINE_LOG("Lua environment initialized");
@@ -127,12 +133,43 @@ void LuaApplication::LoadUserScripts() {
 
     bool loaded = false;
     for (const auto& path : scriptPaths) {
+        std::string targetPath = path;
+        bool exists = false;
+
+#ifndef __EMSCRIPTEN__
+        // On native platforms, prioritize files in the current working directory
         if (std::filesystem::exists(path)) {
-            auto result = _lua.safe_script_file(path, sol::script_pass_on_error);
+            targetPath = path;
+            exists = true;
+        } else
+#endif
+        {
+            // Fall back to resolved virtual paths (cache, MEMFS, or g_basePath on native)
+            std::string resolved = FileSystem::Get().ResolvePath(path);
+            if (FileSystem::Get().Exists(resolved)) {
+                targetPath = resolved;
+                exists = true;
+            }
+        }
+
+        if (exists) {
+            auto result = _lua.safe_script_file(targetPath, sol::script_pass_on_error);
             if (!result.valid()) {
-                HandleError(result, "Loading " + path);
+                HandleError(result, "Loading " + targetPath);
             } else {
-                ENGINE_LOG("Loaded script: {}", path);
+                ENGINE_LOG("Loaded script: {}", targetPath);
+                
+                // Dynamically update package.path to prioritize the loaded script's directory
+                std::filesystem::path p(targetPath);
+                std::string baseDir = p.parent_path().string();
+                if (baseDir.empty()) {
+                    baseDir = ".";
+                }
+                std::string packagePath = _lua["package"]["path"];
+                packagePath = baseDir + "/?.lua;" + baseDir + "/?/init.lua;" + packagePath;
+                _lua["package"]["path"] = packagePath;
+                ENGINE_LOG("Updated Lua package.path to prioritize: {}", baseDir);
+
                 loaded = true;
                 break;
             }

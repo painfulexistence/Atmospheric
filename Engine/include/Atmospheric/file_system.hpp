@@ -101,6 +101,9 @@ public:
 
     bool IsCached(const std::string& path) const;
 
+    // Resolves a relative virtual path to an absolute/normalized platform path.
+    std::string ResolvePath(const std::string& path) const;
+
     // Release a cached entry to reclaim memory (after ConsumeSync is preferred).
     void EvictCache(const std::string& path);
 

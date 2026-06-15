@@ -71,28 +71,29 @@ else()
     )
 endif()
 
-# ── Asset sync for all platforms ──
-add_custom_target(sync_default_assets_${GAME_NAME} ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/Engine/default_assets
-        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets
-    COMMENT "Syncing default assets for ${GAME_NAME}"
-)
-add_dependencies(sync_default_assets_${GAME_NAME} ${GAME_NAME})
-
-set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
-if(EXISTS ${GAME_ASSETS_DIR})
-    add_custom_target(sync_game_assets_${GAME_NAME} ALL
+# ── Asset sync ───────────────────────────────────────────────────────────────
+if(NOT EMSCRIPTEN)
+    add_custom_command(
+        TARGET ${GAME_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${GAME_ASSETS_DIR}
-            ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets
-        COMMENT "Syncing game assets for ${GAME_NAME}"
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets
+            $<TARGET_FILE_DIR:${GAME_NAME}>/assets
+        COMMENT "Syncing default assets for ${GAME_NAME}"
     )
-    add_dependencies(sync_game_assets_${GAME_NAME} ${GAME_NAME})
 
-    # Auto convert textures if Basis Universal is enabled
-    ae_auto_convert_textures(${GAME_NAME}
-        ${GAME_ASSETS_DIR}/textures
-        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets/textures
-    )
+    set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
+    if(EXISTS ${GAME_ASSETS_DIR})
+        add_custom_command(
+            TARGET ${GAME_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${GAME_ASSETS_DIR}
+                $<TARGET_FILE_DIR:${GAME_NAME}>/assets
+            COMMENT "Syncing game assets for ${GAME_NAME}"
+        )
+
+        ae_auto_convert_textures(${GAME_NAME}
+            ${GAME_ASSETS_DIR}/textures
+            $<TARGET_FILE_DIR:${GAME_NAME}>/assets/textures
+        )
+    endif()
 endif()
