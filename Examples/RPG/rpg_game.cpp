@@ -53,6 +53,43 @@ public:
 
         if (ax) p.facing = (ax > 0) ? 1.0f : -1.0f;
     }
+
+    void DrawImGui() override {
+        if (ImGui::CollapsingHeader("PlayerMovementComponent")) {
+            ImGui::DragFloat("Move speed", &_player->speed, 1.0f, 10.0f, 500.0f);
+            ImGui::Text("Pos: %.1f, %.1f", _player->x, _player->y);
+            ImGui::Text("Facing: %s", _player->facing > 0 ? "right" : "left");
+        }
+    }
+};
+
+// Owns the player's character data for the editor: it doesn't drive any logic
+// (movement is PlayerMovementComponent's job), it exposes the Player stats and
+// run progression so they can be inspected / tuned live in the imgui editor.
+class PlayerComponent : public Component {
+    Player*      _player;
+    BattleState* _battle;
+public:
+    PlayerComponent(GameObject* go, Player* player, BattleState* battle)
+        : _player(player), _battle(battle) {}
+
+    std::string GetName() const override { return "PlayerComponent"; }
+
+    void DrawImGui() override {
+        if (ImGui::CollapsingHeader("PlayerComponent", ImGuiTreeNodeFlags_DefaultOpen)) {
+            Stats& s = _player->stats;
+            ImGui::Text("Level: %d   EXP: %d/%d", _battle->level, _battle->exp, _battle->expToNext);
+            ImGui::DragInt("Gold", &_battle->gold, 1.0f, 0, 999999);
+            ImGui::Separator();
+            ImGui::DragInt("HP",     &s.hp,    1.0f, 0, s.maxHp);
+            ImGui::DragInt("Max HP", &s.maxHp, 1.0f, 1, 9999);
+            ImGui::DragInt("MP",     &s.mp,    1.0f, 0, s.maxMp);
+            ImGui::DragInt("Max MP", &s.maxMp, 1.0f, 0, 9999);
+            ImGui::DragInt("ATK",    &s.atk,   1.0f, 0, 9999);
+            ImGui::DragInt("DEF",    &s.def,   1.0f, 0, 9999);
+            ImGui::DragInt("SPD",    &s.spd,   1.0f, 0, 9999);
+        }
+    }
 };
 
 // Drives a single enemy: aggro detection, movement toward the player (with
@@ -107,6 +144,15 @@ public:
 
         if (AABBOverlaps(_cb.getPlayerAABB(), _data->aabb())) {
             _cb.onContact(_idx);
+        }
+    }
+
+    void DrawImGui() override {
+        if (ImGui::CollapsingHeader(fmt::format("EnemyAI [{}]", _data->def.name).c_str())) {
+            ImGui::Text("Alive: %s   Aggro: %s",
+                        _data->alive ? "yes" : "no", _data->aggro ? "yes" : "no");
+            ImGui::Text("Pos: %.1f, %.1f", _data->x, _data->y);
+            ImGui::DragFloat("Aggro radius", &_data->aggroR, 1.0f, 0.0f, 400.0f);
         }
     }
 };
@@ -279,6 +325,8 @@ void RPGGame::OnLoad() {
         &_player,
         [this](float x, float y) { return _tilemap->IsSolidWorld(x, y); }
     );
+    // Inspector-only component: exposes player stats / progression in the editor.
+    playerObj->AddComponent<PlayerComponent>(&_player, &_battle);
 
     // Enemy AI components — update _enemies[i].x/y/aggro each tick and
     // trigger battles on player contact.

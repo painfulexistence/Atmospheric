@@ -13,6 +13,11 @@ public:
     virtual void OnDetach(){};
     virtual void OnTick(float dt){};
     virtual void OnPhysicsTick(float dt){};
+    // Override to expose tunable parameters / live info in the editor's entity
+    // inspector. The editor calls this for every component; the default does
+    // nothing. Implementations typically wrap their widgets in an
+    // ImGui::CollapsingHeader(GetName()).
+    virtual void DrawImGui(){};
     virtual bool CanTick() const {
         return enabled;
     }

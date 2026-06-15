@@ -2,6 +2,7 @@
 #include "application.hpp"
 #include "asset_manager.hpp"
 #include "camera_component.hpp"
+#include "component.hpp"
 #include "game_object.hpp"
 #include "imgui.h"
 #include "light_component.hpp"
@@ -251,6 +252,13 @@ void EditorLayer::DrawEntityInspector(GameObject* entity) {
                 textComp->SetColor(color);
             }
         }
+    }
+
+    // Generic inspector pass: any component (engine or game-defined) may expose
+    // its own widgets by overriding Component::DrawImGui. Built-in components
+    // handled above use the default no-op, so this adds no duplication.
+    for (auto* comp : entity->GetComponents()) {
+        comp->DrawImGui();
     }
 }
 

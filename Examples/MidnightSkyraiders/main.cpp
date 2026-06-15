@@ -177,18 +177,60 @@ public:
     }
 };
 
+// Holds the player's progression state (level / XP / fire cooldown). Lives on
+// the player GameObject so it is selectable and tunable in the editor.
+// killEnemy feeds XP in; PlayerInputComponent reads the cooldown out.
+class PlayerComponent : public Component {
+    int   _level   = 1;
+    float _xp      = 0.0f;
+    float _nextXP  = 100.0f;
+    float _fireCD  = 0.5f;
+public:
+    PlayerComponent(GameObject* go) {}
+
+    std::string GetName() const override { return "PlayerComponent"; }
+
+    int   Level()        const { return _level; }
+    float XP()           const { return _xp; }
+    float NextXP()       const { return _nextXP; }
+    float FireCooldown() const { return _fireCD; }
+
+    void Reset() {
+        _level = 1; _xp = 0.0f; _nextXP = 100.0f; _fireCD = 0.5f;
+    }
+
+    // Award XP for a kill of the given enemy level and apply level-ups.
+    void AddXP(int enemyLevel) {
+        _xp += 5.0f * enemyLevel + 5.0f;
+        while (_xp >= _nextXP) {
+            _xp -= _nextXP;
+            _level++;
+            _nextXP = 50.0f * _level * _level + 50.0f;
+            _fireCD = std::max(0.55f - _level * 0.05f, 0.05f);
+        }
+    }
+
+    void DrawImGui() override {
+        if (ImGui::CollapsingHeader("PlayerComponent", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Text("Level: %d", _level);
+            ImGui::Text("XP: %.0f / %.0f", _xp, _nextXP);
+            ImGui::DragFloat("Fire cooldown", &_fireCD, 0.01f, 0.02f, 1.0f);
+        }
+    }
+};
+
 // Handles WASD player movement and triggers auto-fire via onFire callback.
-// Holds a pointer to fireCooldown so level-up changes are reflected immediately.
+// Reads the fire cooldown from PlayerComponent so level-up changes apply at once.
 class PlayerInputComponent : public Component {
     float  _speed = 500.0f;
     float  _plW, _plH;
-    float* _fireCDPtr;
+    PlayerComponent* _player;
     float  _fireTimer;
     std::function<void(float, float)> _onFire;
 public:
-    PlayerInputComponent(GameObject* go, float* fireCDPtr, float w, float h,
+    PlayerInputComponent(GameObject* go, PlayerComponent* player, float w, float h,
                          std::function<void(float, float)> onFire)
-        : _plW(w), _plH(h), _fireCDPtr(fireCDPtr), _fireTimer(*fireCDPtr),
+        : _plW(w), _plH(h), _player(player), _fireTimer(player->FireCooldown()),
           _onFire(std::move(onFire)) {}
 
     std::string GetName() const override { return "PlayerInputComponent"; }
@@ -208,8 +250,77 @@ public:
 
         _fireTimer -= dt;
         if (_fireTimer <= 0.0f) {
-            _fireTimer = *_fireCDPtr;
+            _fireTimer = _player->FireCooldown();
             if (_onFire) _onFire(pos.x, pos.y);
+        }
+    }
+
+    void DrawImGui() override {
+        if (ImGui::CollapsingHeader("PlayerInputComponent")) {
+            ImGui::DragFloat("Move speed", &_speed, 5.0f, 50.0f, 1500.0f);
+        }
+    }
+};
+
+// World-level director: owns score / wave / system-fire state for the whole
+// match. Attached to a "GameWorld" GameObject so all of this is visible and
+// tunable in the editor. Its OnTick advances score, the wave timer, and the
+// shared enemy-fire throttle; spawning a wave is delegated via onSpawnWave.
+class GameDirectorComponent : public Component {
+    double _score = 0.0;
+    int    _kills = 0;
+    int    _waveCount = 0;
+    float  _waveTimer = 0.0f;
+    float  _waveInterval = 10.0f;       // tunable
+    float  _scoreRate = 100.0f;         // points/sec, tunable
+    float  _enemySysFireTimer = 0.0f;
+    bool   _running = false;
+    std::function<void()> _onSpawnWave;
+public:
+    GameDirectorComponent(GameObject* go, std::function<void()> onSpawnWave)
+        : _onSpawnWave(std::move(onSpawnWave)) {}
+
+    std::string GetName() const override { return "GameDirectorComponent"; }
+
+    void Reset() {
+        _score = 0.0; _kills = 0; _waveCount = 0;
+        _waveTimer = 0.0f; _enemySysFireTimer = 0.0f;
+    }
+    void SetRunning(bool r) { _running = r; }
+
+    double Score()     const { return _score; }
+    int    Kills()     const { return _kills; }
+    int    WaveCount() const { return _waveCount; }
+    float* SysFireTimer()    { return &_enemySysFireTimer; }
+
+    void AddScore(double s) { _score += s; }
+    void AddKill()          { _kills++; }
+    void OnWaveSpawned()    { _waveCount++; }
+
+    void OnTick(float dt) override {
+        if (!_running) return;
+        _score += dt * _scoreRate;
+        _enemySysFireTimer -= dt;
+        _waveTimer += dt;
+        if (_waveTimer >= _waveInterval) {
+            _waveTimer = 0.0f;
+            if (_onSpawnWave) _onSpawnWave();
+        }
+    }
+
+    void DrawImGui() override {
+        if (ImGui::CollapsingHeader("GameDirectorComponent", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Text("Score: %lld", (long long)_score);
+            ImGui::Text("Kills: %d", _kills);
+            ImGui::Text("Wave:  %d", _waveCount);
+            ImGui::Text("Next wave in: %.1fs", std::max(0.0f, _waveInterval - _waveTimer));
+            ImGui::Separator();
+            ImGui::DragFloat("Wave interval", &_waveInterval, 0.5f, 1.0f, 60.0f);
+            ImGui::DragFloat("Score rate", &_scoreRate, 5.0f, 0.0f, 1000.0f);
+            if (ImGui::Button("Spawn wave now")) {
+                _waveTimer = 0.0f;
+                if (_onSpawnWave) _onSpawnWave();
+            }
         }
     }
 };
@@ -240,25 +351,20 @@ class MidnightSkyraiders : public Application {
     // Title
     GameObject* titleObj  = nullptr;
 
-    // Player
-    GameObject* playerObj = nullptr;
+    // Player — progression state lives in PlayerComponent (editor-inspectable)
+    GameObject*      playerObj = nullptr;
+    PlayerComponent* player    = nullptr;
     static constexpr float PL_W = 32.0f, PL_H = 32.0f;
-    float fireCooldown    = 0.5f;
-    int   plLevel         = 1;
-    float plXP            = 0.0f;
-    float nextXP          = 100.0f;
+
+    // World director — score / waves / system-fire throttle (editor-inspectable)
+    GameObject*            worldObj = nullptr;
+    GameDirectorComponent* director = nullptr;
 
     // Entity tracking for collision + cleanup (behavior lives in components)
     std::vector<GameObject*> _bullets;
     std::vector<GameObject*> _enemies;
-    float waveTimer         = 0.0f;
-    int   waveCount         = 0;
-    float enemySysFireTimer = 0.0f;
 
-    // Score
-    double    score   = 0.0;
-    int       kills   = 0;
-    long long hiScore = 0;
+    long long hiScore = 0;  // persists across sessions, so kept app-side
 
     // ── lifecycle ──────────────────────────────────────────────────────────────
 
@@ -293,6 +399,16 @@ class MidnightSkyraiders : public Application {
         for (int i = 0; i < 3; i++) {
             background->AddComponent<ParallaxLayerComponent>((int)texBg[i], WORLD, BG_SPEED[i], i);
         }
+
+        // World director: a single "GameWorld" entity owns match-wide state.
+        // Wave spawns are deferred because the director ticks inside the loop.
+        worldObj = CreateGameObject();
+        worldObj->SetName("GameWorld");
+        director = static_cast<GameDirectorComponent*>(
+            worldObj->AddComponent<GameDirectorComponent>(
+                [this]{ DeferSpawn([this]{ spawnWave(); }); }
+            )
+        );
 
         enterTitle();
     }
@@ -342,11 +458,10 @@ class MidnightSkyraiders : public Application {
         _bullets.clear();
         _enemies.clear();
 
-        score = 0.0; kills = 0; plLevel = 1; plXP = 0.0f; nextXP = 100.0f;
-        fireCooldown = 0.5f;
-        waveTimer = 0.0f; waveCount = 0; enemySysFireTimer = 0.0f;
+        director->Reset();
 
         playerObj = CreateGameObject(glm::vec2(toEngX(-264.0f), toEngY(-16.0f)));
+        playerObj->SetName("Player");
         playerObj->AddComponent<SpriteComponent>(SpriteProps{
             .size      = glm::vec2(PL_W, PL_H),
             .pivot     = glm::vec2(0.5f, 0.5f),
@@ -356,25 +471,21 @@ class MidnightSkyraiders : public Application {
             .flipY     = true,
             .zOrder    = 5,
         });
+        player = static_cast<PlayerComponent*>(playerObj->AddComponent<PlayerComponent>());
         playerObj->AddComponent<PlayerInputComponent>(
-            &fireCooldown, PL_W, PL_H,
+            player, PL_W, PL_H,
             [this](float px, float py) { spawnPlayerBulletsDeferred(px, py); }
         );
 
         spawnWave();
         audio.PlayMusic(bgm);
+        director->SetRunning(true);
         state = GameState::Playing;
     }
 
-    // OnUpdate runs before the entity tick loop, so cross-entity work goes here.
-    void updatePlaying(float dt) {
-        score += dt * 100.0;
-
-        waveTimer += dt;
-        if (waveTimer >= 10.0f) { waveTimer = 0.0f; spawnWave(); }
-
-        enemySysFireTimer -= dt;
-
+    // OnUpdate runs before the entity tick loop. Score/wave timing now live in
+    // GameDirectorComponent::OnTick; this handles only cross-entity work.
+    void updatePlaying(float /*dt*/) {
         checkCollisions();
         flushDead();
         drawHUD();
@@ -420,10 +531,11 @@ class MidnightSkyraiders : public Application {
     }
 
     void spawnWave() {
-        waveCount++;
-        int   idx = (int)(rnd() * 23);
-        float ox  = (rnd() - 0.5f) * 30.0f;
-        float oy  = (rnd() - 0.5f) * 30.0f;
+        director->OnWaveSpawned();
+        int   wave = director->WaveCount();
+        int   idx  = (int)(rnd() * 23);
+        float ox   = (rnd() - 0.5f) * 30.0f;
+        float oy   = (rnd() - 0.5f) * 30.0f;
 
         for (int row = 0; row < 5; row++) {
             for (int col = 0; col < 8; col++) {
@@ -431,7 +543,7 @@ class MidnightSkyraiders : public Application {
                 if (cell == 0) continue;
                 float ex = toEngX(col * 90.0f - 300.0f + ox) + WORLD;
                 float ey = toEngY(row * 90.0f - 300.0f + 100.0f + oy);
-                spawnEnemy(cell, ex, ey, waveCount);
+                spawnEnemy(cell, ex, ey, wave);
             }
         }
     }
@@ -458,7 +570,7 @@ class MidnightSkyraiders : public Application {
         // Enemy bullets are deferred: EnemyFireComponent is inside the tick loop.
         obj->AddComponent<EnemyFireComponent>(
             type, fireCD, fireCD * rnd(),
-            &enemySysFireTimer,
+            director->SysFireTimer(),
             [this](int bt, float fx, float fy) {
                 DeferSpawn([this, bt, fx, fy]{ spawnBullet(bt, fx, fy); });
             }
@@ -494,17 +606,10 @@ class MidnightSkyraiders : public Application {
         auto* em = enemy->GetComponent<EnemyMovementComponent>();
         int level = em ? em->GetLevel() : 1;
 
-        score  += 100.0;
-        kills++;
-        plXP += 5.0f * level + 5.0f;
+        director->AddScore(100.0);
+        director->AddKill();
+        if (player) player->AddXP(level);
         audio.PlaySoundVariation(sfxExp, 0.1f, 0.05f);
-
-        while (plXP >= nextXP) {
-            plXP -= nextXP;
-            plLevel++;
-            nextXP       = 50.0f * plLevel * plLevel + 50.0f;
-            fireCooldown = std::max(0.55f - plLevel * 0.05f, 0.05f);
-        }
     }
 
     // Remove inactive entries from tracking vectors; the GameObjects themselves
@@ -520,18 +625,19 @@ class MidnightSkyraiders : public Application {
     void drawHUD() {
         auto* gs = GraphicsServer::Get();
         std::ostringstream oss;
-        oss << "Score: " << std::setw(8) << std::setfill('0') << (long long)score
-            << "  Kills: " << std::setw(4) << std::setfill('0') << kills
-            << "  Lv." << plLevel
+        oss << "Score: " << std::setw(8) << std::setfill('0') << (long long)director->Score()
+            << "  Kills: " << std::setw(4) << std::setfill('0') << director->Kills()
+            << "  Lv." << player->Level()
             << " (" << std::fixed << std::setprecision(1)
-            << (plXP / nextXP * 100.0f) << "%)";
+            << (player->XP() / player->NextXP() * 100.0f) << "%)";
         gs->DrawText(fontID, oss.str(), 10.0f, 10.0f, 0.8f, glm::vec4(1,1,0,1));
     }
 
     // ── game over ─────────────────────────────────────────────────────────────
 
     void triggerGameOver() {
-        if ((long long)score > hiScore) hiScore = (long long)score;
+        director->SetRunning(false);
+        if ((long long)director->Score() > hiScore) hiScore = (long long)director->Score();
         audio.StopMusic(bgm);
         audio.PlaySound(sfxOver);
         state = GameState::GameOver;
@@ -541,7 +647,7 @@ class MidnightSkyraiders : public Application {
         auto* gs = GraphicsServer::Get();
         gs->DrawText(fontID, "GAME  OVER",
             HALF - 80.0f, WORLD * 0.30f, 1.5f, glm::vec4(1,0.2f,0.2f,1));
-        gs->DrawText(fontID, "Score: " + std::to_string((long long)score),
+        gs->DrawText(fontID, "Score: " + std::to_string((long long)director->Score()),
             HALF - 80.0f, WORLD * 0.45f, 1.0f, glm::vec4(1,1,1,1));
         gs->DrawText(fontID, "Best:  " + std::to_string(hiScore),
             HALF - 80.0f, WORLD * 0.52f, 1.0f, glm::vec4(1,1,0,1));
