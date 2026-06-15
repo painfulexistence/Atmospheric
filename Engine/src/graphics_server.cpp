@@ -774,10 +774,10 @@ void GraphicsServer::DrawText3D(
     // Perspective division
     glm::vec3 ndc = glm::vec3(clipSpacePos) / clipSpacePos.w;
 
-    // Viewport transform
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    // Viewport transform — use logical size to match UIPass projection space
+    auto [width, height] = Window::Get()->GetSize();
     float x = (ndc.x + 1.0f) * 0.5f * width;
-    float y = (ndc.y + 1.0f) * 0.5f * height;// Y-Up standard
+    float y = (1.0f - ndc.y) * 0.5f * height; // Y-Down: match UIPass coordinate space
 
     DrawText(fontID, text, x, y, scale, color);
 }
