@@ -27,6 +27,8 @@ GLRenderTarget::GLRenderTarget(GLRenderTarget&& other) noexcept
       _colorTexture(other._colorTexture),
       _depthTexture(other._depthTexture),
       _depthStencilRBO(other._depthStencilRBO),
+      _msaaColorRBO(other._msaaColorRBO),
+      _msaaDepthRBO(other._msaaDepthRBO),
       _width(other._width),
       _height(other._height),
       _withDepth(other._withDepth),
@@ -39,6 +41,8 @@ GLRenderTarget::GLRenderTarget(GLRenderTarget&& other) noexcept
     other._colorTexture    = 0;
     other._depthTexture    = 0;
     other._depthStencilRBO = 0;
+    other._msaaColorRBO    = 0;
+    other._msaaDepthRBO    = 0;
 }
 
 GLRenderTarget& GLRenderTarget::operator=(GLRenderTarget&& other) noexcept {
@@ -48,6 +52,8 @@ GLRenderTarget& GLRenderTarget::operator=(GLRenderTarget&& other) noexcept {
         _colorTexture    = other._colorTexture;
         _depthTexture    = other._depthTexture;
         _depthStencilRBO = other._depthStencilRBO;
+        _msaaColorRBO    = other._msaaColorRBO;
+        _msaaDepthRBO    = other._msaaDepthRBO;
         _width           = other._width;
         _height          = other._height;
         _withDepth       = other._withDepth;
@@ -60,6 +66,8 @@ GLRenderTarget& GLRenderTarget::operator=(GLRenderTarget&& other) noexcept {
         other._colorTexture    = 0;
         other._depthTexture    = 0;
         other._depthStencilRBO = 0;
+        other._msaaColorRBO    = 0;
+        other._msaaDepthRBO    = 0;
     }
     return *this;
 }
@@ -85,11 +93,26 @@ void GLRenderTarget::Create() {
         }
     } else {
 #else
-    // TODO: Implement WebGL-compatible offscreen MSAA.
-    // WebGL 2.0 does not support GL_TEXTURE_2D_MULTISAMPLE. To support offscreen MSAA with post-processing 
-    // on Web, we must allocate multisampled Renderbuffers using glRenderbufferStorageMultisample 
-    // and bind them to the framebuffer, then resolve (blit) to a single-sampled texture FBO.
-    if (false) {
+    if (_multisample) {
+        // WebGL 2.0 MSAA: use multisampled renderbuffers (no GL_TEXTURE_2D_MULTISAMPLE).
+        // Callers must blit this FBO into a single-sampled resolve target before sampling.
+        GLenum colorFormat = _hdr ? GL_RGBA16F : GL_RGBA8;
+
+        glGenRenderbuffers(1, &_msaaColorRBO);
+        glBindRenderbuffer(GL_RENDERBUFFER, _msaaColorRBO);
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER, _numSamples, colorFormat, _width, _height);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, _msaaColorRBO);
+
+        if (_withDepth) {
+            glGenRenderbuffers(1, &_msaaDepthRBO);
+            glBindRenderbuffer(GL_RENDERBUFFER, _msaaDepthRBO);
+            glRenderbufferStorageMultisample(GL_RENDERBUFFER, _numSamples, GL_DEPTH_COMPONENT32F, _width, _height);
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, _msaaDepthRBO);
+        }
+
+        // _colorTexture stays 0: this FBO is MSAA-only; resolve via glBlitFramebuffer.
+        glDeleteTextures(1, &_colorTexture);
+        _colorTexture = 0;
     } else {
 #endif
         glBindTexture(GL_TEXTURE_2D, _colorTexture);
@@ -138,6 +161,8 @@ void GLRenderTarget::Create() {
 }
 
 void GLRenderTarget::Destroy() {
+    if (_msaaDepthRBO)    { glDeleteRenderbuffers(1, &_msaaDepthRBO);   _msaaDepthRBO    = 0; }
+    if (_msaaColorRBO)    { glDeleteRenderbuffers(1, &_msaaColorRBO);   _msaaColorRBO    = 0; }
     if (_depthStencilRBO) { glDeleteRenderbuffers(1, &_depthStencilRBO); _depthStencilRBO = 0; }
     if (_depthTexture)    { glDeleteTextures(1, &_depthTexture);         _depthTexture    = 0; }
     if (_colorTexture)    { glDeleteTextures(1, &_colorTexture);         _colorTexture    = 0; }
