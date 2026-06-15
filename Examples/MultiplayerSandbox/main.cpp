@@ -162,8 +162,9 @@ class NoitaLikeGame : public Application {
         f.spell = curSpell;
 
         const Player& me = sim.players[net.localPlayer];
-        auto ws = GetWindow()->GetFramebufferSize();
-        glm::vec2 mouse = input.GetMousePosition();
+        auto ws = GetWindow()->GetSize();
+        auto dpi = GetWindow()->GetDPI();
+        glm::vec2 mouse = input.GetMousePosition() / dpi;
         float wx = mouse.x * float(SandWorld::W) / float(ws.width);
         float wy = mouse.y * float(SandWorld::H) / float(ws.height);
         f.aimQ = InputFrame::QuantizeAim(std::atan2(wy - me.y, wx - me.x));
@@ -193,7 +194,8 @@ class NoitaLikeGame : public Application {
     }
 
     void RenderWorld() {
-        auto ws = GetWindow()->GetFramebufferSize();
+        auto ws = GetWindow()->GetSize();
+        auto dpi = GetWindow()->GetDPI();
         float sx = float(ws.width) / float(SandWorld::W);
         float sy = float(ws.height) / float(SandWorld::H);
 
@@ -252,7 +254,7 @@ class NoitaLikeGame : public Application {
         }
 
         // crosshair
-        glm::vec2 m = input.GetMousePosition();
+        glm::vec2 m = input.GetMousePosition() / dpi;
         graphics.DrawLine(m.x - 7, m.y, m.x + 7, m.y, { 1, 1, 1, 0.8f });
         graphics.DrawLine(m.x, m.y - 7, m.x, m.y + 7, { 1, 1, 1, 0.8f });
     }
@@ -317,7 +319,7 @@ class NoitaLikeGame : public Application {
             FixedUpdate(dt);
             RenderWorld();
         } else {
-            auto ws = GetWindow()->GetFramebufferSize();
+            auto ws = GetWindow()->GetSize();
             graphics.DrawQuad(
               ws.width * 0.5f, ws.height * 0.5f, float(ws.width), float(ws.height), 0.0f,
               { 0.09f, 0.08f, 0.13f, 1.0f }

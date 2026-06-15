@@ -405,17 +405,15 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
 #endif
     CheckErrors("Create shadow RTs");
 
-    // 2. Scene render target (MSAA on desktop forward path, standard otherwise)
+    // 2. Scene render target (MSAA on forward path; RBO-based on WebGL, texture-based on desktop)
     {
         RenderTarget::Props p;
         p.width = props.width;
         p.height = props.height;
         p.withDepth = true;
         p.hdr = true;
-#ifndef __EMSCRIPTEN__
         if (_currRenderPath == RenderPath::Forward)
             p.numSamples = props.numSamples;
-#endif
         sceneRT = GfxFactory::CreateRenderTarget(p);
     }
 

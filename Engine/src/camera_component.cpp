@@ -1,5 +1,7 @@
 #include "camera_component.hpp"
 #include "game_object.hpp"
+#include "application.hpp"
+#include "graphics_server.hpp"
 
 static const float maxVAngle = PI / 2.0f - 0.01f;
 static const float minVAngle = -PI / 2.0f + 0.01f;
@@ -39,6 +41,18 @@ CameraComponent::CameraComponent(GameObject* gameObject, const CameraProps& prop
 
 std::string CameraComponent::GetName() const {
     return std::string("Camera");
+}
+
+void CameraComponent::OnAttach() {
+    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
+        gameObject->GetApp()->GetGraphicsServer()->RegisterCamera(this);
+    }
+}
+
+void CameraComponent::OnDetach() {
+    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
+        gameObject->GetApp()->GetGraphicsServer()->UnregisterCamera(this);
+    }
 }
 
 void CameraComponent::SetPerspective(float fov, float aspectRatio, float nearClip, float farClip) {

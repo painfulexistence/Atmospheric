@@ -1,12 +1,55 @@
 #include "rmlui_manager.hpp"
 #include "rmlui_renderer.hpp"
 #include "rmlui_system.hpp"
+#include "file_system.hpp"
 #include <RmlUi/Core.h>
+#include <cstring>
 #include <RmlUi/Debugger.h>
 #include <spdlog/spdlog.h>
 #ifdef TRACY_ENABLE
 #include <tracy/Tracy.hpp>
 #endif
+
+// RmlUi FileInterface backed by FileSystem so all paths go through
+// NormalizePath() and pick up the SDL_GetBasePath() prefix on native builds.
+class AeRmlFileInterface : public Rml::FileInterface {
+public:
+    Rml::FileHandle Open(const Rml::String& path) override {
+        auto bytes = std::make_unique<FileSystem::Bytes>(FileSystem::Get().ReadSync(path));
+        if (bytes->empty()) return 0;
+        // Encode position alongside the buffer: heap-allocate a small struct.
+        auto* state = new State{std::move(*bytes), 0};
+        return reinterpret_cast<Rml::FileHandle>(state);
+    }
+    void Close(Rml::FileHandle fh) override {
+        delete reinterpret_cast<State*>(fh);
+    }
+    size_t Read(void* buffer, size_t size, Rml::FileHandle fh) override {
+        auto* s = reinterpret_cast<State*>(fh);
+        size_t remaining = s->data.size() - s->pos;
+        size_t n = std::min(size, remaining);
+        if (n) { std::memcpy(buffer, s->data.data() + s->pos, n); s->pos += n; }
+        return n;
+    }
+    bool Seek(Rml::FileHandle fh, long offset, int origin) override {
+        auto* s = reinterpret_cast<State*>(fh);
+        long base = (origin == SEEK_SET) ? 0 : (origin == SEEK_END) ? (long)s->data.size() : (long)s->pos;
+        long newPos = base + offset;
+        if (newPos < 0 || newPos > (long)s->data.size()) return false;
+        s->pos = (size_t)newPos;
+        return true;
+    }
+    size_t Tell(Rml::FileHandle fh) override {
+        return reinterpret_cast<State*>(fh)->pos;
+    }
+    size_t Length(Rml::FileHandle fh) override {
+        return reinterpret_cast<State*>(fh)->data.size();
+    }
+private:
+    struct State { FileSystem::Bytes data; size_t pos; };
+};
+
+static AeRmlFileInterface s_rmlFileInterface;
 
 RmlUiManager* RmlUiManager::s_instance = nullptr;
 
@@ -45,6 +88,7 @@ bool RmlUiManager::Initialize(int width, int height, Renderer* renderer) {
     m_renderer->Initialize();
 
     // Set interfaces
+    Rml::SetFileInterface(&s_rmlFileInterface);
     Rml::SetRenderInterface(m_renderer.get());
     Rml::SetSystemInterface(m_system.get());
 

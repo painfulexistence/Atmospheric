@@ -445,6 +445,27 @@ SunComponent* GraphicsServer::RegisterSun(SunComponent* sun) {
     return sun;
 }
 
+void GraphicsServer::UnregisterCamera(CameraComponent* camera) {
+    auto it = std::find(cameras.begin(), cameras.end(), camera);
+    if (it != cameras.end()) {
+        cameras.erase(it);
+    }
+}
+
+void GraphicsServer::UnregisterLight(LightComponent* light) {
+    if (light->type == LightType::Point) {
+        auto it = std::find(pointLights.begin(), pointLights.end(), light);
+        if (it != pointLights.end()) {
+            pointLights.erase(it);
+        }
+    } else if (light->type == LightType::Directional) {
+        auto it = std::find(directionalLights.begin(), directionalLights.end(), light);
+        if (it != directionalLights.end()) {
+            directionalLights.erase(it);
+        }
+    }
+}
+
 // ===== Render Target Management Implementation =====
 std::shared_ptr<RenderTarget> GraphicsServer::CreateRenderTarget(int width, int height, bool withDepth) {
     RenderTarget::Props p;
@@ -774,10 +795,10 @@ void GraphicsServer::DrawText3D(
     // Perspective division
     glm::vec3 ndc = glm::vec3(clipSpacePos) / clipSpacePos.w;
 
-    // Viewport transform
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    // Viewport transform — use logical size to match UIPass projection space
+    auto [width, height] = Window::Get()->GetSize();
     float x = (ndc.x + 1.0f) * 0.5f * width;
-    float y = (ndc.y + 1.0f) * 0.5f * height;// Y-Up standard
+    float y = (1.0f - ndc.y) * 0.5f * height; // Y-Down: match UIPass coordinate space
 
     DrawText(fontID, text, x, y, scale, color);
 }

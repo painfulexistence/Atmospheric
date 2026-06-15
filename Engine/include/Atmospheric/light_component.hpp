@@ -34,6 +34,9 @@ public:
 
     std::string GetName() const override;
 
+    void OnAttach() override;
+    void OnDetach() override;
+
     glm::vec3 GetPosition() const;
 
     glm::mat4 GetProjectionMatrix(int cascadedIndex = 0);

@@ -68,13 +68,15 @@ else()
     target_link_libraries(${GAME_NAME} PRIVATE glad::glad spdlog::spdlog raudio SDL3::SDL3)
 endif()
 
-add_custom_command(
-    TARGET ${GAME_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/Engine/default_assets
-        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${GAME_ASSETS_DIR}
-        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets
-    COMMENT "Copying default assets for ${GAME_NAME}"
-)
+if(NOT EMSCRIPTEN)
+    add_custom_command(
+        TARGET ${GAME_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets
+            $<TARGET_FILE_DIR:${GAME_NAME}>/assets
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${GAME_ASSETS_DIR}
+            $<TARGET_FILE_DIR:${GAME_NAME}>/assets
+        COMMENT "Copying default assets for ${GAME_NAME}"
+    )
+endif()

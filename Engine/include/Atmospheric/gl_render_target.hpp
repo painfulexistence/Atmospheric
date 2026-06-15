@@ -31,7 +31,7 @@ public:
     int GetHeight() const override { return _height; }
     glm::vec2 GetSize() const override { return glm::vec2(_width, _height); }
 
-    bool IsValid() const override { return _fbo != 0 && _colorTexture != 0; }
+    bool IsValid() const override { return _fbo != 0 && (_colorTexture != 0 || _msaaColorRBO != 0); }
 
     void Resize(int width, int height) override;
 
@@ -53,6 +53,9 @@ private:
     GLuint _colorTexture     = 0;
     GLuint _depthTexture     = 0;
     GLuint _depthStencilRBO  = 0;
+    // WebGL MSAA: multisampled renderbuffers (Emscripten only, no GL_TEXTURE_2D_MULTISAMPLE)
+    GLuint _msaaColorRBO     = 0;
+    GLuint _msaaDepthRBO     = 0;
 
     int  _width       = 0;
     int  _height      = 0;
