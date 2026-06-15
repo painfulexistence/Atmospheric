@@ -71,7 +71,10 @@ add_custom_command(
     COMMENT "Syncing game assets for ${GAME_NAME}"
 )
 
-ae_auto_convert_textures(${GAME_NAME}
-    ${CMAKE_CURRENT_SOURCE_DIR}/assets/images
-    $<TARGET_FILE_DIR:${GAME_NAME}>/assets/images
-)
+if(EMSCRIPTEN)
+    ae_auto_convert_textures(${GAME_NAME}
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/images
+        ${EM_PRELOAD_STAGING_DIR}/images
+    )
+endif()
+
