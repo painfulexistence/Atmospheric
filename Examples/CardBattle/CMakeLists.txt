@@ -19,6 +19,8 @@ target_link_libraries(${GAME_NAME} PRIVATE
     BulletSoftBody BulletDynamics BulletCollision LinearMath
 )
 
+set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
+
 if(EMSCRIPTEN)
     set(CMAKE_EXECUTABLE_SUFFIX ".html")
     set(EM_PRELOAD_STAGING_DIR ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets)
@@ -31,7 +33,10 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/fonts
             ${EM_PRELOAD_STAGING_DIR}/fonts
-        COMMENT "Staging Emscripten preload assets for ${GAME_NAME}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${GAME_ASSETS_DIR}/scenes
+            ${EM_PRELOAD_STAGING_DIR}/scenes
+        COMMENT "Staging Emscripten preload assets (shaders, fonts, scenes) for ${GAME_NAME}"
     )
     add_dependencies(${GAME_NAME} stage_${GAME_NAME}_em_preload)
 
@@ -39,9 +44,11 @@ if(EMSCRIPTEN)
         -sALLOW_MEMORY_GROWTH=1
         -sASSERTIONS=1
         -sDISABLE_EXCEPTION_CATCHING=0
-        -sEXPORTED_FUNCTIONS=["_main"]
+        -sEXPORTED_FUNCTIONS=["_main","_printWasmMemoryStats"]
+        -Wl,--undefined=printWasmMemoryStats
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
     )
 else()
     find_package(spdlog CONFIG REQUIRED)
@@ -54,13 +61,23 @@ else()
     )
 endif()
 
-# ── Asset sync ───────────────────────────────────────────────────────────────
-# CardBattle is asset-free apart from the engine's default font, which lives in
-# Engine/default_assets (synced below). No per-game image/sound assets needed.
-add_custom_target(sync_default_assets_${GAME_NAME} ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/Engine/default_assets
-        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets
-    COMMENT "Syncing default assets for ${GAME_NAME}"
-)
-add_dependencies(sync_default_assets_${GAME_NAME} ${GAME_NAME})
+# ── Asset sync for desktop ──
+if(NOT EMSCRIPTEN)
+    add_custom_command(
+        TARGET ${GAME_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets
+            $<TARGET_FILE_DIR:${GAME_NAME}>/assets
+        COMMENT "Syncing default assets for ${GAME_NAME}"
+    )
+
+    if(EXISTS ${GAME_ASSETS_DIR})
+        add_custom_command(
+            TARGET ${GAME_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${GAME_ASSETS_DIR}
+                $<TARGET_FILE_DIR:${GAME_NAME}>/assets
+            COMMENT "Syncing game assets for ${GAME_NAME}"
+        )
+    endif()
+endif()
