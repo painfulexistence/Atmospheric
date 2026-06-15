@@ -127,7 +127,18 @@ void BindGraphicsAPI(sol::state& lua, GraphicsServer* graphics) {
       sol::no_constructor,
 
       "gameObject",
-      sol::readonly(&CameraComponent::gameObject)
+      sol::readonly(&CameraComponent::gameObject),
+
+      "yaw",
+      &CameraComponent::Yaw,
+      "pitch",
+      &CameraComponent::Pitch,
+      "setPerspective",
+      &CameraComponent::SetPerspective,
+      "setOrthographic",
+      &CameraComponent::SetOrthographic,
+      "setSize",
+      &CameraComponent::SetSize
     );
 
     // ===== LightComponent usertype =====

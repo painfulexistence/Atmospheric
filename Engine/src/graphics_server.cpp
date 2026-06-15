@@ -445,6 +445,27 @@ SunComponent* GraphicsServer::RegisterSun(SunComponent* sun) {
     return sun;
 }
 
+void GraphicsServer::UnregisterCamera(CameraComponent* camera) {
+    auto it = std::find(cameras.begin(), cameras.end(), camera);
+    if (it != cameras.end()) {
+        cameras.erase(it);
+    }
+}
+
+void GraphicsServer::UnregisterLight(LightComponent* light) {
+    if (light->type == LightType::Point) {
+        auto it = std::find(pointLights.begin(), pointLights.end(), light);
+        if (it != pointLights.end()) {
+            pointLights.erase(it);
+        }
+    } else if (light->type == LightType::Directional) {
+        auto it = std::find(directionalLights.begin(), directionalLights.end(), light);
+        if (it != directionalLights.end()) {
+            directionalLights.erase(it);
+        }
+    }
+}
+
 // ===== Render Target Management Implementation =====
 std::shared_ptr<RenderTarget> GraphicsServer::CreateRenderTarget(int width, int height, bool withDepth) {
     RenderTarget::Props p;

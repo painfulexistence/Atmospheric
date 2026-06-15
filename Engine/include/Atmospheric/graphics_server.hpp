@@ -112,6 +112,9 @@ public:
     SunComponent*    RegisterSun(SunComponent* sun);
     CanvasDrawable*  RegisterCanvasDrawable(CanvasDrawable* drawable);
 
+    void UnregisterCamera(CameraComponent* camera);
+    void UnregisterLight(LightComponent* light);
+
     // ===== Render Target Management =====
 
     std::shared_ptr<RenderTarget> CreateRenderTarget(int width, int height, bool withDepth = false);

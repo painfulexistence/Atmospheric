@@ -1,5 +1,7 @@
 #include "light_component.hpp"
 #include "game_object.hpp"
+#include "application.hpp"
+#include "graphics_server.hpp"
 
 static glm::vec3 Direction(GLenum face) {
     switch (face) {
@@ -54,6 +56,18 @@ LightComponent::LightComponent(GameObject* gameObject, LightProps props) {
 
 std::string LightComponent::GetName() const {
     return std::string("Light");
+}
+
+void LightComponent::OnAttach() {
+    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
+        gameObject->GetApp()->GetGraphicsServer()->RegisterLight(this);
+    }
+}
+
+void LightComponent::OnDetach() {
+    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
+        gameObject->GetApp()->GetGraphicsServer()->UnregisterLight(this);
+    }
 }
 
 glm::vec3 LightComponent::GetPosition() const {
