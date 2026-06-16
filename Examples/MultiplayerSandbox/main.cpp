@@ -83,7 +83,8 @@ class NoitaLikeGame : public Application {
     bool started = false;
     bool stalled = false;
     float accum = 0.0f;
-    uint8_t curSpell = 0;
+
+    PlayerInputComponent* _inputComp = nullptr;
 
     GLuint gridTex = 0;
     std::vector<uint32_t> pixels;
@@ -155,31 +156,11 @@ class NoitaLikeGame : public Application {
             pObj->SetName("Player" + std::to_string(i));
             pObj->AddComponent<PlayerInspectorComponent>(&sim.players[i], i, &net, &started);
         }
-    }
 
-    InputFrame SampleLocalInput() {
-        InputFrame f;
-        if (input.IsKeyDown(Key::A) || input.IsKeyDown(Key::LEFT)) f.buttons |= BTN_LEFT;
-        if (input.IsKeyDown(Key::D) || input.IsKeyDown(Key::RIGHT)) f.buttons |= BTN_RIGHT;
-        if (input.IsKeyDown(Key::W) || input.IsKeyDown(Key::SPACE) || input.IsKeyDown(Key::UP))
-            f.buttons |= BTN_JUMP;
-        if (input.IsKeyDown(Key::S) || input.IsKeyDown(Key::DOWN)) f.buttons |= BTN_DOWN;
-        if (GetWindow()->GetMouseButtonState()) f.buttons |= BTN_FIRE;
-
-        static const Key spellKeys[] = { Key::Num1, Key::Num2, Key::Num3, Key::Num4,
-                                         Key::Num5, Key::Num6, Key::Num7 };
-        for (int i = 0; i < int(SpellType::Count); i++) {
-            if (input.IsKeyDown(spellKeys[i])) curSpell = uint8_t(i);
-        }
-        f.spell = curSpell;
-
-        const Player& me = sim.players[net.localPlayer];
-        auto ws = GetWindow()->GetFramebufferSize();
-        glm::vec2 mouse = input.GetMousePosition();
-        float wx = mouse.x * float(SandWorld::W) / float(ws.width);
-        float wy = mouse.y * float(SandWorld::H) / float(ws.height);
-        f.aimQ = InputFrame::QuantizeAim(std::atan2(wy - me.y, wx - me.x));
-        return f;
+        // Input component: owns curSpell state, samples hardware each fixed tick.
+        auto* inputObj = CreateGameObject();
+        inputObj->SetName("LocalPlayer");
+        _inputComp = inputObj->AddComponent<PlayerInputComponent>(&sim, &net);
     }
 
     void FixedUpdate(float dt) {
@@ -187,7 +168,7 @@ class NoitaLikeGame : public Application {
         int guard = 0;
         while (accum >= TICK_DT) {
             uint32_t t = sim.tick;
-            net.SubmitLocalInput(t + uint32_t(net.inputDelay), SampleLocalInput());
+            _inputComp->SubmitInput(t + uint32_t(net.inputDelay));
             if (!net.HasInputs(t)) {
                 stalled = true;
                 break;
@@ -284,11 +265,12 @@ class NoitaLikeGame : public Application {
                 hudScore[i] = score;
             }
         }
-        if (hudSpell != int(curSpell)) {
+        int curSpell = _inputComp ? int(_inputComp->GetCurSpell()) : 0;
+        if (hudSpell != curSpell) {
             for (int i = 0; i < int(SpellType::Count); i++) {
-                if (elSlots[i]) elSlots[i]->SetClass("sel", i == int(curSpell));
+                if (elSlots[i]) elSlots[i]->SetClass("sel", i == curSpell);
             }
-            hudSpell = int(curSpell);
+            hudSpell = curSpell;
         }
         if (elStatus) {
             std::string s;

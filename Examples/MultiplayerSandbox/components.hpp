@@ -5,6 +5,65 @@
 #include <string>
 #include <fmt/format.h>
 
+// Samples local keyboard/mouse state each fixed tick and submits it to the
+// lockstep layer. Owns curSpell so the HUD can query it without touching net.
+class PlayerInputComponent : public Component {
+public:
+    PlayerInputComponent(GameObject* go, GameSim* sim, LockstepNet* net)
+        : _sim(sim), _net(net) { gameObject = go; }
+
+    std::string GetName() const override { return "PlayerInput"; }
+
+    void SubmitInput(uint32_t tick) {
+        _last = Sample();
+        _net->SubmitLocalInput(tick, _last);
+    }
+
+    uint8_t GetCurSpell() const { return _curSpell; }
+
+    void DrawImGui() override {
+        if (!ImGui::CollapsingHeader("PlayerInput")) return;
+        ImGui::Text("Spell slot: %d", int(_curSpell));
+        ImGui::Text("Buttons:    0x%02X", _last.buttons);
+        ImGui::Text("AimQ:       %d", int(_last.aimQ));
+    }
+
+private:
+    InputFrame Sample() {
+        auto* app = gameObject->GetApp();
+        auto* inp = app->GetInput();
+        InputFrame f;
+        if (inp->IsKeyDown(Key::A) || inp->IsKeyDown(Key::LEFT))  f.buttons |= BTN_LEFT;
+        if (inp->IsKeyDown(Key::D) || inp->IsKeyDown(Key::RIGHT)) f.buttons |= BTN_RIGHT;
+        if (inp->IsKeyDown(Key::W) || inp->IsKeyDown(Key::SPACE) || inp->IsKeyDown(Key::UP))
+            f.buttons |= BTN_JUMP;
+        if (inp->IsKeyDown(Key::S) || inp->IsKeyDown(Key::DOWN))  f.buttons |= BTN_DOWN;
+        if (app->GetWindow()->GetMouseButtonState())               f.buttons |= BTN_FIRE;
+
+        static const Key spellKeys[] = {
+            Key::Num1, Key::Num2, Key::Num3, Key::Num4,
+            Key::Num5, Key::Num6, Key::Num7
+        };
+        for (int i = 0; i < int(SpellType::Count); i++) {
+            if (inp->IsKeyDown(spellKeys[i])) _curSpell = uint8_t(i);
+        }
+        f.spell = _curSpell;
+
+        const Player& me = _sim->players[_net->localPlayer];
+        auto ws = app->GetWindow()->GetFramebufferSize();
+        glm::vec2 mouse = inp->GetMousePosition();
+        float wx = mouse.x * float(SandWorld::W) / float(ws.width);
+        float wy = mouse.y * float(SandWorld::H) / float(ws.height);
+        f.aimQ = InputFrame::QuantizeAim(std::atan2(wy - me.y, wx - me.x));
+        return f;
+    }
+
+    GameSim*    _sim;
+    LockstepNet* _net;
+    uint8_t     _curSpell = 0;
+    InputFrame  _last{};
+};
+
 // Inspector-only components: hold raw pointers into sim state, expose via DrawImGui.
 // No OnTick logic — the simulation is driven by FixedUpdate, not the entity loop.
 
