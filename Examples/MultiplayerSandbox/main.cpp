@@ -123,7 +123,8 @@ class NoitaLikeGame : public Application {
         // Lockstep session: owns net + sim, drives fixed-update loop via OnTick.
         auto* netObj = CreateGameObject();
         netObj->SetName("NetSession");
-        _netComp = netObj->AddComponent<LockstepNetComponent>();
+        netObj->AddComponent<LockstepNetComponent>();
+        _netComp = netObj->GetComponent<LockstepNetComponent>();
         _netComp->Start(g_cli.mode, g_cli.port, g_cli.seed, g_cli.delay, g_cli.joinIp);
 
         // Inspector: one entity per player slot.
@@ -138,9 +139,8 @@ class NoitaLikeGame : public Application {
         // Local input: samples hardware each fixed tick, exposes curSpell for the HUD.
         auto* inputObj = CreateGameObject();
         inputObj->SetName("LocalPlayer");
-        _inputComp = inputObj->AddComponent<PlayerInputComponent>(
-            &_netComp->GetSim(), &_netComp->GetNet()
-        );
+        inputObj->AddComponent<PlayerInputComponent>(&_netComp->GetSim(), &_netComp->GetNet());
+        _inputComp = inputObj->GetComponent<PlayerInputComponent>();
         _netComp->SetInputComponent(_inputComp);
     }
 
