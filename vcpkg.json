@@ -1,7 +1,7 @@
 {
-  "name": "atmospheric-engine",
-  "version": "0.1.0",
-  "license": "GPL-3.0",
+  "name": "atmospheric",
+  "version": "0.2.0",
+  "license": "MIT",
   "dependencies": [
     "glad",
     "glm",
@@ -13,9 +13,10 @@
     },
     "fmt",
     "spdlog",
-    "lua",
     "tinygltf",
     "tracy",
-    "rmlui"
+    "rmlui",
+    "box2d",
+    "flatbuffers"
   ]
 }

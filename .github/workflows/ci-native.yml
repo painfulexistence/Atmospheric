@@ -1,4 +1,4 @@
-name: Build
+name: Build (Native)
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: false
 
       - uses: rlalik/setup-cpp-compiler@master
         with:
@@ -44,13 +44,23 @@ jobs:
       - name: Bootstrap vcpkg on Unix
         if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
         run: |
-          ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh
+          ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
       - name: Bootstrap vcpkg on Windows
         if: matrix.os == 'windows-latest'
         shell: cmd
         run: |
-          ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.bat
+          ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+
+      - name: Cache vcpkg installed packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/vcpkg/installed
+            ${{ github.workspace }}/vcpkg/packages
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-
 
       - name: Install CMake and other dependencies on Ubuntu
         if: matrix.os == 'ubuntu-latest'
@@ -68,19 +78,13 @@ jobs:
         run: |
           choco install cmake.portable
 
-      - name: CMake Configure on Unix
-        if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
+      - name: Set up MSVC developer environment
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: CMake Configure
         run: >
           cmake -G Ninja
-          -B ${{ steps.strings.outputs.build-dir }}
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
-          -DCMAKE_BUILD_TYPE=${{ matrix.build-type }}
-          -S ${{ github.workspace }}
-
-      - name: CMake Configure on Windows
-        if: matrix.os == 'windows-latest'
-        run: >
-          cmake -G "Visual Studio 17 2022"
           -B ${{ steps.strings.outputs.build-dir }}
           -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
           -DCMAKE_BUILD_TYPE=${{ matrix.build-type }}

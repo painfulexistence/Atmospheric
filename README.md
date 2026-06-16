@@ -1,5 +1,10 @@
-# Atmospheric Engine
-**Atmospheric Engine** is a cross-platform 3D game engine developed in C++.
+# Atmospheric
+
+[![Native](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-native.yml/badge.svg)](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-native.yml)
+[![Web](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-web.yml/badge.svg)](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-web.yml)
+<br />
+
+**Atmospheric** is a cross-platform 3D game engine developed in C++.
 The project is a labor of love, acting as my stepping stone to gain a deeper understanding of graphics programming concepts and practices.
 
 ### Demo
@@ -17,12 +22,9 @@ The project is a labor of love, acting as my stepping stone to gain a deeper und
 
 ### Platforms
 - Apple Silicon
-- Apple Intel (unsure?)
-- Windows (broken)
+- Windows (planned)
 - Linux (planned)
-
-⚠️ WARNING
-This project is a work in progress and may be unstable at this stage.
+- Web via Emscripten
 
 ----
 
@@ -33,11 +35,11 @@ Follow the steps below to build the engine:
 - [EMSDK](https://emscripten.org/docs/getting_started/downloads.html) (optional)
 2. Clone this repository
 ```
-git clone --recurse-submodules https://github.com/painfulexistence/AtmosphericEngine.git
+git clone --recurse-submodules https://github.com/painfulexistence/Atmospheric.git
 ```
 3. Setup Vcpkg
 ```
-cd AtmosphericEngine
+cd Atmospheric
 ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 ```
 4. Build the project with CMake
@@ -46,15 +48,25 @@ cmake --preset=dev
 cmake --build --preset=dev
 ```
 
+### WebAssembly (Emscripten)
+We support building WebAssembly targets for browser deployment.
+
+1. **Standard Build (WebGL 2.0 Backend)**:
+   ```bash
+   ./scripts/buildWasm.sh release
+   ```
+
+2. **WebGPU Build (WIP)**:
+   You can target WebGPU via Emscripten's Dawn port by adding the `--webgpu` flag:
+   ```bash
+   ./scripts/buildWasm.sh release --webgpu
+   ```
+   At runtime, `GfxFactory` will detect browser support. If `navigator.gpu` is available, it initializes the WebGPU pipeline; otherwise, it automatically falls back to WebGL 2.0.
+
+
 ----
 
 ## Usage
-The engine includes four example projects to help you get started. Please note that the API is still evolving and may change in the future. To get started, you can check out the HelloWorld example.
+The engine includes some example projects to help you get started. Please note that the API is still evolving and may change in the future. To get started, you can check out the HelloWorld example.
 
 ![demo_helloworld](.github/assets/Demo_HelloWorld.gif)
-
-Examples:
-- [Hello World](https://github.com/painfulexistence/AtmosphericEngine/tree/main/Example_HelloWorld)
-- [Terrain (dynamic-tessellated)](https://github.com/painfulexistence/AtmosphericEngine/tree/main/Example_Terrain)
-- [Maze FPS](https://github.com/painfulexistence/AtmosphericEngine/tree/main/Example_MazeWorld)
-- [Breakout 2D (WIP)](https://github.com/painfulexistence/AtmosphericEngine/tree/main/Example_Breakout2D)

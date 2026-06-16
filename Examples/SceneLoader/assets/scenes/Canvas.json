@@ -1,0 +1,716 @@
+{
+  "name": "CanvasScene",
+  "textures": [],
+  "shaders": {},
+  "entities": [
+    {
+      "name": "Canvas",
+      "active": true,
+      "position": [
+        819.5,
+        427.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "children": [
+        {
+          "name": "LayoutPanel",
+          "active": true,
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "components": [
+            {
+              "type": "SpriteComponent",
+              "size": [
+                1514.0,
+                854.0
+              ],
+              "pivot": [
+                0.5,
+                0.5
+              ],
+              "color": [
+                0.34509803921568627,
+                0.34509803921568627,
+                0.34509803921568627,
+                0.0
+              ],
+              "layer": "LAYER_WORLD",
+              "flipX": false,
+              "flipY": false,
+              "zOrder": 0
+            }
+          ],
+          "children": [
+            {
+              "name": "Image (300, 400, 180, 170)",
+              "active": true,
+              "position": [
+                300.0,
+                400.0,
+                0.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "scale": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "components": [
+                {
+                  "type": "SpriteComponent",
+                  "size": [
+                    180.0,
+                    170.0
+                  ],
+                  "pivot": [
+                    0.5,
+                    0.5
+                  ],
+                  "color": [
+                    0.9882352941176471,
+                    0.6705882352941176,
+                    0.43137254901960786,
+                    1.0
+                  ],
+                  "layer": "LAYER_WORLD",
+                  "flipX": false,
+                  "flipY": false,
+                  "zOrder": 0
+                }
+              ],
+              "children": [
+                {
+                  "name": "Text (Legacy)",
+                  "active": true,
+                  "position": [
+                    0.0,
+                    -30.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "components": [
+                    {
+                      "type": "SpriteComponent",
+                      "size": [
+                        100.0,
+                        30.0
+                      ],
+                      "pivot": [
+                        0.5,
+                        0.5
+                      ],
+                      "color": [
+                        1.0,
+                        1.0,
+                        1.0,
+                        0.4980392156862745
+                      ],
+                      "layer": "LAYER_WORLD",
+                      "flipX": false,
+                      "flipY": false,
+                      "zOrder": 0
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Text (Legacy)",
+              "active": true,
+              "position": [
+                300.0,
+                300.0,
+                0.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "scale": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "components": [
+                {
+                  "type": "SpriteComponent",
+                  "size": [
+                    100.0,
+                    30.0
+                  ],
+                  "pivot": [
+                    0.5,
+                    0.5
+                  ],
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0,
+                    0.4980392156862745
+                  ],
+                  "layer": "LAYER_WORLD",
+                  "flipX": false,
+                  "flipY": false,
+                  "zOrder": 4
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "NodePanel",
+          "active": true,
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "components": [
+            {
+              "type": "SpriteComponent",
+              "size": [
+                0.0,
+                0.0
+              ],
+              "pivot": [
+                0.5,
+                0.5
+              ],
+              "color": [
+                1.0,
+                1.0,
+                1.0,
+                0.0
+              ],
+              "layer": "LAYER_WORLD",
+              "flipX": false,
+              "flipY": false,
+              "zOrder": 1
+            }
+          ],
+          "children": [
+            {
+              "name": "Image (100, 200, 120, 230)",
+              "active": true,
+              "position": [
+                100.0,
+                200.0,
+                0.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "scale": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "components": [
+                {
+                  "type": "SpriteComponent",
+                  "size": [
+                    120.0,
+                    230.0
+                  ],
+                  "pivot": [
+                    0.5,
+                    0.5
+                  ],
+                  "color": [
+                    0.5764705882352941,
+                    1.0,
+                    0.9803921568627451,
+                    1.0
+                  ],
+                  "layer": "LAYER_WORLD",
+                  "flipX": false,
+                  "flipY": false,
+                  "zOrder": 0
+                }
+              ],
+              "children": [
+                {
+                  "name": "Text (Legacy)",
+                  "active": true,
+                  "position": [
+                    0.0,
+                    -30.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "components": [
+                    {
+                      "type": "SpriteComponent",
+                      "size": [
+                        100.0,
+                        30.0
+                      ],
+                      "pivot": [
+                        0.5,
+                        0.5
+                      ],
+                      "color": [
+                        1.0,
+                        1.0,
+                        1.0,
+                        0.4980392156862745
+                      ],
+                      "layer": "LAYER_WORLD",
+                      "flipX": false,
+                      "flipY": false,
+                      "zOrder": 0
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Text (Legacy)",
+              "active": true,
+              "position": [
+                100.0,
+                100.0,
+                0.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "scale": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "components": [
+                {
+                  "type": "SpriteComponent",
+                  "size": [
+                    100.0,
+                    30.0
+                  ],
+                  "pivot": [
+                    0.5,
+                    0.5
+                  ],
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0,
+                    0.4980392156862745
+                  ],
+                  "layer": "LAYER_WORLD",
+                  "flipX": false,
+                  "flipY": false,
+                  "zOrder": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "NodePanel2",
+          "active": true,
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "components": [
+            {
+              "type": "SpriteComponent",
+              "size": [
+                0.0,
+                0.0
+              ],
+              "pivot": [
+                0.5,
+                0.5
+              ],
+              "color": [
+                1.0,
+                1.0,
+                1.0,
+                0.0
+              ],
+              "layer": "LAYER_WORLD",
+              "flipX": false,
+              "flipY": false,
+              "zOrder": 2
+            }
+          ],
+          "children": [
+            {
+              "name": "Image (400, 200, 150, 50)",
+              "active": true,
+              "position": [
+                400.0,
+                200.0,
+                0.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "scale": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "components": [
+                {
+                  "type": "SpriteComponent",
+                  "size": [
+                    150.0,
+                    50.0
+                  ],
+                  "pivot": [
+                    0.5,
+                    0.5
+                  ],
+                  "color": [
+                    0.7098039215686275,
+                    1.0,
+                    0.5803921568627451,
+                    1.0
+                  ],
+                  "layer": "LAYER_WORLD",
+                  "flipX": false,
+                  "flipY": false,
+                  "zOrder": 0
+                }
+              ],
+              "children": [
+                {
+                  "name": "Text (Legacy)",
+                  "active": true,
+                  "position": [
+                    0.0,
+                    -30.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "components": [
+                    {
+                      "type": "SpriteComponent",
+                      "size": [
+                        100.0,
+                        30.0
+                      ],
+                      "pivot": [
+                        0.5,
+                        0.5
+                      ],
+                      "color": [
+                        1.0,
+                        1.0,
+                        1.0,
+                        0.4980392156862745
+                      ],
+                      "layer": "LAYER_WORLD",
+                      "flipX": false,
+                      "flipY": false,
+                      "zOrder": 0
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Text (Legacy)",
+              "active": true,
+              "position": [
+                100.0,
+                100.0,
+                0.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "scale": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "components": [
+                {
+                  "type": "SpriteComponent",
+                  "size": [
+                    100.0,
+                    30.0
+                  ],
+                  "pivot": [
+                    0.5,
+                    0.5
+                  ],
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0,
+                    0.4980392156862745
+                  ],
+                  "layer": "LAYER_WORLD",
+                  "flipX": false,
+                  "flipY": false,
+                  "zOrder": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "LayoutPanel2",
+          "active": true,
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "scale": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "components": [
+            {
+              "type": "SpriteComponent",
+              "size": [
+                1514.0,
+                854.0
+              ],
+              "pivot": [
+                0.5,
+                0.5
+              ],
+              "color": [
+                0.34509803921568627,
+                0.34509803921568627,
+                0.34509803921568627,
+                0.0
+              ],
+              "layer": "LAYER_WORLD",
+              "flipX": false,
+              "flipY": false,
+              "zOrder": 3
+            }
+          ],
+          "children": [
+            {
+              "name": "Image (600, 300, 200, 250)",
+              "active": true,
+              "position": [
+                600.0,
+                300.0,
+                0.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "scale": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "components": [
+                {
+                  "type": "SpriteComponent",
+                  "size": [
+                    200.0,
+                    250.0
+                  ],
+                  "pivot": [
+                    0.5,
+                    0.5
+                  ],
+                  "color": [
+                    0.9921568627450981,
+                    0.43529411764705883,
+                    0.5215686274509804,
+                    1.0
+                  ],
+                  "layer": "LAYER_WORLD",
+                  "flipX": false,
+                  "flipY": false,
+                  "zOrder": 0
+                }
+              ],
+              "children": [
+                {
+                  "name": "Text (Legacy)",
+                  "active": true,
+                  "position": [
+                    0.0,
+                    -30.0,
+                    0.0
+                  ],
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "components": [
+                    {
+                      "type": "SpriteComponent",
+                      "size": [
+                        100.0,
+                        30.0
+                      ],
+                      "pivot": [
+                        0.5,
+                        0.5
+                      ],
+                      "color": [
+                        1.0,
+                        1.0,
+                        1.0,
+                        0.4980392156862745
+                      ],
+                      "layer": "LAYER_WORLD",
+                      "flipX": false,
+                      "flipY": false,
+                      "zOrder": 0
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Text (Legacy)",
+              "active": true,
+              "position": [
+                300.0,
+                300.0,
+                0.0
+              ],
+              "rotation": [
+                0.0,
+                0.0,
+                0.0
+              ],
+              "scale": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "components": [
+                {
+                  "type": "SpriteComponent",
+                  "size": [
+                    100.0,
+                    30.0
+                  ],
+                  "pivot": [
+                    0.5,
+                    0.5
+                  ],
+                  "color": [
+                    1.0,
+                    1.0,
+                    1.0,
+                    0.4980392156862745
+                  ],
+                  "layer": "LAYER_WORLD",
+                  "flipX": false,
+                  "flipY": false,
+                  "zOrder": 1
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

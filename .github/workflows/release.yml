@@ -1,0 +1,164 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  # ── Source kit ─────────────────────────────────────────────────────────────
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package Starter Kit
+        run: |
+          TAG_NAME=${{ github.ref_name }}
+          PACKAGE_NAME="AtmosphericEngine-Starter-${TAG_NAME}"
+
+          zip -r "${PACKAGE_NAME}.zip" . \
+            -x "*.git*" \
+            -x "build/*" \
+            -x "build-wasm/*" \
+            -x ".cache/*" \
+            -x ".devcontainer/*" \
+            -x ".vscode/*" \
+            -x ".github/*" \
+            -x ".git-blame-ignore-revs.txt" \
+            -x "*.DS_Store" \
+            -x "vcpkg/*" \
+            -x "DEVLOG.md" \
+            -x "CMakeUserPresets.json" \
+            -x "docs/*" \
+            -x "Engine/build/*" \
+            -x "Engine/CMakeFiles/*"
+
+          mkdir -p dist
+          mv "${PACKAGE_NAME}.zip" dist/
+
+      - name: Upload Starter Kit artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: starter-kit
+          path: dist/
+
+  # ── Web (Emscripten) build ─────────────────────────────────────────────────
+  release-web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          sparse-checkout: |
+            Engine
+            Examples/HelloWorld
+            CMakeLists.txt
+            CMakePresets.json
+            vcpkg.json
+            scripts/check-emscripten-version.sh
+
+      - name: Read Emscripten version
+        id: emver
+        run: |
+          echo "version=$(bash scripts/check-emscripten-version.sh --print-primary-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ steps.emver.outputs.version }}
+          actions-cache-folder: emsdk-cache
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config
+
+      - name: Check out vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          path: vcpkg
+
+      - name: Bootstrap vcpkg
+        run: ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Cache vcpkg installed packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/vcpkg/installed
+            ${{ github.workspace }}/vcpkg/packages
+          key: vcpkg-wasm32-emscripten-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-wasm32-emscripten-
+
+      - name: CMake Configure
+        run: >
+          cmake -G Ninja
+          -B ${{ github.workspace }}/build
+          -S ${{ github.workspace }}
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DVCPKG_TARGET_TRIPLET=wasm32-emscripten
+          -DCMAKE_BUILD_TYPE=MinSizeRel
+
+      - name: CMake Build (AtmosLua)
+        run: cmake --build ${{ github.workspace }}/build --target AtmosLua --parallel
+
+      # Gzip-compress .data so the release zip is smaller and the file is
+      # ready to serve with Content-Encoding: gzip from a VPS.
+      - name: Gzip compress .data bundle
+        run: |
+          cd ${{ github.workspace }}/build/AtmosLua
+          for f in *.data; do
+            [ -f "$f" ] || continue
+            gzip -9 -k "$f"
+            echo "Compressed: $f → $f.gz"
+          done
+
+      - name: Package Web bundle
+        run: |
+          TAG_NAME=${{ github.ref_name }}
+          PACKAGE_NAME="AtmosphericEngine-Web-${TAG_NAME}"
+          cd ${{ github.workspace }}/build
+          zip -r "${PACKAGE_NAME}.zip" AtmosLua/
+          mkdir -p ${{ github.workspace }}/dist-web
+          mv "${PACKAGE_NAME}.zip" ${{ github.workspace }}/dist-web/
+
+      - name: Upload Web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-bundle
+          path: dist-web/
+
+  # ── Publish GitHub Release ─────────────────────────────────────────────────
+  publish:
+    needs: [release, release-web]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Starter Kit
+        uses: actions/download-artifact@v4
+        with:
+          name: starter-kit
+          path: dist/
+
+      - name: Download Web bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: web-bundle
+          path: dist/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false

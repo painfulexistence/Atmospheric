@@ -1,0 +1,28 @@
+<rml>
+<head>
+    <title>hud</title>
+    <link type="text/rcss" href="hud.rcss"/>
+</head>
+<body id="hud">
+    <div id="p1panel" class="panel">
+        <div class="pname p1">P1</div>
+        <div class="hpbar"><div id="p1hp" class="hpfill p1"/></div>
+        <div class="score" id="p1score">0 / 0</div>
+    </div>
+    <div id="p2panel" class="panel">
+        <div class="pname p2">P2</div>
+        <div class="hpbar"><div id="p2hp" class="hpfill p2"/></div>
+        <div class="score" id="p2score">0 / 0</div>
+    </div>
+    <div id="status">starting...</div>
+    <div id="spellbar">
+        <div id="slot0" class="slot sel"><span class="key">1</span> Spark Bolt</div>
+        <div id="slot1" class="slot"><span class="key">2</span> Fireball</div>
+        <div id="slot2" class="slot"><span class="key">3</span> Grenade</div>
+        <div id="slot3" class="slot"><span class="key">4</span> Water Jet</div>
+        <div id="slot4" class="slot"><span class="key">5</span> Acid Flask</div>
+        <div id="slot5" class="slot"><span class="key">6</span> Dig Blast</div>
+        <div id="slot6" class="slot"><span class="key">7</span> Rapid Wand</div>
+    </div>
+</body>
+</rml>

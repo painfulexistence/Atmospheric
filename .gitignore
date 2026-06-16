@@ -1,9 +1,13 @@
 build/
 build*/
+www/
 samples/
 imgui.ini
 .vscode/settings.json
 .cache/
+
+# Claude Code internal
+.claude/
 
 # MacOS clutter
 .DS_Store

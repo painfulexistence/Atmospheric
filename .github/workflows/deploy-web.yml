@@ -1,0 +1,73 @@
+name: Deploy (WebAssembly)
+
+# Decoupled from the build workflow: download a previously built artifact,
+# gzip-compress the .data bundle, and upload the whole package ready for
+# deployment to a VPS or any static host.
+#
+# Trigger this workflow manually after a successful ci-web run, passing the
+# artifact name printed by that run (e.g. helloworld-wasm-<full-sha>).
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_name:
+        description: "Artifact name from ci-web (helloworld-wasm-<sha>)"
+        required: true
+        type: string
+      sha_short:
+        description: "Short SHA for version directory name (7 chars)"
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download WebAssembly artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: raw/
+
+      # ── Gzip-compress the .data bundle ─────────────────────────────────────
+      # The .data file contains preloaded assets; it compresses well (50-70%).
+      # The resulting .data.gz is served with Content-Encoding: gzip so the
+      # browser decompresses transparently, without any change to Emscripten's
+      # runtime loader.
+      - name: Gzip compress .data bundle
+        run: |
+          cd raw
+          for f in *.data; do
+            [ -f "$f" ] || continue
+            gzip -9 -k "$f"
+            echo "Compressed $f → $f.gz ($(du -sh "$f.gz" | cut -f1))"
+          done
+
+      # ── Version directory layout ────────────────────────────────────────────
+      # index.html at root (no-cache), versioned assets in <sha>/ (immutable).
+      # This lets the server set Cache-Control: immutable on /<sha>/* while
+      # index.html always fetches fresh.
+      - name: Arrange versioned layout
+        run: |
+          SHA="${{ inputs.sha_short }}"
+          mkdir -p dist/"$SHA"
+          # Move everything except index.html into the versioned sub-directory
+          find raw/ -maxdepth 1 -type f ! -name "index.html" \
+            -exec mv {} dist/"$SHA"/ \;
+          # If there is an index.html, place it at the root
+          [ -f raw/index.html ] && mv raw/index.html dist/index.html || true
+
+      - name: Upload deployment package
+        uses: actions/upload-artifact@v4
+        with:
+          name: atmoslua-deploy-${{ inputs.sha_short }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
