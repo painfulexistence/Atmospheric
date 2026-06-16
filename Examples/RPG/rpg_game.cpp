@@ -1,5 +1,6 @@
 #include "rpg_game.hpp"
 #include "components.hpp"
+#include <Atmospheric/gfx_factory.hpp>
 #include <algorithm>
 #include <cmath>
 #include <fmt/format.h>
