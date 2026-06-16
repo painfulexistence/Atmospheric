@@ -53,13 +53,14 @@ private:
         f.spell = _curSpell;
 
         const Player& me = _sim->players[_net->localPlayer];
-        auto fb = app->GetWindow()->GetFramebufferSize();
-        glm::vec2 mouse = inp->GetMousePosition();
-        float wx = mouse.x * float(SandWorld::W) / float(fb.width);
-        float wy = mouse.y * float(SandWorld::H) / float(fb.height);
+        auto ws = Window::Get()->GetSize();
+        auto dpi = Window::Get()->GetDPI();
+        glm::vec2 mouse = inp->GetMousePosition() / dpi;
+        float wx = mouse.x * float(SandWorld::W) / float(ws.width);
+        float wy = mouse.y * float(SandWorld::H) / float(ws.height);
         f.aimQ = InputFrame::QuantizeAim(std::atan2(wy - me.y, wx - me.x));
-        return f;
-    }
+        return f;       
+     }
 
     GameSim*    _sim;
     LockstepNet* _net;

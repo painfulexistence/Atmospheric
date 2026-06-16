@@ -194,6 +194,7 @@ class NoitaLikeGame : public Application {
             graphics.DrawCircle(pr.x * sx, pr.y * sy, r, col);
         }
 
+        //crosshair
         glm::vec2 m = input.GetMousePosition() / dpi;
         graphics.DrawLine(m.x - 7, m.y, m.x + 7, m.y, { 1, 1, 1, 0.8f });
         graphics.DrawLine(m.x, m.y - 7, m.x, m.y + 7, { 1, 1, 1, 0.8f });
