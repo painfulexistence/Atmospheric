@@ -26,7 +26,6 @@ public:
     uint8_t GetCurSpell() const { return _curSpell; }
 
     void DrawImGui() override {
-        if (!ImGui::CollapsingHeader("PlayerInput")) return;
         ImGui::Text("Spell slot: %d", int(_curSpell));
         ImGui::Text("Buttons:    0x%02X", _last.buttons);
         ImGui::Text("AimQ:       %d", int(_last.aimQ));
@@ -123,7 +122,6 @@ public:
     }
 
     void DrawImGui() override {
-        if (!ImGui::CollapsingHeader("LockstepNet")) return;
         if (!_started) { ImGui::TextDisabled("Waiting for connection..."); return; }
         ImGui::Text("Tick: %u", _sim.tick);
         ImGui::Text("Checksum: 0x%08X", _sim.Checksum());
@@ -189,8 +187,6 @@ public:
     std::string GetName() const override { return "Player " + std::to_string(_index); }
 
     void DrawImGui() override {
-        std::string header = "Player " + std::to_string(_index);
-        if (!ImGui::CollapsingHeader(header.c_str())) return;
         ImGui::PushID(_index);
         if (!*_started) {
             ImGui::TextDisabled("Sim not started");

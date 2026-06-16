@@ -257,8 +257,10 @@ void EditorLayer::DrawEntityInspector(GameObject* entity) {
     // Generic inspector pass: any component (engine or game-defined) may expose
     // its own widgets by overriding Component::DrawImGui. Built-in components
     // handled above use the default no-op, so this adds no duplication.
+    // The CollapsingHeader is provided here so DrawImGui() only needs content.
     for (auto* comp : entity->GetComponents()) {
-        comp->DrawImGui();
+        if (ImGui::CollapsingHeader(comp->GetName().c_str()))
+            comp->DrawImGui();
     }
 }
 

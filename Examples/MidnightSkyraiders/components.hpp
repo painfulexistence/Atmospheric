@@ -195,11 +195,9 @@ public:
     }
 
     void DrawImGui() override {
-        if (ImGui::CollapsingHeader("PlayerComponent", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::Text("Level: %d", _level);
-            ImGui::Text("XP: %.0f / %.0f", _xp, _nextXP);
-            ImGui::DragFloat("Fire cooldown", &_fireCD, 0.01f, 0.02f, 1.0f);
-        }
+        ImGui::Text("Level: %d", _level);
+        ImGui::Text("XP: %.0f / %.0f", _xp, _nextXP);
+        ImGui::DragFloat("Fire cooldown", &_fireCD, 0.01f, 0.02f, 1.0f);
     }
 };
 
@@ -239,9 +237,7 @@ public:
     }
 
     void DrawImGui() override {
-        if (ImGui::CollapsingHeader("PlayerInputComponent")) {
-            ImGui::DragFloat("Move speed", &_speed, 5.0f, 50.0f, 1500.0f);
-        }
+        ImGui::DragFloat("Move speed", &_speed, 5.0f, 50.0f, 1500.0f);
     }
 };
 
@@ -289,18 +285,16 @@ public:
     }
 
     void DrawImGui() override {
-        if (ImGui::CollapsingHeader("GameDirectorComponent", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::Text("Score: %lld", (long long)_score);
-            ImGui::Text("Kills: %d", _kills);
-            ImGui::Text("Wave:  %d", _waveCount);
-            ImGui::Text("Next wave in: %.1fs", std::max(0.0f, _waveInterval - _waveTimer));
-            ImGui::Separator();
-            ImGui::DragFloat("Wave interval", &_waveInterval, 0.5f, 1.0f, 60.0f);
-            ImGui::DragFloat("Score rate", &_scoreRate, 5.0f, 0.0f, 1000.0f);
-            if (ImGui::Button("Spawn wave now")) {
-                _waveTimer = 0.0f;
-                if (_onSpawnWave) _onSpawnWave();
-            }
+        ImGui::Text("Score: %lld", (long long)_score);
+        ImGui::Text("Kills: %d", _kills);
+        ImGui::Text("Wave:  %d", _waveCount);
+        ImGui::Text("Next wave in: %.1fs", std::max(0.0f, _waveInterval - _waveTimer));
+        ImGui::Separator();
+        ImGui::DragFloat("Wave interval", &_waveInterval, 0.5f, 1.0f, 60.0f);
+        ImGui::DragFloat("Score rate", &_scoreRate, 5.0f, 0.0f, 1000.0f);
+        if (ImGui::Button("Spawn wave now")) {
+            _waveTimer = 0.0f;
+            if (_onSpawnWave) _onSpawnWave();
         }
     }
 };
@@ -364,10 +358,8 @@ public:
     }
 
     void DrawImGui() override {
-        if (ImGui::CollapsingHeader("CollisionSystemComponent")) {
-            ImGui::Text("Bullets tracked: %d", (int)_bullets.size());
-            ImGui::Text("Enemies tracked: %d", (int)_enemies.size());
-        }
+        ImGui::Text("Bullets tracked: %d", (int)_bullets.size());
+        ImGui::Text("Enemies tracked: %d", (int)_enemies.size());
     }
 
 private:

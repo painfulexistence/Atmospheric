@@ -48,11 +48,9 @@ public:
     }
 
     void DrawImGui() override {
-        if (ImGui::CollapsingHeader("PlayerMovementComponent")) {
-            ImGui::DragFloat("Move speed", &_player->speed, 1.0f, 10.0f, 500.0f);
-            ImGui::Text("Pos: %.1f, %.1f", _player->x, _player->y);
-            ImGui::Text("Facing: %s", _player->facing > 0 ? "right" : "left");
-        }
+        ImGui::DragFloat("Move speed", &_player->speed, 1.0f, 10.0f, 500.0f);
+        ImGui::Text("Pos: %.1f, %.1f", _player->x, _player->y);
+        ImGui::Text("Facing: %s", _player->facing > 0 ? "right" : "left");
     }
 };
 
@@ -67,19 +65,17 @@ public:
     std::string GetName() const override { return "PlayerComponent"; }
 
     void DrawImGui() override {
-        if (ImGui::CollapsingHeader("PlayerComponent", ImGuiTreeNodeFlags_DefaultOpen)) {
-            Stats& s = _player->stats;
-            ImGui::Text("Level: %d   EXP: %d/%d", _battle->level, _battle->exp, _battle->expToNext);
-            ImGui::DragInt("Gold", &_battle->gold, 1.0f, 0, 999999);
-            ImGui::Separator();
-            ImGui::DragInt("HP",     &s.hp,    1.0f, 0, s.maxHp);
-            ImGui::DragInt("Max HP", &s.maxHp, 1.0f, 1, 9999);
-            ImGui::DragInt("MP",     &s.mp,    1.0f, 0, s.maxMp);
-            ImGui::DragInt("Max MP", &s.maxMp, 1.0f, 0, 9999);
-            ImGui::DragInt("ATK",    &s.atk,   1.0f, 0, 9999);
-            ImGui::DragInt("DEF",    &s.def,   1.0f, 0, 9999);
-            ImGui::DragInt("SPD",    &s.spd,   1.0f, 0, 9999);
-        }
+        Stats& s = _player->stats;
+        ImGui::Text("Level: %d   EXP: %d/%d", _battle->level, _battle->exp, _battle->expToNext);
+        ImGui::DragInt("Gold", &_battle->gold, 1.0f, 0, 999999);
+        ImGui::Separator();
+        ImGui::DragInt("HP",     &s.hp,    1.0f, 0, s.maxHp);
+        ImGui::DragInt("Max HP", &s.maxHp, 1.0f, 1, 9999);
+        ImGui::DragInt("MP",     &s.mp,    1.0f, 0, s.maxMp);
+        ImGui::DragInt("Max MP", &s.maxMp, 1.0f, 0, 9999);
+        ImGui::DragInt("ATK",    &s.atk,   1.0f, 0, 9999);
+        ImGui::DragInt("DEF",    &s.def,   1.0f, 0, 9999);
+        ImGui::DragInt("SPD",    &s.spd,   1.0f, 0, 9999);
     }
 };
 
@@ -102,7 +98,7 @@ public:
                      int idx, EnemyAICallbacks cbs)
         : _data(data), _anim(anim), _idx(idx), _cb(std::move(cbs)) {}
 
-    std::string GetName() const override { return "EnemyAIComponent"; }
+    std::string GetName() const override { return fmt::format("EnemyAI [{}]", _data->def.name); }
 
     void OnTick(float dt) override {
         if (!_data->alive || !_cb.isExploring()) return;
@@ -137,12 +133,10 @@ public:
     }
 
     void DrawImGui() override {
-        if (ImGui::CollapsingHeader(fmt::format("EnemyAI [{}]", _data->def.name).c_str())) {
-            ImGui::Text("Alive: %s   Aggro: %s",
-                        _data->alive ? "yes" : "no", _data->aggro ? "yes" : "no");
-            ImGui::Text("Pos: %.1f, %.1f", _data->x, _data->y);
-            ImGui::DragFloat("Aggro radius", &_data->aggroR, 1.0f, 0.0f, 400.0f);
-        }
+        ImGui::Text("Alive: %s   Aggro: %s",
+                    _data->alive ? "yes" : "no", _data->aggro ? "yes" : "no");
+        ImGui::Text("Pos: %.1f, %.1f", _data->x, _data->y);
+        ImGui::DragFloat("Aggro radius", &_data->aggroR, 1.0f, 0.0f, 400.0f);
     }
 };
 
@@ -216,7 +210,6 @@ public:
     }
 
     void DrawImGui() override {
-        if (!ImGui::CollapsingHeader("BattleSystemComponent")) return;
         ImGui::Text("Phase: %d", (int)_battle.phase);
         ImGui::Text("Level: %d  EXP: %d/%d  Gold: %d",
                     _battle.level, _battle.exp, _battle.expToNext, _battle.gold);
