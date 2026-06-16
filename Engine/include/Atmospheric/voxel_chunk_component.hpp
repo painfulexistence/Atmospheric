@@ -16,7 +16,7 @@ public:
     VoxelChunkComponent(GameObject* owner, GraphicsServer* gfx, glm::ivec3 chunkPos);
     ~VoxelChunkComponent();
 
-    std::string GetName() const override { return "VoxelChunkComponent"; }
+    std::string GetName() const override { return "VoxelChunk"; }
     void OnAttach() override;
     void OnDetach() override;
 

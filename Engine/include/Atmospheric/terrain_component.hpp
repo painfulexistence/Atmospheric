@@ -25,7 +25,7 @@ public:
     ~TerrainComponent();
 
     std::string GetName() const override {
-        return "TerrainComponent";
+        return "Terrain";
     }
 
     void OnAttach() override;

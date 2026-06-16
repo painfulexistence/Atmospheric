@@ -115,6 +115,11 @@ public:
 
     GameObject* CreateGameObject(glm::vec2 position, float rotation = 0.0f);
 
+    // Queue a factory lambda to run at the start of the next frame, outside any
+    // entity-tick loop. Use this from Component::OnTick to safely create new
+    // GameObjects (CreateGameObject is not safe to call mid-iteration).
+    void DeferSpawn(std::function<void()> cmd);
+
 protected:
     // These subsystems will be game accessible
     AudioManager audio;
@@ -166,6 +171,7 @@ private:
     GameObject* _defaultGameObject = nullptr;
 
     std::vector<Layer*> _layers;
+    std::vector<std::function<void()>> _spawnQueue;
     GameObject* _selectedEntity = nullptr;
 #ifndef NDEBUG
     EditorLayer* _editorLayer = nullptr;

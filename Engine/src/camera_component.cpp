@@ -43,6 +43,9 @@ std::string CameraComponent::GetName() const {
     return std::string("Camera");
 }
 
+void CameraComponent::DrawImGui() {
+}
+
 void CameraComponent::OnAttach() {
     if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
         gameObject->GetApp()->GetGraphicsServer()->RegisterCamera(this);

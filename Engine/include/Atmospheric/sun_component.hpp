@@ -10,7 +10,7 @@ public:
                  float     billboardRadius = 20.0f,
                  float     height          = 64.0f);
 
-    std::string GetName() const override { return "SunComponent"; }
+    std::string GetName() const override { return "Sun"; }
     void OnAttach() override;
     void OnDetach() override;
 

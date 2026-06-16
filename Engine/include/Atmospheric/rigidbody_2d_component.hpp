@@ -56,7 +56,7 @@ public:
     ~Rigidbody2DComponent() override;
 
     std::string GetName() const override {
-        return "Rigidbody2DComponent";
+        return "Rigidbody2D";
     }
 
     void OnAttach() override;

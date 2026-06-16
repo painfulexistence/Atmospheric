@@ -7,7 +7,6 @@ find_package(Bullet CONFIG REQUIRED)
 
 add_executable(${GAME_NAME}
     main.cpp
-    rpg_game.cpp
 )
 set_target_properties(${GAME_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}

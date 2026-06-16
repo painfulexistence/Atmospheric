@@ -2,6 +2,7 @@
 #include "application.hpp"
 #include "bullet_linear_math.hpp"
 #include "game_object.hpp"
+#include "imgui.h"
 
 static glm::mat4 convertToGLMatrix(const btTransform& trans) {
     btScalar mat[16] = { 0.0f };
@@ -87,6 +88,11 @@ RigidbodyComponent::~RigidbodyComponent(){
 
 std::string RigidbodyComponent::GetName() const {
     return std::string("Physics");
+}
+
+void RigidbodyComponent::DrawImGui() {
+    glm::vec3 vel = GetLinearVelocity();
+    ImGui::Text("Velocity: %.3f, %.3f, %.3f", vel.x, vel.y, vel.z);
 }
 
 void RigidbodyComponent::OnAttach() {

@@ -50,6 +50,12 @@ public:
     void AddComponent(Component* component);
     void RemoveComponent(Component* component);
 
+    // Read-only access to all attached components (used by the editor to drive
+    // each component's DrawImGui generically).
+    const std::vector<Component*>& GetComponents() const {
+        return _components;
+    }
+
     void Tick(float dt);
     void PhysicsTick(float dt);
 

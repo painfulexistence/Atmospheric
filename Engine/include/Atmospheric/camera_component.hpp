@@ -36,6 +36,7 @@ public:
 
     void OnAttach() override;
     void OnDetach() override;
+    void DrawImGui() override;
 
     void SetPerspective(float fov, float aspectRatio, float nearClip, float farClip);
 

@@ -1,5 +1,6 @@
 #include "transform_component.hpp"
 #include "game_object.hpp"
+#include "imgui.h"
 
 TransformComponent::TransformComponent(GameObject* owner, glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) {
     gameObject = owner;
@@ -7,6 +8,15 @@ TransformComponent::TransformComponent(GameObject* owner, glm::vec3 position, gl
     _rotation = rotation;
     _scale = scale;
     UpdateTransform();
+}
+
+void TransformComponent::DrawImGui() {
+    glm::vec3 pos = GetPosition();
+    glm::vec3 rot = GetRotation();
+    glm::vec3 scale = GetScale();
+    if (ImGui::DragFloat3("Position", &pos.x, 0.1f)) SetPosition(pos);
+    if (ImGui::DragFloat3("Rotation", &rot.x, 1.0f)) SetRotation(rot);
+    if (ImGui::DragFloat3("Scale", &scale.x, 0.1f)) SetScale(scale);
 }
 
 void TransformComponent::SetPosition(const glm::vec3& position) {
