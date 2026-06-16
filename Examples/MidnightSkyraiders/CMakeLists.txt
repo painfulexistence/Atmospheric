@@ -55,23 +55,26 @@ else()
 endif()
 
 # ── Asset sync ───────────────────────────────────────────────────────────────
-add_custom_target(sync_default_assets_${GAME_NAME} ALL
+add_custom_command(
+    TARGET ${GAME_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/Engine/default_assets
-        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets
+        $<TARGET_FILE_DIR:${GAME_NAME}>/assets
     COMMENT "Syncing default assets for ${GAME_NAME}"
 )
-add_dependencies(sync_default_assets_${GAME_NAME} ${GAME_NAME})
 
-add_custom_target(sync_game_assets_${GAME_NAME} ALL
+add_custom_command(
+    TARGET ${GAME_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_CURRENT_SOURCE_DIR}/assets
-        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets
+        $<TARGET_FILE_DIR:${GAME_NAME}>/assets
     COMMENT "Syncing game assets for ${GAME_NAME}"
 )
-add_dependencies(sync_game_assets_${GAME_NAME} ${GAME_NAME})
 
-ae_auto_convert_textures(${GAME_NAME}
-    ${CMAKE_CURRENT_SOURCE_DIR}/assets/images
-    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets/images
-)
+if(EMSCRIPTEN)
+    ae_auto_convert_textures(${GAME_NAME}
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/images
+        ${EM_PRELOAD_STAGING_DIR}/images
+    )
+endif()
+

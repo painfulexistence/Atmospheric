@@ -34,6 +34,9 @@ public:
 
     std::string GetName() const override;
 
+    void OnAttach() override;
+    void OnDetach() override;
+
     void SetPerspective(float fov, float aspectRatio, float nearClip, float farClip);
 
     void SetOrthographic(float width, float height, float nearClip, float farClip);

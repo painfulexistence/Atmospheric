@@ -89,27 +89,27 @@ else()
 endif()
 
 # ── Asset sync ───────────────────────────────────────────────────────────────
-add_custom_target(sync_default_assets_${TARGET_NAME} ALL
+add_custom_command(
+    TARGET ${TARGET_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/Engine/default_assets
-        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${TARGET_NAME}/assets
+        $<TARGET_FILE_DIR:${TARGET_NAME}>/assets
     COMMAND ${CMAKE_COMMAND} -E make_directory
-        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${TARGET_NAME}/assets/scripts
+        $<TARGET_FILE_DIR:${TARGET_NAME}>/assets/scripts
     COMMENT "Syncing default assets for ${TARGET_NAME}"
 )
-add_dependencies(sync_default_assets_${TARGET_NAME} ${TARGET_NAME})
 
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/assets)
-    add_custom_target(sync_game_assets_${TARGET_NAME} ALL
+    add_custom_command(
+        TARGET ${TARGET_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/assets
-            ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${TARGET_NAME}/assets
+            $<TARGET_FILE_DIR:${TARGET_NAME}>/assets
         COMMENT "Syncing game assets for ${TARGET_NAME}"
     )
-    add_dependencies(sync_game_assets_${TARGET_NAME} ${TARGET_NAME})
 
     ae_auto_convert_textures(${TARGET_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/assets/textures
-        ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${TARGET_NAME}/assets/textures
+        $<TARGET_FILE_DIR:${TARGET_NAME}>/assets/textures
     )
 endif()

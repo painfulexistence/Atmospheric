@@ -1,4 +1,5 @@
 #include "audio_manager.hpp"
+#include "file_system.hpp"
 #include "fmt/format.h"
 #include "imgui.h"
 
@@ -289,7 +290,7 @@ void AudioManager::Reset() {
 
 MusicID AudioManager::LoadMusic(const char* filename) {
     MusicID id = nextMusicId++;
-    std::string path = filename;
+    std::string path = FileSystem::Get().ResolvePath(filename);
     musicPaths[id] = path;
     musicVolumes[id] = 1.0f;
     
@@ -381,7 +382,7 @@ bool AudioManager::IsMusicPlaying(MusicID id) {
 
 SoundID AudioManager::LoadSound(const char* filename) {
     SoundID id = nextSoundId++;
-    std::string path = filename;
+    std::string path = FileSystem::Get().ResolvePath(filename);
     soundPaths[id] = path;
     soundVolumes[id] = 1.0f;
     
@@ -589,7 +590,8 @@ void AudioManager::Reset() {
 
 MusicID AudioManager::LoadMusic(const char* filename) {
     MusicID id = nextMusicId;
-    musics[id] = ::LoadMusicStream(filename);
+    std::string path = FileSystem::Get().ResolvePath(filename);
+    musics[id] = ::LoadMusicStream(path.c_str());
     nextMusicId++;
     return id;
 }
@@ -642,7 +644,8 @@ bool AudioManager::IsMusicPlaying(MusicID id) {
 
 SoundID AudioManager::LoadSound(const char* filename) {
     SoundID id = nextSoundId;
-    sounds[id] = ::LoadSound(filename);
+    std::string path = FileSystem::Get().ResolvePath(filename);
+    sounds[id] = ::LoadSound(path.c_str());
     nextSoundId++;
     return id;
 }

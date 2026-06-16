@@ -464,8 +464,11 @@ ImageSize Window::GetFramebufferSize() {
 }
 
 glm::vec2 Window::GetDPI() {
-    float scale = SDL_GetWindowDisplayScale(static_cast<SDL_Window*>(_internal));
-    return glm::vec2(scale, scale);
+    auto fb = GetFramebufferSize();
+    auto lp = GetSize();
+    float sx = (lp.width  > 0) ? float(fb.width)  / float(lp.width)  : 1.0f;
+    float sy = (lp.height > 0) ? float(fb.height) / float(lp.height) : 1.0f;
+    return glm::vec2(sx, sy);
 }
 
 glm::vec2 Window::GetMousePosition() {

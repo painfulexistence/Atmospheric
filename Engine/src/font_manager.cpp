@@ -3,9 +3,9 @@
 
 #include "Atmospheric/font_manager.hpp"
 #include "Atmospheric/gfx_factory.hpp"
+#include "file_system.hpp"
 #include <cmath>
 #include <fmt/format.h>
-#include <fstream>
 
 FontManager::FontManager() {
 }
@@ -21,18 +21,8 @@ FontManager::~FontManager() {
 }
 
 FontID FontManager::LoadFont(const std::string& path, float baseSize, int firstChar, int numChars) {
-    // Read font file
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
-        fmt::print(stderr, "[FontManager] Failed to open font file: {}\n", path);
-        return 0;
-    }
-
-    size_t fileSize = file.tellg();
-    file.seekg(0, std::ios::beg);
-
-    std::vector<unsigned char> fontData(fileSize);
-    if (!file.read(reinterpret_cast<char*>(fontData.data()), fileSize)) {
+    auto fontData = FileSystem::Get().ReadSync(path);
+    if (fontData.empty()) {
         fmt::print(stderr, "[FontManager] Failed to read font file: {}\n", path);
         return 0;
     }

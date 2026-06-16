@@ -9,9 +9,7 @@
 
 #include "Scene_generated.h"
 
-#ifndef __EMSCRIPTEN__
-#include <SDL3/SDL_filesystem.h>
-#endif
+#include "file_system.hpp"
 #include <fstream>
 #include <spdlog/spdlog.h>
 
@@ -43,11 +41,7 @@ SceneLoadResult SceneLoader::Load(const std::string& filename, const glm::vec3& 
 SceneLoadResult SceneLoader::Load(const std::string& filename, const SceneLoadConfig& config) {
     spdlog::info("SceneLoader: Loading CSB file '{}'...", filename);
 
-#ifndef __EMSCRIPTEN__
-    const std::string path = SDL_GetBasePath() + filename;
-#else
-    const std::string path = filename;
-#endif
+    const std::string path = FileSystem::Get().ResolvePath(filename);
 
     SceneLoadResult result;
     std::ifstream file(path, std::ios::binary | std::ios::ate);

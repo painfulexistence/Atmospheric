@@ -25,6 +25,11 @@
 #include <cstdio>
 #include <cstring>
 
+#ifndef __EMSCRIPTEN__
+#include <SDL3/SDL_filesystem.h>
+static std::string g_basePath;
+#endif
+
 // ─────────────────────────────────────────────────────────────────────────────
 // In-process cache
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,7 +45,13 @@ static std::mutex g_cacheMutex;
 FileSystem* FileSystem::_instance = nullptr;
 
 FileSystem& FileSystem::Get() {
-    if (!_instance) _instance = new FileSystem();
+    if (!_instance) {
+        _instance = new FileSystem();
+#ifndef __EMSCRIPTEN__
+        const char* sdlBase = SDL_GetBasePath();
+        if (sdlBase) g_basePath = sdlBase;
+#endif
+    }
     return *_instance;
 }
 
@@ -64,10 +75,17 @@ static FileSystem::Bytes ReadFromDisk(const std::string& path) {
 }
 
 static std::string NormalizePath(const std::string& path) {
-    if (path.size() >= 2 && path[0] == '.' && path[1] == '/') {
-        return path.substr(2);
+    std::string p = path;
+    if (p.size() >= 2 && p[0] == '.' && p[1] == '/') {
+        p = p.substr(2);
     }
-    return path;
+#ifndef __EMSCRIPTEN__
+    // Prepend executable directory so the game can run from any working directory.
+    if (!g_basePath.empty() && (p.empty() || p[0] != '/')) {
+        p = g_basePath + p;
+    }
+#endif
+    return p;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -77,6 +95,10 @@ bool FileSystem::IsCached(const std::string& path) const {
     std::string normPath = NormalizePath(path);
     std::lock_guard<std::mutex> lk(g_cacheMutex);
     return g_cache.count(normPath) != 0;
+}
+
+std::string FileSystem::ResolvePath(const std::string& path) const {
+    return NormalizePath(path);
 }
 
 void FileSystem::EvictCache(const std::string& path) {
@@ -104,8 +126,12 @@ FileSystem::Bytes FileSystem::ReadSync(const std::string& path) {
         if (it != g_cache.end()) return it->second; // copy from cache
     }
 #ifdef __EMSCRIPTEN__
-    // On web a cache-miss means Prefetch was not called — log and fail.
-    ENGINE_LOG("[FileSystem] ReadSync cache miss on web: '{}' — call Prefetch first", normPath);
+    // Cache miss: try MEMFS (populated by --preload-file at link time) before failing.
+    {
+        auto bytes = ReadFromDisk(normPath);
+        if (!bytes.empty()) return bytes;
+    }
+    ENGINE_LOG("[FileSystem] ReadSync: '{}' not in cache or MEMFS — call Prefetch first", normPath);
     return {};
 #else
     auto bytes = ReadFromDisk(normPath);
