@@ -13,6 +13,7 @@ uniform float     u_waterLine;
 uniform sampler2D u_depthTexture;
 uniform mat4      u_invProj;
 uniform mat4      u_invView;
+uniform vec2      u_screenSize;
 
 const vec3  DEEP_COLOR    = vec3(0.04, 0.11, 0.35);
 const vec3  SHALLOW_COLOR = vec3(0.686, 0.933, 0.933);
@@ -41,7 +42,7 @@ void main() {
     }
 
     // Beer-Lambert depth via screen-space depth reconstruction
-    vec2  screenUV       = gl_FragCoord.xy / vec2(textureSize(u_depthTexture, 0));
+    vec2  screenUV       = gl_FragCoord.xy / u_screenSize;
     float rawDepth       = texture(u_depthTexture, screenUV).r;
     vec3  floorPos       = reconstructWorldPos(screenUV, rawDepth);
     float waterThickness = max(v_worldPos.y - floorPos.y, 0.0);

@@ -417,6 +417,32 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
         sceneRT = GfxFactory::CreateRenderTarget(p);
     }
 
+#ifdef __EMSCRIPTEN__
+    if (sceneRT && sceneRT->GetNumSamples() > 1) {
+        glGenTextures(1, &webglResolvedDepthTex);
+        glBindTexture(GL_TEXTURE_2D, webglResolvedDepthTex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, props.width, props.height, 0,
+                     GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        glGenFramebuffers(1, &webglResolvedDepthFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, webglResolvedDepthFBO);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, webglResolvedDepthTex, 0);
+
+        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            Console::Get()->Error("Renderer: WebGL resolved depth FBO incomplete!");
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        webglResolvedDepthWidth = props.width;
+        webglResolvedDepthHeight = props.height;
+    }
+#endif
+
     // 3. MSAA resolve render target (non-MSAA, for post-process input)
     {
         RenderTarget::Props p;
@@ -479,6 +505,19 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
 void Renderer::DestroyRTs() {
     sceneRT.reset();
     msaaResolveRT.reset();
+
+#ifdef __EMSCRIPTEN__
+    if (webglResolvedDepthFBO) {
+        glDeleteFramebuffers(1, &webglResolvedDepthFBO);
+        webglResolvedDepthFBO = 0;
+    }
+    if (webglResolvedDepthTex) {
+        glDeleteTextures(1, &webglResolvedDepthTex);
+        webglResolvedDepthTex = 0;
+    }
+    webglResolvedDepthWidth = 0;
+    webglResolvedDepthHeight = 0;
+#endif
 
     glDeleteTextures(1, &gBuffer.positionRT);
     glDeleteTextures(1, &gBuffer.normalRT);
@@ -1148,6 +1187,14 @@ void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID());
     glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
                       GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+
+#ifdef __EMSCRIPTEN__
+    if (renderer.webglResolvedDepthFBO != 0) {
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, renderer.webglResolvedDepthFBO);
+        glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
+                          GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+    }
+#endif
  
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
  

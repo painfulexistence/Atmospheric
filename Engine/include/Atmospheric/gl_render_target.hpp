@@ -30,6 +30,7 @@ public:
     int GetWidth() const override { return _width; }
     int GetHeight() const override { return _height; }
     glm::vec2 GetSize() const override { return glm::vec2(_width, _height); }
+    int GetNumSamples() const override { return _numSamples; }
 
     bool IsValid() const override { return _fbo != 0 && (_colorTexture != 0 || _msaaColorRBO != 0); }
 
