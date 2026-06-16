@@ -9,6 +9,8 @@
 
 enum class GameMode { Explore, BattleTransitionIn, Battle, BattleTransitionOut };
 
+class BattleSystemComponent;
+
 class RPGGame : public Application {
 public:
     RPGGame();
@@ -40,18 +42,15 @@ private:
     // ── game state ─────────────────────────────────────────────────────
     GameMode    _mode     = GameMode::Explore;
     float       _fadeIn   = 1.0f;
-    float       _transition = 0.0f;  // 0→1 for battle transition
+    float       _transition = 0.0f;
     std::string _dialogText;
     float       _dialogTimer = 0.0f;
     float       _time = 0.0f;
 
-    // ── battle ─────────────────────────────────────────────────────────
-    BattleState _battle;
-    float       _shakeMag = 0.0f;    // screen shake
-    float       _shakeTimer = 0.0f;
+    // ── battle (owned by BattleSystemComponent) ────────────────────────
+    BattleSystemComponent* _battleComp = nullptr;
 
     void StartBattle(int enemyIdx);
-    void EndBattle(bool victory);
 
     // Exploration update/draw
     void UpdateExplore(float dt);
@@ -59,21 +58,7 @@ private:
     void DrawExploreHUD();
     void DrawDialog();
 
-    // Battle update/draw
-    void UpdateBattle(float dt);
-    void DrawBattle();
-    void DrawBattleMenu();
-    void DrawBattleLog();
-    void DrawBattleStats();
-
-    // Battle actions
-    void ExecutePlayerAttack();
-    void ExecutePlayerSkill(int skillIdx);
-    void ExecutePlayerItem(int itemIdx);
-    void ExecuteEnemyTurn();
-    int  CalcDamage(int atk, int def);
-
-    // Helpers
+    // Shared UI helpers (used by explore HUD and dialog)
     void DrawHPBar(float x, float y, float w, float h, int hp, int maxHp,
                    glm::vec4 color = glm::vec4(0.2f,0.85f,0.2f,1));
     void DrawMPBar(float x, float y, float w, float h, int mp, int maxMp);
@@ -81,6 +66,4 @@ private:
                    glm::vec4 bg = glm::vec4(0.05f,0.05f,0.12f,0.92f));
 
     static AnimClip MakeClip(int row, std::vector<int> cols, float dur, bool loop=true);
-
-    std::mt19937 _rng{std::random_device{}()};
 };

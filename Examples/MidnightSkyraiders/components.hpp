@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <functional>
 #include <random>
+#include <sstream>
+#include <iomanip>
 #include <string>
 
 static std::mt19937 g_rng{ std::random_device{}() };
@@ -300,5 +302,110 @@ public:
                 if (_onSpawnWave) _onSpawnWave();
             }
         }
+    }
+};
+
+// Draws the player HUD (score / kills / level / XP) each tick while active.
+class HUDComponent : public Component {
+    GameDirectorComponent* _director;
+    PlayerComponent*       _player = nullptr;
+    FontID                 _fontID;
+public:
+    HUDComponent(GameObject* go, GameDirectorComponent* director, FontID fontID)
+        : _director(director), _fontID(fontID) { gameObject = go; }
+
+    std::string GetName() const override { return "HUDComponent"; }
+
+    void SetPlayer(PlayerComponent* p) { _player = p; }
+
+    void OnTick(float /*dt*/) override {
+        if (!_player || !_director) return;
+        auto* gs = gameObject->GetApp()->GetGraphicsServer();
+        std::ostringstream oss;
+        oss << "Score: " << std::setw(8) << std::setfill('0') << (long long)_director->Score()
+            << "  Kills: " << std::setw(4) << std::setfill('0') << _director->Kills()
+            << "  Lv." << _player->Level()
+            << " (" << std::fixed << std::setprecision(1)
+            << (_player->XP() / _player->NextXP() * 100.0f) << "%)";
+        gs->DrawText(_fontID, oss.str(), 10.0f, 10.0f, 0.8f, glm::vec4(1,1,0,1));
+    }
+};
+
+// Tracks spawned bullets and enemies; resolves AABB collisions and flushes
+// inactive objects each tick. Active only during GameState::Playing.
+class CollisionSystemComponent : public Component {
+    GameDirectorComponent*   _director;
+    PlayerComponent*         _player = nullptr;
+    SoundID                  _sfxExp;
+    std::vector<GameObject*> _bullets;
+    std::vector<GameObject*> _enemies;
+public:
+    CollisionSystemComponent(GameObject* go, GameDirectorComponent* director, SoundID sfxExp)
+        : _director(director), _sfxExp(sfxExp) { gameObject = go; }
+
+    std::string GetName() const override { return "CollisionSystemComponent"; }
+
+    void SetPlayer(PlayerComponent* p) { _player = p; }
+
+    void AddBullet(GameObject* b) { _bullets.push_back(b); }
+    void AddEnemy (GameObject* e) { _enemies.push_back(e); }
+
+    void ClearAll() {
+        for (auto* b : _bullets) b->SetActive(false);
+        for (auto* e : _enemies) e->SetActive(false);
+        _bullets.clear();
+        _enemies.clear();
+    }
+
+    void OnTick(float /*dt*/) override {
+        checkCollisions();
+        flushDead();
+    }
+
+    void DrawImGui() override {
+        if (ImGui::CollapsingHeader("CollisionSystemComponent")) {
+            ImGui::Text("Bullets tracked: %d", (int)_bullets.size());
+            ImGui::Text("Enemies tracked: %d", (int)_enemies.size());
+        }
+    }
+
+private:
+    void checkCollisions() {
+        for (auto* b : _bullets) {
+            if (!b->isActive) continue;
+            auto* bm = b->GetComponent<BulletMovementComponent>();
+            if (!bm || bm->GetType() < 0) continue;
+            glm::vec3 bpos = b->GetPosition();
+            for (auto* e : _enemies) {
+                if (!e->isActive) continue;
+                glm::vec3 epos = e->GetPosition();
+                if (aabb(bpos.x, bpos.y, 8, 8, epos.x, epos.y, 32, 32)) {
+                    b->SetActive(false);
+                    killEnemy(e);
+                }
+            }
+        }
+    }
+
+    void killEnemy(GameObject* enemy) {
+        enemy->SetActive(false);
+        auto* em = enemy->GetComponent<EnemyMovementComponent>();
+        int level = em ? em->GetLevel() : 1;
+        _director->AddScore(100.0);
+        _director->AddKill();
+        if (_player) _player->AddXP(level);
+        gameObject->GetApp()->GetAudioServer()->PlaySoundVariation(_sfxExp, 0.1f, 0.05f);
+    }
+
+    void flushDead() {
+        auto inactive = [](GameObject* g) { return !g->isActive; };
+        _bullets.erase(std::remove_if(_bullets.begin(), _bullets.end(), inactive), _bullets.end());
+        _enemies.erase(std::remove_if(_enemies.begin(), _enemies.end(), inactive), _enemies.end());
+    }
+
+    static bool aabb(float ax, float ay, float aw, float ah,
+                     float bx, float by, float bw, float bh) {
+        return std::abs(ax - bx) < (aw + bw) * 0.5f &&
+               std::abs(ay - by) < (ah + bh) * 0.5f;
     }
 };

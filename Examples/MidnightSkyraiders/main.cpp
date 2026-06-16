@@ -2,10 +2,7 @@
 #include "components.hpp"
 
 #include <vector>
-#include <algorithm>
 #include <cmath>
-#include <sstream>
-#include <iomanip>
 #include <string>
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,9 +72,8 @@ class MidnightSkyraiders : public Application {
     GameObject*            worldObj = nullptr;
     GameDirectorComponent* director = nullptr;
 
-    // Entity tracking for collision + cleanup (behavior lives in components)
-    std::vector<GameObject*> _bullets;
-    std::vector<GameObject*> _enemies;
+    CollisionSystemComponent* _collision = nullptr;
+    HUDComponent*             _hudComp   = nullptr;
 
     long long hiScore = 0;
 
@@ -125,13 +121,25 @@ class MidnightSkyraiders : public Application {
             )
         );
 
+        auto* sysObj = CreateGameObject();
+        sysObj->SetName("CollisionSystem");
+        sysObj->SetActive(false);
+        sysObj->AddComponent<CollisionSystemComponent>(director, sfxExp);
+        _collision = sysObj->GetComponent<CollisionSystemComponent>();
+
+        auto* hudObj = CreateGameObject();
+        hudObj->SetName("HUD");
+        hudObj->SetActive(false);
+        hudObj->AddComponent<HUDComponent>(director, fontID);
+        _hudComp = hudObj->GetComponent<HUDComponent>();
+
         enterTitle();
     }
 
     void OnUpdate(float dt, float /*time*/) override {
         switch (state) {
         case GameState::Title:    updateTitle(dt);    break;
-        case GameState::Playing:  updatePlaying(dt);  break;
+        case GameState::Playing:  break; // CollisionSystemComponent + HUDComponent drive per-frame logic
         case GameState::GameOver: updateGameOver(dt); break;
         }
         if (input.IsKeyDown(Key::ESCAPE)) Quit();
@@ -167,11 +175,8 @@ class MidnightSkyraiders : public Application {
     // ── game ──────────────────────────────────────────────────────────────────
 
     void startGame() {
-        for (auto* b : _bullets) b->SetActive(false);
-        for (auto* e : _enemies) e->SetActive(false);
+        if (_collision) _collision->ClearAll();
         if (playerObj) { playerObj->SetActive(false); playerObj = nullptr; }
-        _bullets.clear();
-        _enemies.clear();
 
         director->Reset();
 
@@ -192,19 +197,21 @@ class MidnightSkyraiders : public Application {
             [this](float px, float py) { spawnPlayerBulletsDeferred(px, py); }
         );
 
+        if (_collision) {
+            _collision->SetPlayer(player);
+            _collision->gameObject->SetActive(true);
+        }
+        if (_hudComp) {
+            _hudComp->SetPlayer(player);
+            _hudComp->gameObject->SetActive(true);
+        }
+
         spawnWave();
         audio.PlayMusic(bgm);
         director->SetRunning(true);
         state = GameState::Playing;
     }
 
-    // OnUpdate runs before the entity tick loop. Score/wave timing now live in
-    // GameDirectorComponent::OnTick; this handles only cross-entity work.
-    void updatePlaying(float /*dt*/) {
-        checkCollisions();
-        flushDead();
-        drawHUD();
-    }
 
     // ── spawn ─────────────────────────────────────────────────────────────────
 
@@ -242,7 +249,7 @@ class MidnightSkyraiders : public Application {
             .zOrder    = 3,
         });
         obj->AddComponent<BulletMovementComponent>(type, x, y, maxLife);
-        _bullets.push_back(obj);
+        if (_collision) _collision->AddBullet(obj);
     }
 
     void spawnWave() {
@@ -290,64 +297,15 @@ class MidnightSkyraiders : public Application {
                 DeferSpawn([this, bt, fx, fy]{ spawnBullet(bt, fx, fy); });
             }
         );
-        _enemies.push_back(obj);
-    }
-
-    // ── collision + cleanup ────────────────────────────────────────────────────
-
-    // Runs in OnUpdate (before entity ticks), so it sees positions from last frame.
-    void checkCollisions() {
-        for (auto* b : _bullets) {
-            if (!b->isActive) continue;
-            auto* bm = b->GetComponent<BulletMovementComponent>();
-            if (!bm || bm->GetType() < 0) continue;
-
-            glm::vec3 bpos = b->GetPosition();
-            for (auto* e : _enemies) {
-                if (!e->isActive) continue;
-                glm::vec3 epos = e->GetPosition();
-                if (aabb(bpos.x, bpos.y, 8, 8, epos.x, epos.y, 32, 32)) {
-                    b->SetActive(false);
-                    killEnemy(e);
-                }
-            }
-        }
-    }
-
-    void killEnemy(GameObject* enemy) {
-        enemy->SetActive(false);
-        auto* em = enemy->GetComponent<EnemyMovementComponent>();
-        int level = em ? em->GetLevel() : 1;
-
-        director->AddScore(100.0);
-        director->AddKill();
-        if (player) player->AddXP(level);
-        audio.PlaySoundVariation(sfxExp, 0.1f, 0.05f);
-    }
-
-    void flushDead() {
-        auto inactive = [](GameObject* g) { return !g->isActive; };
-        _bullets.erase(std::remove_if(_bullets.begin(), _bullets.end(), inactive), _bullets.end());
-        _enemies.erase(std::remove_if(_enemies.begin(), _enemies.end(), inactive), _enemies.end());
-    }
-
-    // ── HUD ───────────────────────────────────────────────────────────────────
-
-    void drawHUD() {
-        auto* gs = GraphicsServer::Get();
-        std::ostringstream oss;
-        oss << "Score: " << std::setw(8) << std::setfill('0') << (long long)director->Score()
-            << "  Kills: " << std::setw(4) << std::setfill('0') << director->Kills()
-            << "  Lv." << player->Level()
-            << " (" << std::fixed << std::setprecision(1)
-            << (player->XP() / player->NextXP() * 100.0f) << "%)";
-        gs->DrawText(fontID, oss.str(), 10.0f, 10.0f, 0.8f, glm::vec4(1,1,0,1));
+        if (_collision) _collision->AddEnemy(obj);
     }
 
     // ── game over ─────────────────────────────────────────────────────────────
 
     void triggerGameOver() {
         director->SetRunning(false);
+        if (_collision) _collision->gameObject->SetActive(false);
+        if (_hudComp)   _hudComp->gameObject->SetActive(false);
         if ((long long)director->Score() > hiScore) hiScore = (long long)director->Score();
         audio.StopMusic(bgm);
         audio.PlaySound(sfxOver);
@@ -369,13 +327,6 @@ class MidnightSkyraiders : public Application {
         }
     }
 
-    // ── helpers ───────────────────────────────────────────────────────────────
-
-    static bool aabb(float ax, float ay, float aw, float ah,
-                     float bx, float by, float bw, float bh) {
-        return std::abs(ax - bx) < (aw + bw) * 0.5f &&
-               std::abs(ay - by) < (ah + bh) * 0.5f;
-    }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

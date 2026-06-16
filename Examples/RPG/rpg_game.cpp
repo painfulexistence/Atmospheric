@@ -104,9 +104,6 @@ void RPGGame::OnLoad() {
     _playerAnim.addClip("attack", MakeClip(1,{0,1,2},0.1f,false));
     _playerAnim.play("idle");
 
-    _battle.playerStats = &_player.stats;
-    _battle.level = 1; _battle.exp = 0; _battle.expToNext = 20; _battle.gold = 0;
-
     // Enemies — define archetypes
     auto makeSlime = [&](float ex, float ey) {
         EnemyDef def;
@@ -169,6 +166,17 @@ void RPGGame::OnLoad() {
 
     // ── Attach components ─────────────────────────────────────────────────────
 
+    // Battle system — owns all turn-based battle state and logic.
+    auto* battleObj = CreateGameObject();
+    battleObj->SetName("BattleSystem");
+    battleObj->AddComponent<BattleSystemComponent>(
+        &_player, &_playerAnim, &_enemies,
+        &_mode, &_transition,
+        _fontID, _playerTex, _enemyTex,
+        _screenW, _screenH
+    );
+    _battleComp = battleObj->GetComponent<BattleSystemComponent>();
+
     // Player movement component — updates _player.x/y each tick.
     auto* playerObj = CreateGameObject();
     playerObj->SetName("Player");
@@ -177,7 +185,7 @@ void RPGGame::OnLoad() {
         [this](float x, float y) { return _tilemap->IsSolidWorld(x, y); }
     );
     // Inspector-only component: exposes player stats / progression in the editor.
-    playerObj->AddComponent<PlayerComponent>(&_player, &_battle);
+    playerObj->AddComponent<PlayerComponent>(&_player, &_battleComp->GetBattle());
 
     // Enemy AI components — update _enemies[i].x/y/aggro each tick and
     // trigger battles on player contact.
@@ -246,8 +254,7 @@ void RPGGame::OnUpdate(float dt, float /*time*/) {
         break;
 
     case GameMode::Battle:
-        UpdateBattle(dt);
-        DrawBattle();
+        // UpdateBattle and DrawBattle are handled by BattleSystemComponent::OnTick.
         break;
 
     case GameMode::BattleTransitionOut:
@@ -353,15 +360,16 @@ void RPGGame::DrawExplore() {
 void RPGGame::DrawExploreHUD() {
     auto* gfx = GetGraphicsServer();
     const Stats& s = _player.stats;
+    const auto& b = _battleComp->GetBattle();
 
     DrawPanel(8, 8, 160, 50);
-    gfx->DrawText(_fontID, fmt::format("LV{} EXP:{}/{}", _battle.level, _battle.exp, _battle.expToNext),
+    gfx->DrawText(_fontID, fmt::format("LV{} EXP:{}/{}", b.level, b.exp, b.expToNext),
                   14, 12, 0.5f, vec4(0.9f,0.85f,0.6f,1));
     DrawHPBar(14, 28, 140, 10, s.hp, s.maxHp);
     DrawMPBar(14, 42, 140, 8,  s.mp, s.maxMp);
 
     gfx->DrawText(_fontID,
-        fmt::format("Gold:{}", _battle.gold),
+        fmt::format("Gold:{}", b.gold),
         14, (float)_screenH-36, 0.55f, vec4(1,0.9f,0.3f,1));
     gfx->DrawText(_fontID,
         "WASD:move  E:talk  walk into enemy to battle",
@@ -369,361 +377,11 @@ void RPGGame::DrawExploreHUD() {
 }
 
 // ============================================================================
-// Battle start / end
+// Battle (thin wrapper — BattleSystemComponent owns all logic)
 // ============================================================================
 
 void RPGGame::StartBattle(int enemyIdx) {
-    _mode = GameMode::BattleTransitionIn;
-    _transition = 0.0f;
-
-    Enemy& e = _enemies[enemyIdx];
-    e.resetBattleStats();
-
-    _battle.phase = BattlePhase::PlayerMenu;
-    _battle.menuSel = 0; _battle.skillSel = 0; _battle.itemSel = 0;
-    _battle.targetIdx = 0;
-    _battle.actionTimer = 0.0f;
-    _battle.log.clear();
-    _battle.expGained = 0; _battle.goldGained = 0;
-
-    _battle.enemyStats.clear();
-    _battle.enemyNames.clear();
-    _battle.enemyIndices.clear();
-    _battle.enemyStats.push_back(e.battle);
-    _battle.enemyNames.push_back(e.def.name);
-    _battle.enemyIndices.push_back(enemyIdx);
-
-    float dx = e.cx()-_player.cx(), dy = e.cy()-_player.cy();
-    float len = std::sqrt(dx*dx+dy*dy);
-    if (len > 0) { e.x += dx/len*32; e.y += dy/len*32; }
-
-    _battle.pushLog(fmt::format("A {} appeared!", e.def.name));
-    _battle.playerFirst = (_player.stats.spd >= e.def.stats.spd);
-}
-
-void RPGGame::EndBattle(bool victory) {
-    if (victory) {
-        _battle.exp  += _battle.expGained;
-        _battle.gold += _battle.goldGained;
-
-        while (_battle.exp >= _battle.expToNext) {
-            _battle.exp -= _battle.expToNext;
-            _battle.level++;
-            _battle.expToNext = (int)(_battle.expToNext * 1.5f);
-            _player.stats.maxHp  += 8;
-            _player.stats.maxMp  += 4;
-            _player.stats.atk    += 2;
-            _player.stats.def    += 1;
-            _player.stats.spd    += 1;
-            _player.stats.hp = _player.stats.maxHp;
-            _player.stats.mp = _player.stats.maxMp;
-            _battle.pushLog(fmt::format("Level up! Now LV{}!", _battle.level));
-        }
-
-        for (int idx : _battle.enemyIndices) {
-            if (idx >= 0 && idx < (int)_enemies.size())
-                _enemies[idx].alive = false;
-        }
-    }
-
-    _mode = GameMode::BattleTransitionOut;
-    _transition = 1.0f;
-}
-
-// ============================================================================
-// Battle update
-// ============================================================================
-
-int RPGGame::CalcDamage(int atk, int def) {
-    std::uniform_int_distribution<int> jitter(-3,3);
-    int dmg = std::max(1, atk - def/2 + jitter(_rng));
-    return dmg;
-}
-
-void RPGGame::ExecutePlayerAttack() {
-    Stats& es = _battle.enemyStats[_battle.targetIdx];
-    int dmg = CalcDamage(_player.stats.atk, es.def);
-    es.takeDamage(dmg);
-    _shakeMag = 4.0f; _shakeTimer = 0.3f;
-    _battle.pushLog(fmt::format("You attack {} for {} dmg!",
-        _battle.enemyNames[_battle.targetIdx], dmg));
-    _battle.phase = BattlePhase::EnemyAction;
-    _battle.actionTimer = 0.8f;
-}
-
-void RPGGame::ExecutePlayerSkill(int idx) {
-    if (idx >= (int)_player.skills.size()) return;
-    Skill& sk = _player.skills[idx];
-    if (_player.stats.mp < sk.mpCost) {
-        _battle.pushLog("Not enough MP!");
-        _battle.phase = BattlePhase::PlayerMenu;
-        return;
-    }
-    _player.stats.mp -= sk.mpCost;
-
-    if (sk.target == SkillTarget::AllEnemies) {
-        int total = 0;
-        for (auto& es : _battle.enemyStats) {
-            if (es.isDead()) continue;
-            int v = sk.calc(_player.stats, es);
-            es.takeDamage(v); total += v;
-        }
-        _battle.pushLog(fmt::format("{} hits all for ~{} dmg!", sk.name, total/(int)_battle.enemyStats.size()));
-    } else if (sk.target == SkillTarget::Self) {
-        int v = sk.calc(_player.stats, _player.stats);
-        _player.stats.heal(-v);
-        _battle.pushLog(fmt::format("{}: restored {} HP!", sk.name, -v));
-    } else {
-        Stats& es = _battle.enemyStats[_battle.targetIdx];
-        int v = sk.calc(_player.stats, es);
-        es.takeDamage(v);
-        _battle.pushLog(fmt::format("{} deals {} dmg!", sk.name, v));
-    }
-    _shakeMag = 6.0f; _shakeTimer = 0.3f;
-    _battle.phase = BattlePhase::EnemyAction;
-    _battle.actionTimer = 0.8f;
-}
-
-void RPGGame::ExecutePlayerItem(int idx) {
-    if (idx >= (int)_player.items.size()) return;
-    Item& it = _player.items[idx];
-    if (it.count <= 0) { _battle.pushLog("None left!"); return; }
-    it.count--;
-    if (it.effect == ItemEffect::HealHP) {
-        _player.stats.heal(it.amount);
-        _battle.pushLog(fmt::format("{}: recovered {} HP!", it.name, it.amount));
-    } else {
-        _player.stats.restoreMp(it.amount);
-        _battle.pushLog(fmt::format("{}: recovered {} MP!", it.name, it.amount));
-    }
-    _battle.phase = BattlePhase::EnemyAction;
-    _battle.actionTimer = 0.8f;
-}
-
-void RPGGame::ExecuteEnemyTurn() {
-    int actorIdx = -1;
-    for (int i=0; i<(int)_battle.enemyStats.size(); i++)
-        if (!_battle.enemyStats[i].isDead()) { actorIdx = i; break; }
-    if (actorIdx < 0) return;
-
-    const Enemy& worldE = _enemies[_battle.enemyIndices[actorIdx]];
-    int dmg = CalcDamage(worldE.def.stats.atk, _player.stats.def);
-    _player.stats.takeDamage(dmg);
-    _battle.pushLog(fmt::format("{} attacks for {} dmg!", worldE.def.name, dmg));
-    _battle.phase = BattlePhase::PlayerMenu;
-}
-
-void RPGGame::UpdateBattle(float dt) {
-    auto* inp = GetInput();
-    BattleState& b = _battle;
-
-    if (_shakeTimer > 0) _shakeTimer -= dt;
-    else _shakeMag = 0;
-
-    b.tickLog(dt);
-
-    switch (b.phase) {
-    case BattlePhase::PlayerMenu: {
-        int count = (int)BattleMenuSel::COUNT;
-        if (inp->IsKeyPressed(Key::UP)   || inp->IsKeyPressed(Key::W)) b.menuSel = (b.menuSel+count-1)%count;
-        if (inp->IsKeyPressed(Key::DOWN) || inp->IsKeyPressed(Key::S)) b.menuSel = (b.menuSel+1)%count;
-        if (inp->IsKeyPressed(Key::Z) || inp->IsKeyPressed(Key::ENTER)) {
-            switch ((BattleMenuSel)b.menuSel) {
-            case BattleMenuSel::Attack: ExecutePlayerAttack(); break;
-            case BattleMenuSel::Skills: b.phase = BattlePhase::PlayerSkillMenu; b.skillSel=0; break;
-            case BattleMenuSel::Items:  b.phase = BattlePhase::PlayerItemMenu;  b.itemSel=0;  break;
-            case BattleMenuSel::Run:    b.phase = BattlePhase::Flee; b.actionTimer = 0.5f; break;
-            default: break;
-            }
-        }
-        break;
-    }
-    case BattlePhase::PlayerSkillMenu: {
-        int count = (int)_player.skills.size();
-        if (inp->IsKeyPressed(Key::UP)   || inp->IsKeyPressed(Key::W)) b.skillSel=(b.skillSel+count-1)%count;
-        if (inp->IsKeyPressed(Key::DOWN) || inp->IsKeyPressed(Key::S)) b.skillSel=(b.skillSel+1)%count;
-        if (inp->IsKeyPressed(Key::Z) || inp->IsKeyPressed(Key::ENTER)) ExecutePlayerSkill(b.skillSel);
-        if (inp->IsKeyPressed(Key::X) || inp->IsKeyPressed(Key::ESCAPE)) b.phase = BattlePhase::PlayerMenu;
-        break;
-    }
-    case BattlePhase::PlayerItemMenu: {
-        int count = (int)_player.items.size();
-        if (inp->IsKeyPressed(Key::UP)   || inp->IsKeyPressed(Key::W)) b.itemSel=(b.itemSel+count-1)%count;
-        if (inp->IsKeyPressed(Key::DOWN) || inp->IsKeyPressed(Key::S)) b.itemSel=(b.itemSel+1)%count;
-        if (inp->IsKeyPressed(Key::Z) || inp->IsKeyPressed(Key::ENTER)) ExecutePlayerItem(b.itemSel);
-        if (inp->IsKeyPressed(Key::X) || inp->IsKeyPressed(Key::ESCAPE)) b.phase = BattlePhase::PlayerMenu;
-        break;
-    }
-    case BattlePhase::EnemyAction:
-        b.actionTimer -= dt;
-        if (b.actionTimer <= 0) {
-            if (b.allEnemiesDead()) {
-                for (int idx : b.enemyIndices) {
-                    if (idx<(int)_enemies.size()) {
-                        b.expGained  += _enemies[idx].def.expReward;
-                        b.goldGained += _enemies[idx].def.goldReward;
-                    }
-                }
-                b.pushLog(fmt::format("Victory! +{} EXP +{} Gold", b.expGained, b.goldGained));
-                b.phase = BattlePhase::Victory;
-                b.actionTimer = 2.5f;
-            } else if (_player.stats.isDead()) {
-                b.pushLog("You were defeated...");
-                b.phase = BattlePhase::Defeat;
-                b.actionTimer = 2.5f;
-            } else {
-                ExecuteEnemyTurn();
-            }
-        }
-        break;
-    case BattlePhase::Victory:
-        b.actionTimer -= dt;
-        if (b.actionTimer <= 0) EndBattle(true);
-        break;
-    case BattlePhase::Defeat:
-        b.actionTimer -= dt;
-        if (b.actionTimer <= 0) {
-            _player.stats.hp = 1;
-            EndBattle(false);
-        }
-        break;
-    case BattlePhase::Flee:
-        b.actionTimer -= dt;
-        if (b.actionTimer <= 0) {
-            b.pushLog("Escaped!");
-            EndBattle(false);
-        }
-        break;
-    default: break;
-    }
-}
-
-// ============================================================================
-// Battle draw
-// ============================================================================
-
-void RPGGame::DrawBattle() {
-    auto* gfx = GetGraphicsServer();
-    const float W = (float)_screenW, H = (float)_screenH;
-
-    gfx->DrawQuad(W*0.5f, H*0.5f, W, H, 0, vec4(0.08f,0.06f,0.14f,1));
-
-    for (int i=0; i<8; i++) {
-        float y = i * H/8.0f;
-        gfx->DrawRect(0, y, W, 1, vec4(0.15f,0.12f,0.22f,0.5f));
-    }
-
-    float shakeX = 0, shakeY = 0;
-    if (_shakeTimer > 0) {
-        std::uniform_real_distribution<float> d(-_shakeMag, _shakeMag);
-        shakeX = d(_rng); shakeY = d(_rng);
-    }
-
-    constexpr int CCOLS=4, CROWS=2;
-    for (int i=0; i<(int)_battle.enemyStats.size(); i++) {
-        const Stats& es = _battle.enemyStats[i];
-        if (es.isDead()) continue;
-        float ex = W*0.65f + i*100 + shakeX;
-        float ey = H*0.35f + shakeY;
-        float sz = 72;
-        vec2 uv0{0,0}, uv1{1.0f/CCOLS, 1.0f/CROWS};
-        gfx->DrawSprite2D(ex-sz*0.5f, ey-sz*0.5f, sz, sz, _enemyTex, uv0, uv1,
-                           (_battle.targetIdx==i) ? vec4(1,0.7f,0.7f,1) : vec4(1));
-
-        gfx->DrawText(_fontID, _battle.enemyNames[i], ex-30, ey-sz*0.5f-28, 0.6f, vec4(1,0.8f,0.8f,1));
-        DrawHPBar(ex-50, ey-sz*0.5f-14, 100, 8, es.hp, es.maxHp, vec4(0.9f,0.2f,0.2f,1));
-    }
-
-    {
-        auto [fc,fr] = _playerAnim.currentFrame();
-        float px = W*0.25f, py = H*0.42f, sz = 72;
-        vec2 uv0{(float)fc/CCOLS,(float)fr/CROWS};
-        vec2 uv1{(float)(fc+1)/CCOLS,(float)(fr+1)/CROWS};
-        gfx->DrawSprite2D(px-sz*0.5f, py-sz*0.5f, sz, sz, _playerTex, uv0, uv1);
-    }
-
-    DrawBattleStats();
-    DrawBattleMenu();
-    DrawBattleLog();
-
-    if (_battle.phase == BattlePhase::Victory) {
-        DrawPanel(W*0.5f-120, H*0.5f-30, 240, 60, vec4(0.05f,0.2f,0.05f,0.95f));
-        gfx->DrawText(_fontID, "VICTORY!", W*0.5f-55, H*0.5f-14, 1.0f, vec4(0.3f,1,0.4f,1));
-    } else if (_battle.phase == BattlePhase::Defeat) {
-        DrawPanel(W*0.5f-120, H*0.5f-30, 240, 60, vec4(0.2f,0.03f,0.03f,0.95f));
-        gfx->DrawText(_fontID, "DEFEATED", W*0.5f-55, H*0.5f-14, 1.0f, vec4(1,0.3f,0.3f,1));
-    }
-}
-
-void RPGGame::DrawBattleStats() {
-    auto* gfx = GetGraphicsServer();
-    const float W = (float)_screenW, H = (float)_screenH;
-    const Stats& s = _player.stats;
-
-    DrawPanel(8, H-110, 200, 100);
-    gfx->DrawText(_fontID, fmt::format("LV{}", _battle.level), 16, H-106, 0.55f, vec4(1,0.9f,0.5f,1));
-    gfx->DrawText(_fontID, fmt::format("HP {}/{}", s.hp, s.maxHp), 16, H-90,  0.55f, vec4(0.7f,1,0.7f,1));
-    DrawHPBar(16, H-78, 180, 10, s.hp, s.maxHp);
-    gfx->DrawText(_fontID, fmt::format("MP {}/{}", s.mp, s.maxMp), 16, H-64,  0.55f, vec4(0.5f,0.7f,1,1));
-    DrawMPBar(16, H-52, 180, 10, s.mp, s.maxMp);
-    gfx->DrawText(_fontID, fmt::format("ATK:{} DEF:{}", s.atk, s.def), 16, H-36, 0.5f, vec4(0.8f,0.8f,0.8f,0.9f));
-}
-
-void RPGGame::DrawBattleMenu() {
-    auto* gfx = GetGraphicsServer();
-    const float W = (float)_screenW, H = (float)_screenH;
-    const BattleState& b = _battle;
-
-    if (b.phase == BattlePhase::PlayerMenu) {
-        DrawPanel(W-180, H-130, 170, 120);
-        const char* labels[] = {"Attack","Skills","Items","Run"};
-        for (int i=0; i<4; i++) {
-            bool sel = (b.menuSel == i);
-            gfx->DrawText(_fontID, fmt::format("{} {}", sel?"▶":" ", labels[i]),
-                           W-170, H-124+i*26, 0.65f,
-                           sel ? vec4(1,1,0.3f,1) : vec4(0.85f,0.85f,0.9f,1));
-        }
-        gfx->DrawText(_fontID, "Z:confirm", W-170, H-18, 0.45f, vec4(0.5f,0.5f,0.6f,1));
-    }
-    else if (b.phase == BattlePhase::PlayerSkillMenu) {
-        DrawPanel(W-220, H-200, 210, (int)_player.skills.size()*30+40);
-        gfx->DrawText(_fontID, "─ Skills ─", W-210, H-194, 0.55f, vec4(0.7f,0.7f,1,1));
-        for (int i=0; i<(int)_player.skills.size(); i++) {
-            bool sel = (b.skillSel==i);
-            const Skill& sk = _player.skills[i];
-            gfx->DrawText(_fontID,
-                fmt::format("{}{} ({}MP)", sel?"▶":" ", sk.name, sk.mpCost),
-                W-210, H-178+i*28, 0.6f,
-                sel ? vec4(1,1,0.3f,1) : vec4(0.85f,0.85f,0.9f,1));
-        }
-        gfx->DrawText(_fontID, "X:back", W-210, H-16, 0.45f, vec4(0.5f,0.5f,0.6f,1));
-    }
-    else if (b.phase == BattlePhase::PlayerItemMenu) {
-        DrawPanel(W-220, H-200, 210, (int)_player.items.size()*30+40);
-        gfx->DrawText(_fontID, "─ Items ─", W-210, H-194, 0.55f, vec4(0.7f,1,0.7f,1));
-        for (int i=0; i<(int)_player.items.size(); i++) {
-            bool sel = (b.itemSel==i);
-            const Item& it = _player.items[i];
-            gfx->DrawText(_fontID,
-                fmt::format("{}{} x{}", sel?"▶":" ", it.name, it.count),
-                W-210, H-178+i*28, 0.6f,
-                sel ? vec4(1,1,0.3f,1) : (it.count>0 ? vec4(0.85f,0.85f,0.9f,1) : vec4(0.4f,0.4f,0.4f,1)));
-        }
-        gfx->DrawText(_fontID, "X:back", W-210, H-16, 0.45f, vec4(0.5f,0.5f,0.6f,1));
-    }
-}
-
-void RPGGame::DrawBattleLog() {
-    auto* gfx = GetGraphicsServer();
-    const float W = (float)_screenW, H = (float)_screenH;
-
-    DrawPanel(220, H-130, W-440, 120);
-    int shown = std::min((int)_battle.log.size(), 4);
-    for (int i=0; i<shown; i++) {
-        const auto& entry = _battle.log[_battle.log.size()-shown+i];
-        float alpha = std::min(1.0f, entry.ttl);
-        gfx->DrawText(_fontID, entry.text, 232, H-124+i*26, 0.58f, vec4(0.9f,0.9f,1,alpha));
-    }
+    if (_battleComp) _battleComp->StartBattle(enemyIdx);
 }
 
 // ============================================================================
