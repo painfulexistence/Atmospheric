@@ -223,6 +223,12 @@ struct SpriteAnimator {
 };
 
 // ---------------------------------------------------------------------------
+// Top-level game mode (explore world vs. turn-based battle)
+// ---------------------------------------------------------------------------
+
+enum class GameMode { Explore, BattleTransitionIn, Battle, BattleTransitionOut };
+
+// ---------------------------------------------------------------------------
 // Turn-based battle state
 // ---------------------------------------------------------------------------
 

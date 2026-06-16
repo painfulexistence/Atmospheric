@@ -1,5 +1,5 @@
 #pragma once
-#include "rpg_game.hpp"
+#include "rpg_entity.hpp"
 #include <Atmospheric/component.hpp>
 #include <Atmospheric/input.hpp>
 #include <cmath>
