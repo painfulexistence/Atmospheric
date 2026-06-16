@@ -82,24 +82,31 @@ float VoxelChunkComponent::GetBoundingSphereRadius() const {
 
 void VoxelChunkComponent::RebuildMesh() {
     if (!_dirty) return;
+    auto verts = GenerateMeshData();
+    UploadMesh(verts);
+}
 
+std::vector<VoxelVertex> VoxelChunkComponent::GenerateMeshData() {
     VoxelMeshBuilder builder;
-
     for (int axis = 0; axis < 3; ++axis) {
         for (int layer = 0; layer < SIZE; ++layer) {
             BuildGreedyLayer(builder, axis, layer, +1);
             BuildGreedyLayer(builder, axis, layer, -1);
         }
     }
+    return builder.Build();
+}
 
-    const auto& verts = builder.Build();
-
+void VoxelChunkComponent::UploadMesh(const std::vector<VoxelVertex>& verts) {
     if (!_mesh) {
         _mesh = new Mesh(MeshType::VOXEL);
         _mesh->SetMaterial(GetVoxelMaterial());
     }
     if (!verts.empty()) {
         _mesh->Update(verts);
+    } else {
+        // If the chunk becomes completely empty, clear GPU buffer
+        _mesh->Update(std::vector<VoxelVertex>{});
     }
 
     glm::vec3 wp = GetWorldPos();
@@ -120,9 +127,8 @@ void VoxelChunkComponent::BuildGreedyLayer(VoxelMeshBuilder& builder,
 {
     int u_axis = (axis + 1) % 3;
     int v_axis = (axis + 2) % 3;
-
-    static uint8_t mask[SIZE][SIZE];
-    static bool    done[SIZE][SIZE];
+    uint8_t mask[SIZE][SIZE];
+    bool    done[SIZE][SIZE];
     std::memset(mask, 0, sizeof(mask));
 
     for (int u = 0; u < SIZE; ++u) {

@@ -29,6 +29,8 @@ public:
     void SetNeighbor(int dx, int dz, VoxelChunkComponent* neighbor);
 
     void RebuildMesh();
+    std::vector<VoxelVertex> GenerateMeshData();
+    void UploadMesh(const std::vector<VoxelVertex>& verts);
 
     bool       IsDirty()    const { return _dirty; }
     void       MarkDirty()        { _dirty = true; }

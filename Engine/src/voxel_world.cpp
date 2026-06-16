@@ -1,4 +1,5 @@
 #include "voxel_world.hpp"
+#include "job_system.hpp"
 #include "application.hpp"
 #include "asset_manager.hpp"
 #include "game_object.hpp"
@@ -192,9 +193,32 @@ void VoxelWorld::LinkNeighbors() {
 }
 
 void VoxelWorld::RebuildDirtyChunks() {
+    struct MeshTask {
+        VoxelChunkComponent* chunk;
+        std::vector<VoxelVertex> vertices;
+    };
+    std::vector<std::shared_ptr<MeshTask>> pendingTasks;
+
+    // 1. Dispatch CPU meshing jobs to JobSystem
     for (auto* chunk : _chunks) {
         if (chunk->IsDirty()) {
-            chunk->RebuildMesh();
+            auto task = std::make_shared<MeshTask>();
+            task->chunk = chunk;
+            pendingTasks.push_back(task);
+
+            JobSystem::Get()->Execute([task](int /*threadIndex*/) {
+                task->vertices = task->chunk->GenerateMeshData();
+            });
+        }
+    }
+
+    // 2. Wait for all meshing jobs to complete
+    if (!pendingTasks.empty()) {
+        JobSystem::Get()->Wait();
+
+        // 3. Upload built meshes to GPU sequentially on the main thread
+        for (auto& task : pendingTasks) {
+            task->chunk->UploadMesh(task->vertices);
         }
     }
 }
