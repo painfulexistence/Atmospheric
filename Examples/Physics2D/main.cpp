@@ -161,9 +161,7 @@ class Physics2DDemo : public Application {
 
         body->AddComponent<ShapeRendererComponent>(shapeProps);
         body->AddComponent<Rigidbody2DComponent>(rbProps);
-        // Per-body behaviour: captures the spawn colour and eases back to it
-        // after the collision flash. No bookkeeping needed in OnUpdate.
-        body->AddComponent<ColorRestoreComponent>(2.0f);
+        body->AddComponent<ColorRestoreComponent>(2.0f, glm::vec4(0.7f, 0.5f, 0.8f, 1.0f));
 
         spawnedCount++;
     }
