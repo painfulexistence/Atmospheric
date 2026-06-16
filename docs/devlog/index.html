@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Devlog — Atmospheric Engine</title>
+  <link rel="stylesheet" href="../styles/global.css" />
+  <style>
+    .page-header {
+      padding: var(--spacing-xl) 0 var(--spacing-lg);
+      border-bottom: 1px solid var(--color-border);
+      margin-bottom: var(--spacing-xl);
+    }
+    .page-header .eyebrow {
+      font-size: var(--text-sm);
+      color: var(--color-primary);
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: var(--spacing-sm);
+    }
+    .page-header h1 { margin-bottom: var(--spacing-sm); }
+    .page-header p { color: var(--color-muted); }
+
+    .post-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-md);
+      padding-bottom: var(--spacing-2xl);
+    }
+    .post-item a {
+      display: block;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius);
+      padding: var(--spacing-lg);
+      text-decoration: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .post-item a:hover {
+      border-color: var(--color-primary);
+      background: var(--color-surface-2);
+    }
+    .post-title {
+      font-size: var(--text-lg);
+      font-weight: 600;
+      color: var(--color-text);
+      margin-bottom: var(--spacing-xs);
+    }
+    .post-desc {
+      font-size: var(--text-sm);
+      color: var(--color-muted);
+      line-height: 1.6;
+    }
+    .post-tag {
+      display: inline-block;
+      font-size: var(--text-xs);
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: var(--color-surface-2);
+      border: 1px solid var(--color-border);
+      color: var(--color-primary);
+      margin-bottom: var(--spacing-sm);
+    }
+
+    footer {
+      border-top: 1px solid var(--color-border);
+      padding: var(--spacing-lg) 0;
+      text-align: center;
+      font-size: var(--text-sm);
+      color: var(--color-muted);
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo">Atmospheric</a>
+    <a href="../documentation/index.html">Docs</a>
+    <a href="index.html" style="color: var(--color-text);">Devlog</a>
+    <a href="../demo/index.html">Demo</a>
+    <a href="https://github.com/painfulexistence/Atmospheric" target="_blank">GitHub ↗</a>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <p class="eyebrow">Engineering Write-ups</p>
+    <h1>Devlog</h1>
+    <p>Deep-dives into graphics features, debugging sessions, and design decisions.</p>
+  </div>
+
+  <ul class="post-list">
+
+  </ul>
+</div>
+
+<footer>
+  <div class="container">
+    Atmospheric Engine — <a href="../index.html">Home</a>
+  </div>
+</footer>
+
+</body>
+</html>

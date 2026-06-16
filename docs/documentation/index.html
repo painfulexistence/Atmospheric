@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Documentation — Atmospheric Engine</title>
+  <link rel="stylesheet" href="../styles/global.css" />
+  <style>
+    .page-header {
+      padding: var(--spacing-xl) 0 var(--spacing-lg);
+      border-bottom: 1px solid var(--color-border);
+      margin-bottom: var(--spacing-xl);
+    }
+    .page-header .eyebrow {
+      font-size: var(--text-sm);
+      color: var(--color-primary);
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: var(--spacing-sm);
+    }
+    .page-header h1 { margin-bottom: var(--spacing-sm); }
+    .page-header p { color: var(--color-muted); }
+
+    .section-title {
+      font-size: var(--text-xs);
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin: var(--spacing-xl) 0 var(--spacing-md);
+    }
+
+    .doc-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-sm);
+      margin-bottom: var(--spacing-xl);
+    }
+    .doc-item a {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-md);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius);
+      padding: var(--spacing-md) var(--spacing-lg);
+      text-decoration: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .doc-item a:hover {
+      border-color: var(--color-primary);
+      background: var(--color-surface-2);
+    }
+    .doc-icon { font-size: 1.25rem; flex-shrink: 0; }
+    .doc-info { flex: 1; }
+    .doc-title {
+      font-size: var(--text-base);
+      font-weight: 600;
+      color: var(--color-text);
+      margin-bottom: 2px;
+    }
+    .doc-desc {
+      font-size: var(--text-sm);
+      color: var(--color-muted);
+    }
+    .doc-arrow { color: var(--color-muted); font-size: var(--text-lg); }
+
+    .placeholder-note {
+      background: var(--color-surface);
+      border: 1px dashed var(--color-border);
+      border-radius: var(--border-radius);
+      padding: var(--spacing-lg);
+      font-size: var(--text-sm);
+      color: var(--color-muted);
+      margin-bottom: var(--spacing-xl);
+    }
+
+    footer {
+      border-top: 1px solid var(--color-border);
+      padding: var(--spacing-lg) 0;
+      text-align: center;
+      font-size: var(--text-sm);
+      color: var(--color-muted);
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo">Atmospheric</a>
+    <a href="index.html" style="color: var(--color-text);">Docs</a>
+    <a href="../devlog/index.html">Devlog</a>
+    <a href="../demo/index.html">Demo</a>
+    <a href="https://github.com/painfulexistence/Atmospheric" target="_blank">GitHub ↗</a>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <p class="eyebrow">Reference & Guides</p>
+    <h1>Documentation</h1>
+    <p>Architecture overview, guides, and technical deep-dives.</p>
+  </div>
+
+  <p class="section-title">Getting Started</p>
+  <ul class="doc-list">
+    <li class="doc-item">
+      <a href="getting-started.html">
+        <span class="doc-icon">🚀</span>
+        <div class="doc-info">
+          <div class="doc-title">Getting Started</div>
+          <div class="doc-desc">Installation, building for native and WebAssembly, and running the HelloWorld example.</div>
+        </div>
+        <span class="doc-arrow">›</span>
+      </a>
+    </li>
+  </ul>
+
+  <div class="placeholder-note">
+    More documentation is being written. Check the <a href="https://github.com/painfulexistence/Atmospheric" target="_blank" style="color: var(--color-primary);">GitHub repository</a> for the latest ADRs and guides in <code>docs/</code>.
+  </div>
+</div>
+
+<footer>
+  <div class="container">
+    Atmospheric Engine — <a href="../index.html">Home</a>
+  </div>
+</footer>
+
+</body>
+</html>
