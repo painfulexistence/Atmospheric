@@ -69,6 +69,8 @@ public:
     std::string GetTexturePath(GLuint id) const;
     void LoadDefaultTextures();
     void LoadTextures(const std::vector<std::string>& paths);
+    bool ReloadTexture(const std::string& path);
+    int ReloadTextures();
     Mesh* CreateMesh(Mesh* mesh = nullptr);
     Mesh* CreateMesh(const std::string& name, Mesh* mesh = nullptr);
     Mesh* CreateCubeMesh(const std::string& name, float size = 1.0f);
@@ -93,6 +95,9 @@ public:
     }
 
     size_t getTotalTextureBytes() const;
+
+    // ========== Hot Reload ==========
+    void ReloadAll();  // Reload all shaders and textures
 
     // ========== Cleanup ==========
     void Clear();
