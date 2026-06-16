@@ -1,7 +1,6 @@
 #pragma once
+#include "Atmospheric.hpp"
 #include "rpg_entity.hpp"
-#include <Atmospheric/component.hpp>
-#include <Atmospheric/input.hpp>
 #include <cmath>
 #include <functional>
 #include <fmt/format.h>

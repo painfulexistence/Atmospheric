@@ -1,5 +1,8 @@
-#include "components.hpp"
+#include "Atmospheric.hpp"
+#include <Atmospheric/tilemap_2d.hpp>
+#include <Atmospheric/lighting_2d.hpp>
 #include <Atmospheric/gfx_factory.hpp>
+#include "components.hpp"
 #include <algorithm>
 #include <cmath>
 #include <fmt/format.h>
