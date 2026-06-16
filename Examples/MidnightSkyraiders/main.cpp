@@ -124,7 +124,8 @@ class MidnightSkyraiders : public Application {
         auto* sysObj = CreateGameObject();
         sysObj->SetName("CollisionSystem");
         sysObj->SetActive(false);
-        sysObj->AddComponent<CollisionSystemComponent>(director, sfxExp);
+        sysObj->AddComponent<CollisionSystemComponent>(director,
+            [this]{ audio.PlaySoundVariation(sfxExp, 0.1f, 0.05f); });
         _collision = sysObj->GetComponent<CollisionSystemComponent>();
 
         auto* hudObj = CreateGameObject();

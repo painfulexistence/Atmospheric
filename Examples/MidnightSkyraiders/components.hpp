@@ -336,12 +336,13 @@ public:
 class CollisionSystemComponent : public Component {
     GameDirectorComponent*   _director;
     PlayerComponent*         _player = nullptr;
-    SoundID                  _sfxExp;
+    std::function<void()>    _onExplosion;
     std::vector<GameObject*> _bullets;
     std::vector<GameObject*> _enemies;
 public:
-    CollisionSystemComponent(GameObject* go, GameDirectorComponent* director, SoundID sfxExp)
-        : _director(director), _sfxExp(sfxExp) { gameObject = go; }
+    CollisionSystemComponent(GameObject* go, GameDirectorComponent* director,
+                             std::function<void()> onExplosion)
+        : _director(director), _onExplosion(std::move(onExplosion)) { gameObject = go; }
 
     std::string GetName() const override { return "CollisionSystemComponent"; }
 
@@ -394,7 +395,7 @@ private:
         _director->AddScore(100.0);
         _director->AddKill();
         if (_player) _player->AddXP(level);
-        gameObject->GetApp()->GetAudioServer()->PlaySoundVariation(_sfxExp, 0.1f, 0.05f);
+        if (_onExplosion) _onExplosion();
     }
 
     void flushDead() {
