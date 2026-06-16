@@ -4,6 +4,7 @@
 #include "console.hpp"
 #include "game_object.hpp"
 #include "graphics_server.hpp"
+#include "imgui.h"
 
 TextComponent::TextComponent(GameObject* gameObject, const TextProps& props) : CanvasDrawable(gameObject) {
     _text = props.text;
@@ -20,7 +21,20 @@ TextComponent::TextComponent(GameObject* gameObject, const TextProps& props) : C
 }
 
 std::string TextComponent::GetName() const {
-    return std::string("TextComponent");
+    return std::string("Text");
+}
+
+void TextComponent::DrawImGui() {
+    std::string text = GetText();
+    char buffer[256];
+    strncpy(buffer, text.c_str(), sizeof(buffer) - 1);
+    buffer[sizeof(buffer) - 1] = '\0';
+    if (ImGui::InputText("Text", buffer, sizeof(buffer))) SetText(std::string(buffer));
+    ImGui::Text("Font: %s (ID %d)", GetFontPath().c_str(), GetFontID());
+    float fontSize = GetFontSize();
+    if (ImGui::DragFloat("Font Size", &fontSize, 1.0f, 1.0f, 200.0f)) SetFontSize(fontSize);
+    glm::vec4 color = GetColor();
+    if (ImGui::ColorEdit4("Color", &color.r)) SetColor(color);
 }
 
 void TextComponent::OnAttach() {

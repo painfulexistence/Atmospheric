@@ -5,6 +5,7 @@
 #include "game_object.hpp"
 #include "graphics_server.hpp"
 #include "renderer.hpp"
+#include "imgui.h"
 
 SpriteComponent::SpriteComponent(GameObject* gameObject, const SpriteProps& props) : CanvasDrawable(gameObject) {
     _size = props.size;
@@ -20,7 +21,21 @@ SpriteComponent::SpriteComponent(GameObject* gameObject, const SpriteProps& prop
 }
 
 std::string SpriteComponent::GetName() const {
-    return std::string("SpriteComponent");
+    return std::string("Sprite");
+}
+
+void SpriteComponent::DrawImGui() {
+    glm::vec2 size = GetSize();
+    glm::vec2 pivot = GetPivot();
+    glm::vec4 color = GetColor();
+    uint8_t textureID = GetTextureID();
+    if (ImGui::DragFloat2("Size",  &size.x,  0.001f, 9999.999f)) SetSize(size);
+    if (ImGui::DragFloat2("Pivot", &pivot.x, 0.0f,   1.0f))      SetPivot(pivot);
+    if (ImGui::ColorEdit4("Color", &color.r))                     SetColor(color);
+    auto* graphics = gameObject->GetApp()->GetGraphicsServer();
+    uint8_t minTex = 0, maxTex = (uint8_t)(graphics->canvasTextures.size() - 1);
+    if (ImGui::SliderScalar("Texture ID", ImGuiDataType_U8, &textureID, &minTex, &maxTex))
+        SetTextureID(textureID);
 }
 
 void SpriteComponent::OnAttach() {

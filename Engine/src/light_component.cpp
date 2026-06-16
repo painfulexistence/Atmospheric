@@ -2,6 +2,7 @@
 #include "game_object.hpp"
 #include "application.hpp"
 #include "graphics_server.hpp"
+#include "imgui.h"
 
 static glm::vec3 Direction(GLenum face) {
     switch (face) {
@@ -56,6 +57,18 @@ LightComponent::LightComponent(GameObject* gameObject, LightProps props) {
 
 std::string LightComponent::GetName() const {
     return std::string("Light");
+}
+
+void LightComponent::DrawImGui() {
+    if (type == LightType::Directional)
+        ImGui::DragFloat3("direction", &direction.x);
+    else if (type == LightType::Point)
+        ImGui::DragFloat3("attenuation", &attenuation.x);
+    ImGui::ColorEdit3("diffuse", &diffuse.r);
+    ImGui::ColorEdit3("specular", &specular.r);
+    ImGui::ColorEdit3("ambient", &ambient.r);
+    ImGui::DragFloat("intensity", &intensity);
+    ImGui::Checkbox("castShadow", &castShadow);
 }
 
 void LightComponent::OnAttach() {

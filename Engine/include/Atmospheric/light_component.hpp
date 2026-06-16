@@ -36,6 +36,7 @@ public:
 
     void OnAttach() override;
     void OnDetach() override;
+    void DrawImGui() override;
 
     glm::vec3 GetPosition() const;
 

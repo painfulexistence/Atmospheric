@@ -27,6 +27,7 @@ public:
 
     void OnAttach() override;
     void OnDetach() override;
+    void DrawImGui() override;
 
     void Draw(BatchRenderer2D* renderer) override;
 

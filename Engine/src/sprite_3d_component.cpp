@@ -289,7 +289,7 @@ Sprite3DComponent::Sprite3DComponent(GameObject* gameObject, const Sprite3DProps
 }
 
 std::string Sprite3DComponent::GetName() const {
-    return std::string("Sprite3DComponent");
+    return std::string("Sprite3D");
 }
 
 void Sprite3DComponent::OnAttach() {

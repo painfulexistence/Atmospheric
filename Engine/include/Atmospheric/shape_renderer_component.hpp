@@ -33,7 +33,7 @@ public:
     ShapeRendererComponent(GameObject* gameObject, const ShapeRendererProps& props);
 
     std::string GetName() const override {
-        return "ShapeRendererComponent";
+        return "ShapeRenderer";
     }
 
     void OnAttach() override;

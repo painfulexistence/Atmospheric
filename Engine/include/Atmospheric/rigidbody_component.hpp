@@ -37,6 +37,7 @@ public:
 
     void OnAttach() override;
     void OnDetach() override;
+    void DrawImGui() override;
 
     float GetMass() const;
     void SetMass(float mass);

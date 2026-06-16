@@ -1,15 +1,8 @@
 #include "editor_layer.hpp"
 #include "application.hpp"
-#include "asset_manager.hpp"
-#include "camera_component.hpp"
 #include "component.hpp"
 #include "game_object.hpp"
 #include "imgui.h"
-#include "light_component.hpp"
-#include "mesh_component.hpp"
-#include "rigidbody_component.hpp"
-#include "sprite_component.hpp"
-#include "text_component.hpp"
 #include "window.hpp"
 #include "gfx_factory.hpp"
 
@@ -143,115 +136,9 @@ void EditorLayer::DrawEntityInspector(GameObject* entity) {
         if (ImGui::DragFloat3("Scale", &scale.x, 0.1f)) entity->SetScale(scale);
     }
 
-    auto impostor = entity->GetComponent<RigidbodyComponent>();
-    if (impostor != nullptr) {
-        if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
-            glm::vec3 vel = impostor->GetLinearVelocity();
-            ImGui::Text("Velocity: %.3f, %.3f, %.3f", vel.x, vel.y, vel.z);
-        }
-    }
-
-    auto light = entity->GetComponent<LightComponent>();
-    if (light != nullptr) {
-        if (light->type == LightType::Directional) {
-            if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::DragFloat3("direction", &light->direction.x);
-                ImGui::ColorEdit3("diffuse", &light->diffuse.r);
-                ImGui::ColorEdit3("spcular", &light->specular.r);
-                ImGui::ColorEdit3("ambient", &light->ambient.r);
-                ImGui::DragFloat("intensity", &light->intensity);
-                ImGui::Checkbox("castShadow", &light->castShadow);
-            }
-        } else if (light->type == LightType::Point) {
-            if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-                ImGui::DragFloat3("attenuation", &light->attenuation.x);
-                ImGui::ColorEdit3("diffuse", &light->diffuse.r);
-                ImGui::ColorEdit3("spcular", &light->specular.r);
-                ImGui::ColorEdit3("ambient", &light->ambient.r);
-                ImGui::DragFloat("intensity", &light->intensity);
-                ImGui::Checkbox("castShadow", &light->castShadow);
-            }
-        }
-    }
-
-    auto camera = entity->GetComponent<CameraComponent>();
-    if (camera != nullptr) {
-        if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-        }
-    }
-
-    auto renderable = entity->GetComponent<MeshComponent>();
-    if (renderable != nullptr) {
-        if (ImGui::CollapsingHeader("MeshComponent", ImGuiTreeNodeFlags_DefaultOpen)) {
-            auto mat = renderable->GetMaterial();
-            auto graphics = _app->GetGraphicsServer();
-            auto& assetManager = AssetManager::Get();
-            int textureCount = assetManager.GetTextures().size();
-            ImGui::SliderInt("Base map ID", &mat->baseMap, -1, textureCount - 1);
-            ImGui::SliderInt("Normal map ID", &mat->normalMap, -1, textureCount - 1);
-            ImGui::SliderInt("AO map ID", &mat->aoMap, -1, textureCount - 1);
-            ImGui::SliderInt("Roughness map ID", &mat->roughnessMap, -1, textureCount - 1);
-            ImGui::SliderInt("Metallic map ID", &mat->metallicMap, -1, textureCount - 1);
-            ImGui::SliderInt("Height map ID", &mat->heightMap, -1, textureCount - 1);
-            ImGui::ColorEdit3("Diffuse", &mat->diffuse.r);
-            ImGui::ColorEdit3("Specular", &mat->specular.r);
-            ImGui::ColorEdit3("Ambient", &mat->ambient.r);
-            ImGui::DragFloat("Shininess", &mat->shininess, 0.0f, 1.0f);
-            ImGui::Checkbox("Cull face enabled", &mat->cullFaceEnabled);
-        }
-    }
-
-    auto drawable2D = entity->GetComponent<SpriteComponent>();
-    if (drawable2D != nullptr) {
-        if (ImGui::CollapsingHeader("SpriteComponent", ImGuiTreeNodeFlags_DefaultOpen)) {
-            glm::vec2 size = drawable2D->GetSize();
-            glm::vec2 pivot = drawable2D->GetPivot();
-            glm::vec4 color = drawable2D->GetColor();
-            uint8_t textureID = drawable2D->GetTextureID();
-            if (ImGui::DragFloat2("Size:", &size.x, 0.001f, 9999.999f)) {
-                drawable2D->SetSize(size);
-            }
-            if (ImGui::DragFloat2("Pivot:", &pivot.x, 0.0f, 1.0f)) {
-                drawable2D->SetPivot(pivot);
-            }
-            if (ImGui::ColorEdit4("Color", &color.r)) {
-                drawable2D->SetColor(color);
-            }
-            auto graphics = _app->GetGraphicsServer();
-            uint8_t minTexIndex = 0, maxTexIndex = graphics->canvasTextures.size() - 1;
-            if (ImGui::SliderScalar("Texture ID", ImGuiDataType_U8, &textureID, &minTexIndex, &maxTexIndex)) {
-                drawable2D->SetTextureID(textureID);
-            }
-        }
-    }
-    auto textComp = entity->GetComponent<TextComponent>();
-    if (textComp != nullptr) {
-        if (ImGui::CollapsingHeader("TextComponent", ImGuiTreeNodeFlags_DefaultOpen)) {
-            // Text Content
-            std::string text = textComp->GetText();
-            char buffer[256];
-            strncpy(buffer, text.c_str(), sizeof(buffer));
-            buffer[sizeof(buffer) - 1] = 0;
-            if (ImGui::InputText("Text", buffer, sizeof(buffer))) {
-                textComp->SetText(std::string(buffer));
-            }
-
-            // Font Info
-            ImGui::Text("Font Path: %s", textComp->GetFontPath().c_str());
-            ImGui::Text("Font ID: %d", textComp->GetFontID());
-
-            // Font Size
-            float fontSize = textComp->GetFontSize();
-            if (ImGui::DragFloat("Font Size", &fontSize, 1.0f, 1.0f, 200.0f)) {
-                textComp->SetFontSize(fontSize);
-            }
-
-            // Color
-            glm::vec4 color = textComp->GetColor();
-            if (ImGui::ColorEdit4("Color", &color.r)) {
-                textComp->SetColor(color);
-            }
-        }
+    for (auto* comp : entity->GetComponents()) {
+        if (ImGui::CollapsingHeader(comp->GetName().c_str()))
+            comp->DrawImGui();
     }
 
     // Generic inspector pass: any component (engine or game-defined) may expose

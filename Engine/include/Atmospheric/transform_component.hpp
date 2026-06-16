@@ -8,7 +8,7 @@ public:
     ~TransformComponent() = default;
 
     std::string GetName() const override {
-        return "TransformComponent";
+        return "Transform";
     }
 
     // Position

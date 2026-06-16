@@ -18,6 +18,7 @@ public:
 
     void OnAttach() override;
     void OnDetach() override;
+    void DrawImGui() override;
 
     Mesh* GetMesh() const;
 
