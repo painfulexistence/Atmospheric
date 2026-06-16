@@ -337,9 +337,53 @@ ShaderProgram* AssetManager::GetShaderByID(uint32_t id) const {
     throw std::runtime_error(fmt::format("Shader ID {} out of range", id));
 }
 
-void AssetManager::ReloadShaders() {
-    // TODO: Implement shader hot reloading
-    ENGINE_LOG("Shader reloading not yet implemented");
+bool AssetManager::ReloadShader(const std::string& name) {
+    auto it = _shaderCache.find(name);
+    if (it == _shaderCache.end()) {
+        spdlog::error("Cannot reload shader '{}': not found", name);
+        return false;
+    }
+
+    ShaderProgram* shader = shaders[it->second];
+    const auto& props = shader->GetProps();
+
+    if (props.vert.empty() || props.frag.empty()) {
+        spdlog::warn("Cannot reload shader '{}': missing source paths", name);
+        return false;
+    }
+
+    if (shader->Reload()) {
+        ENGINE_LOG("Shader '{}' reloaded successfully", name);
+        return true;
+    } else {
+        spdlog::error("Failed to reload shader '{}'", name);
+        return false;
+    }
+}
+
+int AssetManager::ReloadShaders() {
+    int successCount = 0;
+    int failCount = 0;
+
+    for (const auto& [name, id] : _shaderCache) {
+        ShaderProgram* shader = shaders[id];
+        const auto& props = shader->GetProps();
+
+        if (props.vert.empty() || props.frag.empty()) {
+            continue;
+        }
+
+        if (shader->Reload()) {
+            ENGINE_LOG("Shader '{}' reloaded", name);
+            successCount++;
+        } else {
+            spdlog::error("Failed to reload shader '{}'", name);
+            failCount++;
+        }
+    }
+
+    ENGINE_LOG("Shader reload complete: {} succeeded, {} failed", successCount, failCount);
+    return successCount;
 }
 
 // ============================================================================

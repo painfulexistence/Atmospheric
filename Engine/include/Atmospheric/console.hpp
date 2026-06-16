@@ -45,4 +45,8 @@ private:
 };
 
 #define LOG(msg, ...) Console::Get()->Info(fmt::format(msg, ##__VA_ARGS__))
+#define WARN(msg, ...) Console::Get()->Warn(fmt::format(msg, ##__VA_ARGS__))
+#define ERROR(msg, ...) Console::Get()->Error(fmt::format(msg, ##__VA_ARGS__))
 #define ENGINE_LOG(msg, ...) Console::Get()->Info("[Engine] " + fmt::format(msg, ##__VA_ARGS__))
+#define ENGINE_WARN(msg, ...) Console::Get()->Warn("[Engine] " + fmt::format(msg, ##__VA_ARGS__))
+#define ENGINE_ERROR(msg, ...) Console::Get()->Error("[Engine] " + fmt::format(msg, ##__VA_ARGS__))

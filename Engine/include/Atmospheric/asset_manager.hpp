@@ -58,7 +58,8 @@ public:
     ShaderProgram* GetShaderByID(uint32_t id) const;
     void LoadDefaultShaders();
     void LoadShaders(const std::unordered_map<std::string, ShaderProgramProps>& shaderDefs);
-    void ReloadShaders();
+    bool ReloadShader(const std::string& name);
+    int ReloadShaders();
 
     // ========== GPU Resource Management ==========
     GLuint CreateTexture(const std::string& path);

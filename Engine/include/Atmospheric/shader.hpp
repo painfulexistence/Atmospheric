@@ -39,6 +39,10 @@ public:
     ShaderProgram(std::array<Shader, 2>&);
     ShaderProgram(std::array<Shader, 4>&);
 
+    // Hot reload support
+    bool Reload();
+    const ShaderProgramProps& GetProps() const { return _props; }
+
     GLint GetAttrib(const std::string& attrib) {
         return glGetAttribLocation(_program, attrib.c_str());
     };
@@ -76,6 +80,7 @@ public:
 
 private:
     GLuint _program;
+    ShaderProgramProps _props;
     std::unordered_map<std::string, GLint> _uniformLocationCache;
 
     GLint CacheUniform(const std::string& uniform) {

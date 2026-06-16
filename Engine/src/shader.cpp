@@ -62,7 +62,7 @@ Shader::Shader(const std::string& path, ShaderType type) {
     }
 }
 
-ShaderProgram::ShaderProgram(const ShaderProgramProps& props) : _program(glCreateProgram()) {
+ShaderProgram::ShaderProgram(const ShaderProgramProps& props) : _program(glCreateProgram()), _props(props) {
     glAttachShader(_program, Shader(props.vert, ShaderType::VERTEX).shader);
     glAttachShader(_program, Shader(props.frag, ShaderType::FRAGMENT).shader);
 #ifndef __EMSCRIPTEN__
@@ -100,10 +100,64 @@ ShaderProgram::ShaderProgram(const ShaderProgramProps& props) : _program(glCreat
     }
 }
 
+bool ShaderProgram::Reload() {
+    if (_props.vert.empty() || _props.frag.empty()) {
+        return false;
+    }
+
+    GLuint newProgram = glCreateProgram();
+
+    try {
+        glAttachShader(newProgram, Shader(_props.vert, ShaderType::VERTEX).shader);
+        glAttachShader(newProgram, Shader(_props.frag, ShaderType::FRAGMENT).shader);
+#ifndef __EMSCRIPTEN__
+        if (_props.tesc.has_value()) {
+            glAttachShader(newProgram, Shader(_props.tesc.value(), ShaderType::TESS_CONTROL).shader);
+        }
+        if (_props.tese.has_value()) {
+            glAttachShader(newProgram, Shader(_props.tese.value(), ShaderType::TESS_EVALUATION).shader);
+        }
+#endif
+
+        if (_props.feedbackVaryings.has_value()) {
+            std::vector<const char*> varyings_c_str;
+            varyings_c_str.reserve(_props.feedbackVaryings->size());
+            for (const auto& varying : _props.feedbackVaryings.value()) {
+                varyings_c_str.push_back(varying.c_str());
+            }
+            glTransformFeedbackVaryings(newProgram, varyings_c_str.size(), varyings_c_str.data(), GL_INTERLEAVED_ATTRIBS);
+        }
+
+        glLinkProgram(newProgram);
+
+        GLint isLinked;
+        glGetProgramiv(newProgram, GL_LINK_STATUS, &isLinked);
+        if (isLinked == GL_FALSE) {
+            GLint maxLength = 0;
+            glGetProgramiv(newProgram, GL_INFO_LOG_LENGTH, &maxLength);
+            std::vector<GLchar> infoLog(maxLength);
+            glGetProgramInfoLog(newProgram, maxLength, &maxLength, infoLog.data());
+            glDeleteProgram(newProgram);
+            throw std::runtime_error(fmt::format("Shader link error: {}", infoLog.data()));
+        }
+
+        glDeleteProgram(_program);
+        _program = newProgram;
+        _uniformLocationCache.clear();
+        return true;
+
+    } catch (const std::exception& e) {
+        if (newProgram != 0) {
+            glDeleteProgram(newProgram);
+        }
+        return false;
+    }
+}
+
 ShaderProgram::ShaderProgram(
   std::string vert, std::string frag, std::optional<std::string> tesc, std::optional<std::string> tese
 )
-  : _program(glCreateProgram()) {
+  : _program(glCreateProgram()), _props{vert, frag, tesc, tese} {
     glAttachShader(_program, Shader(vert, ShaderType::VERTEX).shader);
     glAttachShader(_program, Shader(frag, ShaderType::FRAGMENT).shader);
 #ifndef __EMSCRIPTEN__
