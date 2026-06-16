@@ -11,6 +11,8 @@ public:
         return "Transform";
     }
 
+    void DrawImGui() override;
+
     // Position
     inline glm::vec3 GetPosition() const {
         return _position;

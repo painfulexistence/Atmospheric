@@ -126,25 +126,6 @@ void EditorLayer::DrawAppView() {
 
 void EditorLayer::DrawEntityInspector(GameObject* entity) {
     ImGui::Text("Name: %s", entity->GetName().c_str());
-
-    if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
-        glm::vec3 pos = entity->GetPosition();
-        glm::vec3 rot = entity->GetRotation();
-        glm::vec3 scale = entity->GetScale();
-        if (ImGui::DragFloat3("Position", &pos.x, 0.1f)) entity->SetPosition(pos);
-        if (ImGui::DragFloat3("Rotation", &rot.x, 1.0f)) entity->SetRotation(rot);
-        if (ImGui::DragFloat3("Scale", &scale.x, 0.1f)) entity->SetScale(scale);
-    }
-
-    for (auto* comp : entity->GetComponents()) {
-        if (ImGui::CollapsingHeader(comp->GetName().c_str()))
-            comp->DrawImGui();
-    }
-
-    // Generic inspector pass: any component (engine or game-defined) may expose
-    // its own widgets by overriding Component::DrawImGui. Built-in components
-    // handled above use the default no-op, so this adds no duplication.
-    // The CollapsingHeader is provided here so DrawImGui() only needs content.
     for (auto* comp : entity->GetComponents()) {
         if (ImGui::CollapsingHeader(comp->GetName().c_str()))
             comp->DrawImGui();
