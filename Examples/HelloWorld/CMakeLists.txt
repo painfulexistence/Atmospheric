@@ -92,25 +92,47 @@ else()
 endif()
 
 # ── Asset sync ───────────────────────────────────────────────────────────────
-add_custom_command(
-    TARGET ${GAME_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/Engine/default_assets
-        $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-    COMMENT "Syncing default assets for ${GAME_NAME}"
-)
-
-if(EXISTS ${GAME_ASSETS_DIR})
+if(NOT ANDROID AND NOT IOS)
     add_custom_command(
         TARGET ${GAME_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${GAME_ASSETS_DIR}
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets
             $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-        COMMENT "Syncing game assets for ${GAME_NAME}"
+        COMMENT "Syncing default assets for ${GAME_NAME}"
     )
 
-    ae_auto_convert_textures(${GAME_NAME}
-        ${GAME_ASSETS_DIR}/textures
-        $<TARGET_FILE_DIR:${GAME_NAME}>/assets/textures
-    )
+    if(EXISTS ${GAME_ASSETS_DIR})
+        add_custom_command(
+            TARGET ${GAME_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${GAME_ASSETS_DIR}
+                $<TARGET_FILE_DIR:${GAME_NAME}>/assets
+            COMMENT "Syncing game assets for ${GAME_NAME}"
+        )
+
+        ae_auto_convert_textures(${GAME_NAME}
+            ${GAME_ASSETS_DIR}/textures
+            $<TARGET_FILE_DIR:${GAME_NAME}>/assets/textures
+        )
+    endif()
+endif()
+
+if(ANDROID)
+    # Automatically copy SDL3 Java sources from the fetched dependency to Gradle source sets
+    include(FetchContent)
+    FetchContent_GetProperties(SDL3)
+    set(SDL3_JAVA_SRC_DIR "")
+    if(sdl3_SOURCE_DIR)
+        set(SDL3_JAVA_SRC_DIR "${sdl3_SOURCE_DIR}/android-project/app/src/main/java/org")
+    elseif(SDL3_SOURCE_DIR)
+        set(SDL3_JAVA_SRC_DIR "${SDL3_SOURCE_DIR}/android-project/app/src/main/java/org")
+    endif()
+
+    if(SDL3_JAVA_SRC_DIR AND EXISTS "${SDL3_JAVA_SRC_DIR}")
+        message(STATUS "Android CMake: Copying SDL3 Java sources from ${SDL3_JAVA_SRC_DIR}")
+        file(COPY "${SDL3_JAVA_SRC_DIR}"
+             DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/platforms/android/app/src/main/java")
+    else()
+        message(WARNING "Android CMake: SDL3 Java sources not found at '${SDL3_JAVA_SRC_DIR}'!")
+    endif()
 endif()
