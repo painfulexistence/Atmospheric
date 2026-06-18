@@ -68,8 +68,8 @@ if(EMSCRIPTEN)
         -sFETCH=1 -sFORCE_FILESYSTEM=1 -sALLOW_MEMORY_GROWTH=1
         -sASSERTIONS=1
         -sDISABLE_EXCEPTION_CATCHING=0
-        -sEXPORTED_FUNCTIONS=["_main","_printWasmMemoryStats"]
-        -Wl,--undefined=printWasmMemoryStats
+        -sEXPORTED_FUNCTIONS=["_main","_printMemoryStats"]
+        -Wl,--undefined=printMemoryStats
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
