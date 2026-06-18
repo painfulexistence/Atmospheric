@@ -1,4 +1,5 @@
 #include "asset_manager.hpp"
+#include <algorithm>
 #include <unordered_set>
 #include <spdlog/spdlog.h>
 #include "console.hpp"
@@ -911,4 +912,36 @@ std::shared_ptr<Mesh> AssetManager::LoadOBJ(const std::string& path) {
     mesh->Initialize(vertices, indices);
 
     return mesh;
+}
+
+int AssetManager::CreateHeightmapTexture(
+    const std::string& name, const std::vector<float>& grid, int width, int height
+) {
+    auto it = _textureCache.find(name);
+    if (it != _textureCache.end()) {
+        // Return existing index
+        const GLuint target = it->second.glID;
+        for (int i = 0; i < (int)textures.size(); ++i)
+            if (textures[i] == target) return i;
+    }
+
+    std::vector<uint8_t> bytes(width * height);
+    for (int i = 0; i < width * height; ++i)
+        bytes[i] = static_cast<uint8_t>(std::clamp(grid[i] * 255.0f, 0.0f, 255.0f));
+
+    GLuint texID = 0;
+    glGenTextures(1, &texID);
+    glBindTexture(GL_TEXTURE_2D, texID);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, bytes.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    int idx = (int)textures.size();
+    textures.push_back(texID);
+    _textureCache[name] = { texID, (uint32_t)width, (uint32_t)height, (size_t)(width * height) };
+    return idx;
 }
