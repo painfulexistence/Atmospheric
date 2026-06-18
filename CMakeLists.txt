@@ -36,4 +36,10 @@ include(FetchContent)
 
 
 add_subdirectory(Engine)
-add_subdirectory(Examples)
+
+# Only build the bundled examples when Atmospheric is the top-level project.
+# When consumed via add_subdirectory() (e.g. as a submodule), downstream
+# projects pull in Engine alone and provide their own executables.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_subdirectory(Examples)
+endif()
