@@ -1,46 +1,50 @@
 #pragma once
 #include "component.hpp"
-#include <glm/glm.hpp>
+#include "height_field.hpp"
+#include <memory>
 #include <string>
-#include <vector>
 
 class GraphicsServer;
 class PhysicsServer;
-class Mesh;
 class Material;
+class Mesh;
 
 struct TerrainProps {
-    std::string heightmapPath;
-    float worldSize = 100.0f;
-    int resolution = 128;
-    float heightScale = 32.0f;
-    float minHeight = -64.0f;
-    float maxHeight = 64.0f;
-    Material* material = nullptr;
+    // Provide either heightmapPath (image file) or heightField (explicit source).
+    // heightmapPath takes priority if both are set.
+    std::string                  heightmapPath;
+    std::shared_ptr<HeightField> heightField;
+
+    float     worldSize          = 100.0f;
+    int       resolution         = 128;
+    float     heightScale        = 32.0f;
+    float     tessellationFactor = 16.0f;
+    float     minHeight          = -64.0f;
+    float     maxHeight          =  64.0f;
+    Material* material           = nullptr;
+
+    // Set false to skip physics collider (visual-only terrain).
+    bool buildCollider = true;
 };
 
+// Convenience wrapper: creates a TerrainMeshComponent and optionally a
+// HeightFieldColliderComponent on the owner, using a single TerrainProps.
 class TerrainComponent : public Component {
 public:
-    TerrainComponent(GameObject* owner, GraphicsServer* graphics, PhysicsServer* physics, const TerrainProps& props);
-    ~TerrainComponent();
+    TerrainComponent(
+        GameObject*         owner,
+        GraphicsServer*     graphics,
+        PhysicsServer*      physics,
+        const TerrainProps& props
+    );
 
-    std::string GetName() const override {
-        return "Terrain";
-    }
+    std::string GetName() const override { return "Terrain"; }
+    void OnAttach() override {}
+    void OnDetach() override {}
 
-    void OnAttach() override;
-    void OnDetach() override;
-
-    Mesh* GetMesh() const {
-        return _mesh;
-    }
-    void SetMaterial(Material* material);
+    Mesh* GetMesh() const { return _mesh; }
+    void  SetMaterial(Material* material);
 
 private:
-    GraphicsServer* _graphics;
-    PhysicsServer* _physics;
-    Mesh* _mesh;
-    std::vector<float> _heightData;// Keep heightmap data alive
-
-    void LoadHeightmap(const std::string& path, const TerrainProps& props);
+    Mesh* _mesh = nullptr;
 };

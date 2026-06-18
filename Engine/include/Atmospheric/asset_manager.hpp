@@ -77,6 +77,9 @@ public:
     Mesh* CreateCapsuleMesh(const std::string& name, float radius = 0.5f, float height = 3.0f);
     Mesh* CreateTerrainMesh(const std::string& name, float worldSize = 1024.f, int resolution = 10);
     Mesh* GetMesh(const std::string& name) const;
+    // Upload a normalized [0,1] float grid as a GL_R8 grayscale texture.
+    // Returns the scene-texture index usable as Material::heightMap.
+    int CreateHeightmapTexture(const std::string& name, const std::vector<float>& grid, int width, int height);
     std::shared_ptr<Mesh> LoadOBJ(const std::string& path);
     std::shared_ptr<Mesh> LoadGLTF(const std::string& path);
 

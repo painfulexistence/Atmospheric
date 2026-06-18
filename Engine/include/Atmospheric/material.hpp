@@ -49,6 +49,17 @@ public:
     RenderQueue renderQueue = RenderQueue::Opaque;
     int renderQueueOffset = 0;// Fine-tune rendering order within queue
 
+    // Terrain-specific (read by renderer.cpp ForwardOpaquePass terrain branch)
+    float heightScale        = 32.0f;
+    float tessellationFactor = 16.0f;
+
+    // Water-specific (read by WaterPass per-mesh)
+    float     waterLine       = 32.0f;
+    float     waveStrength    =  0.1f;
+    float     waveSpeed       =  1.0f;
+    glm::vec3 waterFogColor   = {0.55f, 0.65f, 0.75f};
+    float     waterFogDensity =  0.003f;
+
     int GetFinalRenderQueue() const {
         return static_cast<int>(renderQueue) + renderQueueOffset;
     }

@@ -786,8 +786,8 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             terrainShader->SetUniform(std::string("surf_params.ambient"), mesh->GetMaterial()->ambient);
             terrainShader->SetUniform(std::string("surf_params.shininess"), mesh->GetMaterial()->shininess);
 
-            terrainShader->SetUniform(std::string("tessellation_factor"), (float)16.0);
-            terrainShader->SetUniform(std::string("height_scale"), (float)32.0);
+            terrainShader->SetUniform(std::string("tessellation_factor"), mesh->GetMaterial()->tessellationFactor);
+            terrainShader->SetUniform(std::string("height_scale"), mesh->GetMaterial()->heightScale);
             glActiveTexture(GL_TEXTURE7);
             int heightMap = mesh->GetMaterial()->heightMap;
             if (heightMap >= 0 && (size_t)heightMap < assetManager.GetTextures().size()) {
