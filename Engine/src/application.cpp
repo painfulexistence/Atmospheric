@@ -791,19 +791,35 @@ GameObject* Application::CreateGameObject(glm::vec2 position, float angle) {
 extern "C" {
 
 EMSCRIPTEN_KEEPALIVE
-void printWasmMemoryStats() {
+void printMemoryStats() {
     struct mallinfo mi = mallinfo();
     double mb = 1024.0 * 1024.0;
     size_t heapSize = emscripten_get_heap_size();
     size_t vramBytes = AssetManager::Get().getTotalTextureBytes();
 
-    printf("========== WASM Memory Stats ==========\n");
+    double jsHeapSizeMB = -1.0;
+    int jsHeapBytes = EM_ASM_INT({
+        if (globalThis.performance && globalThis.performance.memory) {
+            return globalThis.performance.memory.usedJSHeapSize;
+        }
+        return -1;
+    });
+    if (jsHeapBytes >= 0) {
+        jsHeapSizeMB = (double)jsHeapBytes / mb;
+    }
+
+    printf("========== Memory Stats ==========\n");
     printf("WASM Heap Size     : %.2f MB\n", heapSize / mb);
     printf("dlmalloc Arena     : %.2f MB\n", mi.arena / mb);
     printf("Used               : %.2f MB\n", mi.uordblks / mb);
     printf("Free               : %.2f MB\n", mi.fordblks / mb);
+    if (jsHeapSizeMB >= 0.0) {
+        printf("JS Heap Size       : %.2f MB\n", jsHeapSizeMB);
+    } else {
+        printf("JS Heap Size       : N/A (unsupported)\n");
+    }
     printf("VRAM (textures)    : %.2f MB\n", vramBytes / mb);
-    printf("=======================================\n");
+    printf("==================================\n");
 }
 
 } // extern "C"
