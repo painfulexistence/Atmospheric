@@ -262,12 +262,12 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
         Material* mat = mesh->GetMaterial();
         if (!mat || mat->renderQueue != RenderQueue::Transparent) continue;
 
-        // Per-instance water params from Material (set by WaterComponent).
-        shader->SetUniform("u_waterLine",    mat->waterLine);
-        shader->SetUniform("u_waveStrength", mat->waveStrength);
-        shader->SetUniform("u_waveSpeed",    mat->waveSpeed);
-        shader->SetUniform("u_fogColor",     mat->waterFogColor);
-        shader->SetUniform("u_fogDensity",   mat->waterFogDensity);
+        const auto& wd = mesh->waterData.value_or(WaterShaderData{});
+        shader->SetUniform("u_waterLine",    wd.waterLine);
+        shader->SetUniform("u_waveStrength", wd.waveStrength);
+        shader->SetUniform("u_waveSpeed",    wd.waveSpeed);
+        shader->SetUniform("u_fogColor",     wd.waterFogColor);
+        shader->SetUniform("u_fogDensity",   wd.waterFogDensity);
         shader->SetUniform("u_model",        cmd.transform);
 
         glBindVertexArray(mesh->vao);

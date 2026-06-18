@@ -21,8 +21,10 @@ TerrainMeshComponent::TerrainMeshComponent(
     if (!mat)
         mat = am.CreateMaterial(MaterialProps{});
 
-    mat->heightScale        = props.heightScale;
-    mat->tessellationFactor = props.tessellationFactor;
+    _mesh->terrainData = TerrainShaderData{
+        .heightScale        = props.heightScale,
+        .tessellationFactor = props.tessellationFactor,
+    };
 
     // For NoiseHeightField, bake the height grid to a GPU texture.
     // For ImageHeightField the caller already set mat->heightMap via LoadScene.

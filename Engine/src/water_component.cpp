@@ -28,9 +28,11 @@ void WaterComponent::OnAttach() {
         ? _props.waterLine
         : gameObject->GetPosition().y;
 
-    _material->waterLine      = line;
-    _material->waveStrength   = _props.waveStrength;
-    _material->waveSpeed      = _props.waveSpeed;
-    _material->waterFogColor  = _props.fogColor;
-    _material->waterFogDensity = _props.fogDensity;
+    _mesh->waterData = WaterShaderData{
+        .waterLine       = line,
+        .waveStrength    = _props.waveStrength,
+        .waveSpeed       = _props.waveSpeed,
+        .waterFogColor   = _props.fogColor,
+        .waterFogDensity = _props.fogDensity,
+    };
 }
