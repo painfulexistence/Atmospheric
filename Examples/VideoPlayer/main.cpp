@@ -46,7 +46,7 @@ class VideoPlayerDemo : public Application {
             console.Info(fmt::format("Playing '{}' ({:.1f} s)",
                                      g_videoPath, m_player.getDuration()));
         } else {
-            console.Warning(fmt::format(
+            console.Warn(fmt::format(
                 "Could not open '{}'. "
                 "Make sure the engine was built with -DAE_USE_FFMPEG=ON "
                 "and that the path / URL is valid.",
@@ -71,11 +71,14 @@ class VideoPlayerDemo : public Application {
         });
 
         // HUD overlay
-        auto* hud = CreateGameObject();
-        hud->AddComponent<ScreenLabelComponent>(
-            m_fontID,
-            "SPACE: play / pause   |   ESC: quit",
-            glm::vec2(10.0f, 10.0f));
+        auto* hud = CreateGameObject(glm::vec3(10.0f, 10.0f, 0.0f));
+        hud->AddComponent<TextComponent>(TextProps{
+            .text    = "SPACE: play / pause   |   ESC: quit",
+            .fontID  = m_fontID,
+            .size    = glm::vec2(600.0f, 40.0f),
+            .color   = glm::vec4(1.0f),
+            .layer   = CanvasLayer::LAYER_WORLD_2D,
+        });
 
         console.Info("Controls: SPACE = play/pause, ESC = quit");
     }
