@@ -3,7 +3,6 @@ set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 
 # FFmpeg is required for VideoPlayer.
 # Configure the top-level build with: -DAE_USE_FFMPEG=ON
-# (or pass -DAE_USE_FFMPEG=ON to the AtmosphericEngine target before this).
 if(EMSCRIPTEN OR ANDROID OR IOS)
     message(STATUS "Skipping ${GAME_NAME}: not supported on this platform "
                    "(FFmpeg unavailable on WASM / mobile).")
@@ -40,7 +39,7 @@ add_custom_command(
     COMMENT "Syncing default assets for ${GAME_NAME}"
 )
 
-# Sync game-specific assets (video files, etc.) if the directory exists.
+# Sync game-specific assets if the directory exists.
 if(EXISTS ${GAME_ASSETS_DIR})
     add_custom_command(
         TARGET ${GAME_TARGET} POST_BUILD
@@ -50,3 +49,16 @@ if(EXISTS ${GAME_ASSETS_DIR})
         COMMENT "Syncing game assets for ${GAME_NAME}"
     )
 endif()
+
+# Download Sprite Fright (CC-BY, Blender Studio) on first build.
+# ~150 MB; skipped on subsequent builds if the file already exists.
+set(SF_URL "https://upload.wikimedia.org/wikipedia/commons/7/74/Sprite_Fright_-_Open_Movie_by_Blender_Studio.webm")
+set(SF_DST "$<TARGET_FILE_DIR:${GAME_TARGET}>/assets/video/sprite_fright.webm")
+add_custom_command(
+    TARGET ${GAME_TARGET} POST_BUILD
+    COMMAND ${CMAKE_COMMAND}
+        -DURL=${SF_URL}
+        -DDST=${SF_DST}
+        -P ${CMAKE_SOURCE_DIR}/cmake/download_if_missing.cmake
+    COMMENT "Fetching Sprite Fright demo video (first build only, ~150 MB)"
+)

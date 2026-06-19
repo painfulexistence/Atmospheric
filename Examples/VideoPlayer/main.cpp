@@ -1,10 +1,11 @@
 #include "Atmospheric.hpp"
 #include <glad/glad.h>
 
-// Path or HTTP/HTTPS URL passed in as the first CLI argument.
+// Path or HTTP/HTTPS/RTSP URL passed in as the first CLI argument.
 // Example: ./VideoPlayer my_clip.mp4
 // Example: ./VideoPlayer https://example.com/stream.m3u8
-static std::string g_videoPath = "assets/video/sample.mp4";
+// Default: Sprite Fright (CC-BY, Blender Studio) — auto-downloaded at build time.
+static std::string g_videoPath = "assets/video/sprite_fright.webm";
 
 class VideoPlayerDemo : public Application {
     using Application::Application;
