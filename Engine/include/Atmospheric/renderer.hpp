@@ -7,7 +7,19 @@
 #include "globals.hpp"
 #include "mesh.hpp"
 #include "render_target.hpp"
+#include <cstdint>
+#include <functional>
 #include <memory>
+#include <vector>
+
+struct GpuImageData {
+    std::vector<uint8_t> data;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t channelCount = 4;
+};
+
+using PixelReadbackCallback = std::function<void(const GpuImageData&)>;
 
 class GraphicsServer;
 class ShaderProgram;
@@ -224,6 +236,11 @@ public:
     auto& GetCanvasQueue() {
         return _canvasQueue;
     }
+
+    // Read rendered pixels asynchronously. On this OpenGL backend the readback
+    // is actually synchronous; the callback fires before this method returns.
+    // Pixels are in RGBA order, top-to-bottom (flipped from the raw GL output).
+    void readPixelsAsync(PixelReadbackCallback callback);
 
     glm::vec4 clearColor = glm::vec4(0.15f, 0.183f, 0.2f, 1.0f);
     bool wireframeEnabled = false;

@@ -1,4 +1,5 @@
 #include "renderer.hpp"
+#include <cstring>
 #include "asset_manager.hpp"
 #include "batch_renderer_2d.hpp"
 #include "canvas_drawable.hpp"
@@ -102,7 +103,7 @@ void Renderer::Init(int width, int height) {
         glBindVertexArray(0);
     }
 
-    // ── Skybox cube VAO ─────────────────────────────────────────────
+    // ── Skybox cube VAO ───────────────────────────────────────────────
     {
         static const float cubeVerts[] = {
             -1, -1, -1,  1, -1, -1,  1,  1, -1,  1,  1, -1, -1,  1, -1, -1, -1, -1,
@@ -1415,4 +1416,50 @@ void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* en
     // Restore state
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
+}
+
+void Renderer::readPixelsAsync(PixelReadbackCallback callback) {
+    if (!callback) return;
+
+    // Prefer the resolved (non-MSAA) target; fall back to the main scene RT.
+    RenderTarget* src = msaaResolveRT ? msaaResolveRT.get() : sceneRT.get();
+    if (!src) return;
+
+    int w = src->GetWidth();
+    int h = src->GetHeight();
+
+    GpuImageData img;
+    img.width = static_cast<uint32_t>(w);
+    img.height = static_cast<uint32_t>(h);
+    img.channelCount = 4;
+    img.data.resize(static_cast<size_t>(w) * h * 4);
+
+    // Attach the color texture to a temporary FBO so glReadPixels can read it.
+    GLuint tmpFBO = 0;
+    glGenFramebuffers(1, &tmpFBO);
+
+    GLint prevReadFBO = 0;
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevReadFBO);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, tmpFBO);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D,
+                           static_cast<GLuint>(src->GetTextureID()), 0);
+    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, img.data.data());
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(prevReadFBO));
+    glDeleteFramebuffers(1, &tmpFBO);
+
+    // Flip rows: OpenGL origin is bottom-left; callers expect top-to-bottom.
+    const size_t rowBytes = static_cast<size_t>(w) * 4;
+    std::vector<uint8_t> flipped(img.data.size());
+    for (int row = 0; row < h; ++row) {
+        std::memcpy(
+            flipped.data() + static_cast<size_t>(row) * rowBytes,
+            img.data.data() + static_cast<size_t>(h - 1 - row) * rowBytes,
+            rowBytes);
+    }
+    img.data = std::move(flipped);
+
+    callback(img);
 }

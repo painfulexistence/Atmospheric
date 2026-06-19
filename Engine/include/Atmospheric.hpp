@@ -28,4 +28,6 @@
 #include "Atmospheric/voxel_chunk_component.hpp"
 #include "Atmospheric/voxel_world.hpp"
 #include "Atmospheric/window.hpp"
+#include "Atmospheric/video_player.hpp"
+#include "Atmospheric/video_recorder.hpp"
 #include "imgui.h"
