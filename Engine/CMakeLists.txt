@@ -120,7 +120,7 @@ endif()
 # Lua's repo has all .c files in the root (no src/ subdir).
 # Exclude the standalone interpreter (lua.c) and compiler (luac.c).
 file(GLOB LUA_CORE_SOURCES "${lua_src_SOURCE_DIR}/*.c")
-list(FILTER LUA_CORE_SOURCES EXCLUDE REGEX ".*(lua|luac)\\.c$")
+list(FILTER LUA_CORE_SOURCES EXCLUDE REGEX ".*(lua|luac)\.c$")
 
 add_library(lua_static STATIC ${LUA_CORE_SOURCES})
 target_include_directories(lua_static PUBLIC "${lua_src_SOURCE_DIR}")
@@ -407,7 +407,7 @@ if(AE_USE_BASIS_UNIVERSAL)
 endif()
 if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
     # Automatically search for FFmpeg on native desktop platforms
-    find_package(FFmpeg COMPONENTS avcodec avformat avutil swscale)
+    find_package(FFmpeg COMPONENTS avcodec avformat avutil swscale swresample)
     if(FFMPEG_FOUND OR FFmpeg_FOUND)
         message(STATUS "FFmpeg found. VideoPlayer and VideoRecorder features are enabled.")
         target_compile_definitions(AtmosphericEngine PUBLIC AE_HAS_FFMPEG)
