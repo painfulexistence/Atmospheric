@@ -6,7 +6,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>
-#include <fmt/core.h>
+#include <fmt/format.h>
 #include <memory>
 #include <mutex>
 #include <queue>

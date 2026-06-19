@@ -1,6 +1,6 @@
 #include "video_player.hpp"
 #include "Atmospheric/file_system.hpp"
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 #ifdef AE_HAS_FFMPEG
 extern "C" {
@@ -17,7 +17,7 @@ extern "C" {
 
 #include <deque>
 
-// ─── FFmpegDecodeContext ──────────────────────────────────────────────────────
+// ─── FFmpegDecodeContext ───────────────────────────────────────────────────────────────────────────────
 
 struct VideoPlayer::FFmpegDecodeContext {
 #ifdef AE_HAS_FFMPEG
@@ -48,7 +48,7 @@ struct VideoPlayer::FFmpegDecodeContext {
 #endif
 };
 
-// ─── Lifecycle ────────────────────────────────────────────────────────────────
+// ─── Lifecycle ────────────────────────────────────────────────────────────────────────────────────
 
 VideoPlayer::VideoPlayer() = default;
 
@@ -140,7 +140,7 @@ void VideoPlayer::pause() {
 #endif
 }
 
-// ─── Main-thread update ───────────────────────────────────────────────────────
+// ─── Main-thread update ───────────────────────────────────────────────────────────────────────────────
 
 bool VideoPlayer::update(double deltaTime) {
     if (!m_open || !m_playing) {
@@ -201,7 +201,7 @@ const VideoPlayer::Frame* VideoPlayer::getCurrentFrame() const {
     return m_hasCurrentFrame ? &m_currentFrame : nullptr;
 }
 
-// ─── Decode thread ────────────────────────────────────────────────────────────
+// ─── Decode thread ────────────────────────────────────────────────────────────────────────────────────
 
 void VideoPlayer::decodeThreadFunc() {
 #ifdef AE_HAS_FFMPEG
@@ -288,7 +288,7 @@ void VideoPlayer::decodeThreadFunc() {
 #endif
 }
 
-// ─── FFmpeg helpers ───────────────────────────────────────────────────────────
+// ─── FFmpeg helpers ───────────────────────────────────────────────────────────────────────────────────
 
 bool VideoPlayer::initDecoder(const std::string& path) {
 #ifndef AE_HAS_FFMPEG
@@ -305,7 +305,7 @@ bool VideoPlayer::initDecoder(const std::string& path) {
         return false;
     }
 
-    // ── Video stream ────────────────────────────────────────────────────────
+    // ── Video stream ──────────────────────────────────────────────────────────────────────
     const AVCodec* codec = nullptr;
     ff.videoStreamIdx = av_find_best_stream(ff.fmtCtx, AVMEDIA_TYPE_VIDEO, -1, -1, &codec, 0);
     if (ff.videoStreamIdx < 0 || !codec) {
@@ -343,7 +343,7 @@ bool VideoPlayer::initDecoder(const std::string& path) {
         return false;
     }
 
-    // ── Audio stream (optional) ─────────────────────────────────────────────
+    // ── Audio stream (optional) ─────────────────────────────────────────────────────────────────
     const AVCodec* acodec = nullptr;
     int aIdx = av_find_best_stream(ff.fmtCtx, AVMEDIA_TYPE_AUDIO, -1, -1, &acodec, 0);
     if (aIdx >= 0 && acodec) {

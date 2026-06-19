@@ -1,5 +1,5 @@
 #include "video_recorder.hpp"
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 #ifdef AE_HAS_FFMPEG
 extern "C" {
@@ -11,7 +11,7 @@ extern "C" {
 }
 #endif
 
-// ─── FFmpegContext ────────────────────────────────────────────────────────────
+// ─── FFmpegContext ────────────────────────────────────────────────────────────────────────────────────
 
 struct VideoRecorder::FFmpegContext {
 #ifdef AE_HAS_FFMPEG
@@ -24,7 +24,7 @@ struct VideoRecorder::FFmpegContext {
 #endif
 };
 
-// ─── Lifecycle ────────────────────────────────────────────────────────────────
+// ─── Lifecycle ────────────────────────────────────────────────────────────────────────────────────
 
 VideoRecorder::VideoRecorder() = default;
 
@@ -108,7 +108,7 @@ void VideoRecorder::captureFrame() {
     });
 }
 
-// ─── Encoder thread ───────────────────────────────────────────────────────────
+// ─── Encoder thread ────────────────────────────────────────────────────────────────────────────────
 
 void VideoRecorder::encoderThreadFunc() {
     bool encoderInitialized = false;
@@ -146,7 +146,7 @@ void VideoRecorder::encoderThreadFunc() {
     cleanup();
 }
 
-// ─── FFmpeg implementation ────────────────────────────────────────────────────
+// ─── FFmpeg implementation ──────────────────────────────────────────────────────────────────────────────
 
 bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
 #ifndef AE_HAS_FFMPEG
