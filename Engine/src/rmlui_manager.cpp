@@ -183,12 +183,79 @@ Rml::ElementDocument* RmlUiManager::LoadDocument(const std::string& path) {
         return nullptr;
     }
 
+    // Track for hot reload
+    m_loadedDocuments[path] = document;
+
     spdlog::info("Loaded RmlUi document: {}", path);
     return document;
 }
 
+bool RmlUiManager::ReloadDocument(const std::string& path) {
+    if (!m_context) {
+        spdlog::error("Cannot reload document: RmlUi not initialized");
+        return false;
+    }
+
+    auto it = m_loadedDocuments.find(path);
+    if (it == m_loadedDocuments.end()) {
+        spdlog::error("Cannot reload document '{}': not tracked", path);
+        return false;
+    }
+
+    // Remember visibility state
+    bool wasVisible = it->second->IsVisible();
+
+    // Close old document
+    it->second->Close();
+
+    // Load new document
+    Rml::ElementDocument* newDoc = m_context->LoadDocument(path);
+    if (!newDoc) {
+        spdlog::error("Failed to reload RmlUi document: {}", path);
+        m_loadedDocuments.erase(it);
+        return false;
+    }
+
+    // Restore visibility
+    if (wasVisible) {
+        newDoc->Show();
+    }
+
+    m_loadedDocuments[path] = newDoc;
+    spdlog::info("Reloaded RmlUi document: {}", path);
+    return true;
+}
+
+int RmlUiManager::ReloadAllDocuments() {
+    if (!m_context) return 0;
+
+    int successCount = 0;
+
+    // Collect paths to avoid iterator invalidation
+    std::vector<std::string> paths;
+    for (const auto& [path, doc] : m_loadedDocuments) {
+        paths.push_back(path);
+    }
+
+    for (const auto& path : paths) {
+        if (ReloadDocument(path)) {
+            successCount++;
+        }
+    }
+
+    spdlog::info("RmlUi reload complete: {} documents reloaded", successCount);
+    return successCount;
+}
+
 void RmlUiManager::UnloadDocument(Rml::ElementDocument* document) {
     if (document) {
+        // Remove from tracking
+        for (auto it = m_loadedDocuments.begin(); it != m_loadedDocuments.end(); ++it) {
+            if (it->second == document) {
+                m_loadedDocuments.erase(it);
+                break;
+            }
+        }
         document->Close();
     }
 }

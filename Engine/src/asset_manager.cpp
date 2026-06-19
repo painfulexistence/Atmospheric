@@ -9,6 +9,9 @@
 #include "mesh.hpp"
 #include "mesh_builder.hpp"
 #include "shader.hpp"
+#ifdef AE_USE_RMLUI
+#include "rmlui_manager.hpp"
+#endif
 
 #include "fmt/core.h"
 
@@ -198,7 +201,16 @@ void AssetManager::ReloadAll() {
     ENGINE_LOG("Reloading all assets...");
     int shaderCount = ReloadShaders();
     int textureCount = ReloadTextures();
-    ENGINE_LOG("Asset reload complete: {} shaders, {} textures", shaderCount, textureCount);
+
+    // Reload RmlUI documents if available
+    int rmlCount = 0;
+#ifdef AE_USE_RMLUI
+    if (auto* rmlMgr = RmlUiManager::Get()) {
+        rmlCount = rmlMgr->ReloadAllDocuments();
+    }
+#endif
+
+    ENGINE_LOG("Asset reload complete: {} shaders, {} textures, {} UI docs", shaderCount, textureCount, rmlCount);
 }
 
 // ============================================================================
