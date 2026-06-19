@@ -15,12 +15,18 @@ class ProceduralTerrainDemo : public Application {
     }
 
     void OnLoad() override {
+        // To use an image-based heightmap instead of procedural noise:
+        // Uncomment the ImageHeightField section below and comment out the NoiseHeightField section.
         LoadScene(SceneDef{});
 
         _cam   = mainCamera;
         _camGO = _cam->gameObject;
         _camGO->SetPosition(glm::vec3(0.0f, 64.0f, 0.0f));
 
+        // Option A: Image-based HeightField (using hand-drawn test_heightmap)
+        // auto hf = std::make_shared<ImageHeightField>("assets/textures/test_heightmap.jpg");
+
+        // Option B: Procedural Noise HeightField (Default)
         auto hf = std::make_shared<NoiseHeightField>(NoiseHeightFieldParams{
             .resolution = 256,
             .seed       = 42,
