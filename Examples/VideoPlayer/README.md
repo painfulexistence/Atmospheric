@@ -1,7 +1,7 @@
 # VideoPlayer Example
 
 Demonstrates `VideoPlayer` and `VideoRecorder` using a fullscreen 2D sprite.
-Requires the engine to be built with `-DAE_USE_FFMPEG=ON`.
+Requires the engine to be built with FFmpeg support (automatically detected on desktop platforms).
 
 ## Demo video
 
@@ -11,7 +11,7 @@ See [ATTRIBUTION.txt](ATTRIBUTION.txt) for full credit.
 ## Building
 
 ```bash
-cmake -B build -DAE_USE_FFMPEG=ON
+cmake -B build
 cmake --build build --target VideoPlayer
 ```
 

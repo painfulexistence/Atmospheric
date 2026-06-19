@@ -2,7 +2,7 @@ set(GAME_NAME VideoPlayer)
 set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 
 # FFmpeg is required for VideoPlayer.
-# Configure the top-level build with: -DAE_USE_FFMPEG=ON
+# It is auto-detected on native desktop platforms.
 if(EMSCRIPTEN OR ANDROID OR IOS)
     message(STATUS "Skipping ${GAME_NAME}: not supported on this platform "
                    "(FFmpeg unavailable on WASM / mobile).")

@@ -48,7 +48,7 @@ class VideoPlayerDemo : public Application {
         } else {
             console.Warn(fmt::format(
                 "Could not open '{}'. "
-                "Make sure the engine was built with -DAE_USE_FFMPEG=ON "
+                "Make sure the engine was built with FFmpeg support "
                 "and that the path / URL is valid.",
                 g_videoPath));
         }
@@ -67,7 +67,7 @@ class VideoPlayerDemo : public Application {
             .color     = glm::vec4(1.0f),
             .textureID = static_cast<int>(m_videoTex),
             .layer     = CanvasLayer::LAYER_WORLD_2D,
-            .flipY     = true, // video rows are top-down; GL samples bottom-up
+            .flipY     = false, // video rows are top-down
         });
 
         // HUD overlay
@@ -143,6 +143,8 @@ int main(int argc, char* argv[]) {
         g_videoPath = argv[1];
 
     VideoPlayerDemo game({
+        .windowWidth        = 1024,
+        .windowHeight       = 429,
         .useDefaultTextures = true,
         .useDefaultShaders  = true,
     });

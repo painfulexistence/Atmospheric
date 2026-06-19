@@ -1,4 +1,5 @@
 #include "video_player.hpp"
+#include "Atmospheric/file_system.hpp"
 #include <fmt/core.h>
 
 #ifdef AE_HAS_FFMPEG
@@ -40,8 +41,13 @@ bool VideoPlayer::open(const std::string& path) {
 #else
     close();
 
+    std::string resolvedPath = path;
+    if (path.find("://") == std::string::npos) {
+        resolvedPath = FileSystem::Get().ResolvePath(path);
+    }
+
     m_ffmpeg = std::make_unique<FFmpegDecodeContext>();
-    if (!initDecoder(path)) {
+    if (!initDecoder(resolvedPath)) {
         cleanup();
         return false;
     }
