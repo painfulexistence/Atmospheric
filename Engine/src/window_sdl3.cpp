@@ -238,6 +238,7 @@ Window::Window(WindowProps props) {
     }
     SDL_GL_MakeCurrent(window, context);
     SDL_GL_SetSwapInterval(props.vsync ? 1 : 0);
+    SDL_CaptureMouse(true);
 
     _instance = this;
 }
@@ -480,10 +481,12 @@ glm::vec2 Window::GetDPI() {
 }
 
 glm::vec2 Window::GetMousePosition() {
-    float x, y;
-    SDL_GetMouseState(&x, &y);
+    float gx, gy;
+    SDL_GetGlobalMouseState(&gx, &gy);
+    int wx, wy;
+    SDL_GetWindowPosition(static_cast<SDL_Window*>(_internal), &wx, &wy);
     glm::vec2 scale = GetDPI();
-    return glm::vec2(x * scale.x, y * scale.y);
+    return glm::vec2((gx - wx) * scale.x, (gy - wy) * scale.y);
 }
 
 // TODO: implement mouse button state

@@ -83,6 +83,7 @@ void Rigidbody2DComponent::CreateShape() {
     shapeDef.material.friction = _shapeDef.friction;
     shapeDef.material.restitution = _shapeDef.restitution;
     shapeDef.isSensor = _shapeDef.isSensor;
+    shapeDef.enableContactEvents = true;
 
     switch (_shapeDef.type) {
     case ShapeType2D::Box: {
