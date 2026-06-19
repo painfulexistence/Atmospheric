@@ -22,7 +22,6 @@
 #include "Atmospheric/spline.hpp"
 #include "Atmospheric/height_field.hpp"
 #include "Atmospheric/height_field_collider_component.hpp"
-#include "Atmospheric/terrain_component.hpp"
 #include "Atmospheric/terrain_mesh_component.hpp"
 #include "Atmospheric/text_component.hpp"
 #include "Atmospheric/water_component.hpp"

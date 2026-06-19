@@ -26,9 +26,9 @@ TerrainMeshComponent::TerrainMeshComponent(
         .tessellationFactor = props.tessellationFactor,
     };
 
-    // For NoiseHeightField, bake the height grid to a GPU texture.
-    // For ImageHeightField the caller already set mat->heightMap via LoadScene.
-    if (dynamic_cast<const NoiseHeightField*>(heightField.get())) {
+    // Always bake the height grid to a GPU texture so callers don't need to
+    // manually wire up mat->heightMap via LoadScene.
+    {
         int idx = am.CreateHeightmapTexture(
             "hm_" + owner->GetName(),
             heightField->Grid(),
