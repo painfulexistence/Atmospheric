@@ -375,6 +375,9 @@ bool VideoPlayer::initDecoder(const std::string& path) {
                 av_channel_layout_uninit(&outLayout);
 
                 if (swrRet >= 0 && swr_init(ff.audioSwrCtx) >= 0) {
+                    // Ensure the sub-buffer is exactly CHUNK_FRAMES large so
+                    // UpdateAudioStream never rejects our writes.
+                    SetAudioStreamBufferSizeDefault(4096);
                     ff.audioStream = LoadAudioStream(
                         static_cast<unsigned int>(ff.audioSampleRate),
                         16,
