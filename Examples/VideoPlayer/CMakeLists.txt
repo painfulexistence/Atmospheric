@@ -26,8 +26,6 @@ target_link_libraries(${GAME_TARGET} PRIVATE
     AtmosphericEngine
     glm::glm
     fmt::fmt
-    glad::glad
-    spdlog::spdlog
 )
 
 # Sync engine default assets (shaders, fonts, etc.)
