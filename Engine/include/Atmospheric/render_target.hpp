@@ -30,6 +30,7 @@ public:
     virtual int GetWidth() const = 0;
     virtual int GetHeight() const = 0;
     virtual glm::vec2 GetSize() const = 0;
+    virtual int GetNumSamples() const = 0;
 
     virtual bool IsValid() const = 0;
     virtual void Resize(int width, int height) = 0;

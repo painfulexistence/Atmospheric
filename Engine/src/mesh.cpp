@@ -87,7 +87,7 @@ void Mesh::Initialize(const std::vector<Vertex>& verts, const std::vector<uint16
     glEnableVertexAttribArray(2);
     glEnableVertexAttribArray(3);
     glEnableVertexAttribArray(4);
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
     glBindBuffer(GL_ARRAY_BUFFER, ibo);
     InstanceData dummyData{ glm::mat4(1.0f) };
     glBufferData(GL_ARRAY_BUFFER, sizeof(InstanceData), &dummyData, GL_DYNAMIC_DRAW);

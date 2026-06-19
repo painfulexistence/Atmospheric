@@ -7,15 +7,13 @@
 
 class Application;
 class GraphicsServer;
-class PhysicsServer;
-class Mesh;
-class Material;
 
 class VoxelWorld {
 public:
-    static constexpr int WORLD_X = 25;
-    static constexpr int WORLD_Y = 3;
-    static constexpr int WORLD_Z = 25;
+    static constexpr int   WORLD_X    = 25;
+    static constexpr int   WORLD_Y    = 3;
+    static constexpr int   WORLD_Z    = 25;
+    static constexpr float WATER_LINE = 32.0f;
 
     VoxelWorld() = default;
     ~VoxelWorld() = default;
@@ -32,14 +30,9 @@ public:
     void    SetVoxel(int wx, int wy, int wz, uint8_t type);
 
 private:
-    // Raw pointers — lifetime managed by the Application's entity list.
     std::vector<VoxelChunkComponent*> _chunks;
-    GraphicsServer* _gfx        = nullptr;
-    int             _seed       = 42;
-    Mesh*           _waterMesh  = nullptr;
-    Material*       _waterMat   = nullptr;
-
-    static constexpr float WATER_LINE = 32.0f; // matches VX WATER_LINE
+    GraphicsServer* _gfx  = nullptr;
+    int             _seed = 42;
 
     VoxelChunkComponent* GetChunk(int cx, int cy, int cz) const;
     int                  ChunkIndex(int cx, int cy, int cz) const;

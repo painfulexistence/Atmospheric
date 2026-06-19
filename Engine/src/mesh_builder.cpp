@@ -182,19 +182,19 @@ Mesh* MeshBuilder::CreateTerrain(const float& worldSize, const int& resolution) 
 
             verts[patchIndex * 4 + 0].position =
               glm::vec3(-halfWorldSize + (col + 0) * patchSize, 0.f, -halfWorldSize + (row + 0) * patchSize);
-            verts[patchIndex * 4 + 0].uv = glm::vec2((row + 0) / (float)resolution, (col + 0) / (float)resolution);
+            verts[patchIndex * 4 + 0].uv = glm::vec2((col + 0) / (float)resolution, (row + 0) / (float)resolution);
 
             verts[patchIndex * 4 + 1].position =
               glm::vec3(-halfWorldSize + (col + 0) * patchSize, 0.f, -halfWorldSize + (row + 1) * patchSize);
-            verts[patchIndex * 4 + 1].uv = glm::vec2((row + 1) / (float)resolution, (col + 0) / (float)resolution);
+            verts[patchIndex * 4 + 1].uv = glm::vec2((col + 0) / (float)resolution, (row + 1) / (float)resolution);
 
             verts[patchIndex * 4 + 2].position =
               glm::vec3(-halfWorldSize + (col + 1) * patchSize, 0.f, -halfWorldSize + (row + 1) * patchSize);
-            verts[patchIndex * 4 + 2].uv = glm::vec2((row + 1) / (float)resolution, (col + 1) / (float)resolution);
+            verts[patchIndex * 4 + 2].uv = glm::vec2((col + 1) / (float)resolution, (row + 1) / (float)resolution);
 
             verts[patchIndex * 4 + 3].position =
               glm::vec3(-halfWorldSize + (col + 1) * patchSize, 0.f, -halfWorldSize + (row + 0) * patchSize);
-            verts[patchIndex * 4 + 3].uv = glm::vec2((row + 0) / (float)resolution, (col + 1) / (float)resolution);
+            verts[patchIndex * 4 + 3].uv = glm::vec2((col + 1) / (float)resolution, (row + 0) / (float)resolution);
         }
     }
 

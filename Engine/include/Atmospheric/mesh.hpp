@@ -8,7 +8,22 @@
 #include <array>
 #include <cstdint>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/vec3.hpp>
+#include <optional>
 #include <vector>
+
+struct TerrainShaderData {
+    float heightScale        = 32.0f;
+    float tessellationFactor = 16.0f;
+};
+
+struct WaterShaderData {
+    float     waterLine       = 32.0f;
+    float     waveStrength    =  0.1f;
+    float     waveSpeed       =  1.0f;
+    glm::vec3 waterFogColor   = {0.55f, 0.65f, 0.75f};
+    float     waterFogDensity =  0.003f;
+};
 
 enum class MeshType {
     PRIM    = 0,
@@ -69,6 +84,11 @@ public:
     void SetBoundingBox(const std::array<glm::vec3, 8> bounds) {
         _bounds = bounds;
     }
+
+    // Shader-specific data populated by the owning component.
+    // Only meaningful for the matching MeshType.
+    std::optional<TerrainShaderData> terrainData;
+    std::optional<WaterShaderData>   waterData;
 
     Material* GetMaterial() const {
         return _material;

@@ -1,5 +1,8 @@
 #include "Atmospheric.hpp"
 #include "components.hpp"
+#ifdef ANDROID
+#include <SDL3/SDL_main.h>
+#endif
 
 // Every animated object in this demo drives itself through a component defined
 // in components.hpp — OnUpdate is left with nothing but global input.

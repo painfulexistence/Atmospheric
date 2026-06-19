@@ -3,6 +3,7 @@
 #include "light_component.hpp"
 #include "camera_component.hpp"
 #include "scene.hpp"
+#include "Atmospheric/file_system.hpp"
 #include <string>
 
 Script* Script::_instance = nullptr;
@@ -57,11 +58,12 @@ void Script::Bind(const std::string& func)
 
 void Script::Source(const std::string& filename)
 {
-    sol::protected_function_result result = _env.script_file(filename, sol::script_pass_on_error);
+    std::string resolvedPath = FileSystem::Get().ResolvePath(filename);
+    sol::protected_function_result result = _env.script_file(resolvedPath, sol::script_pass_on_error);
     if (!result.valid()) {
         sol::error err = result;
         std::string what = err.what();
-        fmt::print("Skip loading script file {}\n", filename);
+        fmt::print("Skip loading script file {} (resolved: {})\n", filename, resolvedPath);
     }
 }
 

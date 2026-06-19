@@ -32,6 +32,7 @@ public:
     int GetWidth() const override { return _width; }
     int GetHeight() const override { return _height; }
     glm::vec2 GetSize() const override { return { (float)_width, (float)_height }; }
+    int GetNumSamples() const override { return 1; }
 
     bool IsValid() const override { return _colorTexture != nullptr; }
     void Resize(int width, int height) override;

@@ -2,11 +2,9 @@
 #ifdef __APPLE__
 #define GL_SILENCE_DEPRECATION
 #endif
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
 #include <GLES3/gl3.h>
 #else
-// #define GLEW_BUILD // build GLEW as dynamic library
-// #include <GL/glew.h>
 #include <glad/glad.h>
 #endif
 

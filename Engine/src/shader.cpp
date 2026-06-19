@@ -1,7 +1,7 @@
 #include "shader.hpp"
 #include "file.hpp"
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
 #include <regex>
 
 static std::string PreprocessShaderForWebGL(std::string src, ShaderType type) {
@@ -39,7 +39,7 @@ static std::string PreprocessShaderForWebGL(std::string src, ShaderType type) {
 
 Shader::Shader(const std::string& path, ShaderType type) {
     std::string shaderSrc = File(path).GetContent();
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
     shaderSrc = PreprocessShaderForWebGL(shaderSrc, type);
 #endif
     const char* src = shaderSrc.c_str();
@@ -65,7 +65,7 @@ Shader::Shader(const std::string& path, ShaderType type) {
 ShaderProgram::ShaderProgram(const ShaderProgramProps& props) : _program(glCreateProgram()), _props(props) {
     glAttachShader(_program, Shader(props.vert, ShaderType::VERTEX).shader);
     glAttachShader(_program, Shader(props.frag, ShaderType::FRAGMENT).shader);
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
     if (props.tesc.has_value()) {
         glAttachShader(_program, Shader(props.tesc.value(), ShaderType::TESS_CONTROL).shader);
     }
@@ -160,7 +160,7 @@ ShaderProgram::ShaderProgram(
   : _program(glCreateProgram()), _props{vert, frag, tesc, tese} {
     glAttachShader(_program, Shader(vert, ShaderType::VERTEX).shader);
     glAttachShader(_program, Shader(frag, ShaderType::FRAGMENT).shader);
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
     if (tesc.has_value() && tese.has_value()) {
         glAttachShader(_program, Shader(tesc.value(), ShaderType::TESS_CONTROL).shader);
         glAttachShader(_program, Shader(tese.value(), ShaderType::TESS_EVALUATION).shader);

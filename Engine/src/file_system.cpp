@@ -27,6 +27,7 @@
 
 #ifndef __EMSCRIPTEN__
 #include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_iostream.h>
 static std::string g_basePath;
 #endif
 
@@ -60,6 +61,18 @@ FileSystem& FileSystem::Get() {
 // Returns an empty vector on error.
 // ─────────────────────────────────────────────────────────────────────────────
 static FileSystem::Bytes ReadFromDisk(const std::string& path) {
+#ifdef ANDROID
+    SDL_IOStream* io = SDL_IOFromFile(path.c_str(), "rb");
+    if (!io) return {};
+    Sint64 len = SDL_GetIOSize(io);
+    if (len <= 0) { SDL_CloseIO(io); return {}; }
+    FileSystem::Bytes buf(static_cast<size_t>(len));
+    if (SDL_ReadIO(io, buf.data(), static_cast<size_t>(len)) != static_cast<size_t>(len)) {
+        SDL_CloseIO(io); return {};
+    }
+    SDL_CloseIO(io);
+    return buf;
+#else
     FILE* f = fopen(path.c_str(), "rb");
     if (!f) return {};
     if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return {}; }
@@ -72,6 +85,7 @@ static FileSystem::Bytes ReadFromDisk(const std::string& path) {
     }
     fclose(f);
     return buf;
+#endif
 }
 
 static std::string NormalizePath(const std::string& path) {

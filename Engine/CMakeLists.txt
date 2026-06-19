@@ -209,7 +209,10 @@ set(SOURCES
     src/sprite_component.cpp
     src/sprite_3d_component.cpp
     src/text_component.cpp
-    src/terrain_component.cpp
+    src/height_field.cpp
+    src/terrain_mesh_component.cpp
+    src/height_field_collider_component.cpp
+    src/water_component.cpp
     src/shader.cpp
     src/graphics_server.cpp
     src/graphics_server_tile.cpp
@@ -462,4 +465,13 @@ else()
         target_compile_definitions(AtmosphericEngine PUBLIC TRACY_ENABLE TRACY_VERBOSE TRACY_ON_DEMAND)
     endif()
     target_link_libraries(AtmosphericEngine PUBLIC SDL3::SDL3)
+    if(ANDROID)
+        find_library(GLES3_LIB GLESv3)
+        if(GLES3_LIB)
+            target_link_libraries(AtmosphericEngine PUBLIC ${GLES3_LIB})
+        else()
+            target_link_libraries(AtmosphericEngine PUBLIC GLESv3)
+        endif()
+        target_link_libraries(AtmosphericEngine PUBLIC log android)
+    endif()
 endif()

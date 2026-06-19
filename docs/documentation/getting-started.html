@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Getting Started — Atmospheric Engine</title>
+  <link rel="stylesheet" href="../styles/global.css" />
+  <style>
+    .page-header {
+      padding: var(--spacing-xl) 0 var(--spacing-lg);
+      border-bottom: 1px solid var(--color-border);
+      margin-bottom: var(--spacing-xl);
+    }
+    .page-header .eyebrow {
+      font-size: var(--text-sm);
+      color: var(--color-primary);
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: var(--spacing-sm);
+    }
+    .page-header h1 { margin-bottom: var(--spacing-sm); }
+    .page-header p { color: var(--color-muted); }
+
+    .doc-body {
+      max-width: 720px;
+      padding-bottom: var(--spacing-2xl);
+    }
+    .doc-body h2 {
+      font-size: var(--text-xl);
+      margin: var(--spacing-xl) 0 var(--spacing-md);
+      padding-top: var(--spacing-lg);
+      border-top: 1px solid var(--color-border);
+    }
+    .doc-body h2:first-child { border-top: none; padding-top: 0; }
+    .doc-body p { color: var(--color-muted); margin-bottom: var(--spacing-md); line-height: 1.75; }
+    .doc-body ul { padding-left: var(--spacing-lg); margin-bottom: var(--spacing-md); }
+    .doc-body li { color: var(--color-muted); margin-bottom: var(--spacing-xs); }
+    .doc-body a { color: var(--color-primary); }
+
+    .placeholder-banner {
+      background: var(--color-surface);
+      border: 1px dashed var(--color-border);
+      border-radius: var(--border-radius);
+      padding: var(--spacing-xl);
+      text-align: center;
+      color: var(--color-muted);
+      font-size: var(--text-sm);
+      margin-bottom: var(--spacing-xl);
+    }
+    .placeholder-banner .icon { font-size: 2rem; margin-bottom: var(--spacing-sm); }
+
+    footer {
+      border-top: 1px solid var(--color-border);
+      padding: var(--spacing-lg) 0;
+      text-align: center;
+      font-size: var(--text-sm);
+      color: var(--color-muted);
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="../index.html" class="nav-logo">Atmospheric</a>
+    <a href="index.html" style="color: var(--color-text);">Docs</a>
+    <a href="../devlog/index.html">Devlog</a>
+    <a href="../demo/index.html">Demo</a>
+    <a href="https://github.com/painfulexistence/Atmospheric" target="_blank">GitHub ↗</a>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="page-header">
+    <p class="eyebrow">Documentation</p>
+    <h1>Getting Started</h1>
+    <p>Build Atmospheric from source and run your first example.</p>
+  </div>
+
+  <div class="doc-body">
+
+    <div class="placeholder-banner">
+      <div class="icon">🚧</div>
+      <p>This page is a placeholder. Full getting-started documentation is coming soon.<br>
+      In the meantime, see the <a href="https://github.com/painfulexistence/Atmospheric#building" target="_blank">README on GitHub</a> for build instructions.</p>
+    </div>
+
+    <h2>Prerequisites</h2>
+    <ul>
+      <li><strong>CMake</strong> 3.20+ — <a href="https://cmake.org/download/" target="_blank">cmake.org</a></li>
+      <li><strong>A C++17 compiler</strong> — Clang (macOS), GCC (Linux), MSVC (Windows)</li>
+      <li><strong>EMSDK</strong> (optional, for WebAssembly builds) — <a href="https://emscripten.org/docs/getting_started/downloads.html" target="_blank">emscripten.org</a></li>
+    </ul>
+
+    <h2>Clone</h2>
+    <pre><code>git clone --recurse-submodules https://github.com/painfulexistence/Atmospheric.git
+cd Atmospheric</code></pre>
+
+    <h2>Setup Vcpkg</h2>
+    <pre><code>./vcpkg/bootstrap-vcpkg.sh -disableMetrics</code></pre>
+
+    <h2>Native Build</h2>
+    <pre><code>cmake --preset=dev
+cmake --build --preset=dev</code></pre>
+
+    <h2>WebAssembly Build</h2>
+    <pre><code># WebGL 2.0 (stable)
+./scripts/buildWasm.sh release
+    </code></pre>
+
+  </div>
+</div>
+
+<footer>
+  <div class="container">
+    Atmospheric Engine — <a href="../index.html">Home</a> · <a href="index.html">Documentation</a>
+  </div>
+</footer>
+
+</body>
+</html>

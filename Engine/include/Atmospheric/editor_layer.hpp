@@ -1,6 +1,6 @@
 #pragma once
 #include "layer.hpp"
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
 #include <glad/glad.h>
 #endif
 

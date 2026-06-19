@@ -20,3 +20,9 @@ CMakeDoxyfile.in
 CMakeDoxygenDefaults.cmake
 cmake_install.cmake
 cmake_uninstall.cmake
+
+# Android Gradle / CXX build intermediates
+.gradle/
+local.properties
+.cxx/
+**/build/

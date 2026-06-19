@@ -1,0 +1,8 @@
+set(VCPKG_TARGET_ARCHITECTURE x64)
+set(VCPKG_CRT_LINKAGE dynamic)
+set(VCPKG_LIBRARY_LINKAGE static)
+set(VCPKG_CMAKE_SYSTEM_NAME Android)
+set(VCPKG_CMAKE_SYSTEM_VERSION 28)
+set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "/Users/loic/Library/Android/sdk/ndk/27.3.13750724/build/cmake/android.toolchain.cmake")
+set(VCPKG_MAKE_BUILD_TRIPLET "--host=x86_64-linux-android")
+set(VCPKG_CMAKE_CONFIGURE_OPTIONS "-DANDROID_ABI=x86_64")
