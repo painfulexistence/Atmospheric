@@ -25,7 +25,7 @@ cmake --build build --target VideoPlayer
 ./VideoPlayer /path/to/video.mp4
 
 # HTTP / HTTPS stream
-./VideoPlayer https://example.com/video.mp4
+./VideoPlayer https://download.blender.org/demo/movies/sintel-hd.avi
 
 # HLS playlist
 ./VideoPlayer https://example.com/stream.m3u8
