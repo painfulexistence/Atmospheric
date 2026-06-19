@@ -22,7 +22,6 @@
 #include "file_system.hpp"
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
-#include "terrain_component.hpp"
 #include "transform_component.hpp"
 #include "window.hpp"
 #ifndef NDEBUG
