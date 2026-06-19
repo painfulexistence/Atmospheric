@@ -14,14 +14,6 @@ static constexpr float SHOOT_SPEED = 3000.0f;
 static constexpr int   MIN_SIDES = 3;   // triangle
 static constexpr int   MAX_SIDES = 9;
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Per-shape metadata stored in Rigidbody2DComponent::userData
-// ──────────────────────────────────────────────────────────────────────────────
-struct ShapeMeta {
-    int sides = 3;
-    bool pendingRemove = false;
-    bool launched = false;  // true only for player-fired shapes
-};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Helper: build polygon vertices for a regular n-gon
@@ -110,8 +102,7 @@ class PolyMerge : public Application {
         // pending shape starts with collision disabled; enabled on launch
         go->AddComponent<Rigidbody2DComponent>(rb);
 
-        auto* meta = new ShapeMeta{ sides, false };
-        go->GetComponent<Rigidbody2DComponent>()->userData = meta;
+        go->AddComponent<MergeableComponent>(sides, 3);
 
         go->AddComponent<ColorRestoreComponent>(3.0f, SideColor(sides));
 
@@ -125,7 +116,8 @@ class PolyMerge : public Application {
         const glm::vec2 centre{400.0f, 130.0f};
         std::uniform_real_distribution<float> xJitter(-12.0f, 12.0f);
         std::uniform_real_distribution<float> yJitter(-12.0f, 12.0f);
-        std::uniform_int_distribution<int>    sideDist(MIN_SIDES, MIN_SIDES + 2);
+        // Weighted: lower sides more common; weights 3→9: 5,4,3,2,2,1,1
+        std::discrete_distribution<int> sideDist({5, 4, 3, 2, 2, 1, 1});
 
         // Layer heights from ground upwards (~60 shapes total)
         constexpr int rows[] = {11, 10, 10, 9, 8, 7, 5};
@@ -138,7 +130,7 @@ class PolyMerge : public Application {
                     startX + c * spacing + xJitter(rng),
                     y + yJitter(rng)
                 };
-                int sides = sideDist(rng);
+                int sides = MIN_SIDES + sideDist(rng);
                 auto* go = SpawnShape(p, sides, true);
                 shapes.push_back(go);
             }
@@ -184,7 +176,7 @@ class PolyMerge : public Application {
         glm::vec2 vel = glm::vec2(dir.x * SHOOT_SPEED, 0.0f);
 
         // Mark as launched, re-enable collision, switch to dynamic, enable CCD
-        static_cast<ShapeMeta*>(rb->userData)->launched = true;
+        pendingShape->GetComponent<MergeableComponent>()->launched = true;
         SetBodyCollision(rb->GetBodyId(), true);
         rb->SetBodyType(BodyType2D::Dynamic);
         b2Body_SetBullet(rb->GetBodyId(), true);
@@ -214,10 +206,11 @@ class PolyMerge : public Application {
             for (auto* other : shapes) {
                 if (!other->isActive) continue;
                 if (visited.count(other)) continue;
-                auto* rbOther = other->GetComponent<Rigidbody2DComponent>();
-                if (!rbOther || !rbOther->userData) continue;
-                if (static_cast<ShapeMeta*>(rbOther->userData)->sides != sides) continue;
+                auto* mc = other->GetComponent<MergeableComponent>();
+                if (!mc || mc->sides != sides) continue;
 
+                auto* rbOther = other->GetComponent<Rigidbody2DComponent>();
+                if (!rbOther) continue;
                 glm::vec2 posB = rbOther->GetPosition();
                 float dist = glm::length(posB - posA);
                 if (dist < CONTACT_DIST) {
@@ -232,23 +225,20 @@ class PolyMerge : public Application {
 
     // ── Handle a merge event ──────────────────────────────────────────────
     void TryMerge(GameObject* goA, GameObject* goB) {
-        auto* rbA = goA->GetComponent<Rigidbody2DComponent>();
-        auto* rbB = goB->GetComponent<Rigidbody2DComponent>();
-        if (!rbA || !rbB) return;
-        auto* metaA = static_cast<ShapeMeta*>(rbA->userData);
-        auto* metaB = static_cast<ShapeMeta*>(rbB->userData);
-        if (!metaA || !metaB) return;
-        if (metaA->sides != metaB->sides) return;
-        if (metaA->pendingRemove || metaB->pendingRemove) return;
+        auto* mcA = goA->GetComponent<MergeableComponent>();
+        auto* mcB = goB->GetComponent<MergeableComponent>();
+        if (!mcA || !mcB) return;
+        if (mcA->sides != mcB->sides) return;
+        if (mcA->pendingRemove || mcB->pendingRemove) return;
 
-        int sides = metaA->sides;
+        int sides = mcA->sides;
         // Collect the whole connected group
         auto group = FloodFill(goA, sides);
-        if (group.size() < 2) return;
+        if ((int)group.size() < mcA->minGroup) return;
 
         // Mark all as pending remove so re-entrant callbacks skip them
         for (auto* go : group)
-            static_cast<ShapeMeta*>(go->GetComponent<Rigidbody2DComponent>()->userData)->pendingRemove = true;
+            go->GetComponent<MergeableComponent>()->pendingRemove = true;
 
         int n = (int)group.size();
 
@@ -314,9 +304,6 @@ class PolyMerge : public Application {
         firstLanded = false;
         pendingShape = nullptr;
         shapes.clear();
-#ifndef NDEBUG
-        SetShowImGui(false);
-#endif
 
         fontID = graphics.LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
 
@@ -378,12 +365,11 @@ class PolyMerge : public Application {
         // Collision callback: first launched-shape contact unlocks merge globally
         physics2D.SetBeginContactCallback([this](Rigidbody2DComponent* a, Rigidbody2DComponent* b) {
             if (!a || !b || !a->gameObject || !b->gameObject) return;
-            if (!a->userData || !b->userData) return;
             if (a->GetBodyType() != BodyType2D::Dynamic) return;
             if (b->GetBodyType() != BodyType2D::Dynamic) return;
-            auto* ma = static_cast<ShapeMeta*>(a->userData);
-            auto* mb = static_cast<ShapeMeta*>(b->userData);
-            // Unlock merge the moment a fired shape touches anything
+            auto* ma = a->gameObject->GetComponent<MergeableComponent>();
+            auto* mb = b->gameObject->GetComponent<MergeableComponent>();
+            if (!ma || !mb) return;
             if (!firstLanded && (ma->launched || mb->launched))
                 firstLanded = true;
             if (!firstLanded) return;
@@ -398,7 +384,6 @@ class PolyMerge : public Application {
 
     void OnUpdate(float dt, float /*time*/) override {
         if (input.IsKeyDown(Key::ESCAPE)) { Quit(); return; }
-        if (input.IsKeyPressed(Key::R))   { ReloadScene(); return; }
 
         auto dpi = GetWindow()->GetDPI();
         glm::vec2 mouse = input.GetMousePosition() / dpi;
@@ -406,7 +391,7 @@ class PolyMerge : public Application {
 
         // ── Firing ────────────────────────────────────────────────────────
         if (!gameOver && !launched && pendingShape) {
-            if (input.IsKeyPressed(Key::SPACE)) {
+            if (input.IsKeyPressed(Key::SPACE) || input.IsMouseButtonPressed()) {
                 Launch(mouse);
             }
         }
@@ -428,7 +413,7 @@ class PolyMerge : public Application {
         if (fontID) {
             std::string scoreTxt = "Score: " + std::to_string(score);
             graphics.DrawText(fontID, scoreTxt, 12.0f, H - 36.0f, 1.0f, {1, 1, 1, 1});
-            graphics.DrawText(fontID, "SPACE=fire  R=reset", 12.0f, H - 64.0f, 0.7f, {0.8f, 0.8f, 0.8f, 0.8f});
+            graphics.DrawText(fontID, "SPACE / LMB = fire", 12.0f, H - 64.0f, 0.7f, {0.8f, 0.8f, 0.8f, 0.8f});
 
             // Side legend (uncomment to show)
             // for (int s = MIN_SIDES; s <= MAX_SIDES; ++s) {
