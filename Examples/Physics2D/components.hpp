@@ -3,6 +3,20 @@
 #include "Atmospheric/shape_renderer_component.hpp"
 #include <algorithm>
 
+// Marks a shape as participating in the merge/match system.
+class MergeableComponent : public Component {
+public:
+    int  sides        = 3;
+    int  minGroup     = 2;    // minimum connected group size to trigger merge
+    bool pendingRemove = false;
+    bool launched     = false;
+
+    MergeableComponent(GameObject* go, int sides, int minGroup = 2)
+        : sides(sides), minGroup(minGroup) { gameObject = go; }
+
+    std::string GetName() const override { return "MergeableComponent"; }
+};
+
 // Eases the ShapeRendererComponent colour toward a target each tick.
 // If no target is provided, captures the spawn colour in OnAttach.
 // Used to recover from a collision flash (e.g. SetColor to white on contact).

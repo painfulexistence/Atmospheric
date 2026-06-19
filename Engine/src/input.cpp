@@ -91,6 +91,8 @@ void Input::Process(float dt)
         _prevKeyStates[key] = _keyStates[key];
         _keyStates[key] = Window::Get()->GetKeyState(key);
     }
+    _prevMouseDown = _mouseDown;
+    _mouseDown = Window::Get()->GetMouseButtonState();
     uint64_t currentClock = _app->GetClock();
     while (!_keyPressHistory.empty() && (currentClock - _keyPressHistory.front().time) > KEY_EVENT_LIFETIME) {
         _keyPressHistory.pop_front();
@@ -126,6 +128,16 @@ bool Input::IsKeyPressed(Key key)
 bool Input::IsKeyReleased(Key key)
 {
     return _keyStates[key] == KeyState::RELEASED && _prevKeyStates[key] == KeyState::PRESSED;
+}
+
+bool Input::IsMouseButtonDown()
+{
+    return _mouseDown;
+}
+
+bool Input::IsMouseButtonPressed()
+{
+    return _mouseDown && !_prevMouseDown;
 }
 
 glm::vec2 Input::GetMousePosition() // In pixel coordinate
