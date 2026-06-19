@@ -53,7 +53,7 @@ if(POLICY CMP0169)
     cmake_policy(SET CMP0169 OLD)
 endif()
 
-# ── FastNoiseLite (single-header noise library) ───────────────────────────────
+# ── FastNoiseLite (single-header noise library) ──────────────────────────────
 FetchContent_Declare(
     FastNoiseLite
     GIT_REPOSITORY https://github.com/Auburn/FastNoiseLite.git
@@ -101,7 +101,7 @@ find_package(spdlog REQUIRED)
 find_package(RmlUi REQUIRED)
 find_package(flatbuffers CONFIG REQUIRED)
 
-# ── Lua 5.4 (built from source) ───────────────────────────────────────────────
+# ── Lua 5.4 (built from source) ─────────────────────────────────────────────
 # Building from source rather than find_package(lua) because:
 #   1. Emscripten must compile Lua to WASM — system lua.a is host-arch only.
 #   2. Avoids architecture mismatch on Apple Silicon (arm64 vs x86_64).
@@ -139,7 +139,7 @@ if(EMSCRIPTEN)
     target_compile_options(lua_static PRIVATE -pthread)
 endif()
 
-# ── sol2 (develop branch, header-only) ────────────────────────────────────────
+# ── sol2 (develop branch, header-only) ───────────────────────────────────────────
 # v3.3.0 had a bug in optional_implementation.hpp where tl::optional's CRTP
 # base 'construct' method is not visible in the reference-type specialisation
 # (optional<T&>).  Apple Clang 15+ (Xcode 15 / macOS 14) enforces this more
@@ -246,13 +246,15 @@ set(SOURCES
     src/sun_component.cpp
     src/scene_loader.cpp
     src/scene_transition.cpp
+    src/video_player.cpp
+    src/video_recorder.cpp
     src/script.cpp
     src/component_registry.cpp
     src/tilemap_2d.cpp
     src/lighting_2d.cpp
     ${FLATBUFFERS_GENERATED_DIR}/Scene_generated.h
 )
-# ── Graphics backend selection ────────────────────────────────────────────────
+# ── Graphics backend selection ────────────────────────────────────────────
 # Native  : Dawn WebGPU (not yet integrated — falls back to OpenGL 4.1).
 # Web     : browser WebGPU via Emscripten (AE_USE_WEBGPU=ON)
 #           or WebGL 2.0 fallback (AE_USE_WEBGPU=OFF, default).
@@ -402,6 +404,13 @@ endif()
 if(AE_USE_BASIS_UNIVERSAL)
     target_link_libraries(AtmosphericEngine PUBLIC basisu_transcoder)
     target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_BASIS_UNIVERSAL)
+endif()
+option(AE_USE_FFMPEG "Enable FFmpeg for VideoPlayer and VideoRecorder" OFF)
+if(AE_USE_FFMPEG AND NOT EMSCRIPTEN)
+    find_package(FFmpeg REQUIRED COMPONENTS avcodec avformat avutil swscale)
+    target_compile_definitions(AtmosphericEngine PUBLIC AE_HAS_FFMPEG)
+    target_link_libraries(AtmosphericEngine PUBLIC
+        FFmpeg::avcodec FFmpeg::avformat FFmpeg::avutil FFmpeg::swscale)
 endif()
 if(EMSCRIPTEN)
     # IMGUI_IMPL_OPENGL_ES3 : tell Dear ImGui's OpenGL3 backend to use GLES3
