@@ -6,7 +6,7 @@ import org.libsdl.app.SDLActivity
 class MainActivity : SDLActivity() {
 
     override fun getLibraries(): Array<String> {
-        return arrayOf("HelloWorld")
+        return arrayOf("main")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

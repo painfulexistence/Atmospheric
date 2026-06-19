@@ -2,7 +2,7 @@
 #include "batch_renderer_2d.hpp"
 #include <RmlUi/Core/RenderInterface.h>
 #include <RmlUi/Core/Types.h>
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
 #include <glad/glad.h>
 #else
 #include <GLES3/gl3.h>

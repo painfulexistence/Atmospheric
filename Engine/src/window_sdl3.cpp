@@ -202,25 +202,30 @@ Window::Window(WindowProps props) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("SDL could not initialize! Error: %s\n", SDL_GetError());
     }
-    // #ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-    // #else
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
+#else
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    // #endif
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG | SDL_GL_CONTEXT_DEBUG_FLAG);
+#endif
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
+    SDL_WindowFlags windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#if !defined(ANDROID)
+    windowFlags |= SDL_WINDOW_ALWAYS_ON_TOP;
+#endif
     _internal = SDL_CreateWindow(
       props.title.c_str(),
       props.width,
       props.height,
-      SDL_WINDOW_OPENGL | SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_HIGH_PIXEL_DENSITY
+      windowFlags
     );
     if (!_internal) {
         SDL_Log("SDL could not create window! Error: %s\n", SDL_GetError());
@@ -228,6 +233,9 @@ Window::Window(WindowProps props) {
 
     auto window = static_cast<SDL_Window*>(_internal);
     SDL_GLContext context = SDL_GL_CreateContext(window);
+    if (!context) {
+        SDL_Log("SDL_GL_CreateContext failed: %s\n", SDL_GetError());
+    }
     SDL_GL_MakeCurrent(window, context);
     SDL_GL_SetSwapInterval(props.vsync ? 1 : 0);
 

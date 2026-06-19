@@ -1,6 +1,6 @@
 #pragma once
 
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
 #include <glad/glad.h>
 #else
 #include <GLES3/gl3.h>

@@ -78,7 +78,7 @@ void GLRenderTarget::Create() {
 
     glGenTextures(1, &_colorTexture);
 
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
     if (_multisample) {
         glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, _colorTexture);
         GLenum internalFormat = _hdr ? GL_RGBA16F : GL_RGBA8;

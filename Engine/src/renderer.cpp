@@ -287,7 +287,7 @@ void Renderer::CheckFramebufferStatus(const std::string& prefix) {
             throw std::runtime_error(fmt::format("{}: GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT", prefix));
         case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
             throw std::runtime_error(fmt::format("{}: GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE", prefix));
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
         case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER:
             throw std::runtime_error(fmt::format("{}: GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER", prefix));
         case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER:
@@ -316,7 +316,7 @@ void Renderer::CheckErrors(const std::string& prefix) {
         case GL_INVALID_OPERATION:
             error = "INVALID_OPERATION";
             break;
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
         case GL_STACK_OVERFLOW:
             error = "STACK_OVERFLOW";
             break;
@@ -386,7 +386,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
         omniShadowMaps[i] = map;
     }
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
     glBindFramebuffer(GL_FRAMEBUFFER, shadowFBO);
     GLenum drawBuffers[] = { GL_NONE };
     glDrawBuffers(1, drawBuffers);
@@ -417,7 +417,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
         sceneRT = GfxFactory::CreateRenderTarget(p);
     }
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
     if (sceneRT && sceneRT->GetNumSamples() > 1) {
         glGenTextures(1, &webglResolvedDepthTex);
         glBindTexture(GL_TEXTURE_2D, webglResolvedDepthTex);
@@ -506,7 +506,7 @@ void Renderer::DestroyRTs() {
     sceneRT.reset();
     msaaResolveRT.reset();
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
     if (webglResolvedDepthFBO) {
         glDeleteFramebuffers(1, &webglResolvedDepthFBO);
         webglResolvedDepthFBO = 0;
@@ -563,7 +563,7 @@ void Renderer::CreateDebugBuffer() {
 void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("ShadowPass");
     glViewport(0, 0, SHADOW_W, SHADOW_H);
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 #endif
 
@@ -587,7 +587,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
     auto mainLight = ctx->GetMainLight();
 
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, renderer.uniShadowMaps[0], 0);
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
     GLenum drawBuffers[] = { GL_NONE };
     glDrawBuffers(1, drawBuffers);
 #endif
@@ -616,7 +616,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         if (mesh->type == MeshType::PRIM) {
             glBindVertexArray(mesh->vao);
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
             // WebGL 2.0 Fallback: Non-instanced draw calls using World uniform
             for (const auto& inst : instances) {
                 depthShader->SetUniform(std::string("World"), inst.modelMatrix);
@@ -656,7 +656,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         for (int f = 0; f < 6; ++f) {
             GLenum face = GL_TEXTURE_CUBE_MAP_POSITIVE_X + f;
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, face, renderer.omniShadowMaps[i], 0);
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
             GLenum drawBuffers[] = { GL_NONE };
             glDrawBuffers(1, drawBuffers);
 #endif
@@ -683,7 +683,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
                 if (mesh->type == MeshType::PRIM) {
                     glBindVertexArray(mesh->vao);
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
                     // WebGL 2.0 Fallback: Non-instanced draw calls using World uniform
                     for (const auto& inst : instances) {
                         depthCubemapShader->SetUniform(std::string("World"), inst.modelMatrix);
@@ -756,7 +756,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
         if (renderer.wireframeEnabled || mesh->GetMaterial()->polygonMode == GL_LINE)
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         else
@@ -804,7 +804,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             terrainShader->SetUniform(std::string("World"), instances[0].modelMatrix);
 
             glBindVertexArray(mesh->vao);
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
             glDrawArrays(GL_PATCHES, 0, mesh->vertCount);
 #else
             glDrawArrays(GL_TRIANGLES, 0, mesh->vertCount);
@@ -939,7 +939,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             glBindVertexArray(mesh->vao);
             glBindBuffer(GL_ARRAY_BUFFER, mesh->ibo);
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
             // WebGL 2.0 Fallback: Non-instanced draw calls using World uniform
             for (const auto& inst : instances) {
                 colorShader->SetUniform(std::string("World"), inst.modelMatrix);
@@ -1189,7 +1189,7 @@ void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
     glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
                       GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
     if (renderer.webglResolvedDepthFBO != 0) {
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, renderer.webglResolvedDepthFBO);
         glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
@@ -1233,7 +1233,7 @@ void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
     glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 #endif
 
@@ -1315,7 +1315,7 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
     glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#ifndef __EMSCRIPTEN__
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 #endif
 

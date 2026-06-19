@@ -272,7 +272,7 @@ void AssetManager::LoadDefaultShaders() {
                     "hdr",
                     { .vert = "assets/shaders/hdr.vert", .frag = "assets/shaders/hdr.frag" },
                   },
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
                   {
                     "terrain",
                     { .vert = "assets/shaders/simple.vert",

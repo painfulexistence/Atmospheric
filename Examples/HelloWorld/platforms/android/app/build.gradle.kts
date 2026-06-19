@@ -1,6 +1,6 @@
 import java.io.BufferedInputStream
 import java.io.FileOutputStream
-import java.net.URL
+import java.net.URI
 import java.util.zip.ZipInputStream
 
 plugins {
@@ -12,19 +12,19 @@ val downloadSDLJavaSources = tasks.register("downloadSDLJavaSources") {
     val outputDir = file("src/main/java")
     val sdlVersion = "release-3.2.12"
     val zipUrl = "https://github.com/libsdl-org/SDL/archive/refs/tags/$sdlVersion.zip"
-    
+
     outputs.dir(outputDir.resolve("org/libsdl/app"))
-    
+
     doLast {
         val targetDir = outputDir.resolve("org/libsdl/app")
         if (targetDir.exists() && targetDir.list()?.isNotEmpty() == true) {
             return@doLast
         }
-        
+
         println("Downloading SDL3 Java sources from GitHub ($zipUrl)...")
         targetDir.mkdirs()
-        
-        URL(zipUrl).openStream().use { inputStream ->
+
+        URI(zipUrl).toURL().openStream().use { inputStream ->
             ZipInputStream(BufferedInputStream(inputStream)).use { zipInputStream ->
                 var entry = zipInputStream.nextEntry
                 while (entry != null) {
@@ -60,6 +60,7 @@ val copyAssetsTask = tasks.register<Copy>("copyAssetsForAndroid") {
 android {
     namespace = "com.atmospheric.helloworld"
     compileSdk = 34
+    ndkVersion = "27.3.13750724"
 
     defaultConfig {
         applicationId = "com.atmospheric.helloworld"
@@ -73,13 +74,11 @@ android {
                 arguments(
                     "-DANDROID_STL=c++_shared",
                     "-DANDROID_ARM_NEON=TRUE",
-                    "-DANDROID_NDK_HOME=${android.ndkDirectory.absolutePath}",
                     "-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=${android.ndkDirectory.absolutePath}/build/cmake/android.toolchain.cmake"
                 )
-                targets("HelloWorld")
+                targets("main")
             }
         }
-
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
@@ -105,14 +104,16 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     sourceSets {
         getByName("main") {
             assets.srcDir(file("build/generated/assets"))
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 

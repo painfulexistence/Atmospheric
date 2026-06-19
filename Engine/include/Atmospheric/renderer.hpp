@@ -263,7 +263,7 @@ public:
     // Per-frame time (seconds) forwarded from RenderFrame for animated passes.
     float frameTime = 0.0f;
 
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
     GLuint webglResolvedDepthTex = 0;
     GLuint webglResolvedDepthFBO = 0;
     int    webglResolvedDepthWidth = 0;
@@ -272,7 +272,7 @@ public:
 
     // Returns the resolved (non-MSAA) depth texture for screen-space effects.
     GLuint GetResolvedDepthTexture() const {
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
         // WebGL 2.0 does not allow reading from the depth texture of the bound FBO (feedback loop).
         // Since sceneRT is single-sampled on WebGL, we can read from sceneRT's depth texture instead!
         // But if sceneRT is multi-sampled (MSAA enabled), sceneRT has no depth texture (returns 0),
