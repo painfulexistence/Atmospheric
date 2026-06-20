@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <deque>
 #include <filesystem>
 #include <fmt/format.h>
 #include <memory>
@@ -14,14 +15,29 @@
 #include <thread>
 #include <vector>
 
-// Records rendered frames to an AV1 video file via FFmpeg.
+// Records rendered frames to an AV1 video file via FFmpeg, optionally muxing
+// an AAC audio track from caller-supplied PCM.
 // Requires AE_HAS_FFMPEG (set by CMake when FFmpeg is found).
 //
-// Usage:
+// Video-only usage:
 //   VideoRecorder rec;
-//   rec.startRecording(renderer, {.outputPath = "output.mkv", .fps = 60});
+//   rec.startRecording(renderer, {.outputPath = "output.mp4", .fps = 60});
 //   // each frame:
 //   rec.captureFrame();
+//   // when done:
+//   rec.stopRecording();
+//
+// With audio:
+//   VideoRecorder::Config cfg;
+//   cfg.outputPath      = "output.mp4";
+//   cfg.captureAudio    = true;
+//   cfg.audioSampleRate = 44100;
+//   cfg.audioChannels   = 2;
+//   rec.startRecording(&renderer, cfg);
+//   // each frame:
+//   rec.captureFrame();
+//   // on your audio thread / wherever you have the final mixed PCM:
+//   rec.writeAudio(floatPcmBuffer, frameCount); // interleaved float32
 //   // when done:
 //   rec.stopRecording();
 class VideoRecorder {
@@ -33,6 +49,16 @@ public:
         int crf = 35;
         // FFmpeg encoder name. "libsvtav1" is fastest; fallback to "libaom-av1".
         std::string encoder = "libsvtav1";
+        // Enable AAC audio track. Caller must supply PCM via writeAudio().
+        // atmospheric's AudioManager wraps raudio which has no PCM tap, so
+        // audio must be fed manually from wherever the application has the
+        // final mixed output (e.g. a custom raudio callback, a mixer thread).
+        bool captureAudio = false;
+        // AAC bitrate in bits/sec.
+        int audioBitrate = 128000;
+        // Must match the PCM supplied to writeAudio().
+        int audioSampleRate = 44100;
+        int audioChannels   = 2;
     };
 
     VideoRecorder();
@@ -52,6 +78,11 @@ public:
     // Schedule capture of the current rendered frame. Call once per frame.
     // Drops frames silently if the encoder queue is full.
     void captureFrame();
+
+    // Feed interleaved float32 PCM into the audio track.
+    // frameCount is the number of multi-channel frames (NOT total samples).
+    // No-op unless captureAudio was true in the Config passed to startRecording().
+    void writeAudio(const float* frames, uint32_t frameCount);
 
     // Set the directory where timestamped recordings are saved.
     void setBaseOutputDir(const std::string& dir) {
@@ -111,6 +142,11 @@ private:
     void cleanup();
     void encoderThreadFunc();
 
+    bool initAudioEncoder();
+    void drainAudio(bool flush);
+    void encodeAudioFrame(int nbSamples);
+    void flushAudioEncoder();
+
     std::string m_baseOutputDir = "output";
     char        m_outputBuf[256] = {};
     std::string m_status;
@@ -137,13 +173,21 @@ private:
 
     std::unique_ptr<FFmpegContext> m_ffmpeg;
 
-    std::queue<RawFrame>   m_frameQueue;
-    std::mutex             m_mutex;
+    std::queue<RawFrame>    m_frameQueue;
+    std::mutex              m_mutex;
     std::condition_variable m_cv;
-    std::thread            m_encoderThread;
+    std::thread             m_encoderThread;
 
     std::atomic<bool> m_recording{false};
     std::atomic<bool> m_stop{false};
 
     static constexpr size_t MAX_QUEUE_FRAMES = 16;
+
+    // ── Audio capture state ──────────────────────────────────────────────────
+    bool m_audioActive = false; // true when this session records an audio track
+
+    // Interleaved float32 PCM from writeAudio(), consumed by the encoder thread.
+    // Bounded to ~5 s to prevent unbounded growth if the encoder falls behind.
+    std::deque<float> m_audioQueue;
+    std::mutex        m_audioMutex;
 };
