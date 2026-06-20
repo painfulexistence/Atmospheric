@@ -94,10 +94,34 @@ emcmake cmake -G Ninja \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
   -DAE_USE_WEBGPU="$WEBGPU_SUPPORT"
 
-# 5. 進行建置 (目標包含 AtmosLua, HelloWorld 與 Maze 迷宮遊戲)
+# 5. 進行建置 (自動偵測記憶體以避免 OOM)
+PARALLEL_JOBS="--parallel"
+TOTAL_MEM_MB=""
+
+if [ -f /proc/meminfo ]; then
+    # Linux 系統偵測
+    TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    TOTAL_MEM_MB=$((TOTAL_MEM_KB / 1024))
+elif [ "$(uname)" = "Darwin" ]; then
+    # macOS 系統偵測
+    TOTAL_MEM_BYTES=$(sysctl -n hw.memsize)
+    TOTAL_MEM_MB=$((TOTAL_MEM_BYTES / 1024 / 1024))
+fi
+
+if [ -n "$TOTAL_MEM_MB" ]; then
+    # 記憶體小於 2GB -> 單執行緒編譯；小於 4GB -> 雙執行緒編譯
+    if [ "$TOTAL_MEM_MB" -lt 2048 ]; then
+        PARALLEL_JOBS="-j 1"
+        echo -e "${YELLOW}⚠️ 偵測到系統記憶體偏低 (${TOTAL_MEM_MB}MB)，限制編譯並行數為 1 (單執行緒)，以防止編譯器被系統強制終止 (OOM Killed)。${NC}"
+    elif [ "$TOTAL_MEM_MB" -lt 4096 ]; then
+        PARALLEL_JOBS="-j 2"
+        echo -e "${YELLOW}⚠️ 偵測到系統記憶體偏低 (${TOTAL_MEM_MB}MB)，限制編譯並行數為 2，以防止記憶體耗盡。${NC}"
+    fi
+fi
+
 echo -e ""
 echo -e "${YELLOW}🔨 正在使用 Emscripten 建置所有 WebAssembly 目標...${NC}"
-cmake --build "$BUILD_DIR" --parallel
+cmake --build "$BUILD_DIR" $PARALLEL_JOBS
 
 echo -e ""
 echo -e "${GREEN}✨ WebAssembly / Emscripten 建置成功！(${BUILD_TYPE})${NC}"

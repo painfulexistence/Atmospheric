@@ -11,51 +11,43 @@ NC='\033[0m' # 無顏色
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# 預設部署路徑，可透過環境變數 ATMOSPHERIC_WWW_PATH 覆蓋，或是使用參數 --path=
-TARGET_DIR="${ATMOSPHERIC_WWW_PATH:-/var/www/atmospheric}"
+# 預設部署目的地 (可以是本地路徑如 /var/www/atmospheric 或遠端路徑如 user@vps:/var/www/atmospheric)
+# 如果沒有特別指定，就只會更新本地專案根目錄下的 www 資料夾
+DEPLOY_DEST="${ATMOSPHERIC_WWW_PATH}"
 
 # 解析參數
 for arg in "$@"; do
     case "$arg" in
         --path=*)
-            TARGET_DIR="${arg#*=}"
+            DEPLOY_DEST="${arg#*=}"
             ;;
     esac
 done
 
-DEMO_DIR="${TARGET_DIR}/demo"
+LOCAL_WWW="${PROJECT_ROOT}/www"
 
 echo -e "${BLUE}===================================================${NC}"
 echo -e "${YELLOW}🚀 Atmospheric Engine - deployWWW 部署指令碼${NC}"
 echo -e "${BLUE}===================================================${NC}"
-echo -e "部署根目錄: ${GREEN}${TARGET_DIR}${NC}"
-echo -e "範例部署目錄: ${GREEN}${DEMO_DIR}${NC}"
+echo -e "本地建置網頁目錄 (www): ${GREEN}${LOCAL_WWW}${NC}"
+if [ -n "${DEPLOY_DEST}" ]; then
+    echo -e "部署目標路徑: ${GREEN}${DEPLOY_DEST}${NC}"
+fi
 echo -e ""
 
-# 1. 檢查並建立目錄
-if [ ! -d "${TARGET_DIR}" ]; then
-    echo -e "正在建立部署目錄 ${TARGET_DIR}..."
-    mkdir -p "${TARGET_DIR}" || {
-        echo -e "${RED}❌ 錯誤: 無法建立目錄 ${TARGET_DIR}。請檢查權限或使用 sudo 執行此指令碼。${NC}"
-        exit 1
-    }
-fi
+# 1. 初始化本地 www/ 目錄
+echo -e "${YELLOW}📁 正在初始化本地 www/ 目錄...${NC}"
+rm -rf "${LOCAL_WWW}"
+mkdir -p "${LOCAL_WWW}/demo"
 
-if [ ! -d "${DEMO_DIR}" ]; then
-    echo -e "正在建立範例目錄 ${DEMO_DIR}..."
-    mkdir -p "${DEMO_DIR}" || {
-        echo -e "${RED}❌ 錯誤: 無法建立目錄 ${DEMO_DIR}。${NC}"
-        exit 1
-    }
-fi
-
-# 2. 部署 docs/ 下的內容至 TARGET_DIR
-echo -e "${YELLOW}📁 正在部署 docs/ 內容至 ${TARGET_DIR}...${NC}"
+# 2. 部署 docs/ 下的內容至 www/ (僅限已 Commit 的檔案)
+echo -e "${YELLOW}📁 正在同步 docs/ (僅限已 Commit 的檔案)...${NC}"
 if [ -d "${PROJECT_ROOT}/docs" ]; then
-    cp -R "${PROJECT_ROOT}/docs/"* "${TARGET_DIR}/"
-    echo -e "${GREEN}✓ docs 部署成功！${NC}"
+    # 使用 git archive 提取 HEAD 中的 docs/ 目錄，並透過 tar 解開到 www/（去除首層 docs/ 資料夾前綴）
+    git archive --format=tar HEAD docs | tar -x -C "${LOCAL_WWW}" --strip-components=1
+    echo -e "${GREEN}✓ docs 同步成功！${NC}"
 else
-    echo -e "${RED}⚠️ 警告: 找不到 ${PROJECT_ROOT}/docs 目綠${NC}"
+    echo -e "${RED}⚠️ 警告: 找不到 ${PROJECT_ROOT}/docs 目錄${NC}"
 fi
 
 # 3. 啟動 buildWasm release (使用 --no-server 略過伺服器啟動)
@@ -63,9 +55,9 @@ echo -e ""
 echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建...${NC}"
 "${SCRIPT_DIR}/buildWasm.sh" release --no-server
 
-# 4. 尋找每個範例產物並複製到 demo 目錄，重新命名為 index.html
+# 4. 尋找每個範例產物並複製到 www/demo/ 下，重新命名為 index.html
 echo -e ""
-echo -e "${YELLOW}📦 正在將 WebAssembly 範例部署至 ${DEMO_DIR}...${NC}"
+echo -e "${YELLOW}📦 正在將 WebAssembly 範例拷貝至 www/demo/...${NC}"
 
 RELEASE_DIR="${PROJECT_ROOT}/build-wasm/release"
 COPIED_COUNT=0
@@ -83,17 +75,14 @@ if [ -d "${RELEASE_DIR}" ]; then
                 continue
             fi
             
-            echo -e "  👉 部署範例: ${GREEN}$target_name${NC}..."
+            echo -e "  👉 整理範例: ${GREEN}$target_name${NC}..."
             
-            # 清除舊有的部署目錄
-            rm -rf "${DEMO_DIR}/${target_name}"
+            # 複製整個資料夾到 www/demo/
+            cp -R "$target_dir" "${LOCAL_WWW}/demo/${target_name}"
             
-            # 複製整個資料夾到 demo/
-            cp -R "$target_dir" "${DEMO_DIR}/${target_name}"
-            
-            # 將 <TargetName>.html 改名為 index.html
-            if [ -f "${DEMO_DIR}/${target_name}/${target_name}.html" ]; then
-                mv "${DEMO_DIR}/${target_name}/${target_name}.html" "${DEMO_DIR}/${target_name}/index.html"
+            # 將 <TargetName>.html 改名為 index.html (相容舊版與 OUTPUT_NAME 'index' 的新版產物)
+            if [ -f "${LOCAL_WWW}/demo/${target_name}/${target_name}.html" ]; then
+                mv "${LOCAL_WWW}/demo/${target_name}/${target_name}.html" "${LOCAL_WWW}/demo/${target_name}/index.html"
             fi
             
             COPIED_COUNT=$((COPIED_COUNT + 1))
@@ -101,6 +90,26 @@ if [ -d "${RELEASE_DIR}" ]; then
     done
 fi
 
+echo -e "${GREEN}✓ 本地 www/ 目錄更新完成！(已整理 $COPIED_COUNT 個範例)${NC}"
+
+# 5. 如果指定了部署目的地 (DEPLOY_DEST)，執行複製/同步手續
+if [ -n "${DEPLOY_DEST}" ] && [ "${DEPLOY_DEST}" != "${LOCAL_WWW}" ]; then
+    echo -e ""
+    if [[ "$DEPLOY_DEST" == *":"* ]]; then
+        # 遠端複製 (例如 user@vps:/var/www/atmospheric)
+        echo -e "${YELLOW}🚀 偵測到遠端路徑，正在將 www/ 同步上傳至遠端 ${DEPLOY_DEST}...${NC}"
+        # 使用 rsync 進行高效的增量同步
+        rsync -avz --delete "${LOCAL_WWW}/" "${DEPLOY_DEST}/"
+        echo -e "${GREEN}✨ 遠端部署成功！${NC}"
+    else
+        # 本地複製 (例如 /var/www/atmospheric)
+        echo -e "${YELLOW}📂 正在將 www/ 同步至本地目錄 ${DEPLOY_DEST}...${NC}"
+        mkdir -p "${DEPLOY_DEST}"
+        rsync -av --delete "${LOCAL_WWW}/" "${DEPLOY_DEST}/"
+        echo -e "${GREEN}✨ 本地部署成功！${NC}"
+    fi
+fi
+
 echo -e ""
-echo -e "${GREEN}✨ 成功部署 $COPIED_COUNT 個 WebAssembly 範例至 ${DEMO_DIR}！${NC}"
+echo -e "${GREEN}✨ 部署指令碼執行完畢！${NC}"
 echo -e "${BLUE}===================================================${NC}"
