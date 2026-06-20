@@ -130,6 +130,81 @@
         }
       };
       Module.setStatus('Downloading...');
+    
+            // Clean up Web Workers, WebGL contexts, and Audio contexts on page unload to prevent memory leaks in iframes
+      function cleanupWorkers() {
+        console.log("Cleaning up Emscripten Web Workers, WebGL, and Audio contexts...");
+        
+        // 1. Terminate all Web Workers spawned by Emscripten
+        try {
+          var pthreads = typeof PThread !== 'undefined' ? PThread : (typeof Module !== 'undefined' && Module.PThread ? Module.PThread : null);
+          if (pthreads) {
+            if (typeof pthreads.terminateAllThreads === 'function') {
+              pthreads.terminateAllThreads();
+            }
+            ['runningWorkers', 'unusedWorkers', 'workers'].forEach(function(poolName) {
+              if (pthreads[poolName] && Array.isArray(pthreads[poolName])) {
+                pthreads[poolName].forEach(function(worker) {
+                  if (worker && typeof worker.terminate === 'function') {
+                    worker.terminate();
+                  }
+                });
+                pthreads[poolName] = [];
+              }
+            });
+          }
+        } catch (e) {
+          console.error("Error during thread cleanup:", e);
+        }
+
+        // 2. Explicitly lose the WebGL context to release GPU resources immediately
+        try {
+          var canvas = document.getElementById('canvas');
+          if (canvas) {
+            var gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            if (gl) {
+              var loseContextExt = gl.getExtension('WEBGL_lose_context');
+              if (loseContextExt) {
+                loseContextExt.loseContext();
+                console.log("WebGL context lost explicitly.");
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error losing WebGL context:", e);
+        }
+
+        // 3. Close all Web Audio API contexts to release audio device locks and threads
+        try {
+          if (typeof AL !== 'undefined' && AL.contexts) {
+            AL.contexts.forEach(function(ctx) {
+              if (ctx && ctx.audioCtx && typeof ctx.audioCtx.close === 'function') {
+                ctx.audioCtx.close();
+              }
+            });
+          }
+          if (typeof SDL2 !== 'undefined' && SDL2.audioContext && typeof SDL2.audioContext.close === 'function') {
+            SDL2.audioContext.close();
+          }
+          if (typeof Module !== 'undefined' && Module) {
+            for (var prop in Module) {
+              if (Module[prop] && typeof Module[prop].close === 'function' && 
+                  (Module[prop].constructor && (Module[prop].constructor.name === 'AudioContext' || Module[prop].constructor.name === 'webkitAudioContext'))) {
+                Module[prop].close();
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error closing AudioContext:", e);
+        }
+        
+        // 4. Nullify Module to assist GC
+        if (typeof Module !== 'undefined') {
+          Module = null;
+        }
+      }
+      window.addEventListener('pagehide', cleanupWorkers);
+      window.addEventListener('unload', cleanupWorkers);
     </script>
     {{{ SCRIPT }}}
 </body>
