@@ -274,8 +274,8 @@ void AssetManager::LoadDefaultShaders() {
 #if defined(__EMSCRIPTEN__) || defined(ANDROID)
                   {
                     "terrain",
-                    { .vert = "assets/shaders/simple.vert",
-                      .frag = "assets/shaders/flat.frag" },
+                    { .vert = "assets/shaders/terrain_simple.vert",
+                      .frag = "assets/shaders/terrain.frag" },
                   },
 #else
                   {
