@@ -89,6 +89,41 @@ if [ -d "${RELEASE_DIR}" ]; then
         fi
     done
 fi
+# 4.5. 清除不必要的系統檔案及未追蹤的資源檔案
+echo -e "${YELLOW}🧹 正在清理本地 www/ 目錄中的系統垃圾檔案 (.DS_Store) 與未追蹤的資源檔案...${NC}"
+
+# 清除所有 .DS_Store
+find "${LOCAL_WWW}" -name ".DS_Store" -type f -delete 2>/dev/null || true
+
+# 取得 examples 資料夾到部署名稱的對照
+get_deploy_name() {
+    local folder_name="$1"
+    case "$folder_name" in
+        "LuaScripting") echo "AtmosLua" ;;
+        "SceneLoader") echo "CSBDemo" ;;
+        "Physics2D") echo "Physics2DDemo" ;;
+        "MazeFPS") echo "Maze" ;;
+        *) echo "$folder_name" ;;
+    esac
+}
+
+# 取得 git 中未追蹤的檔案清單，並從部署目錄中刪除
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git ls-files --others --exclude-standard | while read -r untracked_file; do
+        if [[ "$untracked_file" == Engine/default_assets/* ]]; then
+            rel_path="${untracked_file#Engine/default_assets/}"
+            rm -rf "${LOCAL_WWW}/demo"/*/assets/"$rel_path"
+        elif [[ "$untracked_file" == Examples/* ]]; then
+            if [[ "$untracked_file" == *"/assets/"* ]]; then
+                sub_path="${untracked_file#Examples/}"
+                folder_name="${sub_path%%/*}"
+                asset_rel_path="${sub_path#*/}"
+                deploy_name=$(get_deploy_name "$folder_name")
+                rm -rf "${LOCAL_WWW}/demo/${deploy_name}/${asset_rel_path}"
+            fi
+        fi
+    done
+fi
 
 echo -e "${GREEN}✓ 本地 www/ 目錄更新完成！(已整理 $COPIED_COUNT 個範例)${NC}"
 

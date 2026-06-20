@@ -37,7 +37,11 @@
 #include <emscripten/heap.h>
 #endif
 
+Application* Application::s_instance = nullptr;
+Application* Application::Get() { return s_instance; }
+
 Application::Application(AppConfig config) : _config(config) {
+    s_instance = this;
     // setbuf(stdout, NULL); // Cancel output stream buffering so that output can be seen immediately
 
 #ifdef __EMSCRIPTEN__
@@ -125,6 +129,7 @@ void Application::RegisterComponents() {
 }
 
 Application::~Application() {
+    if (s_instance == this) s_instance = nullptr;
     ENGINE_LOG("Exiting...");
     _window->DeinitImGui();
 

@@ -49,6 +49,9 @@ using EntityID = uint64_t;
 
 class Application {
 public:
+    static Application* Get();
+    const AppConfig& GetConfig() const { return _config; }
+
     explicit Application(AppConfig config = {});
     virtual ~Application();
 
@@ -153,6 +156,8 @@ protected:
     }
 
 private:
+    static Application* s_instance;
+
     void RegisterComponents();
 
     AppConfig _config;

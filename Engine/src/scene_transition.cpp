@@ -1,4 +1,5 @@
 #include "scene_transition.hpp"
+#include "application.hpp"
 #include "asset_manager.hpp"
 #include "file_system.hpp"
 #include <nlohmann/json.hpp>
@@ -75,6 +76,22 @@ void SceneTransition::Go(const std::string& sceneName, OnReadyFn onReady, OnErro
 
         std::vector<std::string> allPaths;
         allPaths.insert(allPaths.end(), manifest.textures.begin(), manifest.textures.end());
+
+        if (Application::Get() && Application::Get()->GetConfig().useDefaultTextures) {
+#if defined(AE_USE_BASIS_UNIVERSAL) && defined(__EMSCRIPTEN__)
+            allPaths.push_back("assets/textures/default_diff.ktx2");
+            allPaths.push_back("assets/textures/default_norm.ktx2");
+            allPaths.push_back("assets/textures/default_ao.ktx2");
+            allPaths.push_back("assets/textures/default_rough.ktx2");
+            allPaths.push_back("assets/textures/default_metallic.ktx2");
+#else
+            allPaths.push_back("assets/textures/default_diff.jpg");
+            allPaths.push_back("assets/textures/default_norm.jpg");
+            allPaths.push_back("assets/textures/default_ao.jpg");
+            allPaths.push_back("assets/textures/default_rough.jpg");
+            allPaths.push_back("assets/textures/default_metallic.jpg");
+#endif
+        }
         for (const auto& [name, props] : manifest.shaders) {
             if (!props.vert.empty()) allPaths.push_back(props.vert);
             if (!props.frag.empty()) allPaths.push_back(props.frag);
