@@ -40,6 +40,19 @@
 Application::Application(AppConfig config) : _config(config) {
     // setbuf(stdout, NULL); // Cancel output stream buffering so that output can be seen immediately
 
+#ifdef __EMSCRIPTEN__
+    // Polyfill document.exitPointerLock globally to prevent crash in Safari (iOS / iframes)
+    EM_ASM({
+        if (typeof document !== 'undefined' && !document.exitPointerLock) {
+            document.exitPointerLock = document.webkitExitPointerLock || 
+                                       document.mozExitPointerLock || 
+                                       function() { 
+                                           console.warn("Pointer lock not supported/allowed in this browser context"); 
+                                       };
+        }
+    });
+#endif
+
     _window = std::make_shared<Window>(WindowProps{
       .title = config.windowTitle,
       .width = config.windowWidth,

@@ -35,7 +35,9 @@ EM_JS(void, js_video_open, (uintptr_t playerId, const char* pathStr), {
     
     var video = document.createElement('video');
     video.src = path;
-    video.crossOrigin = "anonymous";
+    if (path.indexOf('://') !== -1 || path.indexOf('//') === 0) {
+        video.crossOrigin = "anonymous";
+    }
     video.muted = false; // Enable audio playback
     video.playsInline = true;
     video.load();
@@ -112,10 +114,18 @@ EM_JS(int, js_video_grab_frame, (uintptr_t playerId, uint8_t* outPixels), {
         player.canvas.height = h;
     }
     
-    player.ctx.drawImage(video, 0, 0, w, h);
-    var imgData = player.ctx.drawImage ? player.ctx.getImageData(0, 0, w, h) : null;
-    if (imgData) {
-        HEAPU8.set(imgData.data, outPixels);
+    try {
+        player.ctx.drawImage(video, 0, 0, w, h);
+        var imgData = player.ctx.drawImage ? player.ctx.getImageData(0, 0, w, h) : null;
+        if (imgData) {
+            HEAPU8.set(imgData.data, outPixels);
+        }
+    } catch(e) {
+        if (!player.hasTaintError) {
+            console.error("Failed to grab video frame (CORS/security issue?):", e);
+            player.hasTaintError = true;
+        }
+        return 0;
     }
     player.lastTime = video.currentTime;
     return 1;

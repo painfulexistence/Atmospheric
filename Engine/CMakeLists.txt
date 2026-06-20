@@ -456,7 +456,9 @@ if(EMSCRIPTEN)
             -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
             -sFETCH=1
             -sUSE_PTHREADS=1
-            "-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency"
+            -sINITIAL_MEMORY=134217728
+            -sMAXIMUM_MEMORY=536870912
+            "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
             -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])
     else()
         target_link_options(AtmosphericEngine INTERFACE
@@ -464,7 +466,9 @@ if(EMSCRIPTEN)
             -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
             -sFETCH=1
             -sUSE_PTHREADS=1
-            "-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency"
+            -sINITIAL_MEMORY=134217728
+            -sMAXIMUM_MEMORY=536870912
+            "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
             -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])
     endif()
 else()
