@@ -1,5 +1,9 @@
 #include "Atmospheric.hpp"
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#include <GLES3/gl3.h>
+#else
 #include <glad/glad.h>
+#endif
 
 // Path or HTTP/HTTPS/RTSP URL passed in as the first CLI argument.
 // Example: ./VideoPlayer my_clip.mp4

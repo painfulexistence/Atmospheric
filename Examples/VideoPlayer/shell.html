@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Atmospheric Engine - WASM Demo</title>
+    <title>Atmospheric Engine - WASM VideoPlayer Demo</title>
     <style>
         html, body {
             margin: 0;
@@ -74,6 +74,46 @@
             font-weight: 300;
         }
         
+        #play-button {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background-color: rgba(0, 0, 0, 0.7);
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            color: #ffffff;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            padding: 0;
+        }
+        
+        #play-button svg {
+            margin-left: 6px; /* Optically center play triangle */
+            transition: transform 0.25s ease;
+        }
+        
+        #play-button:hover {
+            background-color: #3b82f6;
+            border-color: #3b82f6;
+            transform: translate(-50%, -50%) scale(1.1);
+            box-shadow: 0 0 35px rgba(59, 130, 246, 0.6);
+        }
+        
+        #play-button:hover svg {
+            transform: scale(1.1);
+        }
+        
+        #play-button:active {
+            transform: translate(-50%, -50%) scale(0.95);
+        }
+        
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
@@ -87,20 +127,28 @@
         <div class="spinner" id="loading-spinner"></div>
         <div id="loading-title">Atmospheric Engine</div>
         <div id="loading-status">Downloading...</div>
+        <button id="play-button" style="display: none;" aria-label="Play Video">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+            </svg>
+        </button>
     </div>
 
     <script type="text/javascript">
       var statusElement = document.getElementById('loading-status');
       var spinnerElement = document.getElementById('loading-spinner');
+      var playButton = document.getElementById('play-button');
+      
+      var loadingContainer = document.getElementById('loading-container');
       
       var Module = {
         preRun: [],
         postRun: [function() {
-          var loader = document.getElementById('loading-container');
-          loader.style.opacity = 0;
-          setTimeout(function() {
-            loader.style.display = 'none';
-          }, 500);
+          // Hide spinner and status text, show PLAY icon in center when loaded
+          spinnerElement.style.display = 'none';
+          statusElement.style.display = 'none';
+          playButton.style.display = 'flex';
+          loadingContainer.style.cursor = 'pointer';
         }],
         canvas: (function() {
           var canvas = document.getElementById('canvas');
@@ -130,6 +178,26 @@
         }
       };
       Module.setStatus('Downloading...');
+      
+      // Click anywhere on loading container (when loaded) to start video and hide loading screen
+      loadingContainer.addEventListener('click', function() {
+        // Only trigger if the play button is visible (meaning loading is complete)
+        if (playButton.style.display !== 'flex') {
+          return;
+        }
+        
+        loadingContainer.style.opacity = 0;
+        setTimeout(function() {
+          loadingContainer.style.display = 'none';
+        }, 500);
+        
+        // Trigger a click/focus on the canvas to register user interaction in the browser
+        var canvas = document.getElementById('canvas');
+        if (canvas) {
+          canvas.click();
+          canvas.focus();
+        }
+      });
     </script>
     {{{ SCRIPT }}}
 </body>

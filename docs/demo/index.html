@@ -33,6 +33,18 @@
       border: 1px solid var(--color-border);
       border-radius: var(--border-radius);
       overflow: hidden;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+    }
+    .demo-card:hover {
+      border-color: var(--color-primary);
+      background-color: var(--color-surface-2);
+      transform: translateY(-4px);
+      box-shadow: 0 12px 30px rgba(59, 130, 246, 0.15); /* Soft primary glow */
+      text-decoration: none;
     }
     .demo-thumb {
       background: var(--color-surface-2);
@@ -43,6 +55,102 @@
       justify-content: center;
       font-size: 3rem;
       color: var(--color-border);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* FUTURE WebM Hover Playback Styles */
+    .demo-video-preview {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .demo-card:hover .demo-video-preview {
+      opacity: 1;
+    }
+
+    /* Modal + Iframe Styles */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: var(--modal-overlay-bg, rgba(0, 0, 0, 0.85));
+      z-index: 10000;
+      justify-content: center;
+      align-items: center;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .modal.active {
+      display: flex;
+      opacity: 1;
+    }
+    .modal-content {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius);
+      width: 90%;
+      max-width: var(--modal-max-width, 1024px);
+      height: 80%;
+      max-height: var(--modal-max-height, 640px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: var(--modal-shadow, 0 20px 50px rgba(0, 0, 0, 0.8));
+      transform: scale(0.95);
+      transition: transform 0.3s ease;
+    }
+    .modal.active .modal-content {
+      transform: scale(1);
+    }
+    .modal-header {
+      padding: var(--spacing-md) var(--spacing-lg);
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      background: var(--color-surface-2);
+      gap: var(--spacing-md);
+    }
+    .modal-header h3 {
+      margin: 0;
+      font-size: var(--text-base);
+      font-weight: 600;
+      margin-right: auto;
+    }
+    .modal-close-btn {
+      background: transparent;
+      border: none;
+      color: var(--color-muted);
+      font-size: 1.8rem;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0;
+      transition: color 0.15s;
+    }
+    .modal-close-btn:hover {
+      color: var(--color-text);
+    }
+    .modal-body {
+      flex: 1;
+      position: relative;
+      background: #000;
+    }
+    .modal-body iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
     }
     .demo-body { padding: var(--spacing-md) var(--spacing-lg); }
     .demo-title {
@@ -115,7 +223,159 @@
   </div>
 
   <div class="demo-grid">
+    <a href="./HelloWorld/" class="demo-card">
+      <div class="demo-thumb">
+        <span class="demo-thumb-icon">👋</span>
+        <!-- FUTURE WebM preview: Uncomment and configure this when ready:
+        <video class="demo-video-preview" loop muted playsinline preload="none" src="./HelloWorld/assets/preview.webm"></video>
+        -->
+      </div>
+      <div class="demo-body">
+        <div class="demo-title">Hello World</div>
+        <div class="demo-desc">Basic application setup demonstrating window creation, OpenGL rendering, and simple input.</div>
+        <span class="demo-badge">Active</span>
+      </div>
+    </a>
 
+    <a href="./VideoPlayer/" class="demo-card">
+      <div class="demo-thumb">
+        <span class="demo-thumb-icon">🎬</span>
+        <!-- FUTURE WebM preview: Uncomment and configure this when ready:
+        <video class="demo-video-preview" loop muted playsinline preload="none" src="./VideoPlayer/assets/preview.webm"></video>
+        -->
+      </div>
+      <div class="demo-body">
+        <div class="demo-title">Video Player</div>
+        <div class="demo-desc">Playback of WebM video and audio using Emscripten native HTML5 bridge.</div>
+        <span class="demo-badge">Active</span>
+      </div>
+    </a>
+
+    <a href="./Physics2DDemo/" class="demo-card">
+      <div class="demo-thumb">
+        <span class="demo-thumb-icon">⚖️</span>
+        <!-- FUTURE WebM preview: Uncomment and configure this when ready:
+        <video class="demo-video-preview" loop muted playsinline preload="none" src="./Physics2DDemo/assets/preview.webm"></video>
+        -->
+      </div>
+      <div class="demo-body">
+        <div class="demo-title">2D Physics</div>
+        <div class="demo-desc">2D physics simulation showcasing rigidbodies, colliders, and forces powered by Box2D.</div>
+        <span class="demo-badge">Active</span>
+      </div>
+    </a>
+
+    <a href="./ProceduralTerrain/" class="demo-card">
+      <div class="demo-thumb">
+        <span class="demo-thumb-icon">🏔️</span>
+        <!-- FUTURE WebM preview: Uncomment and configure this when ready:
+        <video class="demo-video-preview" loop muted playsinline preload="none" src="./ProceduralTerrain/assets/preview.webm"></video>
+        -->
+      </div>
+      <div class="demo-body">
+        <div class="demo-title">Procedural Terrain</div>
+        <div class="demo-desc">Infinite landscape generation using heightmaps and procedural noise shaders.</div>
+        <span class="demo-badge">Active</span>
+      </div>
+    </a>
+
+    <a href="./VoxelWorld/" class="demo-card">
+      <div class="demo-thumb">
+        <span class="demo-thumb-icon">🧱</span>
+        <!-- FUTURE WebM preview: Uncomment and configure this when ready:
+        <video class="demo-video-preview" loop muted playsinline preload="none" src="./VoxelWorld/assets/preview.webm"></video>
+        -->
+      </div>
+      <div class="demo-body">
+        <div class="demo-title">Voxel World</div>
+        <div class="demo-desc">A Minecraft-style block world rendering with high-performance chunk generation.</div>
+        <span class="demo-badge">Active</span>
+      </div>
+    </a>
+
+    <a href="./AtmosLua/" class="demo-card">
+      <div class="demo-thumb">
+        <span class="demo-thumb-icon">🌙</span>
+        <!-- FUTURE WebM preview: Uncomment and configure this when ready:
+        <video class="demo-video-preview" loop muted playsinline preload="none" src="./AtmosLua/assets/preview.webm"></video>
+        -->
+      </div>
+      <div class="demo-body">
+        <div class="demo-title">Lua Scripting</div>
+        <div class="demo-desc">Live scripting console running Lua scripts dynamically inside the C++ engine core.</div>
+        <span class="demo-badge">Active</span>
+      </div>
+    </a>
+
+    <a href="./CSBDemo/" class="demo-card">
+      <div class="demo-thumb">
+        <span class="demo-thumb-icon">📂</span>
+        <!-- FUTURE WebM preview: Uncomment and configure this when ready:
+        <video class="demo-video-preview" loop muted playsinline preload="none" src="./CSBDemo/assets/preview.webm"></video>
+        -->
+      </div>
+      <div class="demo-body">
+        <div class="demo-title">Scene Loader</div>
+        <div class="demo-desc">Deserialization and loading of complex 2D/3D scenes from JSON configurations.</div>
+        <span class="demo-badge">Active</span>
+      </div>
+    </a>
+
+    <a href="./CardBattle/" class="demo-card">
+      <div class="demo-thumb">
+        <span class="demo-thumb-icon">🃏</span>
+        <!-- FUTURE WebM preview: Uncomment and configure this when ready:
+        <video class="demo-video-preview" loop muted playsinline preload="none" src="./CardBattle/assets/preview.webm"></video>
+        -->
+      </div>
+      <div class="demo-body">
+        <div class="demo-title">Card Battle Game</div>
+        <div class="demo-desc">A fully interactive turn-based card game example using the engine's 2D sprite rendering.</div>
+        <span class="demo-badge">Active</span>
+      </div>
+    </a>
+
+    <a href="./MidnightSkyraiders/" class="demo-card">
+      <div class="demo-thumb">
+        <span class="demo-thumb-icon">🚀</span>
+        <!-- FUTURE WebM preview: Uncomment and configure this when ready:
+        <video class="demo-video-preview" loop muted playsinline preload="none" src="./MidnightSkyraiders/assets/preview.webm"></video>
+        -->
+      </div>
+      <div class="demo-body">
+        <div class="demo-title">Midnight Skyraiders</div>
+        <div class="demo-desc">Classic side-scrolling arcade space shooter with particle effects and audio.</div>
+        <span class="demo-badge">Active</span>
+      </div>
+    </a>
+
+    <a href="./MultiplayerSandbox/" class="demo-card">
+      <div class="demo-thumb">
+        <span class="demo-thumb-icon">🌐</span>
+        <!-- FUTURE WebM preview: Uncomment and configure this when ready:
+        <video class="demo-video-preview" loop muted playsinline preload="none" src="./MultiplayerSandbox/assets/preview.webm"></video>
+        -->
+      </div>
+      <div class="demo-body">
+        <div class="demo-title">Multiplayer Sandbox</div>
+        <div class="demo-desc">Real-time network synchronized 2D sandbox showing networking and player replication.</div>
+        <span class="demo-badge wip">WIP</span>
+      </div>
+    </a>
+
+    <a href="./RPG/" class="demo-card">
+      <div class="demo-thumb">
+        <span class="demo-thumb-icon">🛡️</span>
+        <!-- FUTURE WebM preview: Uncomment and configure this when ready:
+        <video class="demo-video-preview" loop muted playsinline preload="none" src="./RPG/assets/preview.webm"></video>
+        -->
+      </div>
+      <div class="demo-body">
+        <div class="demo-title">RPG Demo</div>
+        <div class="demo-desc">2D top-down role-playing game framework with tilemaps and collision detection.</div>
+        <span class="demo-badge">Active</span>
+      </div>
+    </a>
   </div>
 </div>
 
@@ -126,4 +386,87 @@
 </footer>
 
 </body>
+  
+  <!-- Modal Overlay -->
+  <div id="demo-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-title">Demo Title</h3>
+        <button id="modal-close" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <iframe id="modal-iframe" src="" allow="autoplay; keyboard;"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <script type="text/javascript">
+    document.addEventListener('DOMContentLoaded', function() {
+      var modal = document.getElementById('demo-modal');
+      var iframe = document.getElementById('modal-iframe');
+      var modalTitle = document.getElementById('modal-title');
+      var closeBtn = document.getElementById('modal-close');
+      var cards = document.querySelectorAll('.demo-card');
+
+      cards.forEach(function(card) {
+        card.addEventListener('click', function(e) {
+          e.preventDefault(); // Prevent full page navigation
+          
+          var href = this.getAttribute('href');
+          var title = this.querySelector('.demo-title').textContent;
+          
+          modalTitle.textContent = title;
+          iframe.src = href;
+          
+          modal.style.display = 'flex';
+          // Force reflow
+          modal.offsetHeight;
+          modal.classList.add('active');
+          document.body.style.overflow = 'hidden'; // Lock background scroll
+        });
+      });
+
+      function closeModal() {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+        setTimeout(function() {
+          modal.style.display = 'none';
+          iframe.src = ''; // Reset iframe src to stop audio/WebGL
+        }, 300);
+      }
+
+      closeBtn.addEventListener('click', closeModal);
+      
+      // Close on clicking outside the modal box
+      modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+          closeModal();
+        }
+      });
+
+      // Close on Escape key
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+          closeModal();
+        }
+      });
+
+      // FUTURE WebM hover-playback controller:
+      // Uncomment and configure this when WebM previews are available
+      /*
+      cards.forEach(function(card) {
+        var video = card.querySelector('.demo-video-preview');
+        if (video) {
+          card.addEventListener('mouseenter', function() {
+            video.play().catch(function(err) {});
+          });
+          card.addEventListener('mouseleave', function() {
+            video.pause();
+            video.currentTime = 0;
+          });
+        }
+      });
+      */
+    });
+  </script>
 </html>

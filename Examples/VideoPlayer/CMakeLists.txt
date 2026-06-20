@@ -1,11 +1,10 @@
 set(GAME_NAME VideoPlayer)
 set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 
-# FFmpeg is required for VideoPlayer.
-# It is auto-detected on native desktop platforms.
-if(EMSCRIPTEN OR ANDROID OR IOS)
+# FFmpeg is required for native VideoPlayer.
+if(ANDROID OR IOS)
     message(STATUS "Skipping ${GAME_NAME}: not supported on this platform "
-                   "(FFmpeg unavailable on WASM / mobile).")
+                   "(FFmpeg unavailable on mobile).")
     return()
 endif()
 
@@ -28,28 +27,78 @@ target_link_libraries(${GAME_TARGET} PRIVATE
     fmt::fmt
 )
 
-# Sync engine default assets (shaders, fonts, etc.)
-add_custom_command(
-    TARGET ${GAME_TARGET} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/Engine/default_assets
-        $<TARGET_FILE_DIR:${GAME_TARGET}>/assets
-    COMMENT "Syncing default assets for ${GAME_NAME}"
-)
+if(EMSCRIPTEN)
+    # ── Emscripten / WebAssembly build ──────────────────────────────────────
+    set(CMAKE_EXECUTABLE_SUFFIX ".html")
+    set(EM_PRELOAD_STAGING_DIR ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets)
+    
+    add_custom_target(stage_${GAME_NAME}_em_preload
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${EM_PRELOAD_STAGING_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/shaders
+            ${EM_PRELOAD_STAGING_DIR}/shaders
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/fonts
+            ${EM_PRELOAD_STAGING_DIR}/fonts
+        COMMENT "Staging Emscripten preload assets (shaders, fonts) for ${GAME_NAME}"
+    )
+    add_dependencies(${GAME_TARGET} stage_${GAME_NAME}_em_preload)
+    
+    target_link_options(${GAME_TARGET} PRIVATE
+        -sALLOW_MEMORY_GROWTH=1
+        -sASSERTIONS=1
+        -sDISABLE_EXCEPTION_CATCHING=0
+        -sEXPORTED_FUNCTIONS=["_main","_printMemoryStats"]
+        -Wl,--undefined=printMemoryStats
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
+    )
+    
+    # Use custom centered template only for Release builds
+    # Keep default Emscripten shell layout in Debug builds for easier console/stdout debugging
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_link_options(${GAME_TARGET} PRIVATE "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell.html")
+    endif()
+    
+else()
+    # ── Native build ─────────────────────────────────────────────────────────
+    find_package(spdlog CONFIG REQUIRED)
+    find_package(glad CONFIG REQUIRED)
+    
+    target_link_libraries(${GAME_TARGET} PRIVATE
+        glad::glad
+        spdlog::spdlog
+        raudio
+    )
+    
+    target_link_libraries(${GAME_TARGET} PRIVATE SDL3::SDL3)
+endif()
 
-# Sync game-specific assets if the directory exists.
-if(EXISTS ${GAME_ASSETS_DIR})
+# Sync engine default assets (shaders, fonts, etc.) for native
+if(NOT EMSCRIPTEN)
     add_custom_command(
         TARGET ${GAME_TARGET} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${GAME_ASSETS_DIR}
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets
             $<TARGET_FILE_DIR:${GAME_TARGET}>/assets
-        COMMENT "Syncing game assets for ${GAME_NAME}"
+        COMMENT "Syncing default assets for ${GAME_NAME}"
     )
+    
+    # Sync game-specific assets if the directory exists.
+    if(EXISTS ${GAME_ASSETS_DIR})
+        add_custom_command(
+            TARGET ${GAME_TARGET} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${GAME_ASSETS_DIR}
+                $<TARGET_FILE_DIR:${GAME_TARGET}>/assets
+            COMMENT "Syncing game assets for ${GAME_NAME}"
+        )
+    endif()
 endif()
 
 # Download Sprite Fright (CC-BY, Blender Studio) on first build.
 # ~150 MB; skipped on subsequent builds if the file already exists.
+# We also run this on Emscripten so the video is hosted on the server and streamed by HTML5 Video.
 set(SF_URL "https://upload.wikimedia.org/wikipedia/commons/7/74/Sprite_Fright_-_Open_Movie_by_Blender_Studio.webm")
 set(SF_DST "$<TARGET_FILE_DIR:${GAME_TARGET}>/assets/video/sprite_fright.webm")
 add_custom_command(

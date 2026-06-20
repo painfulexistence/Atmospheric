@@ -1,7 +1,6 @@
 #include "asset_manager.hpp"
 #include <algorithm>
 #include <unordered_set>
-#include <spdlog/spdlog.h>
 #include "console.hpp"
 #include "file_system.hpp"
 #include "job_system.hpp"
@@ -208,13 +207,13 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
     // Read raw bytes via FileSystem to support transparent web prefetching
     FileSystem::Bytes fileData = FileSystem::Get().ReadSync(path);
     if (fileData.empty()) {
-        spdlog::warn("AssetManager::LoadImage: Failed to read file bytes via FileSystem at '{}'", path);
+        Console::Get()->Warn(fmt::format("AssetManager::LoadImage: Failed to read file bytes via FileSystem at '{}'", path));
         return nullptr;
     }
 
     int width, height, numChannels;
     if (!stbi_info_from_memory(fileData.data(), (int)fileData.size(), &width, &height, &numChannels)) {
-        spdlog::warn("stbi_info_from_memory: Failed to read image metadata at '{}'", path);
+        Console::Get()->Warn(fmt::format("stbi_info_from_memory: Failed to read image metadata at '{}'", path));
         return nullptr;
     }
 
@@ -497,7 +496,7 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
         GLuint texID = regularTexIDs[j];
 
         if (!img) {
-            spdlog::warn("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]);
+            Console::Get()->Warn(fmt::format("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]));
             // Re-use the default texture (defaultTextures[0]) as a safe fallback
             textures[oldCount + i] = defaultTextures.empty() ? 0u : defaultTextures[0];
             _textureCache[regularPaths[j]] = { textures[oldCount + i], 0, 0, 0 };
@@ -561,12 +560,19 @@ GLuint AssetManager::CreateTexture(const std::string& path) {
 
     // Regular image (PNG / JPG / etc.) via stb_image.
     auto image = LoadImage(redirectedPath);
+    if (!image) {
+        Console::Get()->Warn(fmt::format("AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.", redirectedPath));
+        GLuint fallbackTex = defaultTextures.empty() ? 0u : defaultTextures[0];
+        _textureCache[redirectedPath] = { fallbackTex, 0, 0, 0 };
+        return fallbackTex;
+    }
     return CreateTextureFromImage(image);
 }
 
 GLuint AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>& image) {
     if (!image) {
-        throw std::runtime_error("Cannot create texture from null image");
+        Console::Get()->Warn("AssetManager::CreateTextureFromImage: Null image, returning default fallback texture.");
+        return defaultTextures.empty() ? 0u : defaultTextures[0];
     }
 
     GLuint texID;

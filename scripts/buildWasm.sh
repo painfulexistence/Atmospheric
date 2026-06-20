@@ -17,6 +17,7 @@ echo -e "${BLUE}===================================================${NC}"
 # 預設建置類型為 Release
 BUILD_TYPE="Release"
 WEBGPU_SUPPORT="OFF"
+NO_SERVER="OFF"
 
 # 解析參數
 for arg in "$@"; do
@@ -29,6 +30,9 @@ for arg in "$@"; do
             ;;
         --webgpu)
             WEBGPU_SUPPORT="ON"
+            ;;
+        --no-server)
+            NO_SERVER="ON"
             ;;
     esac
 done
@@ -101,6 +105,11 @@ echo -e "網頁版產物已輸出至：${YELLOW}$BUILD_DIR/${NC}"
 echo -e ""
 
 # 6. 提供啟動本地伺服器的選項以便立即測試
+if [ "$NO_SERVER" = "ON" ] || [ ! -t 0 ]; then
+    echo -e "${YELLOW}偵測到非互動式環境或已設定 --no-server，略過本地伺服器啟動。${NC}"
+    exit 0
+fi
+
 echo -e "${BLUE}===================================================${NC}"
 echo -e "${YELLOW}是否要在本地開啟 Web 伺服器以測試瀏覽器運行效果？(y/n)${NC}"
 read -r RUN_SERVER

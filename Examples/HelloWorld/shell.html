@@ -84,13 +84,15 @@
     <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
 
     <div id="loading-container">
-        <div class="spinner"></div>
+        <div class="spinner" id="loading-spinner"></div>
         <div id="loading-title">Atmospheric Engine</div>
         <div id="loading-status">Downloading...</div>
     </div>
 
     <script type="text/javascript">
       var statusElement = document.getElementById('loading-status');
+      var spinnerElement = document.getElementById('loading-spinner');
+      
       var Module = {
         preRun: [],
         postRun: [function() {

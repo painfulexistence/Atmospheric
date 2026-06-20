@@ -17,6 +17,111 @@ extern "C" {
 
 #include <deque>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+
+extern "C" {
+void js_video_open(uintptr_t playerId, const char* pathStr);
+void js_video_close(uintptr_t playerId);
+void js_video_play(uintptr_t playerId);
+void js_video_pause(uintptr_t playerId);
+void js_video_get_info(uintptr_t playerId, double* outInfo);
+int js_video_grab_frame(uintptr_t playerId, uint8_t* outPixels);
+}
+
+EM_JS(void, js_video_open, (uintptr_t playerId, const char* pathStr), {
+    var path = UTF8ToString(pathStr);
+    window.videoPlayers = window.videoPlayers || {};
+    
+    var video = document.createElement('video');
+    video.src = path;
+    video.crossOrigin = "anonymous";
+    video.muted = false; // Enable audio playback
+    video.playsInline = true;
+    video.load();
+    
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d');
+    
+    window.videoPlayers[playerId] = {
+        video: video,
+        canvas: canvas,
+        ctx: ctx,
+        lastTime: -1,
+        width: 0,
+        height: 0
+    };
+});
+
+EM_JS(void, js_video_close, (uintptr_t playerId), {
+    if (window.videoPlayers && window.videoPlayers[playerId]) {
+        var player = window.videoPlayers[playerId];
+        player.video.pause();
+        player.video.src = "";
+        delete window.videoPlayers[playerId];
+    }
+});
+
+EM_JS(void, js_video_play, (uintptr_t playerId), {
+    if (window.videoPlayers && window.videoPlayers[playerId]) {
+        var video = window.videoPlayers[playerId].video;
+        video.play().catch(function(e) {
+            console.warn("Video autoplay with audio blocked. Registering interaction listeners to start audio.");
+            var startVideo = function() {
+                video.play().catch(function(err) {});
+                document.removeEventListener('click', startVideo);
+                document.removeEventListener('touchend', startVideo);
+                document.removeEventListener('keydown', startVideo);
+            };
+            document.addEventListener('click', startVideo);
+            document.addEventListener('touchend', startVideo);
+            document.addEventListener('keydown', startVideo);
+        });
+    }
+});
+
+EM_JS(void, js_video_pause, (uintptr_t playerId), {
+    if (window.videoPlayers && window.videoPlayers[playerId]) {
+        window.videoPlayers[playerId].video.pause();
+    }
+});
+
+EM_JS(void, js_video_get_info, (uintptr_t playerId, double* outInfo), {
+    if (!window.videoPlayers || !window.videoPlayers[playerId]) return;
+    var video = window.videoPlayers[playerId].video;
+    setValue(outInfo, video.videoWidth, 'double');
+    setValue(outInfo + 8, video.videoHeight, 'double');
+    setValue(outInfo + 16, video.duration || 0, 'double');
+    setValue(outInfo + 24, video.currentTime, 'double');
+    setValue(outInfo + 32, video.ended ? 1 : 0, 'double');
+});
+
+EM_JS(int, js_video_grab_frame, (uintptr_t playerId, uint8_t* outPixels), {
+    if (!window.videoPlayers || !window.videoPlayers[playerId]) return 0;
+    var player = window.videoPlayers[playerId];
+    var video = player.video;
+    if (video.readyState < 2) return 0;
+    if (video.currentTime === player.lastTime) return 0;
+    
+    var w = video.videoWidth;
+    var h = video.videoHeight;
+    if (w <= 0 || h <= 0) return 0;
+    
+    if (player.canvas.width !== w || player.canvas.height !== h) {
+        player.canvas.width = w;
+        player.canvas.height = h;
+    }
+    
+    player.ctx.drawImage(video, 0, 0, w, h);
+    var imgData = player.ctx.drawImage ? player.ctx.getImageData(0, 0, w, h) : null;
+    if (imgData) {
+        HEAPU8.set(imgData.data, outPixels);
+    }
+    player.lastTime = video.currentTime;
+    return 1;
+});
+#endif
+
 // ─── FFmpegDecodeContext ───────────────────────────────────────────────────────────────────────────────
 
 struct VideoPlayer::FFmpegDecodeContext {
@@ -57,6 +162,19 @@ VideoPlayer::~VideoPlayer() {
 }
 
 bool VideoPlayer::open(const std::string& path) {
+#ifdef __EMSCRIPTEN__
+    close();
+    std::string resolvedPath = path;
+    if (path.find("://") == std::string::npos) {
+        resolvedPath = FileSystem::Get().ResolvePath(path);
+    }
+    js_video_open(reinterpret_cast<uintptr_t>(this), resolvedPath.c_str());
+    m_currentTime     = 0.0;
+    m_hasCurrentFrame = false;
+    m_finished        = false;
+    m_open            = true;
+    return true;
+#else
 #ifndef AE_HAS_FFMPEG
     fmt::print(stderr, "[VideoPlayer] Built without FFmpeg support\n");
     return false;
@@ -83,12 +201,25 @@ bool VideoPlayer::open(const std::string& path) {
     m_decodeThread = std::thread(&VideoPlayer::decodeThreadFunc, this);
     return true;
 #endif
+#endif
 }
 
 void VideoPlayer::close() {
     if (!m_open) {
         return;
     }
+
+#ifdef __EMSCRIPTEN__
+    js_video_close(reinterpret_cast<uintptr_t>(this));
+    m_open            = false;
+    m_playing         = false;
+    m_finished        = false;
+    m_currentTime     = 0.0;
+    m_duration        = 0.0;
+    m_hasCurrentFrame = false;
+    m_frameQueue.clear();
+    return;
+#endif
 
     m_stop = true;
     m_cv.notify_all();
@@ -124,6 +255,10 @@ void VideoPlayer::close() {
 
 void VideoPlayer::play() {
     m_playing = true;
+#ifdef __EMSCRIPTEN__
+    js_video_play(reinterpret_cast<uintptr_t>(this));
+    return;
+#endif
 #ifdef AE_HAS_FFMPEG
     if (m_ffmpeg && m_ffmpeg->audioReady) {
         PlayAudioStream(m_ffmpeg->audioStream);
@@ -133,6 +268,10 @@ void VideoPlayer::play() {
 
 void VideoPlayer::pause() {
     m_playing = false;
+#ifdef __EMSCRIPTEN__
+    js_video_pause(reinterpret_cast<uintptr_t>(this));
+    return;
+#endif
 #ifdef AE_HAS_FFMPEG
     if (m_ffmpeg && m_ffmpeg->audioReady) {
         PauseAudioStream(m_ffmpeg->audioStream);
@@ -147,6 +286,39 @@ bool VideoPlayer::update(double deltaTime) {
         return false;
     }
 
+#ifdef __EMSCRIPTEN__
+    double info[5] = {0};
+    js_video_get_info(reinterpret_cast<uintptr_t>(this), info);
+    
+    uint32_t w = static_cast<uint32_t>(info[0]);
+    uint32_t h = static_cast<uint32_t>(info[1]);
+    m_duration = info[2];
+    m_currentTime = info[3];
+    m_finished = (info[4] > 0.5);
+    
+    if (m_finished) {
+        m_playing = false;
+        return false;
+    }
+    
+    if (w <= 0 || h <= 0) {
+        return false;
+    }
+    
+    if (m_currentFrame.width != w || m_currentFrame.height != h) {
+        m_currentFrame.pixels.resize(w * h * 4);
+        m_currentFrame.width = w;
+        m_currentFrame.height = h;
+    }
+    
+    int updated = js_video_grab_frame(reinterpret_cast<uintptr_t>(this), m_currentFrame.pixels.data());
+    if (updated) {
+        m_hasCurrentFrame = true;
+        m_currentFrame.pts = m_currentTime;
+        return true;
+    }
+    return false;
+#else
     m_currentTime += deltaTime;
 
     bool frameChanged = false;
@@ -195,6 +367,7 @@ bool VideoPlayer::update(double deltaTime) {
     }
 
     return frameChanged;
+#endif
 }
 
 const VideoPlayer::Frame* VideoPlayer::getCurrentFrame() const {
