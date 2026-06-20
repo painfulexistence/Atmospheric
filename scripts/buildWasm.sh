@@ -97,13 +97,7 @@ cmake --build "$BUILD_DIR" --parallel
 
 echo -e ""
 echo -e "${GREEN}✨ WebAssembly / Emscripten 建置成功！(${BUILD_TYPE})${NC}"
-echo -e "網頁版產物已輸出至："
-echo -e "  - AtmosLua:      ${YELLOW}$BUILD_DIR/AtmosLua/${NC}"
-echo -e "  - HelloWorld:    ${YELLOW}$BUILD_DIR/HelloWorld/${NC}"
-echo -e "  - Maze 迷宮:     ${YELLOW}$BUILD_DIR/Maze/${NC}"
-echo -e "  - Physics2D 物理:${YELLOW}$BUILD_DIR/Physics2DDemo/${NC}"
-echo -e "  - CSBDemo 角色:  ${YELLOW}$BUILD_DIR/CSBDemo/${NC}"
-echo -e "  - VoxelWorld:    ${YELLOW}$BUILD_DIR/VoxelWorld/${NC}"
+echo -e "網頁版產物已輸出至：${YELLOW}$BUILD_DIR/${NC}"
 echo -e ""
 
 # 6. 提供啟動本地伺服器的選項以便立即測試
@@ -116,23 +110,51 @@ if [ "$RUN_SERVER" = "y" ] || [ "$RUN_SERVER" = "Y" ]; then
     echo -e ""
     echo -e "${GREEN}正在以建置輸出目錄為根目錄啟動 HTTP 伺服器...${NC}"
     echo -e "您可以透過以下連結存取各個網頁版目標："
-    echo -e "  👉 AtmosLua (Lua 前端): ${BLUE}http://localhost:$PORT/AtmosLua/AtmosLua.html${NC}"
-    echo -e "  👉 HelloWorld 範例:    ${BLUE}http://localhost:$PORT/HelloWorld/HelloWorld.html${NC}"
-    echo -e "  👉 Maze 迷宮大作:      ${BLUE}http://localhost:$PORT/Maze/Maze.html${NC}"
-    echo -e "  👉 Physics2D 物理範例:  ${BLUE}http://localhost:$PORT/Physics2DDemo/Physics2DDemo.html${NC}"
-    echo -e "  👉 CSBDemo 角色範例:    ${BLUE}http://localhost:$PORT/CSBDemo/CSBDemo.html${NC}"
-    echo -e "  👉 VoxelWorld 體素範例:  ${BLUE}http://localhost:$PORT/VoxelWorld/VoxelWorld.html${NC}"
+    for target_dir in "$BUILD_DIR"/*/; do
+        # 移除結尾的斜線
+        target_dir=${target_dir%/}
+        target_name=$(basename "$target_dir")
+        
+        # 排除系統/輔助目錄
+        if [ "$target_name" = "CMakeFiles" ] || [ "$target_name" = "vcpkg_installed" ] || [ "$target_name" = "lib" ] || [ "$target_name" = "bin" ]; then
+            continue
+        fi
+        
+        # 尋找該目錄下的首個 .html 檔案
+        html_file=$(find "$target_dir" -maxdepth 1 -name "*.html" | head -n 1)
+        if [ -n "$html_file" ]; then
+            html_name=$(basename "$html_file")
+            if [ "$html_name" = "index.html" ]; then
+                echo -e "  👉 ${GREEN}$target_name${NC}: ${BLUE}http://localhost:$PORT/$target_name/${NC}"
+            else
+                echo -e "  👉 ${GREEN}$target_name${NC}: ${BLUE}http://localhost:$PORT/$target_name/$html_name${NC}"
+            fi
+        fi
+    done
     echo -e ""
     echo -e "按下 ${RED}Ctrl+C${NC} 可以停止伺服器。"
     echo -e ""
 
-    # 如果是 Mac，自動幫忙在瀏覽器中開啟 Maze 迷宮遊戲
+    # 如果是 Mac，自動在瀏覽器中開啟 HelloWorld 範例
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        sleep 1 && open "http://localhost:$PORT/Maze/Maze.html" &
+        hw_dir="$BUILD_DIR/HelloWorld"
+        if [ -d "$hw_dir" ]; then
+            html_file=$(find "$hw_dir" -maxdepth 1 -name "*.html" | head -n 1)
+            if [ -n "$html_file" ]; then
+                html_name=$(basename "$html_file")
+                if [ "$html_name" = "index.html" ]; then
+                    sleep 1 && open "http://localhost:$PORT/HelloWorld/" &
+                else
+                    sleep 1 && open "http://localhost:$PORT/HelloWorld/$html_name" &
+                fi
+            else
+                sleep 1 && open "http://localhost:$PORT/" &
+            fi
+        else
+            sleep 1 && open "http://localhost:$PORT/" &
+        fi
     fi
 
     # 使用 emrun 啟動伺服器（自動設定 COOP/COEP headers，支援 SharedArrayBuffer）
     emrun --no_browser --port $PORT "$BUILD_DIR"
-    # 備案：若 emrun 不可用，改用以下指令（需要 Node.js）：
-    # npx serve "$BUILD_DIR" --listen $PORT --config "$SCRIPT_DIR/serve.json"
 fi

@@ -55,6 +55,12 @@ for target_dir in "$RELEASE_DIR"/*/; do
         
         # 複製整個資料夾到 www/
         cp -R "$target_dir" "$DEPLOY_DIR/$target_name"
+        
+        # 將 <TargetName>.html 改名為 index.html，讓發佈版網頁路由更乾淨
+        if [ -f "$DEPLOY_DIR/$target_name/$target_name.html" ]; then
+            mv "$DEPLOY_DIR/$target_name/$target_name.html" "$DEPLOY_DIR/$target_name/index.html"
+        fi
+        
         COPIED_COUNT=$((COPIED_COUNT + 1))
     fi
 done
