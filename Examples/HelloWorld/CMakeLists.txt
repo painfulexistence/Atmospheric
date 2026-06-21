@@ -9,6 +9,9 @@ find_package(Bullet CONFIG REQUIRED)
 if(ANDROID)
     set(GAME_TARGET main)
     add_library(${GAME_TARGET} SHARED main.cpp)
+elseif(IOS)
+    set(GAME_TARGET main)
+    add_executable(${GAME_TARGET} MACOSX_BUNDLE main.cpp)
 else()
     set(GAME_TARGET ${GAME_NAME})
     add_executable(${GAME_TARGET} main.cpp)
@@ -89,20 +92,32 @@ if(EMSCRIPTEN)
     endif()
 else()
     # ── Native build ─────────────────────────────────────────────────────────
-    find_package(spdlog CONFIG REQUIRED)
-    find_package(glad CONFIG REQUIRED)
-
-    target_link_libraries(${GAME_TARGET} PRIVATE
-        glad::glad
-        spdlog::spdlog
-        raudio
-    )
+    if(NOT IOS)
+        find_package(spdlog CONFIG REQUIRED)
+        find_package(glad CONFIG REQUIRED)
+        target_link_libraries(${GAME_TARGET} PRIVATE glad::glad spdlog::spdlog raudio)
+    endif()
 
     target_link_libraries(${GAME_TARGET} PRIVATE SDL3::SDL3)
 endif()
 
 # ── Asset sync ───────────────────────────────────────────────────────────────
-if(NOT ANDROID AND NOT IOS)
+if(IOS)
+    add_custom_command(TARGET ${GAME_TARGET} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${AE_ROOT_DIR}/Engine/default_assets
+            $<TARGET_BUNDLE_CONTENT_DIR:${GAME_TARGET}>/assets
+        COMMENT "Copying engine default assets into iOS bundle"
+    )
+    if(EXISTS ${GAME_ASSETS_DIR})
+        add_custom_command(TARGET ${GAME_TARGET} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${GAME_ASSETS_DIR}
+                $<TARGET_BUNDLE_CONTENT_DIR:${GAME_TARGET}>/assets
+            COMMENT "Copying game assets into iOS bundle"
+        )
+    endif()
+elseif(NOT ANDROID)
     add_custom_command(
         TARGET ${GAME_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -146,3 +161,4 @@ if(ANDROID)
         message(WARNING "Android CMake: SDL3 Java sources not found at '${SDL3_JAVA_SRC_DIR}'!")
     endif()
 endif()
+

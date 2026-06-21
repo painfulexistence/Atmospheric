@@ -1,4 +1,7 @@
 #include "application.hpp"
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 #include "animator_2d.hpp"
 #include "asset_manager.hpp"
 #include "camera_component.hpp"
@@ -180,7 +183,11 @@ void Application::Run() {
         _clock++;
     });
 
+#if !(defined(__APPLE__) && TARGET_OS_IOS)
+    // On iOS, MainLoop returns immediately after handing the run-loop to
+    // UIApplicationMain. The OS reclaims process resources at app exit.
     RmlUiManager::Get()->Shutdown();
+#endif
 }
 
 void Application::PushLayer(Layer* layer) {
