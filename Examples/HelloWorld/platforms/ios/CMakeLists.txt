@@ -41,11 +41,25 @@ set_target_properties(main PROPERTIES
     XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
     XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "16.0"
     XCODE_ATTRIBUTE_GCC_PREPROCESSOR_DEFINITIONS "IMGUI_IMPL_OPENGL_ES3=1"
-    XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
-    XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
-    XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.atmospheric.helloworld"
 )
+
+# Code signing: simulator never needs it; device requires a team + automatic profile.
+# Apply to BOTH Debug and Release configurations (Xcode treats signing as per-config,
+# so Xcode-GUI changes only affect one config — driving it from CMake here keeps both in sync).
+if(CMAKE_OSX_SYSROOT STREQUAL "iphonesimulator")
+    set_target_properties(main PROPERTIES
+        XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED  "NO"
+        XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
+        XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY    ""
+    )
+else()
+    # Device build: pass -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=<10-char TeamID> at configure time.
+    set_target_properties(main PROPERTIES
+        XCODE_ATTRIBUTE_CODE_SIGN_STYLE    "Automatic"
+        XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "Apple Development"
+    )
+endif()
 
 target_sources(main PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/Sources/ios_init.mm"
