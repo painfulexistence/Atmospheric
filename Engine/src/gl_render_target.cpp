@@ -78,7 +78,7 @@ void GLRenderTarget::Create() {
 
     glGenTextures(1, &_colorTexture);
 
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
     if (_multisample) {
         glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, _colorTexture);
         GLenum internalFormat = _hdr ? GL_RGBA16F : GL_RGBA8;
@@ -153,7 +153,9 @@ void GLRenderTarget::Create() {
 
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (status != GL_FRAMEBUFFER_COMPLETE) {
-        Console::Get()->Error("GLRenderTarget: Framebuffer incomplete!");
+        Console::Get()->Error(fmt::format(
+            "GLRenderTarget: Framebuffer incomplete! status=0x{:x} ms={} hdr={} depth={} stencil={} w={} h={}",
+            status, _multisample, _hdr, _withDepth, _withStencil, _width, _height));
         Destroy();
     }
 

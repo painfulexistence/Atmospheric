@@ -1,7 +1,7 @@
 #include "shader.hpp"
 #include "file.hpp"
 
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
 #include <regex>
 
 static std::string PreprocessShaderForWebGL(std::string src, ShaderType type) {
@@ -39,7 +39,7 @@ static std::string PreprocessShaderForWebGL(std::string src, ShaderType type) {
 
 Shader::Shader(const std::string& path, ShaderType type) {
     std::string shaderSrc = File(path).GetContent();
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     shaderSrc = PreprocessShaderForWebGL(shaderSrc, type);
 #endif
     const char* src = shaderSrc.c_str();
@@ -65,7 +65,7 @@ Shader::Shader(const std::string& path, ShaderType type) {
 ShaderProgram::ShaderProgram(const ShaderProgramProps& props) : _program(glCreateProgram()) {
     glAttachShader(_program, Shader(props.vert, ShaderType::VERTEX).shader);
     glAttachShader(_program, Shader(props.frag, ShaderType::FRAGMENT).shader);
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
     if (props.tesc.has_value()) {
         glAttachShader(_program, Shader(props.tesc.value(), ShaderType::TESS_CONTROL).shader);
     }
@@ -106,7 +106,7 @@ ShaderProgram::ShaderProgram(
   : _program(glCreateProgram()) {
     glAttachShader(_program, Shader(vert, ShaderType::VERTEX).shader);
     glAttachShader(_program, Shader(frag, ShaderType::FRAGMENT).shader);
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
     if (tesc.has_value() && tese.has_value()) {
         glAttachShader(_program, Shader(tesc.value(), ShaderType::TESS_CONTROL).shader);
         glAttachShader(_program, Shader(tese.value(), ShaderType::TESS_EVALUATION).shader);
