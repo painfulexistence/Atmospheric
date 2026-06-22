@@ -199,27 +199,34 @@
         }
       });
     
-            // Clean up Web Workers, WebGL contexts, and Audio contexts on page unload to prevent memory leaks in iframes
-      function cleanupWorkers() {
-        console.log("Cleaning up Emscripten Web Workers, WebGL, and Audio contexts...");
-        
-        // 1. Terminate all Web Workers spawned by Emscripten (via exported post-js helper)
-        try {
-          if (typeof Module !== 'undefined' && Module) {
-            if (typeof Module.terminateAllThreads === 'function') {
-              Module.terminateAllThreads();
-              console.log("Emscripten threads terminated successfully.");
-            } else {
-              console.log("Module.terminateAllThreads is not available.");
-            }
-          }
-        } catch (e) {
-          console.error("Error during thread cleanup:", e);
+      // Clean up Web Workers, WebGL contexts, and Audio contexts on page unload
+      // to prevent memory leaks in iframes and avoid iOS WebContent jetsam on
+      // reload. See docs/resource-cleaning-up.md for the rationale behind
+      // ordering and the Path A / Path B split.
+      var cleanupRan = false;
+      function cleanupWorkers(e) {
+        // ── Path A: BFCache freeze ──────────────────────────────────────
+        // Page being frozen, not torn down. Destructive cleanup here would
+        // wreck the runtime if user navigates back. Only safe action is to
+        // disqualify BFCache so the next real reload uses Path B.
+        if (e && e.persisted) {
+          try {
+            var req = indexedDB.open('__bfcache_evict__');
+            req.onsuccess = function(ev) { ev.target.result.close(); };
+          } catch (_) {}
+          return;
         }
 
-        // 2. Explicitly lose the WebGL context to release GPU resources immediately
+        // ── Path B: real unload ────────────────────────────────────────
+        // pagehide + unload can both fire on desktop Safari; idempotency
+        // guard makes the second call a no-op.
+        if (cleanupRan) return;
+        cleanupRan = true;
+        console.log("Cleaning up Emscripten Web Workers, WebGL, and Audio contexts...");
+
+        // B2. Explicitly lose the WebGL context to release GPU resources immediately.
+        var canvas = document.getElementById('canvas');
         try {
-          var canvas = document.getElementById('canvas');
           if (canvas) {
             var gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
             if (gl) {
@@ -234,7 +241,18 @@
           console.error("Error losing WebGL context:", e);
         }
 
-        // 3. Close all Web Audio API contexts to release audio device locks and threads
+        // B2a. Detach canvas backing store. loseContext invalidates GL state
+        //      but does NOT free the canvas framebuffer (multi-MB on retina).
+        try {
+          if (canvas) {
+            canvas.width = 1; canvas.height = 1;
+            if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+          }
+        } catch (e) { console.error(e); }
+
+        // B3. Close all Web Audio API contexts. AudioContext.close() returns
+        //     a Promise — DO NOT await. The synchronous detach happens before
+        //     close() returns; awaiting freezes pagehide.
         try {
           if (window.AudioManager && typeof window.AudioManager.shutdown === 'function') {
             try {
@@ -257,7 +275,7 @@
           }
           if (typeof Module !== 'undefined' && Module) {
             for (var prop in Module) {
-              if (Module[prop] && typeof Module[prop].close === 'function' && 
+              if (Module[prop] && typeof Module[prop].close === 'function' &&
                   (Module[prop].constructor && (Module[prop].constructor.name === 'AudioContext' || Module[prop].constructor.name === 'webkitAudioContext'))) {
                 Module[prop].close();
               }
@@ -266,11 +284,41 @@
         } catch (e) {
           console.error("Error closing AudioContext:", e);
         }
-        
-        // 4. Nullify Module to assist GC
-        if (typeof Module !== 'undefined') {
-          Module = null;
+
+        // B4. Null HEAP* views + WASM module handles. Each view is an independent
+        //     strong reference to the linear-memory ArrayBuffer; Safari needs
+        //     all of them dropped before the heap can GC.
+        try {
+          if (typeof Module !== 'undefined') {
+            Module.HEAPU8  = null; Module.HEAP8   = null;
+            Module.HEAPU16 = null; Module.HEAP16  = null;
+            Module.HEAPU32 = null; Module.HEAP32  = null;
+            Module.HEAPF32 = null; Module.HEAPF64 = null;
+            if (Module.wasmMemory)      Module.wasmMemory      = null;
+            if (Module.asm)             Module.asm             = null;
+            if (Module.wasmExports)     Module.wasmExports     = null;  // Emscripten 3.x renamed asm → wasmExports
+            if (Module.preloadedImages) Module.preloadedImages = null;
+            if (Module.preloadedAudios) Module.preloadedAudios = null;
+            if (Module.preloadedWasm)   Module.preloadedWasm   = null;
+          }
+        } catch (e) { console.error(e); }
+
+        // B5. Terminate Emscripten pthread Workers. POINT OF NO RETURN —
+        //     any cross-thread WASM call after this hangs forever. Must come
+        //     last among runtime-touching steps. Engine's post.js wrap of
+        //     terminateAllThreads already includes a manual worker.terminate
+        //     sweep, so no extra sweep needed here.
+        try {
+          if (typeof Module !== 'undefined' && typeof Module.terminateAllThreads === 'function') {
+            Module.terminateAllThreads();
+            console.log("Emscripten threads terminated successfully.");
+          }
+        } catch (e) {
+          console.error("Error during thread cleanup:", e);
         }
+
+        // B6. Null Module last — every previous step reads Module.
+        if (typeof Module !== 'undefined') Module = null;
       }
       window.addEventListener('pagehide', cleanupWorkers);
       window.addEventListener('unload', cleanupWorkers);
