@@ -2,9 +2,13 @@
 #include "application.hpp"
 #include "component.hpp"
 #include "game_object.hpp"
+#include "graphics_server.hpp"
 #include "imgui.h"
+#include "video_recorder.hpp"
 #include "window.hpp"
 #include "gfx_factory.hpp"
+#include <ctime>
+#include <filesystem>
 
 EditorLayer::EditorLayer(Application* app, bool showImGui)
     : Layer("EditorLayer"), _app(app), _showImGui(showImGui) {
@@ -18,10 +22,32 @@ void EditorLayer::OnUpdate(float dt) {
         _showImGui = !_showImGui;
 }
 
+void EditorLayer::ToggleRecording() {
+    auto* recorder = _app->GetRecorder();
+    if (recorder->isRecording()) {
+        recorder->stopRecording();
+    } else {
+        std::error_code ec;
+        std::filesystem::create_directories("output", ec);
+        std::time_t t = std::time(nullptr);
+        char name[80];
+        std::strftime(name, sizeof(name), "output/recording_%Y%m%d_%H%M%S.mp4",
+                      std::localtime(&t));
+        VideoRecorder::Config cfg;
+        cfg.outputPath = name;
+        recorder->startRecording(_app->GetGraphicsServer()->renderer, cfg);
+    }
+}
+
 void EditorLayer::OnRender(float dt) {
 #if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
 #endif
+    // Handled on the render thread (same as VideoRecorder::captureFrame) and
+    // before the visibility check, so F2 works even when the overlay is hidden.
+    if (ImGui::IsKeyPressed(ImGuiKey_F2))
+        ToggleRecording();
+
     if (!_showImGui) return;
 
     if (ImGui::BeginMainMenuBar()) {
@@ -142,6 +168,9 @@ void EditorLayer::DrawEngineView() {
         _app->GetPhysicsServer()->DrawImGui(dt);
 #ifndef __EMSCRIPTEN__
         _app->GetAudioManager()->DrawImGui(dt);
+        if (ImGui::CollapsingHeader("Recording (F2)")) {
+            _app->GetRecorder()->drawImGui(*_app->GetGraphicsServer()->renderer);
+        }
 #endif
     }
     ImGui::End();

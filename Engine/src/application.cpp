@@ -23,7 +23,15 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include "transform_component.hpp"
+#include "video_recorder.hpp"
 #include "window.hpp"
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <filesystem>
 #ifndef NDEBUG
 #include "editor_layer.hpp"
 #endif
@@ -36,6 +44,114 @@
 #include <emscripten.h>
 #include <emscripten/heap.h>
 #endif
+
+// ─── Minimal PNG writer ─────────────────────────────────────────────────────
+// Self-contained so screenshots work in every build config (no FFmpeg / no
+// extra dependency). Pixels are emitted with filter-type 0 and wrapped in
+// uncompressed (stored) zlib blocks — larger files than a real deflate, but
+// trivially correct and fast, which is all a debug screenshot needs.
+namespace {
+
+uint32_t pngCrc32(const uint8_t* buf, size_t len) {
+    static uint32_t table[256];
+    static bool init = false;
+    if (!init) {
+        for (uint32_t n = 0; n < 256; ++n) {
+            uint32_t c = n;
+            for (int k = 0; k < 8; ++k)
+                c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
+            table[n] = c;
+        }
+        init = true;
+    }
+    uint32_t crc = 0xFFFFFFFFu;
+    for (size_t i = 0; i < len; ++i)
+        crc = table[(crc ^ buf[i]) & 0xFF] ^ (crc >> 8);
+    return crc ^ 0xFFFFFFFFu;
+}
+
+void pngPutU32(std::vector<uint8_t>& v, uint32_t x) {
+    v.push_back(static_cast<uint8_t>((x >> 24) & 0xFF));
+    v.push_back(static_cast<uint8_t>((x >> 16) & 0xFF));
+    v.push_back(static_cast<uint8_t>((x >> 8) & 0xFF));
+    v.push_back(static_cast<uint8_t>(x & 0xFF));
+}
+
+void pngWriteChunk(std::vector<uint8_t>& out, const char (&type)[5],
+                   const std::vector<uint8_t>& data) {
+    pngPutU32(out, static_cast<uint32_t>(data.size()));
+    size_t crcStart = out.size();
+    out.insert(out.end(), type, type + 4);
+    out.insert(out.end(), data.begin(), data.end());
+    pngPutU32(out, pngCrc32(out.data() + crcStart, out.size() - crcStart));
+}
+
+bool pngWrite(const std::string& path, const uint8_t* pixels, uint32_t w,
+              uint32_t h, uint32_t channels) {
+    if (!pixels || w == 0 || h == 0 || (channels != 3 && channels != 4))
+        return false;
+
+    // Scanlines, each prefixed by filter byte 0 (None).
+    std::vector<uint8_t> raw;
+    raw.reserve((static_cast<size_t>(w) * channels + 1) * h);
+    for (uint32_t y = 0; y < h; ++y) {
+        raw.push_back(0);
+        const uint8_t* row = pixels + static_cast<size_t>(y) * w * channels;
+        raw.insert(raw.end(), row, row + static_cast<size_t>(w) * channels);
+    }
+
+    // zlib stream: header + stored blocks (<=65535 bytes each) + Adler-32.
+    std::vector<uint8_t> zlib;
+    zlib.push_back(0x78);
+    zlib.push_back(0x01);
+    for (size_t pos = 0; pos < raw.size();) {
+        size_t block = std::min<size_t>(65535, raw.size() - pos);
+        bool last = (pos + block >= raw.size());
+        zlib.push_back(last ? 1 : 0);
+        zlib.push_back(static_cast<uint8_t>(block & 0xFF));
+        zlib.push_back(static_cast<uint8_t>((block >> 8) & 0xFF));
+        uint16_t nlen = static_cast<uint16_t>(~block);
+        zlib.push_back(static_cast<uint8_t>(nlen & 0xFF));
+        zlib.push_back(static_cast<uint8_t>((nlen >> 8) & 0xFF));
+        zlib.insert(zlib.end(), raw.begin() + pos, raw.begin() + pos + block);
+        pos += block;
+    }
+    uint32_t a = 1, b = 0;
+    for (uint8_t byte : raw) {
+        a = (a + byte) % 65521;
+        b = (b + a) % 65521;
+    }
+    pngPutU32(zlib, (b << 16) | a);
+
+    std::vector<uint8_t> out;
+    const uint8_t sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    out.insert(out.end(), sig, sig + 8);
+
+    std::vector<uint8_t> ihdr;
+    pngPutU32(ihdr, w);
+    pngPutU32(ihdr, h);
+    ihdr.push_back(8);                                    // bit depth
+    ihdr.push_back(static_cast<uint8_t>(channels == 4 ? 6 : 2));// 6=RGBA, 2=RGB
+    ihdr.push_back(0);                                    // compression
+    ihdr.push_back(0);                                    // filter
+    ihdr.push_back(0);                                    // interlace
+
+    const char ihdrType[5] = "IHDR";
+    const char idatType[5] = "IDAT";
+    const char iendType[5] = "IEND";
+    pngWriteChunk(out, ihdrType, ihdr);
+    pngWriteChunk(out, idatType, zlib);
+    pngWriteChunk(out, iendType, {});
+
+    std::FILE* f = std::fopen(path.c_str(), "wb");
+    if (!f)
+        return false;
+    std::fwrite(out.data(), 1, out.size(), f);
+    std::fclose(f);
+    return true;
+}
+
+}// namespace
 
 Application* Application::s_instance = nullptr;
 Application* Application::Get() { return s_instance; }
@@ -76,7 +192,48 @@ Application::Application(AppConfig config) : _config(config) {
     PushLayer(editorLayer);
 #endif
 
+    _recorder = std::make_unique<VideoRecorder>();
+    ParseAutoCaptureEnv();
+
     RegisterComponents();
+}
+
+void Application::ParseAutoCaptureEnv() {
+    auto readFloat = [](const char* key, float& out) -> bool {
+        if (const char* v = std::getenv(key)) {
+            out = std::strtof(v, nullptr);
+            return true;
+        }
+        return false;
+    };
+
+    if (const char* m = std::getenv("AE_CAPTURE_MODE")) {
+        _autoCap.mode = (std::strcmp(m, "screenshot") == 0)
+                          ? AutoCaptureConfig::Mode::Screenshot
+                          : AutoCaptureConfig::Mode::Video;
+    }
+
+    float duration = 0.0f;
+    if (readFloat("AE_CAPTURE_DURATION", duration)) {
+        _autoCap.duration = duration;
+        _autoCap.enabled  = true;
+    }
+    readFloat("AE_CAPTURE_WARMUP", _autoCap.warmup);
+
+    if (const char* o = std::getenv("AE_CAPTURE_OUTPUT")) {
+        _autoCap.outputPath = o;
+    } else {
+        _autoCap.outputPath = (_autoCap.mode == AutoCaptureConfig::Mode::Screenshot)
+                                ? "output/capture.png"
+                                : "output/capture.mp4";
+    }
+
+    if (_autoCap.enabled) {
+        _capState = CaptureState::Warmup;
+        ENGINE_LOG("Auto-capture enabled: mode={}, warmup={}s, duration={}s, output={}",
+                   _autoCap.mode == AutoCaptureConfig::Mode::Screenshot ? "screenshot" : "video",
+                   _autoCap.warmup, _autoCap.duration, _autoCap.outputPath);
+    }
 }
 
 void Application::RegisterComponents() {
@@ -757,9 +914,108 @@ void Application::Render(const FrameData& props) {
         layer->OnRender(dt);
     }
 
+    // Runs on the render (GL) thread, after the frame is drawn — the only safe
+    // place to read back pixels for recording / screenshots.
+    UpdateAutoCapture();
+
+    // Feed the encoder one frame per render tick whenever recording is active,
+    // whether it was started by the auto-capture sequence or the manual F2 key.
+    if (_recorder && _recorder->isRecording())
+        _recorder->captureFrame();
+
 #if SHOW_RENDER_AND_DRAW_COST
     ENGINE_LOG(fmt::format("Render & draw cost {} ms", (GetWindowTime() - time) * 1000));
 #endif
+}
+
+void Application::UpdateAutoCapture() {
+    if (_capState == CaptureState::Idle || _capState == CaptureState::Done)
+        return;
+
+    float now = GetWindowTime();
+    if (_capPhaseStart < 0.0f)
+        _capPhaseStart = now;// lazy init: anchor to the first rendered frame
+    float elapsed = now - _capPhaseStart;
+
+    Renderer* renderer = graphics.renderer;
+
+    auto ensureParentDir = [](const std::string& path) {
+        std::error_code ec;
+        auto parent = std::filesystem::path(path).parent_path();
+        if (!parent.empty())
+            std::filesystem::create_directories(parent, ec);
+    };
+
+    // Builds "name_000.png" style paths for a screenshot burst, or the bare
+    // output path when only a single shot is requested (duration <= 0).
+    auto screenshotPath = [this](int index) -> std::string {
+        if (_autoCap.duration <= 0.0f)
+            return _autoCap.outputPath;
+        std::filesystem::path p(_autoCap.outputPath);
+        std::string ext = p.extension().string();
+        if (ext.empty())
+            ext = ".png";
+        char suffix[16];
+        std::snprintf(suffix, sizeof(suffix), "_%03d", index);
+        return (p.parent_path() / (p.stem().string() + suffix + ext)).string();
+    };
+
+    switch (_capState) {
+    case CaptureState::Warmup:
+        if (elapsed >= _autoCap.warmup) {
+            _capPhaseStart = now;
+            ensureParentDir(_autoCap.outputPath);
+            if (_autoCap.mode == AutoCaptureConfig::Mode::Video) {
+                VideoRecorder::Config cfg;
+                cfg.outputPath = _autoCap.outputPath;
+                _recorder->startRecording(renderer, cfg);
+            }
+            _screenshotIndex = 0;
+            _nextShotTime    = 0.0f;
+            _capState        = CaptureState::Capturing;
+        }
+        break;
+
+    case CaptureState::Capturing: {
+        // Video frames are pumped by Render() via captureFrame(); here we only
+        // drive the screenshot cadence and the overall capture-window timing.
+        if (_autoCap.mode == AutoCaptureConfig::Mode::Screenshot &&
+            elapsed >= _nextShotTime) {
+            SaveScreenshot(screenshotPath(_screenshotIndex));
+            ++_screenshotIndex;
+            _nextShotTime += 1.0f;// one shot per second across the window
+        }
+
+        bool singleShotDone = _autoCap.mode == AutoCaptureConfig::Mode::Screenshot &&
+                              _autoCap.duration <= 0.0f && _screenshotIndex >= 1;
+        if (singleShotDone || elapsed >= _autoCap.duration)
+            _capState = CaptureState::Finishing;
+        break;
+    }
+
+    case CaptureState::Finishing:
+        if (_autoCap.mode == AutoCaptureConfig::Mode::Video)
+            _recorder->stopRecording();// joins encoder thread and flushes to disk
+        _capState = CaptureState::Done;
+        Quit();
+        break;
+
+    default:
+        break;
+    }
+}
+
+void Application::SaveScreenshot(const std::string& path) {
+    if (!graphics.renderer)
+        return;
+    graphics.renderer->readPixelsAsync([&path](const GpuImageData& img) {
+        if (img.data.empty())
+            return;
+        if (pngWrite(path, img.data.data(), img.width, img.height, img.channelCount))
+            ENGINE_LOG("Screenshot saved: {} ({}x{})", path, img.width, img.height);
+        else
+            spdlog::error("[Screenshot] Failed to write {}", path);
+    });
 }
 
 void Application::SyncTransformWithPhysics() {
