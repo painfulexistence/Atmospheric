@@ -203,23 +203,15 @@
       function cleanupWorkers() {
         console.log("Cleaning up Emscripten Web Workers, WebGL, and Audio contexts...");
         
-        // 1. Terminate all Web Workers spawned by Emscripten
+        // 1. Terminate all Web Workers spawned by Emscripten (via exported post-js helper)
         try {
-          var pthreads = typeof PThread !== 'undefined' ? PThread : (typeof Module !== 'undefined' && Module.PThread ? Module.PThread : null);
-          if (pthreads) {
-            if (typeof pthreads.terminateAllThreads === 'function') {
-              pthreads.terminateAllThreads();
+          if (typeof Module !== 'undefined' && Module) {
+            if (typeof Module.terminateAllThreads === 'function') {
+              Module.terminateAllThreads();
+              console.log("Emscripten threads terminated successfully.");
+            } else {
+              console.log("Module.terminateAllThreads is not available.");
             }
-            ['runningWorkers', 'unusedWorkers', 'workers'].forEach(function(poolName) {
-              if (pthreads[poolName] && Array.isArray(pthreads[poolName])) {
-                pthreads[poolName].forEach(function(worker) {
-                  if (worker && typeof worker.terminate === 'function') {
-                    worker.terminate();
-                  }
-                });
-                pthreads[poolName] = [];
-              }
-            });
           }
         } catch (e) {
           console.error("Error during thread cleanup:", e);
@@ -244,6 +236,15 @@
 
         // 3. Close all Web Audio API contexts to release audio device locks and threads
         try {
+          if (window.AudioManager && typeof window.AudioManager.shutdown === 'function') {
+            try {
+              window.AudioManager.shutdown();
+              window.AudioManager = null;
+              console.log("window.AudioManager shut down successfully.");
+            } catch (err) {
+              console.error("Error shutting down window.AudioManager:", err);
+            }
+          }
           if (typeof AL !== 'undefined' && AL.contexts) {
             AL.contexts.forEach(function(ctx) {
               if (ctx && ctx.audioCtx && typeof ctx.audioCtx.close === 'function') {

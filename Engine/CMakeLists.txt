@@ -471,7 +471,8 @@ if(EMSCRIPTEN)
             -sINITIAL_MEMORY=134217728
             -sMAXIMUM_MEMORY=536870912
             "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
-            -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])
+            -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"]
+            "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     else()
         target_link_options(AtmosphericEngine INTERFACE
             -sWASM=1 -O3 -sUSE_GLFW=3
@@ -481,7 +482,8 @@ if(EMSCRIPTEN)
             -sINITIAL_MEMORY=134217728
             -sMAXIMUM_MEMORY=536870912
             "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
-            -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])
+            -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"]
+            "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     endif()
 else()
     target_compile_definitions(AtmosphericEngine PUBLIC BT_THREADSAFE=1)

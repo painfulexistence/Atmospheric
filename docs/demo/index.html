@@ -395,7 +395,7 @@
         <button id="modal-close" class="modal-close-btn">&times;</button>
       </div>
       <div class="modal-body">
-        <iframe id="modal-iframe" src="" allow="autoplay; keyboard; cross-origin-isolated;"></iframe>
+        <!-- Iframe will be dynamically inserted here -->
       </div>
     </div>
   </div>
@@ -403,7 +403,7 @@
   <script type="text/javascript">
     document.addEventListener('DOMContentLoaded', function() {
       var modal = document.getElementById('demo-modal');
-      var iframe = document.getElementById('modal-iframe');
+      var modalBody = modal.querySelector('.modal-body');
       var modalTitle = document.getElementById('modal-title');
       var closeBtn = document.getElementById('modal-close');
       var cards = document.querySelectorAll('.demo-card');
@@ -416,7 +416,14 @@
           var title = this.querySelector('.demo-title').textContent;
           
           modalTitle.textContent = title;
+          
+          // Create iframe dynamically
+          var iframe = document.createElement('iframe');
+          iframe.id = 'modal-iframe';
+          iframe.className = 'modal-iframe';
           iframe.src = href;
+          iframe.setAttribute('allow', 'autoplay; cross-origin-isolated;');
+          modalBody.appendChild(iframe);
           
           modal.style.display = 'flex';
           // Force reflow
@@ -431,7 +438,28 @@
         document.body.style.overflow = '';
         setTimeout(function() {
           modal.style.display = 'none';
-          iframe.src = ''; // Reset iframe src to stop audio/WebGL
+          
+          // Force cleanup of the Wasm engine inside the iframe
+          var iframe = document.getElementById('modal-iframe');
+          if (iframe) {
+            try {
+              if (iframe.contentWindow) {
+                var win = iframe.contentWindow;
+                if (typeof win.cleanupWorkers === 'function') {
+                  win.cleanupWorkers();
+                }
+              }
+            } catch(e) {
+              console.error("Parent frame failed to call iframe cleanup:", e);
+            }
+            
+            iframe.src = 'about:blank'; // Reset iframe src using about:blank to force release
+            try {
+              iframe.parentNode.removeChild(iframe);
+            } catch (e) {
+              console.error("Failed to remove iframe from DOM:", e);
+            }
+          }
         }, 300);
       }
 
