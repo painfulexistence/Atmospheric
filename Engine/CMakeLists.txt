@@ -418,8 +418,11 @@ if(AE_USE_BASIS_UNIVERSAL)
 endif()
 if(AE_USE_FFMPEG AND NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
     # FFmpeg powers VideoPlayer and VideoRecorder on native desktop platforms.
-    find_package(FFmpeg COMPONENTS avcodec avformat avutil swscale swresample)
-    if(FFMPEG_FOUND OR FFmpeg_FOUND)
+    # NOTE: vcpkg's ffmpeg port ships an all-uppercase module (FindFFMPEG.cmake)
+    # and sets FFMPEG_* variables; it provides no FFmpegConfig.cmake. The package
+    # name passed here must therefore be FFMPEG, not FFmpeg.
+    find_package(FFMPEG COMPONENTS avcodec avformat avutil swscale swresample)
+    if(FFMPEG_FOUND)
         message(STATUS "FFmpeg enabled (AE_USE_FFMPEG=ON). VideoPlayer and VideoRecorder available.")
         target_compile_definitions(AtmosphericEngine PUBLIC AE_HAS_FFMPEG)
         target_include_directories(AtmosphericEngine PUBLIC ${FFMPEG_INCLUDE_DIRS})
