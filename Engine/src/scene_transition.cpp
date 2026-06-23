@@ -128,6 +128,10 @@ void SceneTransition::Go(const std::string& sceneName, OnReadyFn onReady, OnErro
                 ClearScene();
 
             try {
+                if (Application::Get() && Application::Get()->GetConfig().useDefaultTextures) {
+                    AssetManager::Get().LoadDefaultTextures();
+                }
+
                 if (!manifest.textures.empty())
                     AssetManager::Get().LoadTextures(manifest.textures);
 
