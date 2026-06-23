@@ -211,13 +211,29 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
         return false;
     }
 
+    // Probe encoder fallback chain: configured encoder → AV1 variants → H.264.
+    static constexpr const char* kEncoderFallbacks[] = {
+        "libaom-av1", "libsvtav1", "librav1e", "libx264", nullptr
+    };
     const AVCodec* codec = avcodec_find_encoder_by_name(m_config.encoder.c_str());
+    std::string usedEncoder = m_config.encoder;
     if (!codec) {
-        codec = avcodec_find_encoder_by_name("libaom-av1");
+        for (int i = 0; kEncoderFallbacks[i]; ++i) {
+            if (m_config.encoder == kEncoderFallbacks[i]) {
+                continue; // already tried
+            }
+            codec = avcodec_find_encoder_by_name(kEncoderFallbacks[i]);
+            if (codec) {
+                usedEncoder = kEncoderFallbacks[i];
+                fmt::print("[VideoRecorder] Encoder '{}' not found, using '{}' instead\n",
+                           m_config.encoder, usedEncoder);
+                break;
+            }
+        }
     }
     if (!codec) {
         fmt::print(stderr,
-                   "[VideoRecorder] No AV1 encoder found (tried '{}', 'libaom-av1')\n",
+                   "[VideoRecorder] No video encoder found (tried '{}' and fallbacks)\n",
                    m_config.encoder);
         return false;
     }
@@ -243,14 +259,15 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
 
     av_opt_set_int(ff.codecCtx->priv_data, "crf", m_config.crf, 0);
 
-    const std::string& enc = m_config.encoder;
-    if (enc == "libsvtav1") {
+    if (usedEncoder == "libsvtav1") {
         av_opt_set_int(ff.codecCtx->priv_data, "preset", 8, 0);
-    } else if (enc == "libaom-av1") {
+    } else if (usedEncoder == "libaom-av1") {
         av_opt_set_int(ff.codecCtx->priv_data, "cpu-used", 6, 0);
         av_opt_set(ff.codecCtx->priv_data, "usage", "realtime", 0);
-    } else if (enc == "librav1e") {
+    } else if (usedEncoder == "librav1e") {
         av_opt_set_int(ff.codecCtx->priv_data, "speed", 8, 0);
+    } else if (usedEncoder == "libx264") {
+        av_opt_set(ff.codecCtx->priv_data, "preset", "fast", 0);
     }
 
     if (ff.fmtCtx->oformat->flags & AVFMT_GLOBALHEADER) {
@@ -258,7 +275,7 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
     }
 
     if (avcodec_open2(ff.codecCtx, codec, nullptr) < 0) {
-        fmt::print(stderr, "[VideoRecorder] Failed to open AV1 codec\n");
+        fmt::print(stderr, "[VideoRecorder] Failed to open codec '{}'\n", usedEncoder);
         return false;
     }
 
@@ -311,7 +328,7 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
     }
 
     fmt::print("[VideoRecorder] Started: {} ({}x{} @ {} fps, encoder: {}{}\n",
-               m_config.outputPath, width, height, m_config.fps, enc,
+               m_config.outputPath, width, height, m_config.fps, usedEncoder,
                m_audioActive ? ", AAC audio)" : ")");
     return true;
 #endif

@@ -17,17 +17,10 @@
     "tracy",
     "rmlui",
     "box2d",
-    "flatbuffers"
-  ],
-  "features": {
-    "ffmpeg": {
-      "description": "FFmpeg support for VideoPlayer and VideoRecorder",
-      "dependencies": [
-        {
-          "name": "ffmpeg",
-          "features": ["avcodec", "avformat", "swscale", "swresample", "aom"]
-        }
-      ]
+    "flatbuffers",
+    {
+      "name": "ffmpeg",
+      "features": ["avcodec", "avformat", "avutil", "swscale", "swresample", "aom"]
     }
-  }
+  ]
 }
