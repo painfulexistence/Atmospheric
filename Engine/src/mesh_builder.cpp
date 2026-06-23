@@ -172,7 +172,11 @@ Mesh* MeshBuilder::CreateSphere(const float& radius, const int& division) {
 
 Mesh* MeshBuilder::CreateTerrain(const float& worldSize, const int& resolution) {
     std::vector<Vertex> verts;
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+    verts.resize(resolution * resolution * 6);
+#else
     verts.resize(resolution * resolution * 4);
+#endif
 
     float halfWorldSize = worldSize / 2.f;
     float patchSize = worldSize / float(resolution);
@@ -180,6 +184,39 @@ Mesh* MeshBuilder::CreateTerrain(const float& worldSize, const int& resolution) 
         for (int col = 0; col < resolution; col++) {
             int patchIndex = row * resolution + col;
 
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+            glm::vec3 v0 = glm::vec3(-halfWorldSize + (col + 0) * patchSize, 0.f, -halfWorldSize + (row + 0) * patchSize);
+            glm::vec2 uv0 = glm::vec2((col + 0) / (float)resolution, (row + 0) / (float)resolution);
+
+            glm::vec3 v1 = glm::vec3(-halfWorldSize + (col + 0) * patchSize, 0.f, -halfWorldSize + (row + 1) * patchSize);
+            glm::vec2 uv1 = glm::vec2((col + 0) / (float)resolution, (row + 1) / (float)resolution);
+
+            glm::vec3 v2 = glm::vec3(-halfWorldSize + (col + 1) * patchSize, 0.f, -halfWorldSize + (row + 1) * patchSize);
+            glm::vec2 uv2 = glm::vec2((col + 1) / (float)resolution, (row + 1) / (float)resolution);
+
+            glm::vec3 v3 = glm::vec3(-halfWorldSize + (col + 1) * patchSize, 0.f, -halfWorldSize + (row + 0) * patchSize);
+            glm::vec2 uv3 = glm::vec2((col + 1) / (float)resolution, (row + 0) / (float)resolution);
+
+            // Triangle 1 (v0, v1, v2)
+            verts[patchIndex * 6 + 0].position = v0;
+            verts[patchIndex * 6 + 0].uv = uv0;
+
+            verts[patchIndex * 6 + 1].position = v1;
+            verts[patchIndex * 6 + 1].uv = uv1;
+
+            verts[patchIndex * 6 + 2].position = v2;
+            verts[patchIndex * 6 + 2].uv = uv2;
+
+            // Triangle 2 (v0, v2, v3)
+            verts[patchIndex * 6 + 3].position = v0;
+            verts[patchIndex * 6 + 3].uv = uv0;
+
+            verts[patchIndex * 6 + 4].position = v2;
+            verts[patchIndex * 6 + 4].uv = uv2;
+
+            verts[patchIndex * 6 + 5].position = v3;
+            verts[patchIndex * 6 + 5].uv = uv3;
+#else
             verts[patchIndex * 4 + 0].position =
               glm::vec3(-halfWorldSize + (col + 0) * patchSize, 0.f, -halfWorldSize + (row + 0) * patchSize);
             verts[patchIndex * 4 + 0].uv = glm::vec2((col + 0) / (float)resolution, (row + 0) / (float)resolution);
@@ -195,6 +232,7 @@ Mesh* MeshBuilder::CreateTerrain(const float& worldSize, const int& resolution) 
             verts[patchIndex * 4 + 3].position =
               glm::vec3(-halfWorldSize + (col + 1) * patchSize, 0.f, -halfWorldSize + (row + 0) * patchSize);
             verts[patchIndex * 4 + 3].uv = glm::vec2((col + 1) / (float)resolution, (row + 0) / (float)resolution);
+#endif
         }
     }
 

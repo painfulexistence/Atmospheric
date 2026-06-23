@@ -7,7 +7,7 @@
 enum ShaderType {
     VERTEX = GL_VERTEX_SHADER,
     FRAGMENT = GL_FRAGMENT_SHADER,
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
     TESS_CONTROL = GL_TESS_CONTROL_SHADER,
     TESS_EVALUATION = GL_TESS_EVALUATION_SHADER
 #endif

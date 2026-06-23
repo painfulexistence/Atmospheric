@@ -17,10 +17,6 @@
     "tracy",
     "rmlui",
     "box2d",
-    "flatbuffers",
-    {
-      "name": "ffmpeg",
-      "features": ["avcodec", "avformat", "avutil", "swscale", "swresample", "aom"]
-    }
+    "flatbuffers"
   ]
 }

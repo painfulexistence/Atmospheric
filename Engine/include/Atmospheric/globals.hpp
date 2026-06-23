@@ -1,9 +1,23 @@
 #pragma once
 #ifdef __APPLE__
 #define GL_SILENCE_DEPRECATION
+#define GLES_SILENCE_DEPRECATION
 #endif
 #if defined(__EMSCRIPTEN__) || defined(ANDROID)
 #include <GLES3/gl3.h>
+#ifndef IMGUI_IMPL_OPENGL_ES3
+#define IMGUI_IMPL_OPENGL_ES3
+#endif
+#elif defined(__APPLE__)
+#include <TargetConditionals.h>
+#if TARGET_OS_IOS
+#include <OpenGLES/ES3/gl.h>
+#ifndef IMGUI_IMPL_OPENGL_ES3
+#define IMGUI_IMPL_OPENGL_ES3
+#endif
+#else
+#include <glad/glad.h>
+#endif
 #else
 #include <glad/glad.h>
 #endif

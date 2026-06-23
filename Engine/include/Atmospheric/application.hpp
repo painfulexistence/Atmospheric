@@ -13,10 +13,14 @@
 #include "physics_server_2d.hpp"
 #include "scene.hpp"
 
+#include <memory>
+#include <string>
+
 // Forward declarations
 class Window;
 class GameObject;
 class EditorLayer;
+class VideoRecorder;
 
 struct FrameData {
     FrameData(uint64_t number, float time, float deltaTime) {
@@ -45,10 +49,30 @@ struct AppConfig {
     bool useDefaultShaders = true;
 };
 
+// Drives an automated "warm up → capture → quit" sequence so every example can
+// be recorded headlessly by a batch script. Enabled and configured purely
+// through environment variables (see Application::ParseAutoCaptureEnv):
+//   AE_CAPTURE_DURATION  capture length in seconds (presence enables capture)
+//   AE_CAPTURE_WARMUP    seconds to wait before capturing (lets the scene settle)
+//   AE_CAPTURE_MODE      "video" (default) or "screenshot"
+//   AE_CAPTURE_OUTPUT    output file path
+struct AutoCaptureConfig {
+    enum class Mode { Video, Screenshot };
+
+    bool        enabled    = false;
+    Mode        mode       = Mode::Video;
+    float       warmup     = 3.0f;
+    float       duration   = 10.0f;
+    std::string outputPath = "output/capture.mp4";
+};
+
 using EntityID = uint64_t;
 
 class Application {
 public:
+    static Application* Get();
+    const AppConfig& GetConfig() const { return _config; }
+
     explicit Application(AppConfig config = {});
     virtual ~Application();
 
@@ -96,6 +120,11 @@ public:
     }
     inline AudioManager* GetAudioManager() {
         return &audio;
+    }
+    // Shared video recorder. Drives both the automated capture sequence and the
+    // manual F2 toggle in EditorLayer; both operate on this single instance.
+    inline VideoRecorder* GetRecorder() {
+        return _recorder.get();
     }
 
 #ifndef NDEBUG
@@ -153,6 +182,8 @@ protected:
     }
 
 private:
+    static Application* s_instance;
+
     void RegisterComponents();
 
     AppConfig _config;
@@ -181,4 +212,17 @@ private:
     void Render(const FrameData& frame
     );// TODO: Properly separate rendering and drawing logic if the backend supports command buffering
     void SyncTransformWithPhysics();
+
+    // ─── Automated capture ──────────────────────────────────────────────
+    std::unique_ptr<VideoRecorder> _recorder;
+    AutoCaptureConfig _autoCap;
+    enum class CaptureState { Idle, Warmup, Capturing, Finishing, Done };
+    CaptureState _capState = CaptureState::Idle;
+    float _capPhaseStart = -1.0f;// window time when the current phase began
+    int _screenshotIndex = 0;
+    float _nextShotTime = 0.0f;
+
+    void ParseAutoCaptureEnv();
+    void UpdateAutoCapture();// state machine, ticked once per rendered frame
+    void SaveScreenshot(const std::string& path);
 };

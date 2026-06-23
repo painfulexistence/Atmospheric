@@ -165,6 +165,9 @@ public:
     ImageSize GetFramebufferSize();
     glm::vec2 GetDPI();
 
+    // Returns the native window handle (SDL_Window* on SDL backend).
+    void* GetNativeHandle() const { return _internal; }
+
 private:
     void* _internal = nullptr;
     bool _isRunning = true;

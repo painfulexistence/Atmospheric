@@ -81,23 +81,21 @@ else()
     )
 endif()
 
-# ── Asset sync for desktop ──
-if(NOT EMSCRIPTEN)
+# ── Asset sync ──
+add_custom_command(
+    TARGET ${GAME_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/Engine/default_assets
+        $<TARGET_FILE_DIR:${GAME_NAME}>/assets
+    COMMENT "Syncing default assets for ${GAME_NAME}"
+)
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/assets)
     add_custom_command(
         TARGET ${GAME_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/Engine/default_assets
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets
             $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-        COMMENT "Syncing default assets for ${GAME_NAME}"
+        COMMENT "Syncing game assets for ${GAME_NAME}"
     )
-
-    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/assets)
-        add_custom_command(
-            TARGET ${GAME_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                ${CMAKE_CURRENT_SOURCE_DIR}/assets
-                $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-            COMMENT "Syncing game assets for ${GAME_NAME}"
-        )
-    endif()
 endif()

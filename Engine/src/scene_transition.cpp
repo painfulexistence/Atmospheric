@@ -1,4 +1,5 @@
 #include "scene_transition.hpp"
+#include "application.hpp"
 #include "asset_manager.hpp"
 #include "file_system.hpp"
 #include <nlohmann/json.hpp>
@@ -74,7 +75,42 @@ void SceneTransition::Go(const std::string& sceneName, OnReadyFn onReady, OnErro
         auto manifest = GameManifest::FromJSON(std::string(bytes.begin(), bytes.end()));
 
         std::vector<std::string> allPaths;
+#if defined(AE_USE_BASIS_UNIVERSAL) && defined(__EMSCRIPTEN__)
+        for (const auto& path : manifest.textures) {
+            std::string p = (path.size() >= 2 && path[0] == '.' && path[1] == '/') ? path.substr(2) : path;
+            if (p.find("aim.png") != std::string::npos || p.find("heightmap") != std::string::npos) {
+                allPaths.push_back(p);
+                continue;
+            }
+            size_t extPos = p.find_last_of('.');
+            if (extPos != std::string::npos) {
+                std::string ext = p.substr(extPos);
+                if (ext == ".jpg" || ext == ".jpeg" || ext == ".png") {
+                    allPaths.push_back(p.substr(0, extPos) + ".ktx2");
+                    continue;
+                }
+            }
+            allPaths.push_back(p);
+        }
+#else
         allPaths.insert(allPaths.end(), manifest.textures.begin(), manifest.textures.end());
+#endif
+
+        if (Application::Get() && Application::Get()->GetConfig().useDefaultTextures) {
+#if defined(AE_USE_BASIS_UNIVERSAL) && defined(__EMSCRIPTEN__)
+            allPaths.push_back("assets/textures/default_diff.ktx2");
+            allPaths.push_back("assets/textures/default_norm.ktx2");
+            allPaths.push_back("assets/textures/default_ao.ktx2");
+            allPaths.push_back("assets/textures/default_rough.ktx2");
+            allPaths.push_back("assets/textures/default_metallic.ktx2");
+#else
+            allPaths.push_back("assets/textures/default_diff.jpg");
+            allPaths.push_back("assets/textures/default_norm.jpg");
+            allPaths.push_back("assets/textures/default_ao.jpg");
+            allPaths.push_back("assets/textures/default_rough.jpg");
+            allPaths.push_back("assets/textures/default_metallic.jpg");
+#endif
+        }
         for (const auto& [name, props] : manifest.shaders) {
             if (!props.vert.empty()) allPaths.push_back(props.vert);
             if (!props.frag.empty()) allPaths.push_back(props.frag);
@@ -92,6 +128,10 @@ void SceneTransition::Go(const std::string& sceneName, OnReadyFn onReady, OnErro
                 ClearScene();
 
             try {
+                if (Application::Get() && Application::Get()->GetConfig().useDefaultTextures) {
+                    AssetManager::Get().LoadDefaultTextures();
+                }
+
                 if (!manifest.textures.empty())
                     AssetManager::Get().LoadTextures(manifest.textures);
 
@@ -103,6 +143,13 @@ void SceneTransition::Go(const std::string& sceneName, OnReadyFn onReady, OnErro
                 if (onError) onError(e.what());
                 return;
             }
+
+            // Drop the FileSystem cache — every asset for this scene has been
+            // either ConsumeSync'd into a GPU texture or read+parsed into a
+            // shader/script. Keeping the raw bytes around just bloats WASM heap
+            // across scene transitions. Also unlinks the MEMFS shadow copies
+            // for text/audio assets so stale entries don't linger.
+            FileSystem::Get().ClearCache();
 
             spdlog::info("SceneTransition: '{}' ready", sceneName);
             if (onReady) onReady();

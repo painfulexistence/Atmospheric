@@ -271,11 +271,11 @@ void AssetManager::LoadDefaultShaders() {
                     "hdr",
                     { .vert = "assets/shaders/hdr.vert", .frag = "assets/shaders/hdr.frag" },
                   },
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
                   {
                     "terrain",
-                    { .vert = "assets/shaders/simple.vert",
-                      .frag = "assets/shaders/flat.frag" },
+                    { .vert = "assets/shaders/terrain_simple.vert",
+                      .frag = "assets/shaders/terrain.frag" },
                   },
 #else
                   {

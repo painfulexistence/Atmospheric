@@ -1,12 +1,10 @@
-// Registers the Swift AppDelegate with SDL3 before UIApplicationMain runs.
-#import <Foundation/Foundation.h>
-#include <SDL3/SDL_hints.h>
+// Registers the Swift AppDelegate with SDL3 by overriding getAppDelegateClassName.
+// SDL3 3.2+ removed SDL_HINT_UIKIT_APP_DELEGATE_CLASS_NAME; the correct approach
+// is a category on SDLUIKitDelegate that returns the subclass name.
+#import "SDL_uikitappdelegate.h"
 
-@interface AtmosIOSInit : NSObject
-@end
-
-@implementation AtmosIOSInit
-+ (void)load {
-    SDL_SetHint(SDL_HINT_UIKIT_APP_DELEGATE_CLASS_NAME, "AtmosAppDelegate");
+@implementation SDLUIKitDelegate (AtmosAppDelegateOverride)
++ (NSString *)getAppDelegateClassName {
+    return @"AtmosAppDelegate";
 }
 @end

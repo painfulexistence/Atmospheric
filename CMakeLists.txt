@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.19)
 
 option(AE_USE_BASIS_UNIVERSAL "Enable Basis Universal transcoder for KTX2 GPU-compressed textures" OFF)
+option(AE_USE_FFMPEG "Enable FFmpeg for VideoPlayer and VideoRecorder (uses the system FFmpeg found via pkg-config)" ON)
+
+# Custom triplets (Android, iOS, etc.) override vcpkg community triplets.
+# Must be set before vcpkg.cmake is included.
+list(APPEND VCPKG_OVERLAY_TRIPLETS "${CMAKE_CURRENT_LIST_DIR}/triplets")
 
 if(VCPKG_TARGET_TRIPLET STREQUAL "wasm32-emscripten" AND NOT VCPKG_CHAINLOAD_TOOLCHAIN_FILE)
     if(DEFINED ENV{EMSDK})
@@ -13,9 +18,6 @@ endif()
 project(Atmospheric VERSION 0.2)
 
 if(ANDROID AND DEFINED CMAKE_ANDROID_NDK)
-    # Append custom triplets folder to vcpkg overlay triplets
-    list(APPEND VCPKG_OVERLAY_TRIPLETS "${CMAKE_CURRENT_SOURCE_DIR}/triplets")
-    
     # Determine the architecture and build triplet for vcpkg
     # VCPKG_ARCH: the architecture name used inside the triplet file (VCPKG_TARGET_ARCHITECTURE)
     # VCPKG_TRIPLET_NAME: the vcpkg-convention triplet name (e.g. arm64, x64 — no underscores)

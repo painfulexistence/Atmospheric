@@ -395,7 +395,7 @@
         <button id="modal-close" class="modal-close-btn">&times;</button>
       </div>
       <div class="modal-body">
-        <iframe id="modal-iframe" src="" allow="autoplay; keyboard; cross-origin-isolated;"></iframe>
+        <iframe id="modal-iframe" src="about:blank" allow="autoplay; cross-origin-isolated;" style="width:100%; height:100%; border:none;"></iframe>
       </div>
     </div>
   </div>
@@ -416,6 +416,8 @@
           var title = this.querySelector('.demo-title').textContent;
           
           modalTitle.textContent = title;
+          
+          // Reuse the static iframe
           iframe.src = href;
           
           modal.style.display = 'flex';
@@ -431,7 +433,20 @@
         document.body.style.overflow = '';
         setTimeout(function() {
           modal.style.display = 'none';
-          iframe.src = ''; // Reset iframe src to stop audio/WebGL
+          
+          // Force cleanup of the Wasm engine inside the iframe
+          try {
+            if (iframe.contentWindow) {
+              var win = iframe.contentWindow;
+              if (typeof win.cleanupWorkers === 'function') {
+                win.cleanupWorkers();
+              }
+            }
+          } catch(e) {
+            console.error("Parent frame failed to call iframe cleanup:", e);
+          }
+          
+          iframe.src = 'about:blank'; // Reset iframe src using about:blank to force release
         }, 300);
       }
 

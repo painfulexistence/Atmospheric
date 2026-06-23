@@ -1,4 +1,7 @@
 #include "application.hpp"
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 #include "animator_2d.hpp"
 #include "asset_manager.hpp"
 #include "camera_component.hpp"
@@ -23,7 +26,16 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include "transform_component.hpp"
+#include "video_recorder.hpp"
 #include "window.hpp"
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <filesystem>
+#include <fmt/format.h>
 #ifndef NDEBUG
 #include "editor_layer.hpp"
 #endif
@@ -37,8 +49,171 @@
 #include <emscripten/heap.h>
 #endif
 
+// ─── Minimal PNG writer ─────────────────────────────────────────────────────
+// Self-contained so screenshots work in every build config (no FFmpeg / no
+// extra dependency). Pixels are emitted with filter-type 0 and wrapped in
+// uncompressed (stored) zlib blocks — larger files than a real deflate, but
+// trivially correct and fast, which is all a debug screenshot needs.
+namespace {
+
+uint32_t pngCrc32(const uint8_t* buf, size_t len) {
+    static uint32_t table[256];
+    static bool init = false;
+    if (!init) {
+        for (uint32_t n = 0; n < 256; ++n) {
+            uint32_t c = n;
+            for (int k = 0; k < 8; ++k)
+                c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
+            table[n] = c;
+        }
+        init = true;
+    }
+    uint32_t crc = 0xFFFFFFFFu;
+    for (size_t i = 0; i < len; ++i)
+        crc = table[(crc ^ buf[i]) & 0xFF] ^ (crc >> 8);
+    return crc ^ 0xFFFFFFFFu;
+}
+
+void pngPutU32(std::vector<uint8_t>& v, uint32_t x) {
+    v.push_back(static_cast<uint8_t>((x >> 24) & 0xFF));
+    v.push_back(static_cast<uint8_t>((x >> 16) & 0xFF));
+    v.push_back(static_cast<uint8_t>((x >> 8) & 0xFF));
+    v.push_back(static_cast<uint8_t>(x & 0xFF));
+}
+
+void pngWriteChunk(std::vector<uint8_t>& out, const char (&type)[5],
+                   const std::vector<uint8_t>& data) {
+    pngPutU32(out, static_cast<uint32_t>(data.size()));
+    size_t crcStart = out.size();
+    out.insert(out.end(), type, type + 4);
+    out.insert(out.end(), data.begin(), data.end());
+    pngPutU32(out, pngCrc32(out.data() + crcStart, out.size() - crcStart));
+}
+
+bool pngWrite(const std::string& path, const uint8_t* pixels, uint32_t w,
+              uint32_t h, uint32_t channels) {
+    if (!pixels || w == 0 || h == 0 || (channels != 3 && channels != 4))
+        return false;
+
+    // Scanlines, each prefixed by filter byte 0 (None).
+    std::vector<uint8_t> raw;
+    raw.reserve((static_cast<size_t>(w) * channels + 1) * h);
+    for (uint32_t y = 0; y < h; ++y) {
+        raw.push_back(0);
+        const uint8_t* row = pixels + static_cast<size_t>(y) * w * channels;
+        raw.insert(raw.end(), row, row + static_cast<size_t>(w) * channels);
+    }
+
+    // zlib stream: header + stored blocks (<=65535 bytes each) + Adler-32.
+    std::vector<uint8_t> zlib;
+    zlib.push_back(0x78);
+    zlib.push_back(0x01);
+    for (size_t pos = 0; pos < raw.size();) {
+        size_t block = std::min<size_t>(65535, raw.size() - pos);
+        bool last = (pos + block >= raw.size());
+        zlib.push_back(last ? 1 : 0);
+        zlib.push_back(static_cast<uint8_t>(block & 0xFF));
+        zlib.push_back(static_cast<uint8_t>((block >> 8) & 0xFF));
+        uint16_t nlen = static_cast<uint16_t>(~block);
+        zlib.push_back(static_cast<uint8_t>(nlen & 0xFF));
+        zlib.push_back(static_cast<uint8_t>((nlen >> 8) & 0xFF));
+        zlib.insert(zlib.end(), raw.begin() + pos, raw.begin() + pos + block);
+        pos += block;
+    }
+    uint32_t a = 1, b = 0;
+    for (uint8_t byte : raw) {
+        a = (a + byte) % 65521;
+        b = (b + a) % 65521;
+    }
+    pngPutU32(zlib, (b << 16) | a);
+
+    std::vector<uint8_t> out;
+    const uint8_t sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    out.insert(out.end(), sig, sig + 8);
+
+    std::vector<uint8_t> ihdr;
+    pngPutU32(ihdr, w);
+    pngPutU32(ihdr, h);
+    ihdr.push_back(8);                                    // bit depth
+    ihdr.push_back(static_cast<uint8_t>(channels == 4 ? 6 : 2));// 6=RGBA, 2=RGB
+    ihdr.push_back(0);                                    // compression
+    ihdr.push_back(0);                                    // filter
+    ihdr.push_back(0);                                    // interlace
+
+    const char ihdrType[5] = "IHDR";
+    const char idatType[5] = "IDAT";
+    const char iendType[5] = "IEND";
+    pngWriteChunk(out, ihdrType, ihdr);
+    pngWriteChunk(out, idatType, zlib);
+    pngWriteChunk(out, iendType, {});
+
+    std::FILE* f = std::fopen(path.c_str(), "wb");
+    if (!f)
+        return false;
+    std::fwrite(out.data(), 1, out.size(), f);
+    std::fclose(f);
+    return true;
+}
+
+// Cheap whole-frame statistics used to decide whether a captured frame is
+// "blank" (essentially a single solid color → nothing was rendered). Also
+// reports mean color so smoke captures can be eyeballed / diffed as a baseline.
+struct FrameStats {
+    double meanR = 0.0, meanG = 0.0, meanB = 0.0;
+    int    spread = 0;   // max(max-min) across the R/G/B channels
+    bool   blank  = true;
+};
+
+FrameStats analyzeFrame(const uint8_t* px, uint32_t w, uint32_t h, uint32_t channels) {
+    FrameStats s;
+    if (!px || w == 0 || h == 0 || channels < 3)
+        return s;
+
+    uint64_t sumR = 0, sumG = 0, sumB = 0;
+    uint8_t minR = 255, minG = 255, minB = 255;
+    uint8_t maxR = 0, maxG = 0, maxB = 0;
+    const size_t count = static_cast<size_t>(w) * h;
+    for (size_t i = 0; i < count; ++i) {
+        const uint8_t* p = px + i * channels;
+        sumR += p[0];
+        sumG += p[1];
+        sumB += p[2];
+        minR = std::min(minR, p[0]);
+        maxR = std::max(maxR, p[0]);
+        minG = std::min(minG, p[1]);
+        maxG = std::max(maxG, p[1]);
+        minB = std::min(minB, p[2]);
+        maxB = std::max(maxB, p[2]);
+    }
+    s.meanR  = static_cast<double>(sumR) / count;
+    s.meanG  = static_cast<double>(sumG) / count;
+    s.meanB  = static_cast<double>(sumB) / count;
+    s.spread = std::max({maxR - minR, maxG - minG, maxB - minB});
+    s.blank  = s.spread <= 3;// tolerate dithering; a real scene varies far more
+    return s;
+}
+
+}// namespace
+
+Application* Application::s_instance = nullptr;
+Application* Application::Get() { return s_instance; }
+
 Application::Application(AppConfig config) : _config(config) {
+    s_instance = this;
     // setbuf(stdout, NULL); // Cancel output stream buffering so that output can be seen immediately
+
+#ifdef __EMSCRIPTEN__
+    // Polyfill document.exitPointerLock globally to prevent crash in Safari (iOS / iframes)
+    EM_ASM({
+        if (typeof document !== 'undefined' && !document.exitPointerLock) {
+            document.exitPointerLock = document.webkitExitPointerLock || 
+                                       document.mozExitPointerLock || 
+                                       function() { 
+                                           console.warn("Pointer lock not supported/allowed in this browser context"); 
+                                       };
+        }
+    });
+#endif
 
     _window = std::make_shared<Window>(WindowProps{
       .title = config.windowTitle,
@@ -59,7 +234,48 @@ Application::Application(AppConfig config) : _config(config) {
     PushLayer(editorLayer);
 #endif
 
+    _recorder = std::make_unique<VideoRecorder>();
+    ParseAutoCaptureEnv();
+
     RegisterComponents();
+}
+
+void Application::ParseAutoCaptureEnv() {
+    auto readFloat = [](const char* key, float& out) -> bool {
+        if (const char* v = std::getenv(key)) {
+            out = std::strtof(v, nullptr);
+            return true;
+        }
+        return false;
+    };
+
+    if (const char* m = std::getenv("AE_CAPTURE_MODE")) {
+        _autoCap.mode = (std::strcmp(m, "screenshot") == 0)
+                          ? AutoCaptureConfig::Mode::Screenshot
+                          : AutoCaptureConfig::Mode::Video;
+    }
+
+    float duration = 0.0f;
+    if (readFloat("AE_CAPTURE_DURATION", duration)) {
+        _autoCap.duration = duration;
+        _autoCap.enabled  = true;
+    }
+    readFloat("AE_CAPTURE_WARMUP", _autoCap.warmup);
+
+    if (const char* o = std::getenv("AE_CAPTURE_OUTPUT")) {
+        _autoCap.outputPath = o;
+    } else {
+        _autoCap.outputPath = (_autoCap.mode == AutoCaptureConfig::Mode::Screenshot)
+                                ? "output/capture.png"
+                                : "output/capture.mp4";
+    }
+
+    if (_autoCap.enabled) {
+        _capState = CaptureState::Warmup;
+        ENGINE_LOG("Auto-capture enabled: mode={}, warmup={}s, duration={}s, output={}",
+                   _autoCap.mode == AutoCaptureConfig::Mode::Screenshot ? "screenshot" : "video",
+                   _autoCap.warmup, _autoCap.duration, _autoCap.outputPath);
+    }
 }
 
 void Application::RegisterComponents() {
@@ -112,6 +328,7 @@ void Application::RegisterComponents() {
 }
 
 Application::~Application() {
+    if (s_instance == this) s_instance = nullptr;
     ENGINE_LOG("Exiting...");
     _window->DeinitImGui();
 
@@ -162,7 +379,11 @@ void Application::Run() {
         _clock++;
     });
 
+#if !(defined(__APPLE__) && TARGET_OS_IOS)
+    // On iOS, MainLoop returns immediately after handing the run-loop to
+    // UIApplicationMain. The OS reclaims process resources at app exit.
     RmlUiManager::Get()->Shutdown();
+#endif
 }
 
 void Application::PushLayer(Layer* layer) {
@@ -739,9 +960,117 @@ void Application::Render(const FrameData& props) {
         layer->OnRender(dt);
     }
 
+    // Runs on the render (GL) thread, after the frame is drawn — the only safe
+    // place to read back pixels for recording / screenshots.
+    UpdateAutoCapture();
+
+    // Feed the encoder one frame per render tick whenever recording is active,
+    // whether it was started by the auto-capture sequence or the manual F2 key.
+    if (_recorder && _recorder->isRecording())
+        _recorder->captureFrame();
+
 #if SHOW_RENDER_AND_DRAW_COST
     ENGINE_LOG(fmt::format("Render & draw cost {} ms", (GetWindowTime() - time) * 1000));
 #endif
+}
+
+void Application::UpdateAutoCapture() {
+    if (_capState == CaptureState::Idle || _capState == CaptureState::Done)
+        return;
+
+    float now = GetWindowTime();
+    if (_capPhaseStart < 0.0f)
+        _capPhaseStart = now;// lazy init: anchor to the first rendered frame
+    float elapsed = now - _capPhaseStart;
+
+    Renderer* renderer = graphics.renderer;
+
+    auto ensureParentDir = [](const std::string& path) {
+        std::error_code ec;
+        auto parent = std::filesystem::path(path).parent_path();
+        if (!parent.empty())
+            std::filesystem::create_directories(parent, ec);
+    };
+
+    // Builds "name_000.png" style paths for a screenshot burst, or the bare
+    // output path when only a single shot is requested (duration <= 0).
+    auto screenshotPath = [this](int index) -> std::string {
+        if (_autoCap.duration <= 0.0f)
+            return _autoCap.outputPath;
+        std::filesystem::path p(_autoCap.outputPath);
+        std::string ext = p.extension().string();
+        if (ext.empty())
+            ext = ".png";
+        char suffix[16];
+        std::snprintf(suffix, sizeof(suffix), "_%03d", index);
+        return (p.parent_path() / (p.stem().string() + suffix + ext)).string();
+    };
+
+    switch (_capState) {
+    case CaptureState::Warmup:
+        if (elapsed >= _autoCap.warmup) {
+            _capPhaseStart = now;
+            ensureParentDir(_autoCap.outputPath);
+            if (_autoCap.mode == AutoCaptureConfig::Mode::Video) {
+                VideoRecorder::Config cfg;
+                cfg.outputPath = _autoCap.outputPath;
+                _recorder->startRecording(renderer, cfg);
+            }
+            _screenshotIndex = 0;
+            _nextShotTime    = 0.0f;
+            _capState        = CaptureState::Capturing;
+        }
+        break;
+
+    case CaptureState::Capturing: {
+        // Video frames are pumped by Render() via captureFrame(); here we only
+        // drive the screenshot cadence and the overall capture-window timing.
+        if (_autoCap.mode == AutoCaptureConfig::Mode::Screenshot &&
+            elapsed >= _nextShotTime) {
+            SaveScreenshot(screenshotPath(_screenshotIndex));
+            ++_screenshotIndex;
+            _nextShotTime += 1.0f;// one shot per second across the window
+        }
+
+        bool singleShotDone = _autoCap.mode == AutoCaptureConfig::Mode::Screenshot &&
+                              _autoCap.duration <= 0.0f && _screenshotIndex >= 1;
+        if (singleShotDone || elapsed >= _autoCap.duration)
+            _capState = CaptureState::Finishing;
+        break;
+    }
+
+    case CaptureState::Finishing:
+        if (_autoCap.mode == AutoCaptureConfig::Mode::Video)
+            _recorder->stopRecording();// joins encoder thread and flushes to disk
+        _capState = CaptureState::Done;
+        Quit();
+        break;
+
+    default:
+        break;
+    }
+}
+
+void Application::SaveScreenshot(const std::string& path) {
+    if (!graphics.renderer)
+        return;
+    graphics.renderer->readPixelsAsync([&path](const GpuImageData& img) {
+        if (img.data.empty())
+            return;
+        bool ok = pngWrite(path, img.data.data(), img.width, img.height, img.channelCount);
+        FrameStats st = analyzeFrame(img.data.data(), img.width, img.height, img.channelCount);
+        // Machine-readable marker consumed by scripts/smokeTest.sh (grepped from
+        // stdout). Flushed so it survives the imminent auto-quit.
+        fmt::print(
+            "[Smoke] result path={} size={}x{} meanRGB={:.1f},{:.1f},{:.1f} spread={} blank={} write={}\n",
+            path, img.width, img.height, st.meanR, st.meanG, st.meanB, st.spread,
+            st.blank ? 1 : 0, ok ? 1 : 0);
+        std::fflush(stdout);
+        if (ok)
+            ENGINE_LOG("Screenshot saved: {} ({}x{})", path, img.width, img.height);
+        else
+            spdlog::error("[Screenshot] Failed to write {}", path);
+    });
 }
 
 void Application::SyncTransformWithPhysics() {

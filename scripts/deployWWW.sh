@@ -89,12 +89,60 @@ if [ -d "${RELEASE_DIR}" ]; then
         fi
     done
 fi
+# 4.5. 清除不必要的系統檔案及未追蹤的資源檔案
+echo -e "${YELLOW}🧹 正在清理本地 www/ 目錄中的系統垃圾檔案 (.DS_Store) 與未追蹤的資源檔案...${NC}"
+
+# 清除所有 .DS_Store
+find "${LOCAL_WWW}" -name ".DS_Store" -type f -delete 2>/dev/null || true
+
+# 取得 examples 資料夾到部署名稱的對照
+get_deploy_name() {
+    local folder_name="$1"
+    case "$folder_name" in
+        "LuaScripting") echo "AtmosLua" ;;
+        "SceneLoader") echo "CSBDemo" ;;
+        "Physics2D") echo "Physics2DDemo" ;;
+        "MazeFPS") echo "Maze" ;;
+        *) echo "$folder_name" ;;
+    esac
+}
+
+# 取得 git 中未追蹤的檔案清單，並從部署目錄中刪除
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git ls-files --others --exclude-standard | while read -r untracked_file; do
+        if [[ "$untracked_file" == Engine/default_assets/* ]]; then
+            rel_path="${untracked_file#Engine/default_assets/}"
+            rm -rf "${LOCAL_WWW}/demo"/*/assets/"$rel_path"
+        elif [[ "$untracked_file" == Examples/* ]]; then
+            if [[ "$untracked_file" == *"/assets/"* ]]; then
+                sub_path="${untracked_file#Examples/}"
+                folder_name="${sub_path%%/*}"
+                asset_rel_path="${sub_path#*/}"
+                deploy_name=$(get_deploy_name "$folder_name")
+                rm -rf "${LOCAL_WWW}/demo/${deploy_name}/${asset_rel_path}"
+            fi
+        fi
+    done
+fi
 
 echo -e "${GREEN}✓ 本地 www/ 目錄更新完成！(已整理 $COPIED_COUNT 個範例)${NC}"
 
 # 5. 如果指定了部署目的地 (DEPLOY_DEST)，執行複製/同步手續
 if [ -n "${DEPLOY_DEST}" ] && [ "${DEPLOY_DEST}" != "${LOCAL_WWW}" ]; then
     echo -e ""
+    echo -e "${YELLOW}⚠️ 警告: 準備部署至目標目錄: ${GREEN}${DEPLOY_DEST}${NC}"
+    
+    # 僅在互動式終端機環境中進行手動確認，避免破壞 CI/CD 自動化流程
+    if [ -t 0 ]; then
+        read -p "確定要將 www/ 內容同步/覆蓋至該目錄嗎？這將會覆蓋舊檔案！(y/N): " CONFIRM
+        if [[ ! "$CONFIRM" =~ ^[yY]$ ]]; then
+            echo -e "${RED}❌ 部署已取消。${NC}"
+            exit 0
+        fi
+    else
+        echo -e "${BLUE}偵測到非互動式環境，自動進行部署...${NC}"
+    fi
+
     if [[ "$DEPLOY_DEST" == *":"* ]]; then
         # 遠端複製 (例如 user@vps:/var/www/atmospheric)
         echo -e "${YELLOW}🚀 偵測到遠端路徑，正在將 www/ 同步上傳至遠端 ${DEPLOY_DEST}...${NC}"
