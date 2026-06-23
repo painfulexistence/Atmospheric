@@ -77,7 +77,9 @@ if(NOT EMSCRIPTEN)
     set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(SDL_TESTS_LIBRARY OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(SDL3)
-    find_package(glad CONFIG REQUIRED)
+    if(NOT IOS)
+        find_package(glad CONFIG REQUIRED)
+    endif()
 endif()
 find_package(glm CONFIG REQUIRED)
 find_package(Tracy CONFIG)
@@ -124,10 +126,14 @@ list(FILTER LUA_CORE_SOURCES EXCLUDE REGEX ".*(lua|luac)\.c$")
 
 add_library(lua_static STATIC ${LUA_CORE_SOURCES})
 target_include_directories(lua_static PUBLIC "${lua_src_SOURCE_DIR}")
-if(UNIX AND NOT EMSCRIPTEN)
+if(UNIX AND NOT EMSCRIPTEN AND NOT IOS)
     # Enable POSIX APIs (better file I/O, signals, etc.) on Linux / macOS.
-    # Not needed on Windows or Emscripten.
+    # Not needed on Windows, Emscripten, or iOS.
     target_compile_definitions(lua_static PRIVATE LUA_USE_POSIX)
+endif()
+if(IOS)
+    # LUA_USE_IOS disables os.execute() and other APIs unavailable in the iOS sandbox.
+    target_compile_definitions(lua_static PRIVATE LUA_USE_IOS)
 endif()
 # Suppress warnings from Lua's C code (not our code, not our problem)
 if(MSVC)
@@ -184,6 +190,11 @@ add_custom_command(
 
 if(NOT EMSCRIPTEN)
     add_subdirectory(external/raudio/projects/CMake)
+    if(IOS)
+        # miniaudio on Apple platforms includes ObjC frameworks (CoreAudio, AVFoundation).
+        # Force Clang to treat raudio.c as Objective-C so those headers compile correctly.
+        target_compile_options(raudio PRIVATE -x objective-c)
+    endif()
 endif()
 
 
@@ -417,14 +428,15 @@ if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
         message(STATUS "FFmpeg not found. VideoPlayer and VideoRecorder features will be disabled.")
     endif()
 endif()
-if(EMSCRIPTEN)
+if(EMSCRIPTEN OR ANDROID OR IOS)
     # IMGUI_IMPL_OPENGL_ES3 : tell Dear ImGui's OpenGL3 backend to use GLES3
-    #   headers (GLES3/gl3.h) instead of the default desktop GL3 loader
-    #   (imgui_impl_opengl3_loader.h) which tries to dlopen("libGL.so").
-    #   Without this, imgui_impl_opengl3.cpp fails to work on WebGL 2.0.
+    #   headers instead of the default desktop GL3 loader.
+    #   Required on WebGL 2.0, Android (GLES3), and iOS (OpenGLES).
+    target_compile_definitions(AtmosphericEngine PRIVATE IMGUI_IMPL_OPENGL_ES3)
+endif()
+if(EMSCRIPTEN)
     # spdlog::spdlog : console.cpp and scene_loader.cpp call spdlog directly;
     #   Emscripten maps stdout → browser console so spdlog works fine on web.
-    target_compile_definitions(AtmosphericEngine PRIVATE IMGUI_IMPL_OPENGL_ES3)
     target_compile_definitions(AtmosphericEngine PUBLIC BT_THREADSAFE=1)
     target_link_libraries(AtmosphericEngine PUBLIC spdlog::spdlog)
     # -pthread        : enable WASM threads (SharedArrayBuffer + Atomics)
@@ -459,7 +471,8 @@ if(EMSCRIPTEN)
             -sINITIAL_MEMORY=134217728
             -sMAXIMUM_MEMORY=536870912
             "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
-            -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])
+            -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"]
+            "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     else()
         target_link_options(AtmosphericEngine INTERFACE
             -sWASM=1 -O3 -sUSE_GLFW=3
@@ -469,15 +482,14 @@ if(EMSCRIPTEN)
             -sINITIAL_MEMORY=134217728
             -sMAXIMUM_MEMORY=536870912
             "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
-            -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])
+            -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"]
+            "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     endif()
 else()
     target_compile_definitions(AtmosphericEngine PUBLIC BT_THREADSAFE=1)
-    target_link_libraries(AtmosphericEngine
-        PUBLIC
-            glad::glad
-            spdlog::spdlog
-    )
+    if(NOT IOS)
+        target_link_libraries(AtmosphericEngine PUBLIC glad::glad spdlog::spdlog)
+    endif()
     if(AE_USE_TRACY)
         target_link_libraries(AtmosphericEngine PUBLIC Tracy::TracyClient)
         target_compile_definitions(AtmosphericEngine PUBLIC TRACY_ENABLE TRACY_VERBOSE TRACY_ON_DEMAND)
@@ -491,5 +503,14 @@ else()
             target_link_libraries(AtmosphericEngine PUBLIC GLESv3)
         endif()
         target_link_libraries(AtmosphericEngine PUBLIC log android)
+    endif()
+    if(IOS)
+        target_link_libraries(AtmosphericEngine PUBLIC
+            "-framework OpenGLES"
+            "-framework UIKit"
+            "-framework Foundation"
+            "-framework GameController"
+            "-framework CoreMotion"
+        )
     endif()
 endif()

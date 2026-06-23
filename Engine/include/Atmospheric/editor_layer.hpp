@@ -1,6 +1,6 @@
 #pragma once
 #include "layer.hpp"
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
 #include <glad/glad.h>
 #endif
 

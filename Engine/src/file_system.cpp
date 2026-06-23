@@ -22,6 +22,7 @@
 #include <filesystem>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <cstdio>
 #include <cstring>
 
@@ -105,6 +106,14 @@ static std::string NormalizePath(const std::string& path) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Cache helpers — identical on all platforms
 // ─────────────────────────────────────────────────────────────────────────────
+#ifdef __EMSCRIPTEN__
+// Forward decls — definitions in the Emscripten-specific section below.
+// Eviction must also drop the MEMFS shadow copy that NeedsMemFS() created,
+// otherwise EvictCache only frees half the memory of text/audio assets.
+static void EvictMemFSEntry(const std::string& path);
+static void ClearMemFSEntries();
+#endif
+
 bool FileSystem::IsCached(const std::string& path) const {
     std::string normPath = NormalizePath(path);
     std::lock_guard<std::mutex> lk(g_cacheMutex);
@@ -117,13 +126,23 @@ std::string FileSystem::ResolvePath(const std::string& path) const {
 
 void FileSystem::EvictCache(const std::string& path) {
     std::string normPath = NormalizePath(path);
-    std::lock_guard<std::mutex> lk(g_cacheMutex);
-    g_cache.erase(normPath);
+    {
+        std::lock_guard<std::mutex> lk(g_cacheMutex);
+        g_cache.erase(normPath);
+    }
+#ifdef __EMSCRIPTEN__
+    EvictMemFSEntry(normPath);
+#endif
 }
 
 void FileSystem::ClearCache() {
-    std::lock_guard<std::mutex> lk(g_cacheMutex);
-    g_cache.clear();
+    {
+        std::lock_guard<std::mutex> lk(g_cacheMutex);
+        g_cache.clear();
+    }
+#ifdef __EMSCRIPTEN__
+    ClearMemFSEntries();
+#endif
 }
 
 bool FileSystem::Exists(const std::string& path) const {
@@ -203,6 +222,45 @@ EM_JS(void, fs_js_write_memfs, (const char* path_ptr, const uint8_t* data_ptr, i
     // Write (creates or overwrites); HEAPU8.subarray is a JS view, no extra copy
     FS.writeFile(path, HEAPU8.subarray(data_ptr, data_ptr + data_len));
 });
+
+// ── MEMFS unlink helper ───────────────────────────────────────────────────────
+// FS.unlink raises if the file doesn't exist; we swallow that so callers don't
+// have to track which paths were actually written.
+EM_JS(void, fs_js_unlink_memfs, (const char* path_ptr), {
+    var path = UTF8ToString(path_ptr);
+    try { FS.unlink(path); } catch (e) { /* not-found is fine */ }
+});
+
+// Track every path the engine wrote into MEMFS so eviction can target just
+// those entries (vs. blowing away the entire MEMFS tree, which would also
+// drop any --preload-file content the user might still need).
+static std::unordered_set<std::string> g_memfsWritten;
+static std::mutex g_memfsWrittenMutex;
+
+static void RegisterMemFSEntry(const std::string& path) {
+    std::lock_guard<std::mutex> lk(g_memfsWrittenMutex);
+    g_memfsWritten.insert(path);
+}
+
+static void EvictMemFSEntry(const std::string& path) {
+    bool wasWritten;
+    {
+        std::lock_guard<std::mutex> lk(g_memfsWrittenMutex);
+        wasWritten = g_memfsWritten.erase(path) > 0;
+    }
+    if (wasWritten) fs_js_unlink_memfs(path.c_str());
+}
+
+static void ClearMemFSEntries() {
+    std::unordered_set<std::string> snapshot;
+    {
+        std::lock_guard<std::mutex> lk(g_memfsWrittenMutex);
+        snapshot.swap(g_memfsWritten);
+    }
+    for (const auto& p : snapshot) {
+        fs_js_unlink_memfs(p.c_str());
+    }
+}
 
 // ── Text-file detection ───────────────────────────────────────────────────────
 // Files with these extensions are written to MEMFS after fetching so that
@@ -291,6 +349,7 @@ void EM_OnSuccess(emscripten_fetch_t* f) {
         // Optionally mirror to MEMFS for text-format assets
         if (ctx->writeToMemFS) {
             fs_js_write_memfs(ctx->path.c_str(), bytes.data(), (int)bytes.size());
+            RegisterMemFSEntry(ctx->path);
             ENGINE_LOG("[FileSystem] MEMFS + cache: '{}' ({} bytes)", ctx->path, f->numBytes);
         } else {
             ENGINE_LOG("[FileSystem] Cached: '{}' ({} bytes)", ctx->path, f->numBytes);
@@ -372,13 +431,22 @@ void FileSystem::Prefetch(const std::vector<std::string>& paths,
                           CompletionCallback onDone) {
     if (paths.empty()) { if (onDone) onDone(); return; }
 
-    // Skip paths that are already in cache
+    // Skip paths that are already in cache or MEMFS
     std::vector<std::string> pending;
     {
         std::lock_guard<std::mutex> lk(g_cacheMutex);
         for (const auto& p : paths) {
             std::string normPath = NormalizePath(p);
-            if (!g_cache.count(normPath)) pending.push_back(normPath);
+            if (g_cache.count(normPath)) continue;
+
+            // Try reading from MEMFS (populated via --preload-file)
+            auto bytes = ReadFromDisk(normPath);
+            if (!bytes.empty()) {
+                g_cache[normPath] = std::move(bytes);
+                continue;
+            }
+
+            pending.push_back(normPath);
         }
     }
     if (pending.empty()) { if (onDone) onDone(); return; }

@@ -77,6 +77,14 @@ public:
     //   auto bytes = FileSystem::Get().ConsumeSync("hero.ktx2");
     //   // upload bytes to GPU
     //   // bytes is freed when it goes out of scope; cache entry already gone
+    //
+    // Cross-platform asymmetry on cache miss:
+    //   Native — falls back to a synchronous disk read (lenient).
+    //   Web    — returns {} and logs an error. The asset MUST be Prefetch()'d
+    //            first; emscripten_fetch is async-only.
+    // Write call sites assuming the native lenient behaviour and they break
+    // silently on the web. Always pair ConsumeSync() of web-targeted assets
+    // with a prior Prefetch().
     Bytes ConsumeSync(const std::string& path);
 
     // ── Batch prefetch ────────────────────────────────────────────────────────

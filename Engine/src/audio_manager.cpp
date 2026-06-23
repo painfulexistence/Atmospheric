@@ -184,6 +184,17 @@ AudioManager::AudioManager(void) {
                     bufferCache.delete(url);
                 }
 
+                function shutdown() {
+                    stopAll();
+                    if (ctx) {
+                        try {
+                            ctx.close();
+                        } catch (e) {}
+                        ctx = null;
+                    }
+                    bufferCache.clear();
+                }
+
                 return {
                     getContext: getContext,
                     load: load,
@@ -194,7 +205,8 @@ AudioManager::AudioManager(void) {
                     stopAllSounds: stopAllSounds,
                     setVolume: setVolume,
                     isPlaying: isPlaying,
-                    unload: unload
+                    unload: unload,
+                    shutdown: shutdown
                 };
             })();
         }

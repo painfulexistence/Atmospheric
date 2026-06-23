@@ -23,7 +23,7 @@ struct MaterialProps {
     float shininess = .25;
     bool cullFaceEnabled = true;
     GLenum primitiveType = GL_TRIANGLES;
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
     GLenum polygonMode = GL_FILL;
 #endif
 };
@@ -42,7 +42,7 @@ public:
     float shininess = .25;
     bool cullFaceEnabled = true;
     GLenum primitiveType = GL_TRIANGLES;
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
     GLenum polygonMode = GL_FILL;
 #endif
 
@@ -66,7 +66,7 @@ public:
         shininess = props.shininess;
         cullFaceEnabled = props.cullFaceEnabled;
         primitiveType = props.primitiveType;
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
         polygonMode = props.polygonMode;
 #endif
     }

@@ -1,6 +1,6 @@
 #include "Atmospheric.hpp"
 #include "components.hpp"
-#ifdef ANDROID
+#if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
 #include <SDL3/SDL_main.h>
 #endif
 
@@ -170,14 +170,27 @@ static void StartGame() {
 
 #else
 // ─────────────────────────────────────────────────────────────────────────────
-// Native entry point (Linux / macOS / Windows)
+// Native entry point (Linux / macOS / Windows / iOS / Android)
 // ─────────────────────────────────────────────────────────────────────────────
 int main(int argc, char* argv[]) {
+#if defined(__APPLE__) && TARGET_OS_IOS
+    // On iOS, main() must return so UIApplicationMain can drive the run-loop
+    // (SDL fires our animation callback via CADisplayLink). The game object
+    // therefore has to outlive main — heap-allocate and intentionally leak;
+    // the OS reclaims memory on process exit.
+    auto* game = new HelloWorld({
+        .useDefaultTextures = true,
+        .useDefaultShaders  = true,
+    });
+    game->Run();
+    return 0;
+#else
     HelloWorld game({
         .useDefaultTextures = true,
         .useDefaultShaders  = true,
     });
     game.Run();
     return 0;
+#endif
 }
 #endif

@@ -44,7 +44,7 @@ void GraphicsServer::Init(Application* app) {
 
     stbi_set_flip_vertically_on_load(true);
 
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
     if (gladLoadGLLoader((GLADloadproc)Window::GetProcAddress()) <= 0)
         throw std::runtime_error("Failed to initialize OpenGL!");
 #endif
@@ -84,13 +84,13 @@ void GraphicsServer::Init(Application* app) {
     // ── OpenGL / WebGL 2 path ─────────────────────────────────────────────────
     AssetManager::Get().LoadDefaultShaders();
 
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
     glPrimitiveRestartIndex(0xFFFF);
     glPatchParameteri(GL_PATCH_VERTICES, 4);
 #endif
     glLineWidth(2.0f);
     glCullFace(GL_BACK);
-#if MSAA_ON && !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if MSAA_ON && !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
     glEnable(GL_MULTISAMPLE);
 #endif
 
