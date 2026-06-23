@@ -18,16 +18,5 @@
     "rmlui",
     "box2d",
     "flatbuffers"
-  ],
-  "features": {
-    "ffmpeg": {
-      "description": "FFmpeg support for VideoPlayer and VideoRecorder",
-      "dependencies": [
-        {
-          "name": "ffmpeg",
-          "features": ["avcodec", "avformat", "swscale"]
-        }
-      ]
-    }
-  }
+  ]
 }
