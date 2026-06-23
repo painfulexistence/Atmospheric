@@ -153,6 +153,10 @@
         canvas: (function() {
           var canvas = document.getElementById('canvas');
           canvas.addEventListener("webglcontextlost", function(e) { 
+              if (typeof cleanupRan !== 'undefined' && cleanupRan) {
+                  e.preventDefault();
+                  return;
+              }
               alert('WebGL context lost. Please reload the page.'); 
               e.preventDefault(); 
           }, false);
