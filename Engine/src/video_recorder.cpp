@@ -222,21 +222,30 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
         return false;
     }
 
-    // Probe encoder fallback chain: configured encoder → AV1 variants → H.264.
-    static constexpr const char* kEncoderFallbacks[] = {
-        "libaom-av1", "libsvtav1", "librav1e", "libx264", nullptr
+    // Probe order: HW encoders first (lowest CPU overhead), then SW fallbacks.
+    static constexpr const char* kEncoderCandidates[] = {
+        "h264_videotoolbox", // macOS VideoToolbox (always available on Mac)
+        "h264_nvenc",        // NVIDIA GPU
+        "libsvtav1",         // SW AV1, fastest
+        "libaom-av1",        // SW AV1
+        "librav1e",          // SW AV1
+        "libx264",           // SW H.264, widest compatibility
+        nullptr
     };
-    const AVCodec* codec = avcodec_find_encoder_by_name(m_config.encoder.c_str());
-    std::string usedEncoder = m_config.encoder;
+    const AVCodec* codec = nullptr;
+    std::string usedEncoder;
+    // Try configured encoder first, then walk the candidate list.
+    if (!m_config.encoder.empty()) {
+        codec = avcodec_find_encoder_by_name(m_config.encoder.c_str());
+        if (codec) usedEncoder = m_config.encoder;
+    }
     if (!codec) {
-        for (int i = 0; kEncoderFallbacks[i]; ++i) {
-            if (m_config.encoder == kEncoderFallbacks[i]) {
-                continue; // already tried
-            }
-            codec = avcodec_find_encoder_by_name(kEncoderFallbacks[i]);
+        for (int i = 0; kEncoderCandidates[i]; ++i) {
+            if (m_config.encoder == kEncoderCandidates[i]) continue;
+            codec = avcodec_find_encoder_by_name(kEncoderCandidates[i]);
             if (codec) {
-                usedEncoder = kEncoderFallbacks[i];
-                fmt::print("[VideoRecorder] Encoder '{}' not found, using '{}' instead\n",
+                usedEncoder = kEncoderCandidates[i];
+                fmt::print("[VideoRecorder] Encoder '{}' not found, using '{}'\n",
                            m_config.encoder, usedEncoder);
                 break;
             }
@@ -244,7 +253,7 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
     }
     if (!codec) {
         fmt::print(stderr,
-                   "[VideoRecorder] No video encoder found (tried '{}' and fallbacks)\n",
+                   "[VideoRecorder] No video encoder found (tried '{}' and all fallbacks)\n",
                    m_config.encoder);
         return false;
     }
@@ -268,17 +277,25 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
     ff.codecCtx->pix_fmt   = AV_PIX_FMT_YUV420P;
     ff.codecCtx->gop_size  = m_config.fps;
 
-    av_opt_set_int(ff.codecCtx->priv_data, "crf", m_config.crf, 0);
-
-    if (usedEncoder == "libsvtav1") {
+    if (usedEncoder == "h264_videotoolbox") {
+        ff.codecCtx->bit_rate = 8'000'000; // 8 Mbps — good quality at 30fps 1080p
+    } else if (usedEncoder == "h264_nvenc") {
+        av_opt_set(ff.codecCtx->priv_data, "preset", "p4", 0);   // balanced speed/quality
+        av_opt_set(ff.codecCtx->priv_data, "rc", "vbr", 0);
+        av_opt_set_int(ff.codecCtx->priv_data, "cq", 23, 0);
+    } else if (usedEncoder == "libsvtav1") {
+        av_opt_set_int(ff.codecCtx->priv_data, "crf", m_config.crf, 0);
         av_opt_set_int(ff.codecCtx->priv_data, "preset", 8, 0);
     } else if (usedEncoder == "libaom-av1") {
+        av_opt_set_int(ff.codecCtx->priv_data, "crf", m_config.crf, 0);
         av_opt_set_int(ff.codecCtx->priv_data, "cpu-used", 6, 0);
         av_opt_set(ff.codecCtx->priv_data, "usage", "realtime", 0);
     } else if (usedEncoder == "librav1e") {
+        av_opt_set_int(ff.codecCtx->priv_data, "crf", m_config.crf, 0);
         av_opt_set_int(ff.codecCtx->priv_data, "speed", 8, 0);
     } else if (usedEncoder == "libx264") {
         av_opt_set(ff.codecCtx->priv_data, "preset", "fast", 0);
+        av_opt_set_int(ff.codecCtx->priv_data, "crf", 23, 0); // x264 scale: 0-51
     }
 
     if (ff.fmtCtx->oformat->flags & AVFMT_GLOBALHEADER) {

@@ -46,11 +46,13 @@ class VideoRecorder {
 public:
     struct Config {
         std::string outputPath = "recording.mp4";
-        int fps = 60;
-        // AV1 CRF quality (0=lossless, 63=worst). Lower = better quality.
+        int fps = 30;
+        // CRF quality for SW AV1 encoders (0=lossless, 63=worst). Lower = better.
+        // Ignored for HW encoders (VideoToolbox, NVENC), which use fixed quality.
         int crf = 35;
-        // FFmpeg encoder name. "libsvtav1" is fastest; fallback to "libaom-av1".
-        std::string encoder = "libsvtav1";
+        // Encoder probe order: h264_videotoolbox → h264_nvenc → libsvtav1 →
+        // libaom-av1 → libx264. Set to empty string to use the probe order.
+        std::string encoder = "h264_videotoolbox";
         // Enable AAC audio track. Caller must supply PCM via writeAudio().
         // atmospheric's AudioManager wraps raudio which has no PCM tap, so
         // audio must be fed manually from wherever the application has the
@@ -103,9 +105,6 @@ public:
         ImGui::InputText("##recpath", m_outputBuf, sizeof(m_outputBuf));
 
         if (!isRecording()) {
-            if (m_audioManager) {
-                ImGui::Checkbox("Record Audio##rec", &m_captureAudioUI);
-            }
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.55f, 0.15f, 1.0f));
             if (ImGui::Button("Start##rec", ImVec2(-1.0f, 0.0f))) {
                 std::error_code ec;
@@ -113,7 +112,7 @@ public:
                     std::filesystem::path(m_outputBuf).parent_path(), ec);
                 Config cfg;
                 cfg.outputPath      = m_outputBuf;
-                cfg.captureAudio    = m_audioManager && m_captureAudioUI;
+                cfg.captureAudio    = (m_audioManager != nullptr);
                 cfg.audioSampleRate = 44100;
                 cfg.audioChannels   = 2;
                 if (startRecording(&renderer, cfg))
@@ -196,8 +195,7 @@ private:
 
     static constexpr size_t MAX_QUEUE_FRAMES = 16;
 
-    AudioManager* m_audioManager  = nullptr;
-    bool          m_captureAudioUI = true; // ImGui checkbox state
+    AudioManager* m_audioManager = nullptr;
 
     // ── Audio capture state ──────────────────────────────────────────────────
     bool m_audioActive = false; // true when this session records an audio track
