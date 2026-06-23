@@ -25,7 +25,7 @@
       "dependencies": [
         {
           "name": "ffmpeg",
-          "features": ["avcodec", "avformat", "swscale"]
+          "features": ["avcodec", "avformat", "swscale", "swresample", "aom"]
         }
       ]
     }
