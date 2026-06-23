@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 
 option(AE_USE_BASIS_UNIVERSAL "Enable Basis Universal transcoder for KTX2 GPU-compressed textures" OFF)
+option(AE_USE_FFMPEG "Enable FFmpeg for VideoPlayer and VideoRecorder (auto-enables the vcpkg 'ffmpeg' feature on desktop)" ON)
 
 # Custom triplets (Android, iOS, etc.) override vcpkg community triplets.
 # Must be set before vcpkg.cmake is included.
@@ -64,6 +65,14 @@ if(ANDROID AND DEFINED CMAKE_ANDROID_NDK)
         message(STATUS "Android CMake: Generated custom ${VCPKG_TRIPLET_NAME}-android triplet targeting ${TARGET_ABI}")
         set(VCPKG_TARGET_TRIPLET "${VCPKG_TRIPLET_NAME}-android" CACHE STRING "" FORCE)
     endif()
+endif()
+
+# Turn the AE_USE_FFMPEG option into a vcpkg manifest feature before the
+# toolchain processes vcpkg.json, so enabling the option actually pulls FFmpeg
+# into the dependency set. Skipped on mobile/web triplets, where FFmpeg is
+# neither built nor used.
+if(AE_USE_FFMPEG AND NOT VCPKG_TARGET_TRIPLET MATCHES "(emscripten|android|ios)")
+    list(APPEND VCPKG_MANIFEST_FEATURES "ffmpeg")
 endif()
 
 # Programmatically load vcpkg to support Android/iOS native dependency installation
