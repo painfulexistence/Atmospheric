@@ -75,7 +75,26 @@ void SceneTransition::Go(const std::string& sceneName, OnReadyFn onReady, OnErro
         auto manifest = GameManifest::FromJSON(std::string(bytes.begin(), bytes.end()));
 
         std::vector<std::string> allPaths;
+#if defined(AE_USE_BASIS_UNIVERSAL) && defined(__EMSCRIPTEN__)
+        for (const auto& path : manifest.textures) {
+            std::string p = (path.size() >= 2 && path[0] == '.' && path[1] == '/') ? path.substr(2) : path;
+            if (p.find("aim.png") != std::string::npos || p.find("heightmap") != std::string::npos) {
+                allPaths.push_back(p);
+                continue;
+            }
+            size_t extPos = p.find_last_of('.');
+            if (extPos != std::string::npos) {
+                std::string ext = p.substr(extPos);
+                if (ext == ".jpg" || ext == ".jpeg" || ext == ".png") {
+                    allPaths.push_back(p.substr(0, extPos) + ".ktx2");
+                    continue;
+                }
+            }
+            allPaths.push_back(p);
+        }
+#else
         allPaths.insert(allPaths.end(), manifest.textures.begin(), manifest.textures.end());
+#endif
 
         if (Application::Get() && Application::Get()->GetConfig().useDefaultTextures) {
 #if defined(AE_USE_BASIS_UNIVERSAL) && defined(__EMSCRIPTEN__)

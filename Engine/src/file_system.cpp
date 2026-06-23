@@ -372,13 +372,22 @@ void FileSystem::Prefetch(const std::vector<std::string>& paths,
                           CompletionCallback onDone) {
     if (paths.empty()) { if (onDone) onDone(); return; }
 
-    // Skip paths that are already in cache
+    // Skip paths that are already in cache or MEMFS
     std::vector<std::string> pending;
     {
         std::lock_guard<std::mutex> lk(g_cacheMutex);
         for (const auto& p : paths) {
             std::string normPath = NormalizePath(p);
-            if (!g_cache.count(normPath)) pending.push_back(normPath);
+            if (g_cache.count(normPath)) continue;
+
+            // Try reading from MEMFS (populated via --preload-file)
+            auto bytes = ReadFromDisk(normPath);
+            if (!bytes.empty()) {
+                g_cache[normPath] = std::move(bytes);
+                continue;
+            }
+
+            pending.push_back(normPath);
         }
     }
     if (pending.empty()) { if (onDone) onDone(); return; }
