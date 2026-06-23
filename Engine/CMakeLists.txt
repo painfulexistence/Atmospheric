@@ -417,21 +417,26 @@ if(AE_USE_BASIS_UNIVERSAL)
     target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_BASIS_UNIVERSAL)
 endif()
 if(AE_USE_FFMPEG AND NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
-    # FFmpeg powers VideoPlayer and VideoRecorder on native desktop platforms.
-    # NOTE: vcpkg's ffmpeg port ships an all-uppercase module (FindFFMPEG.cmake)
-    # and sets FFMPEG_* variables; it provides no FFmpegConfig.cmake. The package
-    # name passed here must therefore be FFMPEG, not FFmpeg.
-    find_package(FFMPEG COMPONENTS avcodec avformat avutil swscale swresample)
+    # Use the system FFmpeg located via pkg-config rather than building the
+    # heavy ffmpeg port through vcpkg. Install it with:
+    #   macOS:        brew install ffmpeg pkg-config
+    #   Debian/Ubuntu: apt install libavcodec-dev libavformat-dev libavutil-dev \
+    #                              libswscale-dev libswresample-dev pkg-config
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(FFMPEG IMPORTED_TARGET
+            libavcodec libavformat libavutil libswscale libswresample)
+    endif()
     if(FFMPEG_FOUND)
-        message(STATUS "FFmpeg enabled (AE_USE_FFMPEG=ON). VideoPlayer and VideoRecorder available.")
+        message(STATUS "FFmpeg enabled (AE_USE_FFMPEG=ON, system via pkg-config). VideoPlayer and VideoRecorder available.")
         target_compile_definitions(AtmosphericEngine PUBLIC AE_HAS_FFMPEG)
-        target_include_directories(AtmosphericEngine PUBLIC ${FFMPEG_INCLUDE_DIRS})
-        target_link_libraries(AtmosphericEngine PUBLIC ${FFMPEG_LIBRARIES})
+        target_link_libraries(AtmosphericEngine PUBLIC PkgConfig::FFMPEG)
     else()
         message(WARNING
-            "AE_USE_FFMPEG=ON but FFmpeg was not found. VideoPlayer and VideoRecorder "
-            "will be disabled. Reconfigure from a clean build dir so the vcpkg 'ffmpeg' "
-            "feature installs, or pass -DAE_USE_FFMPEG=OFF to silence this.")
+            "AE_USE_FFMPEG=ON but no system FFmpeg was found via pkg-config. Install it "
+            "(macOS: `brew install ffmpeg pkg-config`; Debian/Ubuntu: `apt install "
+            "libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev "
+            "pkg-config`), or pass -DAE_USE_FFMPEG=OFF. VideoPlayer and VideoRecorder are disabled.")
     endif()
 elseif(NOT AE_USE_FFMPEG)
     message(STATUS "FFmpeg disabled (AE_USE_FFMPEG=OFF). VideoPlayer and VideoRecorder will be unavailable.")
