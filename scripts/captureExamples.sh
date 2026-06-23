@@ -34,12 +34,28 @@ WARMUP="${WARMUP:-3}"
 DURATION="${DURATION:-10}"
 TIMEOUT="${TIMEOUT:-$(awk "BEGIN{print $WARMUP + $DURATION + 30}")}"
 CAPTURE_DIR="${CAPTURE_DIR:-$REPO_ROOT/output/captures}"
+CONFIG="${CONFIG:-}"
 
 if [[ "$MODE" == "screenshot" ]]; then EXT=png; else EXT=mp4; fi
 
 # Keep in sync with Examples/CMakeLists.txt (MazeFPS is disabled there).
 DEFAULT_EXAMPLES="HelloWorld SceneLoader Physics2D RPG CardBattle VoxelWorld ProceduralTerrain MidnightSkyraiders MultiplayerSandbox VideoPlayer LuaScripting"
 EXAMPLES="${EXAMPLES:-$DEFAULT_EXAMPLES}"
+
+# Locate an example's executable across single-config (build/<Name>/<Name>) and
+# multi-config (build/<Name>/<Config>/<Name>) layouts.
+find_bin() {
+    local ex="$1" c
+    local cands=()
+    [[ -n "$CONFIG" ]] && cands+=("$BUILD_DIR/$ex/$CONFIG/$ex")
+    cands+=("$BUILD_DIR/$ex/$ex")
+    for c in "${cands[@]}"; do
+        [[ -f "$c" && -x "$c" ]] && { echo "$c"; return 0; }
+    done
+    c="$(find "$BUILD_DIR/$ex" -maxdepth 2 -type f -name "$ex" -perm -u+x 2>/dev/null | head -n1)"
+    [[ -n "$c" ]] && { echo "$c"; return 0; }
+    return 1
+}
 
 mkdir -p "$CAPTURE_DIR"
 echo "Build dir : $BUILD_DIR"
@@ -50,9 +66,9 @@ echo
 ran=0
 failed=0
 for ex in $EXAMPLES; do
-    bin="$BUILD_DIR/$ex/$ex"
-    if [[ ! -x "$bin" ]]; then
-        echo "skip  $ex  (not built at $bin)"
+    bin="$(find_bin "$ex")"
+    if [[ -z "$bin" ]]; then
+        echo "skip  $ex  (not built under $BUILD_DIR/$ex)"
         continue
     fi
 
@@ -61,7 +77,7 @@ for ex in $EXAMPLES; do
     ran=$((ran + 1))
 
     (
-        cd "$BUILD_DIR/$ex" || exit 1
+        cd "$(dirname "$bin")" || exit 1
         AE_CAPTURE_MODE="$MODE" \
         AE_CAPTURE_WARMUP="$WARMUP" \
         AE_CAPTURE_DURATION="$DURATION" \

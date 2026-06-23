@@ -32,6 +32,7 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
+#include <fmt/format.h>
 #ifndef NDEBUG
 #include "editor_layer.hpp"
 #endif
@@ -149,6 +150,44 @@ bool pngWrite(const std::string& path, const uint8_t* pixels, uint32_t w,
     std::fwrite(out.data(), 1, out.size(), f);
     std::fclose(f);
     return true;
+}
+
+// Cheap whole-frame statistics used to decide whether a captured frame is
+// "blank" (essentially a single solid color → nothing was rendered). Also
+// reports mean color so smoke captures can be eyeballed / diffed as a baseline.
+struct FrameStats {
+    double meanR = 0.0, meanG = 0.0, meanB = 0.0;
+    int    spread = 0;   // max(max-min) across the R/G/B channels
+    bool   blank  = true;
+};
+
+FrameStats analyzeFrame(const uint8_t* px, uint32_t w, uint32_t h, uint32_t channels) {
+    FrameStats s;
+    if (!px || w == 0 || h == 0 || channels < 3)
+        return s;
+
+    uint64_t sumR = 0, sumG = 0, sumB = 0;
+    uint8_t minR = 255, minG = 255, minB = 255;
+    uint8_t maxR = 0, maxG = 0, maxB = 0;
+    const size_t count = static_cast<size_t>(w) * h;
+    for (size_t i = 0; i < count; ++i) {
+        const uint8_t* p = px + i * channels;
+        sumR += p[0];
+        sumG += p[1];
+        sumB += p[2];
+        minR = std::min(minR, p[0]);
+        maxR = std::max(maxR, p[0]);
+        minG = std::min(minG, p[1]);
+        maxG = std::max(maxG, p[1]);
+        minB = std::min(minB, p[2]);
+        maxB = std::max(maxB, p[2]);
+    }
+    s.meanR  = static_cast<double>(sumR) / count;
+    s.meanG  = static_cast<double>(sumG) / count;
+    s.meanB  = static_cast<double>(sumB) / count;
+    s.spread = std::max({maxR - minR, maxG - minG, maxB - minB});
+    s.blank  = s.spread <= 3;// tolerate dithering; a real scene varies far more
+    return s;
 }
 
 }// namespace
@@ -1011,7 +1050,16 @@ void Application::SaveScreenshot(const std::string& path) {
     graphics.renderer->readPixelsAsync([&path](const GpuImageData& img) {
         if (img.data.empty())
             return;
-        if (pngWrite(path, img.data.data(), img.width, img.height, img.channelCount))
+        bool ok = pngWrite(path, img.data.data(), img.width, img.height, img.channelCount);
+        FrameStats st = analyzeFrame(img.data.data(), img.width, img.height, img.channelCount);
+        // Machine-readable marker consumed by scripts/smokeTest.sh (grepped from
+        // stdout). Flushed so it survives the imminent auto-quit.
+        fmt::print(
+            "[Smoke] result path={} size={}x{} meanRGB={:.1f},{:.1f},{:.1f} spread={} blank={} write={}\n",
+            path, img.width, img.height, st.meanR, st.meanG, st.meanB, st.spread,
+            st.blank ? 1 : 0, ok ? 1 : 0);
+        std::fflush(stdout);
+        if (ok)
             ENGINE_LOG("Screenshot saved: {} ({}x{})", path, img.width, img.height);
         else
             spdlog::error("[Screenshot] Failed to write {}", path);
