@@ -1,4 +1,5 @@
 #include "video_recorder.hpp"
+#include "audio_manager.hpp"
 #include <fmt/format.h>
 
 #ifdef AE_HAS_FFMPEG
@@ -71,6 +72,11 @@ bool VideoRecorder::startRecording(Renderer* renderer, const Config& config) {
         m_audioQueue.clear();
     }
 
+#ifndef __EMSCRIPTEN__
+    if (m_config.captureAudio && m_audioManager)
+        m_audioManager->attachVideoRecorder(this);
+#endif
+
     m_recording = true;
 
     m_encoderThread = std::thread(&VideoRecorder::encoderThreadFunc, this);
@@ -85,6 +91,11 @@ void VideoRecorder::stopRecording() {
 
     m_stop = true;
     m_cv.notify_all();
+
+#ifndef __EMSCRIPTEN__
+    if (m_audioManager)
+        m_audioManager->detachVideoRecorder();
+#endif
 
     if (m_encoderThread.joinable()) {
         m_encoderThread.join();

@@ -8,6 +8,8 @@
 using SoundID = uint32_t;
 using MusicID = uint32_t;
 
+class VideoRecorder;
+
 class AudioManager : public Server {
 public:
     AudioManager();
@@ -44,6 +46,14 @@ public:
 
     // General API
     void StopAll();
+
+    // Hook raudio's final mixed output into a VideoRecorder's audio track.
+    // Called automatically by VideoRecorder when captureAudio=true.
+    // PCM format: float32 interleaved stereo at 44100 Hz (raudio device default).
+#ifndef __EMSCRIPTEN__
+    void attachVideoRecorder(VideoRecorder* recorder);
+    void detachVideoRecorder();
+#endif
 
 #ifdef __EMSCRIPTEN__
     std::unordered_map<SoundID, std::string> soundPaths;

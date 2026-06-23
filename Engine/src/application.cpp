@@ -349,6 +349,7 @@ void Application::Run() {
     console.Init(this);
     input.Init(this);
     audio.Init(this);
+    _recorder->setAudioManager(&audio);
     graphics.Init(this);
     physics.Init(this);// Note that physics debug drawer is dependent on graphics server
     physics2D.Init(this);

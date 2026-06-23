@@ -1,4 +1,5 @@
 #include "audio_manager.hpp"
+#include "video_recorder.hpp"
 #include "file_system.hpp"
 #include "fmt/format.h"
 #include "imgui.h"
@@ -519,6 +520,22 @@ void AudioManager::StopAll() {
 }
 
 #else // !__EMSCRIPTEN__
+
+static VideoRecorder* s_captureRecorder = nullptr;
+static void audioCaptureCallback(void* buffer, unsigned int frames) {
+    if (s_captureRecorder)
+        s_captureRecorder->writeAudio(static_cast<const float*>(buffer), frames);
+}
+
+void AudioManager::attachVideoRecorder(VideoRecorder* recorder) {
+    s_captureRecorder = recorder;
+    ::AttachAudioMixedProcessor(audioCaptureCallback);
+}
+
+void AudioManager::detachVideoRecorder() {
+    ::DetachAudioMixedProcessor(audioCaptureCallback);
+    s_captureRecorder = nullptr;
+}
 
 AudioManager::AudioManager(void) {
     ::InitAudioDevice();

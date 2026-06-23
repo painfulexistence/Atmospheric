@@ -15,6 +15,8 @@
 #include <thread>
 #include <vector>
 
+class AudioManager;
+
 // Records rendered frames to an AV1 video file via FFmpeg, optionally muxing
 // an AAC audio track from caller-supplied PCM.
 // Requires AE_HAS_FFMPEG (set by CMake when FFmpeg is found).
@@ -84,6 +86,11 @@ public:
     // No-op unless captureAudio was true in the Config passed to startRecording().
     void writeAudio(const float* frames, uint32_t frameCount);
 
+    // Wire this recorder to an AudioManager so startRecording/stopRecording
+    // automatically attach/detach raudio's mixed processor.
+    // Call once after construction (e.g. in Application::Run).
+    void setAudioManager(AudioManager* mgr) { m_audioManager = mgr; }
+
     // Set the directory where timestamped recordings are saved.
     void setBaseOutputDir(const std::string& dir) {
         m_baseOutputDir = dir;
@@ -96,13 +103,19 @@ public:
         ImGui::InputText("##recpath", m_outputBuf, sizeof(m_outputBuf));
 
         if (!isRecording()) {
+            if (m_audioManager) {
+                ImGui::Checkbox("Record Audio##rec", &m_captureAudioUI);
+            }
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.55f, 0.15f, 1.0f));
             if (ImGui::Button("Start##rec", ImVec2(-1.0f, 0.0f))) {
                 std::error_code ec;
                 std::filesystem::create_directories(
                     std::filesystem::path(m_outputBuf).parent_path(), ec);
                 Config cfg;
-                cfg.outputPath = m_outputBuf;
+                cfg.outputPath      = m_outputBuf;
+                cfg.captureAudio    = m_audioManager && m_captureAudioUI;
+                cfg.audioSampleRate = 44100;
+                cfg.audioChannels   = 2;
                 if (startRecording(&renderer, cfg))
                     m_status.clear();
                 else
@@ -182,6 +195,9 @@ private:
     std::atomic<bool> m_stop{false};
 
     static constexpr size_t MAX_QUEUE_FRAMES = 16;
+
+    AudioManager* m_audioManager  = nullptr;
+    bool          m_captureAudioUI = true; // ImGui checkbox state
 
     // ── Audio capture state ──────────────────────────────────────────────────
     bool m_audioActive = false; // true when this session records an audio track
