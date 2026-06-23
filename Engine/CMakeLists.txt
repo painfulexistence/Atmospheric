@@ -416,17 +416,30 @@ if(AE_USE_BASIS_UNIVERSAL)
     target_link_libraries(AtmosphericEngine PUBLIC basisu_transcoder)
     target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_BASIS_UNIVERSAL)
 endif()
-if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
-    # Automatically search for FFmpeg on native desktop platforms
-    find_package(FFmpeg COMPONENTS avcodec avformat avutil swscale swresample)
-    if(FFMPEG_FOUND OR FFmpeg_FOUND)
-        message(STATUS "FFmpeg found. VideoPlayer and VideoRecorder features are enabled.")
-        target_compile_definitions(AtmosphericEngine PUBLIC AE_HAS_FFMPEG)
-        target_include_directories(AtmosphericEngine PUBLIC ${FFMPEG_INCLUDE_DIRS})
-        target_link_libraries(AtmosphericEngine PUBLIC ${FFMPEG_LIBRARIES})
-    else()
-        message(STATUS "FFmpeg not found. VideoPlayer and VideoRecorder features will be disabled.")
+if(AE_USE_FFMPEG AND NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
+    # Use the system FFmpeg located via pkg-config rather than building the
+    # heavy ffmpeg port through vcpkg. Install it with:
+    #   macOS:        brew install ffmpeg pkg-config
+    #   Debian/Ubuntu: apt install libavcodec-dev libavformat-dev libavutil-dev \
+    #                              libswscale-dev libswresample-dev pkg-config
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(FFMPEG IMPORTED_TARGET
+            libavcodec libavformat libavutil libswscale libswresample)
     endif()
+    if(FFMPEG_FOUND)
+        message(STATUS "FFmpeg enabled (AE_USE_FFMPEG=ON, system via pkg-config). VideoPlayer and VideoRecorder available.")
+        target_compile_definitions(AtmosphericEngine PUBLIC AE_HAS_FFMPEG)
+        target_link_libraries(AtmosphericEngine PUBLIC PkgConfig::FFMPEG)
+    else()
+        message(WARNING
+            "AE_USE_FFMPEG=ON but no system FFmpeg was found via pkg-config. Install it "
+            "(macOS: `brew install ffmpeg pkg-config`; Debian/Ubuntu: `apt install "
+            "libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev "
+            "pkg-config`), or pass -DAE_USE_FFMPEG=OFF. VideoPlayer and VideoRecorder are disabled.")
+    endif()
+elseif(NOT AE_USE_FFMPEG)
+    message(STATUS "FFmpeg disabled (AE_USE_FFMPEG=OFF). VideoPlayer and VideoRecorder will be unavailable.")
 endif()
 if(EMSCRIPTEN OR ANDROID OR IOS)
     # IMGUI_IMPL_OPENGL_ES3 : tell Dear ImGui's OpenGL3 backend to use GLES3

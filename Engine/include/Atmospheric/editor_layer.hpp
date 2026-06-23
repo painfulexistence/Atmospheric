@@ -38,4 +38,5 @@ private:
     void DrawAppView();
     void DrawEntityInspector(GameObject* entity);
     void DrawEngineView();
+    void ToggleRecording();
 };
