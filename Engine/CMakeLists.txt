@@ -1,6 +1,6 @@
 option(BUILD_SHARED_LIBS OFF)
 
-# ── ae_auto_convert_textures(<target> <src_dir> <dst_dir>) ───────────────────
+# ── ae_auto_convert_textures(<target> <src_dir> <dst_dir>) ─────────────────────────────────
 # Emscripten-only: converts every PNG/JPG under <src_dir> to KTX2 in the
 # corresponding path under <dst_dir>.  Each file is its own custom command so
 # only changed images are re-converted.  Adds CMAKE_CONFIGURE_DEPENDS on
@@ -53,7 +53,7 @@ if(POLICY CMP0169)
     cmake_policy(SET CMP0169 OLD)
 endif()
 
-# ── FastNoiseLite (single-header noise library) ──────────────────────────────
+# ── FastNoiseLite (single-header noise library) ────────────────────────────────────────────
 FetchContent_Declare(
     FastNoiseLite
     GIT_REPOSITORY https://github.com/Auburn/FastNoiseLite.git
@@ -101,7 +101,7 @@ find_package(spdlog REQUIRED)
 find_package(RmlUi REQUIRED)
 find_package(flatbuffers CONFIG REQUIRED)
 
-# ── Lua 5.4 (built from source) ─────────────────────────────────────────────
+# ── Lua 5.4 (built from source) ───────────────────────────────────────────────────────────────
 # Building from source rather than find_package(lua) because:
 #   1. Emscripten must compile Lua to WASM — system lua.a is host-arch only.
 #   2. Avoids architecture mismatch on Apple Silicon (arm64 vs x86_64).
@@ -139,7 +139,7 @@ if(EMSCRIPTEN)
     target_compile_options(lua_static PRIVATE -pthread)
 endif()
 
-# ── sol2 (develop branch, header-only) ───────────────────────────────────────────
+# ── sol2 (develop branch, header-only) ──────────────────────────────────────────────────────────────
 # v3.3.0 had a bug in optional_implementation.hpp where tl::optional's CRTP
 # base 'construct' method is not visible in the reference-type specialisation
 # (optional<T&>).  Apple Clang 15+ (Xcode 15 / macOS 14) enforces this more
@@ -254,7 +254,7 @@ set(SOURCES
     src/lighting_2d.cpp
     ${FLATBUFFERS_GENERATED_DIR}/Scene_generated.h
 )
-# ── Graphics backend selection ────────────────────────────────────────────
+# ── Graphics backend selection ────────────────────────────────────────────────────────────────────
 # Native  : Dawn WebGPU (not yet integrated — falls back to OpenGL 4.1).
 # Web     : browser WebGPU via Emscripten (AE_USE_WEBGPU=ON)
 #           or WebGL 2.0 fallback (AE_USE_WEBGPU=OFF, default).
@@ -406,13 +406,45 @@ if(AE_USE_BASIS_UNIVERSAL)
     target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_BASIS_UNIVERSAL)
 endif()
 if(NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
-    # Automatically search for FFmpeg on native desktop platforms
-    find_package(FFmpeg COMPONENTS avcodec avformat avutil swscale swresample)
-    if(FFMPEG_FOUND OR FFmpeg_FOUND)
-        message(STATUS "FFmpeg found. VideoPlayer and VideoRecorder features are enabled.")
-        target_compile_definitions(AtmosphericEngine PUBLIC AE_HAS_FFMPEG)
-        target_include_directories(AtmosphericEngine PUBLIC ${FFMPEG_INCLUDE_DIRS})
-        target_link_libraries(AtmosphericEngine PUBLIC ${FFMPEG_LIBRARIES})
+    # Prefer vcpkg-managed FFmpeg over any system installation so we get
+    # the AOM/AV1 encoder that vcpkg builds in.
+    #
+    # Strategy:
+    #   1. pkg_check_modules with PKG_CONFIG_PATH forced to vcpkg's lib/pkgconfig
+    #      — vcpkg installs .pc files there, guaranteeing the right FFmpeg is used.
+    #   2. Fall back to find_package(FFMPEG) in module/config mode (uppercase
+    #      matches vcpkg's FindFFMPEG.cmake on case-sensitive file systems).
+    set(_AE_FFMPEG_FOUND FALSE)
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND AND DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
+        set(_vcpkg_pkgcfg "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib/pkgconfig")
+        if(EXISTS "${_vcpkg_pkgcfg}")
+            set(ENV{PKG_CONFIG_PATH} "${_vcpkg_pkgcfg}:$ENV{PKG_CONFIG_PATH}")
+            pkg_check_modules(FFMPEG IMPORTED_TARGET QUIET
+                libavcodec libavformat libavutil libswscale libswresample)
+            if(FFMPEG_FOUND)
+                set(_AE_FFMPEG_FOUND TRUE)
+                message(STATUS "FFmpeg found via vcpkg pkg-config (${_vcpkg_pkgcfg})")
+                target_compile_definitions(AtmosphericEngine PUBLIC AE_HAS_FFMPEG)
+                target_link_libraries(AtmosphericEngine PUBLIC PkgConfig::FFMPEG)
+            endif()
+        endif()
+    endif()
+    if(NOT _AE_FFMPEG_FOUND)
+        # Fallback: cmake module/config search.
+        # Use uppercase FFMPEG — vcpkg installs FindFFMPEG.cmake (uppercase),
+        # which case-sensitive Linux would miss with mixed-case "FFmpeg".
+        find_package(FFMPEG COMPONENTS avcodec avformat avutil swscale swresample QUIET)
+        if(FFMPEG_FOUND)
+            set(_AE_FFMPEG_FOUND TRUE)
+            message(STATUS "FFmpeg found via find_package(FFMPEG)")
+            target_compile_definitions(AtmosphericEngine PUBLIC AE_HAS_FFMPEG)
+            target_include_directories(AtmosphericEngine PUBLIC ${FFMPEG_INCLUDE_DIRS})
+            target_link_libraries(AtmosphericEngine PUBLIC ${FFMPEG_LIBRARIES})
+        endif()
+    endif()
+    if(_AE_FFMPEG_FOUND)
+        message(STATUS "VideoPlayer and VideoRecorder features are enabled.")
     else()
         message(STATUS "FFmpeg not found. VideoPlayer and VideoRecorder features will be disabled.")
     endif()
