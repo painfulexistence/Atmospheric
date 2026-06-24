@@ -1,6 +1,6 @@
 option(BUILD_SHARED_LIBS OFF)
 
-# ── ae_auto_convert_textures(<target> <src_dir> <dst_dir>) ───────────────────
+# ── ae_auto_convert_textures(<target> <src_dir> <dst_dir>) ─────────────────────────────────
 # Emscripten-only: converts every PNG/JPG under <src_dir> to KTX2 in the
 # corresponding path under <dst_dir>.  Each file is its own custom command so
 # only changed images are re-converted.  Adds CMAKE_CONFIGURE_DEPENDS on
@@ -53,7 +53,7 @@ if(POLICY CMP0169)
     cmake_policy(SET CMP0169 OLD)
 endif()
 
-# ── FastNoiseLite (single-header noise library) ──────────────────────────────
+# ── FastNoiseLite (single-header noise library) ────────────────────────────────────────────
 FetchContent_Declare(
     FastNoiseLite
     GIT_REPOSITORY https://github.com/Auburn/FastNoiseLite.git
@@ -103,7 +103,7 @@ find_package(spdlog REQUIRED)
 find_package(RmlUi REQUIRED)
 find_package(flatbuffers CONFIG REQUIRED)
 
-# ── Lua 5.4 (built from source) ─────────────────────────────────────────────
+# ── Lua 5.4 (built from source) ───────────────────────────────────────────────────────────────
 # Building from source rather than find_package(lua) because:
 #   1. Emscripten must compile Lua to WASM — system lua.a is host-arch only.
 #   2. Avoids architecture mismatch on Apple Silicon (arm64 vs x86_64).
@@ -145,7 +145,7 @@ if(EMSCRIPTEN)
     target_compile_options(lua_static PRIVATE -pthread)
 endif()
 
-# ── sol2 (develop branch, header-only) ───────────────────────────────────────────
+# ── sol2 (develop branch, header-only) ──────────────────────────────────────────────────────────────
 # v3.3.0 had a bug in optional_implementation.hpp where tl::optional's CRTP
 # base 'construct' method is not visible in the reference-type specialisation
 # (optional<T&>).  Apple Clang 15+ (Xcode 15 / macOS 14) enforces this more
@@ -265,7 +265,7 @@ set(SOURCES
     src/lighting_2d.cpp
     ${FLATBUFFERS_GENERATED_DIR}/Scene_generated.h
 )
-# ── Graphics backend selection ────────────────────────────────────────────
+# ── Graphics backend selection ────────────────────────────────────────────────────────────────────
 # Native  : Dawn WebGPU (not yet integrated — falls back to OpenGL 4.1).
 # Web     : browser WebGPU via Emscripten (AE_USE_WEBGPU=ON)
 #           or WebGL 2.0 fallback (AE_USE_WEBGPU=OFF, default).

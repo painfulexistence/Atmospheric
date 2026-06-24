@@ -34,7 +34,10 @@ void EditorLayer::ToggleRecording() {
         std::strftime(name, sizeof(name), "output/recording_%Y%m%d_%H%M%S.mp4",
                       std::localtime(&t));
         VideoRecorder::Config cfg;
-        cfg.outputPath = name;
+        cfg.outputPath      = name;
+        cfg.captureAudio    = (_app->GetAudioManager() != nullptr);
+        cfg.audioSampleRate = 44100;
+        cfg.audioChannels   = 2;
         recorder->startRecording(_app->GetGraphicsServer()->renderer, cfg);
     }
 }
