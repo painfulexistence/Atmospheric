@@ -138,19 +138,37 @@ public:
     void ReloadScene();
     void GoScene(const std::string& sceneName, std::function<void()> onReady = nullptr);
 
+    // Additively load a JSON scene (same format as GoScene / scene.json).
+    // Creates a container GameObject named after the scene's "name" field and
+    // parents it to __root__, then populates it with the scene's entities.
+    // If a scene with the same name is already loaded it is replaced in place.
+    // Sets GetLastLoadedScene() / GetEditorSceneError() when done.
+    void AddScene(const std::string& json);
+
+    // Destroy the named scene container and all its descendants.
+    // No-op if the scene is not currently loaded.
+    void UnloadScene(const std::string& name);
+
+    // Returns a JSON array of the names of all currently loaded scenes
+    // (i.e. direct children of __root__).
+    std::string GetLoadedScenes() const;
+
+    // Name of the scene most recently loaded by AddScene / LoadEditorSceneFromJson,
+    // or "" if the last operation failed or no scene has been loaded yet.
+    std::string GetLastLoadedScene() const;
+
     // Load a CSB (FlatBuffers binary) scene from a memory buffer.
     // Clears the current scene and creates GameObjects from the buffer.
     // Safe to call from any thread via DeferSpawn; designed for the JS editor
     // bridge but available on all platforms.
     void LoadEditorScene(const uint8_t* data, size_t len);
 
-    // Load a scene from a JSON string (same format as GoScene / scene.json).
-    // Clears the current scene before loading. Designed for the JS editor bridge
-    // (ae_load_editor_scene_json) so the editor can send its native JSON format
-    // without serialising to CSB first.
+    // Additive scene load for the JS editor bridge.
+    // Replaces any existing scene with the same name under __root__, then loads
+    // the new scene additively. Sets GetLastLoadedScene() / GetEditorSceneError().
     void LoadEditorSceneFromJson(const std::string& json);
 
-    // Last error from LoadEditorScene / LoadEditorSceneFromJson, or "" on success.
+    // Last error from LoadEditorScene / LoadEditorSceneFromJson / AddScene, or "" on success.
     // Surfaced to the JS editor bridge via ae_get_scene_error().
     const std::string& GetEditorSceneError() const;
 
@@ -165,6 +183,10 @@ public:
     // GameObjects (CreateGameObject is not safe to call mid-iteration).
     void DeferSpawn(std::function<void()> cmd);
 
+    // Internal: clear all scene containers (children of __root__) without
+    // touching __root__ itself or other persistent entities.
+    void ClearScenes();
+
 protected:
     // These subsystems will be game accessible
     AudioManager audio;
@@ -178,8 +200,6 @@ protected:
     std::vector<Scene> scenes;
     CameraComponent* mainCamera = nullptr;
     LightComponent* mainLight = nullptr;
-
-    void UnloadScene();
 
     void Quit();
 
@@ -213,6 +233,7 @@ private:
     std::optional<SceneDef> _currentSceneDef = std::nullopt;
     std::string _currentSceneName;
     std::string _editorSceneError;
+    std::string _lastLoadedScene;
     bool _sceneReady = false;
     std::vector<GameObject*> _entities;
     EntityID _nextEntityID = 0;

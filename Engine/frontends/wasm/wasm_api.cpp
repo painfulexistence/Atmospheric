@@ -1,20 +1,17 @@
 // WASM editor bridge — Emscripten only.
 //
-// Exports C functions that the Project Cloudscape editor calls via:
-//   Module.ccall('ae_load_editor_scene',      null, ['number','number'], [ptr, len])
-//   Module.ccall('ae_load_editor_scene_json', null, ['string'], [jsonStr])
-//   Module.ccall('ae_reset_scene',            null, [], [])
-//   Module.ccall('ae_get_version',            'string', [], [])
-//   Module.ccall('ae_is_ready',               'number', [], [])
-//   Module.ccall('ae_mount_file',             null, ['string','number','number'], [path, ptr, len])
-//   Module.ccall('ae_get_scene_error',        'string', [], [])
-//
-// Required CMakeLists link flags (already added):
-//   -sEXPORTED_FUNCTIONS=['_main','_malloc','_free',
-//                          '_ae_load_editor_scene','_ae_load_editor_scene_json',
-//                          '_ae_reset_scene','_ae_get_version','_ae_is_ready',
-//                          '_ae_mount_file','_ae_get_scene_error']
-//   -sEXPORTED_RUNTIME_METHODS=["requestFullscreen","ccall","HEAPU8"]
+// Exports C functions that the Project Cloudscape editor calls via ccall:
+//   ae_load_editor_scene(ptr, len)         — CSB binary load (clears scene)
+//   ae_load_editor_scene_json(jsonStr)     — JSON additive load (replace by name)
+//   ae_add_scene(jsonStr)                  — JSON additive load (no replace)
+//   ae_unload_scene(name)                  — destroy named scene container
+//   ae_get_loaded_scenes()  → string       — JSON array of loaded scene names
+//   ae_get_last_loaded_scene() → string    — name from most recent load
+//   ae_get_scene_error()    → string       — error from most recent load
+//   ae_reset_scene()                       — re-run OnLoad (full reload)
+//   ae_get_version()        → string
+//   ae_is_ready()           → int
+//   ae_mount_file(path, ptr, len)
 
 #ifdef __EMSCRIPTEN__
 
@@ -107,9 +104,58 @@ const char* ae_get_scene_error()
 {
     auto* app = Application::Get();
     if (!app) return "";
-    // Returned pointer stays valid until the next LoadEditorScene call; ccall
-    // copies it into a JS string immediately, so this is safe.
     return app->GetEditorSceneError().c_str();
+}
+
+// Additively load a JSON scene without replacing existing scenes of the same name.
+// Useful for loading a second layer alongside an already-loaded scene.
+EMSCRIPTEN_KEEPALIVE
+void ae_add_scene(const char* json)
+{
+    if (!json) return;
+    auto* app = Application::Get();
+    if (!app) return;
+    std::string jsonStr(json);
+    app->DeferSpawn([app, jsonStr = std::move(jsonStr)]() {
+        app->AddScene(jsonStr);
+    });
+}
+
+// Destroy the named scene container and all its children.
+EMSCRIPTEN_KEEPALIVE
+void ae_unload_scene(const char* name)
+{
+    if (!name) return;
+    auto* app = Application::Get();
+    if (!app) return;
+    std::string nameStr(name);
+    app->DeferSpawn([app, nameStr = std::move(nameStr)]() {
+        app->UnloadScene(nameStr);
+    });
+}
+
+// Return a JSON array of currently loaded scene names, e.g. ["main_menu","hud"].
+// ccall copies the returned pointer immediately, so the static buffer is safe.
+EMSCRIPTEN_KEEPALIVE
+const char* ae_get_loaded_scenes()
+{
+    auto* app = Application::Get();
+    if (!app) return "[]";
+    static std::string buf;
+    buf = app->GetLoadedScenes();
+    return buf.c_str();
+}
+
+// Return the name of the scene most recently loaded by AddScene /
+// LoadEditorSceneFromJson, or "" if the last load failed.
+EMSCRIPTEN_KEEPALIVE
+const char* ae_get_last_loaded_scene()
+{
+    auto* app = Application::Get();
+    if (!app) return "";
+    static std::string buf;
+    buf = app->GetLastLoadedScene();
+    return buf.c_str();
 }
 
 } // extern "C"

@@ -1,5 +1,7 @@
 #include "application.hpp"
 #include "scene_loader.hpp"
+#include <algorithm>
+#include <unordered_set>
 #ifdef __APPLE__
 #include <TargetConditionals.h>
 #endif
@@ -838,10 +840,16 @@ void Application::LoadScene(const std::string& jsonContent) {
         }
     }
 
+    // Create a scene container under __root__ so scenes can be layered.
+    // All entities from this JSON become children of this container.
+    auto* container = CreateGameObject();
+    container->SetName(sceneName);
+    container->parent = GetDefaultGameObject();
+
     // Load entities recursively
     if (j.contains("entities") && j["entities"].is_array()) {
         for (const auto& entityVal : j["entities"]) {
-            ParseEntity(this, entityVal, nullptr);
+            ParseEntity(this, entityVal, container);
         }
         ENGINE_LOG("JSON Game objects created.");
     }
@@ -854,15 +862,8 @@ void Application::GoScene(const std::string& sceneName, std::function<void()> on
 {
     _sceneReady = false;
     SceneTransition::Go(sceneName, [this, sceneName, onReady]{
-        for (auto* e : _entities) {
-            if (e != _defaultGameObject) delete e;
-        }
-        _entities.clear();
-        _nextEntityID = 0;
-        if (_defaultGameObject) {
-            _entities.push_back(_defaultGameObject);
-            _nextEntityID = 1;
-        }
+        // Full scene transition: clear all scene containers, then load fresh.
+        ClearScenes();
 
         graphics.cameras.clear();
         graphics.directionalLights.clear();
@@ -927,34 +928,104 @@ void Application::LoadEditorScene(const uint8_t* data, size_t len)
     _sceneReady = true;
 }
 
-void Application::LoadEditorSceneFromJson(const std::string& json)
+void Application::UnloadScene(const std::string& name)
 {
+    if (!_defaultGameObject) return;
+
+    // Find the scene container (direct child of __root__ with this name).
+    GameObject* container = nullptr;
     for (auto* e : _entities) {
-        if (e != _defaultGameObject) delete e;
+        if (e != _defaultGameObject && e->parent == _defaultGameObject && e->GetName() == name) {
+            container = e;
+            break;
+        }
     }
-    _entities.clear();
-    _nextEntityID = 0;
-    if (_defaultGameObject) {
-        _entities.push_back(_defaultGameObject);
-        _nextEntityID = 1;
+    if (!container) return;
+
+    // Collect the full subtree iteratively (no children list on GameObject).
+    std::unordered_set<GameObject*> toRemove;
+    std::vector<GameObject*> stack = {container};
+    while (!stack.empty()) {
+        auto* node = stack.back(); stack.pop_back();
+        toRemove.insert(node);
+        for (auto* e : _entities) {
+            if (e->parent == node) stack.push_back(e);
+        }
     }
 
-    graphics.cameras.clear();
-    graphics.directionalLights.clear();
-    graphics.pointLights.clear();
+    _entities.erase(
+        std::remove_if(_entities.begin(), _entities.end(),
+            [&toRemove](GameObject* e) { return toRemove.count(e) > 0; }),
+        _entities.end());
+    for (auto* e : toRemove) delete e;
 
-    audio.StopAll();
-    physics.Reset();
+    mainCamera = graphics.GetMainCamera();
+    mainLight = graphics.GetMainLight();
+    spdlog::info("[Scene] Unloaded scene '{}'.", name);
+}
+
+void Application::ClearScenes()
+{
+    if (!_defaultGameObject) return;
+    // Collect names of all direct children of __root__ first to avoid
+    // iterator invalidation inside UnloadScene.
+    std::vector<std::string> names;
+    for (auto* e : _entities) {
+        if (e != _defaultGameObject && e->parent == _defaultGameObject)
+            names.push_back(e->GetName());
+    }
+    for (const auto& n : names) UnloadScene(n);
+}
+
+void Application::AddScene(const std::string& json)
+{
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(json);
+    } catch (const std::exception& e) {
+        _editorSceneError = e.what();
+        _lastLoadedScene  = "";
+        spdlog::warn("[Scene] AddScene JSON parse error: {}", e.what());
+        return;
+    }
+
+    std::string sceneName = j.value("name", "Unnamed");
+    // Replace any existing scene with the same name.
+    UnloadScene(sceneName);
 
     try {
         LoadScene(json);
         _editorSceneError.clear();
-        spdlog::info("[Editor] JSON scene loaded ({} bytes).", json.size());
+        _lastLoadedScene = sceneName;
+        spdlog::info("[Scene] Added scene '{}'.", sceneName);
     } catch (const std::exception& e) {
         _editorSceneError = e.what();
-        spdlog::warn("[Editor] JSON scene load failed: {}", e.what());
+        _lastLoadedScene  = "";
+        spdlog::warn("[Scene] AddScene '{}' failed: {}", sceneName, e.what());
     }
+}
 
+std::string Application::GetLoadedScenes() const
+{
+    nlohmann::json arr = nlohmann::json::array();
+    if (_defaultGameObject) {
+        for (auto* e : _entities) {
+            if (e != _defaultGameObject && e->parent == _defaultGameObject)
+                arr.push_back(e->GetName());
+        }
+    }
+    return arr.dump();
+}
+
+std::string Application::GetLastLoadedScene() const
+{
+    return _lastLoadedScene;
+}
+
+void Application::LoadEditorSceneFromJson(const std::string& json)
+{
+    // Additive load: replace only the scene with the same name, leave everything else.
+    AddScene(json);
     _sceneReady = true;
 }
 
