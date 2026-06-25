@@ -44,9 +44,8 @@ void ae_load_editor_scene(const uint8_t* data, size_t len)
     });
 }
 
-// Load a scene from a JSON string (same format used by GoScene / scene.json).
-// Clears the current scene and rebuilds from the JSON. Deferred to the next frame
-// for frame safety. The editor sends its native JSON directly — no CSB serialisation needed.
+// Additive scene load: replaces any existing scene with the same name under
+// __root__, leaves all other loaded scenes intact. Deferred to next frame.
 EMSCRIPTEN_KEEPALIVE
 void ae_load_editor_scene_json(const char* json)
 {
@@ -56,7 +55,7 @@ void ae_load_editor_scene_json(const char* json)
 
     std::string jsonStr(json);
     app->DeferSpawn([app, jsonStr = std::move(jsonStr)]() {
-        app->LoadEditorSceneFromJson(jsonStr);
+        app->AddScene(jsonStr);
     });
 }
 

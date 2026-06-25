@@ -153,7 +153,7 @@ public:
     // (i.e. direct children of __root__).
     std::string GetLoadedScenes() const;
 
-    // Name of the scene most recently loaded by AddScene / LoadEditorSceneFromJson,
+    // Name of the scene most recently loaded by AddScene,
     // or "" if the last operation failed or no scene has been loaded yet.
     std::string GetLastLoadedScene() const;
 
@@ -163,12 +163,7 @@ public:
     // bridge but available on all platforms.
     void LoadEditorScene(const uint8_t* data, size_t len);
 
-    // Additive scene load for the JS editor bridge.
-    // Replaces any existing scene with the same name under __root__, then loads
-    // the new scene additively. Sets GetLastLoadedScene() / GetEditorSceneError().
-    void LoadEditorSceneFromJson(const std::string& json);
-
-    // Last error from LoadEditorScene / LoadEditorSceneFromJson / AddScene, or "" on success.
+    // Last error from LoadEditorScene / AddScene, or "" on success.
     // Surfaced to the JS editor bridge via ae_get_scene_error().
     const std::string& GetEditorSceneError() const;
 

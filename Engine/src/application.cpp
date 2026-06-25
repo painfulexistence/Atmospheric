@@ -1022,13 +1022,6 @@ std::string Application::GetLastLoadedScene() const
     return _lastLoadedScene;
 }
 
-void Application::LoadEditorSceneFromJson(const std::string& json)
-{
-    // Additive load: replace only the scene with the same name, leave everything else.
-    AddScene(json);
-    _sceneReady = true;
-}
-
 const std::string& Application::GetEditorSceneError() const
 {
     return _editorSceneError;
