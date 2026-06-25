@@ -490,7 +490,7 @@ if(EMSCRIPTEN)
             -sINITIAL_MEMORY=134217728
             -sMAXIMUM_MEMORY=536870912
             "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
-            "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_reset_scene','_ae_get_version','_ae_is_ready','_ae_mount_file','_ae_get_scene_error']"
+            "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_load_editor_scene_json','_ae_reset_scene','_ae_get_version','_ae_is_ready','_ae_mount_file','_ae_get_scene_error']"
             "-sEXPORTED_RUNTIME_METHODS=['requestFullscreen','ccall','HEAPU8']"
             "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     else()
@@ -502,7 +502,7 @@ if(EMSCRIPTEN)
             -sINITIAL_MEMORY=134217728
             -sMAXIMUM_MEMORY=536870912
             "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
-            "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_reset_scene','_ae_get_version','_ae_is_ready','_ae_mount_file','_ae_get_scene_error']"
+            "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_load_editor_scene_json','_ae_reset_scene','_ae_get_version','_ae_is_ready','_ae_mount_file','_ae_get_scene_error']"
             "-sEXPORTED_RUNTIME_METHODS=['requestFullscreen','ccall','HEAPU8']"
             "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     endif()

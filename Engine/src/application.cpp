@@ -927,6 +927,37 @@ void Application::LoadEditorScene(const uint8_t* data, size_t len)
     _sceneReady = true;
 }
 
+void Application::LoadEditorSceneFromJson(const std::string& json)
+{
+    for (auto* e : _entities) {
+        if (e != _defaultGameObject) delete e;
+    }
+    _entities.clear();
+    _nextEntityID = 0;
+    if (_defaultGameObject) {
+        _entities.push_back(_defaultGameObject);
+        _nextEntityID = 1;
+    }
+
+    graphics.cameras.clear();
+    graphics.directionalLights.clear();
+    graphics.pointLights.clear();
+
+    audio.StopAll();
+    physics.Reset();
+
+    try {
+        LoadScene(json);
+        _editorSceneError.clear();
+        spdlog::info("[Editor] JSON scene loaded ({} bytes).", json.size());
+    } catch (const std::exception& e) {
+        _editorSceneError = e.what();
+        spdlog::warn("[Editor] JSON scene load failed: {}", e.what());
+    }
+
+    _sceneReady = true;
+}
+
 const std::string& Application::GetEditorSceneError() const
 {
     return _editorSceneError;

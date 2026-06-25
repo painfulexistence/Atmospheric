@@ -1,17 +1,18 @@
 // WASM editor bridge — Emscripten only.
 //
 // Exports C functions that the Project Cloudscape editor calls via:
-//   Module.ccall('ae_load_editor_scene', null, ['number','number'], [ptr, len])
-//   Module.ccall('ae_reset_scene',        null, [], [])
-//   Module.ccall('ae_get_version',         'string', [], [])
-//   Module.ccall('ae_is_ready',            'number', [], [])
-//   Module.ccall('ae_mount_file',          null, ['string','number','number'], [path, ptr, len])
-//   Module.ccall('ae_get_scene_error',     'string', [], [])
+//   Module.ccall('ae_load_editor_scene',      null, ['number','number'], [ptr, len])
+//   Module.ccall('ae_load_editor_scene_json', null, ['string'], [jsonStr])
+//   Module.ccall('ae_reset_scene',            null, [], [])
+//   Module.ccall('ae_get_version',            'string', [], [])
+//   Module.ccall('ae_is_ready',               'number', [], [])
+//   Module.ccall('ae_mount_file',             null, ['string','number','number'], [path, ptr, len])
+//   Module.ccall('ae_get_scene_error',        'string', [], [])
 //
 // Required CMakeLists link flags (already added):
 //   -sEXPORTED_FUNCTIONS=['_main','_malloc','_free',
-//                          '_ae_load_editor_scene','_ae_reset_scene',
-//                          '_ae_get_version','_ae_is_ready',
+//                          '_ae_load_editor_scene','_ae_load_editor_scene_json',
+//                          '_ae_reset_scene','_ae_get_version','_ae_is_ready',
 //                          '_ae_mount_file','_ae_get_scene_error']
 //   -sEXPORTED_RUNTIME_METHODS=["requestFullscreen","ccall","HEAPU8"]
 
@@ -43,6 +44,22 @@ void ae_load_editor_scene(const uint8_t* data, size_t len)
     app->DeferSpawn([buf = g_pending_scene]() {
         auto* a = Application::Get();
         if (a) a->LoadEditorScene(buf.data(), buf.size());
+    });
+}
+
+// Load a scene from a JSON string (same format used by GoScene / scene.json).
+// Clears the current scene and rebuilds from the JSON. Deferred to the next frame
+// for frame safety. The editor sends its native JSON directly — no CSB serialisation needed.
+EMSCRIPTEN_KEEPALIVE
+void ae_load_editor_scene_json(const char* json)
+{
+    if (!json) return;
+    auto* app = Application::Get();
+    if (!app) return;
+
+    std::string jsonStr(json);
+    app->DeferSpawn([app, jsonStr = std::move(jsonStr)]() {
+        app->LoadEditorSceneFromJson(jsonStr);
     });
 }
 

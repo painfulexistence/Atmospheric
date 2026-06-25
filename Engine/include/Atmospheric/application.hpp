@@ -144,7 +144,13 @@ public:
     // bridge but available on all platforms.
     void LoadEditorScene(const uint8_t* data, size_t len);
 
-    // Last error from LoadEditorScene, or "" if the most recent load succeeded.
+    // Load a scene from a JSON string (same format as GoScene / scene.json).
+    // Clears the current scene before loading. Designed for the JS editor bridge
+    // (ae_load_editor_scene_json) so the editor can send its native JSON format
+    // without serialising to CSB first.
+    void LoadEditorSceneFromJson(const std::string& json);
+
+    // Last error from LoadEditorScene / LoadEditorSceneFromJson, or "" on success.
     // Surfaced to the JS editor bridge via ae_get_scene_error().
     const std::string& GetEditorSceneError() const;
 
