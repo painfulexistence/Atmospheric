@@ -144,6 +144,10 @@ public:
     // bridge but available on all platforms.
     void LoadEditorScene(const uint8_t* data, size_t len);
 
+    // Last error from LoadEditorScene, or "" if the most recent load succeeded.
+    // Surfaced to the JS editor bridge via ae_get_scene_error().
+    const std::string& GetEditorSceneError() const;
+
     GameObject* CreateGameObject(
       glm::vec3 position = glm::vec3(0.0f), glm::vec3 rotation = glm::vec3(0.0f), glm::vec3 scale = glm::vec3(1.0f)
     );
@@ -202,6 +206,7 @@ private:
     uint16_t _sceneIndex = 0;
     std::optional<SceneDef> _currentSceneDef = std::nullopt;
     std::string _currentSceneName;
+    std::string _editorSceneError;
     bool _sceneReady = false;
     std::vector<GameObject*> _entities;
     EntityID _nextEntityID = 0;

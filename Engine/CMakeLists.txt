@@ -277,7 +277,12 @@ if(NOT EMSCRIPTEN)
     list(APPEND SOURCES src/window_sdl3.cpp)
 else()
     list(APPEND SOURCES src/window_glfw.cpp)
-    list(APPEND SOURCES src/wasm_api.cpp)
+    # WASM editor bridge frontend (Emscripten-only). Kept in frontends/ for
+    # organisational parity with frontends/lua, but compiled into the engine
+    # library because the exports are engine infrastructure (the EXPORTED_FUNCTIONS
+    # link flags below are likewise engine-level INTERFACE options), not per-game
+    # logic like the Lua frontend.
+    list(APPEND SOURCES frontends/wasm/wasm_api.cpp)
     if(AE_USE_WEBGPU)
         list(APPEND SOURCES src/gpu_buffer.cpp)
         list(APPEND SOURCES src/gpu_render_target.cpp)
@@ -485,7 +490,7 @@ if(EMSCRIPTEN)
             -sINITIAL_MEMORY=134217728
             -sMAXIMUM_MEMORY=536870912
             "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
-            "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_reset_scene','_ae_get_version','_ae_is_ready']"
+            "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_reset_scene','_ae_get_version','_ae_is_ready','_ae_mount_file','_ae_get_scene_error']"
             "-sEXPORTED_RUNTIME_METHODS=['requestFullscreen','ccall','HEAPU8']"
             "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     else()
@@ -497,7 +502,7 @@ if(EMSCRIPTEN)
             -sINITIAL_MEMORY=134217728
             -sMAXIMUM_MEMORY=536870912
             "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
-            "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_reset_scene','_ae_get_version','_ae_is_ready']"
+            "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_reset_scene','_ae_get_version','_ae_is_ready','_ae_mount_file','_ae_get_scene_error']"
             "-sEXPORTED_RUNTIME_METHODS=['requestFullscreen','ccall','HEAPU8']"
             "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     endif()

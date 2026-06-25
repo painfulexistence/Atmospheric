@@ -917,12 +917,19 @@ void Application::LoadEditorScene(const uint8_t* data, size_t len)
     SceneLoader loader(this);
     auto result = loader.LoadFromBuffer(data, len);
     if (!result.success) {
+        _editorSceneError = result.error;
         spdlog::warn("[Editor] Scene load failed: {}", result.error);
     } else {
+        _editorSceneError.clear();
         spdlog::info("[Editor] Scene loaded: {} node(s)", result.allNodes.size());
     }
 
     _sceneReady = true;
+}
+
+const std::string& Application::GetEditorSceneError() const
+{
+    return _editorSceneError;
 }
 
 void Application::Quit() {
