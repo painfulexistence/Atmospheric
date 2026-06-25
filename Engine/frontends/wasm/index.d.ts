@@ -41,8 +41,8 @@ export interface WasmBridge {
   readonly status: WasmStatus
   readonly error: string | null
 
-  /** Boot the WASM runtime. scriptUrl points to the built atmospheric.js. */
-  loadModule: (scriptUrl: string, canvas: HTMLCanvasElement) => Promise<void>
+  /** Boot the WASM runtime. scriptUrl points to atmos.js; wasmUrl overrides Emscripten's locateFile for atmos.wasm. */
+  loadModule: (scriptUrl: string, canvas: HTMLCanvasElement, wasmUrl?: string) => Promise<void>
 
   /** Additive load: replaces any existing scene with the same name, leaves others intact. */
   loadSceneJson: (json: string) => boolean
