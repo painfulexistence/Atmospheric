@@ -282,7 +282,7 @@ else()
     # library because the exports are engine infrastructure (the EXPORTED_FUNCTIONS
     # link flags below are likewise engine-level INTERFACE options), not per-game
     # logic like the Lua frontend.
-    list(APPEND SOURCES frontends/wasm/wasm_api.cpp)
+    list(APPEND SOURCES frontends/wasm/bindings.cpp)
     if(AE_USE_WEBGPU)
         list(APPEND SOURCES src/gpu_buffer.cpp)
         list(APPEND SOURCES src/gpu_render_target.cpp)
@@ -537,18 +537,32 @@ else()
 endif()
 
 # ── @atmospheric/engine npm package (Emscripten-only) ────────────────────────
-# Minimal Application shell; all scene loading is driven by the JS bridge.
+# Minimal Application shell (module.cpp); all scene loading driven by the
+# JS bridge (bindings.cpp, compiled into AtmosphericEngine above).
 #
-# Outputs atmospheric.js/.wasm/.worker.js directly into the source package dir
-# (Engine/frontends/wasm/package/) so the directory is always self-contained —
-# no copy step required.  project-cloudscape references it as a file:// dep:
-#   "@atmospheric/engine": "file:../atmospheric-src/Engine/frontends/wasm/package"
+# Build layout — option C:
+#   source  Engine/frontends/wasm/   package.json, index.d.ts (source-of-truth)
+#   build   build/frontends/wasm/    atmospheric.js/.wasm/.worker.js + metadata
+#
+# POST_BUILD copies package.json + index.d.ts into the build dir so that
+# directory is a self-contained npm package for cloudscape's file:// dep:
+#   "@atmospheric/engine": "file:../atmospheric-src/build/frontends/wasm"
 if(EMSCRIPTEN)
-    set(_AE_PKG_SRC "${CMAKE_CURRENT_SOURCE_DIR}/frontends/wasm/package")
+    set(_AE_WASM_SRC "${CMAKE_CURRENT_SOURCE_DIR}/frontends/wasm")
+    set(_AE_WASM_OUT "${CMAKE_BINARY_DIR}/frontends/wasm")
 
-    add_executable(atmospheric frontends/wasm/main.cpp)
+    add_executable(atmospheric frontends/wasm/module.cpp)
     target_link_libraries(atmospheric PRIVATE AtmosphericEngine)
     set_target_properties(atmospheric PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${_AE_PKG_SRC}"
+        RUNTIME_OUTPUT_DIRECTORY "${_AE_WASM_OUT}"
+    )
+
+    add_custom_command(TARGET atmospheric POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_AE_WASM_OUT}"
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "${_AE_WASM_SRC}/package.json" "${_AE_WASM_OUT}/package.json"
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "${_AE_WASM_SRC}/index.d.ts"  "${_AE_WASM_OUT}/index.d.ts"
+        COMMENT "Assembling @atmospheric/engine package → ${_AE_WASM_OUT}"
     )
 endif()
