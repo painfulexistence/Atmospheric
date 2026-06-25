@@ -10,9 +10,9 @@
   },
   "files": [
     "index.d.ts",
-    "atmospheric.js",
-    "atmospheric.wasm",
-    "atmospheric.worker.js"
+    "atmos.js",
+    "atmos.wasm",
+    "atmos.worker.js"
   ],
   "license": "MIT"
 }

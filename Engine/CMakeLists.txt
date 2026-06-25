@@ -542,18 +542,19 @@ endif()
 #
 # Build layout — option C:
 #   source  Engine/frontends/wasm/   package.json, index.d.ts (source-of-truth)
-#   build   build/frontends/wasm/    atmospheric.js/.wasm/.worker.js + metadata
+#   build   build/wasm-binding/      atmos.js/.wasm/.worker.js + metadata
 #
 # POST_BUILD copies package.json + index.d.ts into the build dir so that
 # directory is a self-contained npm package for cloudscape's file:// dep:
-#   "@atmospheric/engine": "file:../atmospheric-src/build/frontends/wasm"
+#   "@atmospheric/engine": "file:../atmospheric-src/build/wasm-binding"
 if(EMSCRIPTEN)
     set(_AE_WASM_SRC "${CMAKE_CURRENT_SOURCE_DIR}/frontends/wasm")
-    set(_AE_WASM_OUT "${CMAKE_BINARY_DIR}/frontends/wasm")
+    set(_AE_WASM_OUT "${CMAKE_BINARY_DIR}/wasm-binding")
 
     add_executable(atmospheric frontends/wasm/module.cpp)
     target_link_libraries(atmospheric PRIVATE AtmosphericEngine)
     set_target_properties(atmospheric PROPERTIES
+        OUTPUT_NAME atmos
         RUNTIME_OUTPUT_DIRECTORY "${_AE_WASM_OUT}"
     )
 
