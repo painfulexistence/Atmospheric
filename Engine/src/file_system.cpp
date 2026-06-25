@@ -41,6 +41,11 @@ static std::unordered_map<std::string, FileSystem::Bytes> g_cache;
 // correct if pthreads are ever enabled.
 static std::mutex g_cacheMutex;
 
+#ifdef __EMSCRIPTEN__
+// Defined in the Emscripten section below (wraps the EM_JS MEMFS writer).
+static void WriteToMemFS(const std::string& path, const uint8_t* data, size_t len);
+#endif
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Singleton
 // ─────────────────────────────────────────────────────────────────────────────
@@ -142,6 +147,18 @@ void FileSystem::ClearCache() {
     }
 #ifdef __EMSCRIPTEN__
     ClearMemFSEntries();
+#endif
+}
+
+void FileSystem::WriteFile(const std::string& path, const uint8_t* data, size_t len) {
+    std::string normPath = NormalizePath(path);
+    {
+        std::lock_guard<std::mutex> lk(g_cacheMutex);
+        g_cache[normPath] = Bytes(data, data + len);
+    }
+#ifdef __EMSCRIPTEN__
+    // Mirror into MEMFS so fopen()/std::filesystem paths resolve too.
+    WriteToMemFS(normPath, data, len);
 #endif
 }
 
@@ -260,6 +277,13 @@ static void ClearMemFSEntries() {
     for (const auto& p : snapshot) {
         fs_js_unlink_memfs(p.c_str());
     }
+}
+
+// Wrapper matching the forward declaration near the top of the file, so the
+// platform-agnostic WriteFile() can call into MEMFS without seeing the EM_JS
+// signature directly.
+static void WriteToMemFS(const std::string& path, const uint8_t* data, size_t len) {
+    fs_js_write_memfs(path.c_str(), data, static_cast<int>(len));
 }
 
 // ── Text-file detection ───────────────────────────────────────────────────────

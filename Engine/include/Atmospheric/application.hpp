@@ -138,6 +138,35 @@ public:
     void ReloadScene();
     void GoScene(const std::string& sceneName, std::function<void()> onReady = nullptr);
 
+    // Additively load a JSON scene (same format as GoScene / scene.json).
+    // Creates a container GameObject named after the scene's "name" field and
+    // parents it to __root__, then populates it with the scene's entities.
+    // If a scene with the same name is already loaded it is replaced in place.
+    // Sets GetLastLoadedScene() / GetEditorSceneError() when done.
+    void AddScene(const std::string& json);
+
+    // Destroy the named scene container and all its descendants.
+    // No-op if the scene is not currently loaded.
+    void UnloadScene(const std::string& name);
+
+    // Returns a JSON array of the names of all currently loaded scenes
+    // (i.e. direct children of __root__).
+    std::string GetLoadedScenes() const;
+
+    // Name of the scene most recently loaded by AddScene,
+    // or "" if the last operation failed or no scene has been loaded yet.
+    std::string GetLastLoadedScene() const;
+
+    // Load a CSB (FlatBuffers binary) scene from a memory buffer.
+    // Clears the current scene and creates GameObjects from the buffer.
+    // Safe to call from any thread via DeferSpawn; designed for the JS editor
+    // bridge but available on all platforms.
+    void LoadEditorScene(const uint8_t* data, size_t len);
+
+    // Last error from LoadEditorScene / AddScene, or "" on success.
+    // Surfaced to the JS editor bridge via ae_get_scene_error().
+    const std::string& GetEditorSceneError() const;
+
     GameObject* CreateGameObject(
       glm::vec3 position = glm::vec3(0.0f), glm::vec3 rotation = glm::vec3(0.0f), glm::vec3 scale = glm::vec3(1.0f)
     );
@@ -148,6 +177,10 @@ public:
     // entity-tick loop. Use this from Component::OnTick to safely create new
     // GameObjects (CreateGameObject is not safe to call mid-iteration).
     void DeferSpawn(std::function<void()> cmd);
+
+    // Internal: clear all scene containers (children of __root__) without
+    // touching __root__ itself or other persistent entities.
+    void ClearScenes();
 
 protected:
     // These subsystems will be game accessible
@@ -162,8 +195,6 @@ protected:
     std::vector<Scene> scenes;
     CameraComponent* mainCamera = nullptr;
     LightComponent* mainLight = nullptr;
-
-    void UnloadScene();
 
     void Quit();
 
@@ -196,6 +227,8 @@ private:
     uint16_t _sceneIndex = 0;
     std::optional<SceneDef> _currentSceneDef = std::nullopt;
     std::string _currentSceneName;
+    std::string _editorSceneError;
+    std::string _lastLoadedScene;
     bool _sceneReady = false;
     std::vector<GameObject*> _entities;
     EntityID _nextEntityID = 0;

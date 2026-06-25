@@ -119,6 +119,16 @@ public:
     // longer need the cached bytes (e.g., between level loads).
     void ClearCache();
 
+    // ── In-memory mount ───────────────────────────────────────────────────────
+    // Inject a file directly from a memory buffer, without any disk/network I/O.
+    // The bytes are copied into the in-process cache (so ReadSync/ConsumeSync
+    // return them instantly) and, on web, also written to Emscripten MEMFS so
+    // that fopen() / std::filesystem::exists() find them. This is how the editor
+    // bridge supplies textures/audio referenced by an in-memory scene before
+    // calling LoadEditorScene — there is no server to fetch them from.
+    // Overwrites any existing entry at `path`.
+    void WriteFile(const std::string& path, const uint8_t* data, size_t len);
+
 private:
     FileSystem()                             = default;
     ~FileSystem()                            = default;
