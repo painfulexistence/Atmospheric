@@ -535,3 +535,32 @@ else()
         )
     endif()
 endif()
+
+# ── @atmospheric/engine npm package (Emscripten-only) ────────────────────────
+# Minimal Application shell; all scene loading is driven by the JS bridge.
+# Produces atmospheric.js + atmospheric.wasm in ${CMAKE_BINARY_DIR}/atmospheric/,
+# which project-cloudscape references as a file:// npm dependency:
+#   "@atmospheric/engine": "file:../atmospheric-src/build/atmospheric"
+if(EMSCRIPTEN)
+    set(_AE_PKG_DIR "${CMAKE_BINARY_DIR}/atmospheric")
+
+    add_executable(atmospheric frontends/wasm/main.cpp)
+    target_link_libraries(atmospheric PRIVATE AtmosphericEngine)
+    set_target_properties(atmospheric PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${_AE_PKG_DIR}"
+    )
+
+    # Copy npm package metadata into the output dir at configure time so the
+    # directory is immediately usable as a file:// dependency (bun/npm symlinks
+    # to it; TypeScript types resolve before the WASM binary is built).
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/frontends/wasm/package/package.json"
+        "${_AE_PKG_DIR}/package.json"
+        COPYONLY
+    )
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/frontends/wasm/package/index.d.ts"
+        "${_AE_PKG_DIR}/index.d.ts"
+        COPYONLY
+    )
+endif()
