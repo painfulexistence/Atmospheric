@@ -539,27 +539,16 @@ endif()
 # ── @atmospheric/engine npm package (Emscripten-only) ────────────────────────
 # Minimal Application shell; all scene loading is driven by the JS bridge.
 #
-# The npm package root is Engine/frontends/wasm/package/ (source-controlled).
-# Built artifacts (atmospheric.js / .wasm / .worker.js) are copied there at
-# POST_BUILD so the directory is self-contained for `npm publish`.
-# project-cloudscape references it as a file:// dependency:
+# Outputs atmospheric.js/.wasm/.worker.js directly into the source package dir
+# (Engine/frontends/wasm/package/) so the directory is always self-contained —
+# no copy step required.  project-cloudscape references it as a file:// dep:
 #   "@atmospheric/engine": "file:../atmospheric-src/Engine/frontends/wasm/package"
 if(EMSCRIPTEN)
     set(_AE_PKG_SRC "${CMAKE_CURRENT_SOURCE_DIR}/frontends/wasm/package")
 
     add_executable(atmospheric frontends/wasm/main.cpp)
     target_link_libraries(atmospheric PRIVATE AtmosphericEngine)
-
-    # Copy the built JS/WASM artifacts into the source package directory after
-    # each build so the package is always up-to-date for local file:// use and
-    # npm publish. Consistent with how Examples copy their shell assets.
-    add_custom_command(TARGET atmospheric POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy
-            "$<TARGET_FILE_DIR:atmospheric>/atmospheric.js"
-            "${_AE_PKG_SRC}/atmospheric.js"
-        COMMAND ${CMAKE_COMMAND} -E copy
-            "$<TARGET_FILE_DIR:atmospheric>/atmospheric.wasm"
-            "${_AE_PKG_SRC}/atmospheric.wasm"
-        COMMENT "Copying atmospheric.js/wasm to package dir"
+    set_target_properties(atmospheric PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${_AE_PKG_SRC}"
     )
 endif()
