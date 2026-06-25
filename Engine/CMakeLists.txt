@@ -538,29 +538,28 @@ endif()
 
 # ── @atmospheric/engine npm package (Emscripten-only) ────────────────────────
 # Minimal Application shell; all scene loading is driven by the JS bridge.
-# Produces atmospheric.js + atmospheric.wasm in ${CMAKE_BINARY_DIR}/atmospheric/,
-# which project-cloudscape references as a file:// npm dependency:
-#   "@atmospheric/engine": "file:../atmospheric-src/build/atmospheric"
+#
+# The npm package root is Engine/frontends/wasm/package/ (source-controlled).
+# Built artifacts (atmospheric.js / .wasm / .worker.js) are copied there at
+# POST_BUILD so the directory is self-contained for `npm publish`.
+# project-cloudscape references it as a file:// dependency:
+#   "@atmospheric/engine": "file:../atmospheric-src/Engine/frontends/wasm/package"
 if(EMSCRIPTEN)
-    set(_AE_PKG_DIR "${CMAKE_BINARY_DIR}/atmospheric")
+    set(_AE_PKG_SRC "${CMAKE_CURRENT_SOURCE_DIR}/frontends/wasm/package")
 
     add_executable(atmospheric frontends/wasm/main.cpp)
     target_link_libraries(atmospheric PRIVATE AtmosphericEngine)
-    set_target_properties(atmospheric PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${_AE_PKG_DIR}"
-    )
 
-    # Copy npm package metadata into the output dir at configure time so the
-    # directory is immediately usable as a file:// dependency (bun/npm symlinks
-    # to it; TypeScript types resolve before the WASM binary is built).
-    configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/frontends/wasm/package/package.json"
-        "${_AE_PKG_DIR}/package.json"
-        COPYONLY
-    )
-    configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/frontends/wasm/package/index.d.ts"
-        "${_AE_PKG_DIR}/index.d.ts"
-        COPYONLY
+    # Copy the built JS/WASM artifacts into the source package directory after
+    # each build so the package is always up-to-date for local file:// use and
+    # npm publish. Consistent with how Examples copy their shell assets.
+    add_custom_command(TARGET atmospheric POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "$<TARGET_FILE_DIR:atmospheric>/atmospheric.js"
+            "${_AE_PKG_SRC}/atmospheric.js"
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "$<TARGET_FILE_DIR:atmospheric>/atmospheric.wasm"
+            "${_AE_PKG_SRC}/atmospheric.wasm"
+        COMMENT "Copying atmospheric.js/wasm to package dir"
     )
 endif()

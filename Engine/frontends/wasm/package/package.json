@@ -6,14 +6,13 @@
   "exports": {
     ".": {
       "types": "./index.d.ts"
-    },
-    "./atmospheric.js": "./atmospheric.js"
+    }
   },
   "files": [
+    "index.d.ts",
     "atmospheric.js",
     "atmospheric.wasm",
-    "atmospheric.worker.js",
-    "index.d.ts"
+    "atmospheric.worker.js"
   ],
   "license": "MIT"
 }
