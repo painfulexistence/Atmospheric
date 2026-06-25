@@ -1,5 +1,5 @@
 // Type declarations for the Atmospheric Engine WASM runtime.
-// Mirrors the C exports in wasm_api.cpp and the Module shape Emscripten produces.
+// Mirrors the C exports in bindings.cpp and the Module shape Emscripten produces.
 
 export type WasmStatus = 'unloaded' | 'loading' | 'ready' | 'error'
 
@@ -24,7 +24,7 @@ export interface AtmosphericModule {
  * Construct via createWasmBridge() from @atmospheric/engine/bridge (or your
  * own implementation); call loadModule() once to boot the runtime.
  *
- * Engine C exports (wasm_api.cpp):
+ * Engine C exports (bindings.cpp):
  *   ae_load_editor_scene_json  — additive load, replaces same-name scene
  *   ae_add_scene               — additive load, no replace
  *   ae_unload_scene            — destroy named scene + children

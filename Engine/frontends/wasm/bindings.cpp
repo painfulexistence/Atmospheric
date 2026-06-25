@@ -1,4 +1,4 @@
-// WASM editor bridge — Emscripten only.
+// WASM editor bridge (bindings.cpp) — Emscripten only.
 //
 // Exports C functions that the Project Cloudscape editor calls via ccall:
 //   ae_load_editor_scene(ptr, len)         — CSB binary load (clears scene)

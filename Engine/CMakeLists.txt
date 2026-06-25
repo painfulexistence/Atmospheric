@@ -558,12 +558,18 @@ if(EMSCRIPTEN)
         RUNTIME_OUTPUT_DIRECTORY "${_AE_WASM_OUT}"
     )
 
+    # The pthread build (-sUSE_PTHREADS=1) emits atmos.worker.js next to atmos.js.
+    # Emscripten writes it to $<TARGET_FILE_DIR:atmospheric>; guard the copy so
+    # non-pthread builds (where the worker file does not exist) don't error out.
     add_custom_command(TARGET atmospheric POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "${_AE_WASM_OUT}"
         COMMAND ${CMAKE_COMMAND} -E copy
             "${_AE_WASM_SRC}/package.json" "${_AE_WASM_OUT}/package.json"
         COMMAND ${CMAKE_COMMAND} -E copy
             "${_AE_WASM_SRC}/index.d.ts"  "${_AE_WASM_OUT}/index.d.ts"
+        COMMAND ${CMAKE_COMMAND} -Dsrc="$<TARGET_FILE_DIR:atmospheric>/atmos.worker.js"
+            -Ddst="${_AE_WASM_OUT}/atmos.worker.js"
+            -P "${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake"
         COMMENT "Assembling @atmospheric/engine package → ${_AE_WASM_OUT}"
     )
 endif()
