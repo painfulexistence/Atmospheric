@@ -138,6 +138,12 @@ public:
     void ReloadScene();
     void GoScene(const std::string& sceneName, std::function<void()> onReady = nullptr);
 
+    // Load a CSB (FlatBuffers binary) scene from a memory buffer.
+    // Clears the current scene and creates GameObjects from the buffer.
+    // Safe to call from any thread via DeferSpawn; designed for the JS editor
+    // bridge but available on all platforms.
+    void LoadEditorScene(const uint8_t* data, size_t len);
+
     GameObject* CreateGameObject(
       glm::vec3 position = glm::vec3(0.0f), glm::vec3 rotation = glm::vec3(0.0f), glm::vec3 scale = glm::vec3(1.0f)
     );

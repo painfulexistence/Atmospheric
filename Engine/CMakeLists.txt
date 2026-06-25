@@ -277,6 +277,7 @@ if(NOT EMSCRIPTEN)
     list(APPEND SOURCES src/window_sdl3.cpp)
 else()
     list(APPEND SOURCES src/window_glfw.cpp)
+    list(APPEND SOURCES src/wasm_api.cpp)
     if(AE_USE_WEBGPU)
         list(APPEND SOURCES src/gpu_buffer.cpp)
         list(APPEND SOURCES src/gpu_render_target.cpp)
@@ -484,7 +485,8 @@ if(EMSCRIPTEN)
             -sINITIAL_MEMORY=134217728
             -sMAXIMUM_MEMORY=536870912
             "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
-            -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"]
+            "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_reset_scene','_ae_get_version','_ae_is_ready']"
+            "-sEXPORTED_RUNTIME_METHODS=['requestFullscreen','ccall','HEAPU8']"
             "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     else()
         target_link_options(AtmosphericEngine INTERFACE
@@ -495,7 +497,8 @@ if(EMSCRIPTEN)
             -sINITIAL_MEMORY=134217728
             -sMAXIMUM_MEMORY=536870912
             "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
-            -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"]
+            "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_reset_scene','_ae_get_version','_ae_is_ready']"
+            "-sEXPORTED_RUNTIME_METHODS=['requestFullscreen','ccall','HEAPU8']"
             "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     endif()
 else()

@@ -1,4 +1,5 @@
 #include "application.hpp"
+#include "scene_loader.hpp"
 #ifdef __APPLE__
 #include <TargetConditionals.h>
 #endif
@@ -891,6 +892,37 @@ void Application::GoScene(const std::string& sceneName, std::function<void()> on
 void Application::ReloadScene() {
     if (_currentSceneName.empty()) return;
     SceneTransition::Go(_currentSceneName, [this]{ OnLoad(); });
+}
+
+void Application::LoadEditorScene(const uint8_t* data, size_t len)
+{
+    // Mirror GoScene's entity-clearing logic without requiring a manifest file.
+    for (auto* e : _entities) {
+        if (e != _defaultGameObject) delete e;
+    }
+    _entities.clear();
+    _nextEntityID = 0;
+    if (_defaultGameObject) {
+        _entities.push_back(_defaultGameObject);
+        _nextEntityID = 1;
+    }
+
+    graphics.cameras.clear();
+    graphics.directionalLights.clear();
+    graphics.pointLights.clear();
+
+    audio.StopAll();
+    physics.Reset();
+
+    SceneLoader loader(this);
+    auto result = loader.LoadFromBuffer(data, len);
+    if (!result.success) {
+        spdlog::warn("[Editor] Scene load failed: {}", result.error);
+    } else {
+        spdlog::info("[Editor] Scene loaded: {} node(s)", result.allNodes.size());
+    }
+
+    _sceneReady = true;
 }
 
 void Application::Quit() {
