@@ -6,7 +6,9 @@
   "exports": {
     ".": {
       "types": "./index.d.ts"
-    }
+    },
+    "./atmos.js": "./atmos.js",
+    "./atmos.wasm": "./atmos.wasm"
   },
   "files": [
     "index.d.ts",
