@@ -17,7 +17,6 @@ class ProceduralTerrainDemo : public Application {
     void OnLoad() override {
         // To use an image-based heightmap instead of procedural noise:
         // Uncomment the ImageHeightField section below and comment out the NoiseHeightField section.
-        LoadScene(SceneDef{});
 
         _cam   = mainCamera;
         _camGO = _cam->gameObject;

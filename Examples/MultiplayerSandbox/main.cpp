@@ -96,6 +96,11 @@ class NoitaLikeGame : public Application {
     }
 
     void OnLoad() override {
+        ComponentFactory::Register("LockstepNetComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              return new LockstepNetComponent(o);
+          });
+
         fontID = graphics.LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
         pixels.assign(size_t(SandWorld::W) * SandWorld::H, 0);

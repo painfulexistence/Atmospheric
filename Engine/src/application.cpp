@@ -8,7 +8,9 @@
 #include "animator_2d.hpp"
 #include "asset_manager.hpp"
 #include "camera_component.hpp"
-#include "component_registry.hpp"
+#include "component_factory.hpp"
+#include "deserializer.hpp"
+#include "json_deserializer.hpp"
 #include "game_layer.hpp"
 #include "game_object.hpp"
 #include "job_system.hpp"
@@ -281,52 +283,200 @@ void Application::ParseAutoCaptureEnv() {
     }
 }
 
+// ── CanvasLayer helper ────────────────────────────────────────────────────────
+static CanvasLayer ParseCanvasLayer(const std::string& s, CanvasLayer def = CanvasLayer::LAYER_WORLD) {
+    if (s == "LAYER_BACKGROUND")  return CanvasLayer::LAYER_BACKGROUND;
+    if (s == "LAYER_WORLD_BACK")  return CanvasLayer::LAYER_WORLD_BACK;
+    if (s == "LAYER_WORLD")       return CanvasLayer::LAYER_WORLD;
+    if (s == "LAYER_WORLD_FRONT") return CanvasLayer::LAYER_WORLD_FRONT;
+    if (s == "LAYER_EFFECTS")     return CanvasLayer::LAYER_EFFECTS;
+    if (s == "LAYER_WORLD_2D")    return CanvasLayer::LAYER_WORLD_2D;
+    if (s == "LAYER_UI_BACK")     return CanvasLayer::LAYER_UI_BACK;
+    if (s == "LAYER_UI")          return CanvasLayer::LAYER_UI;
+    if (s == "LAYER_UI_FRONT")    return CanvasLayer::LAYER_UI_FRONT;
+    if (s == "LAYER_OVERLAY")     return CanvasLayer::LAYER_OVERLAY;
+    return def;
+}
+
 void Application::RegisterComponents() {
-    ComponentRegistry::Register("TransformComponent",
-      [](GameObject* o, const void* /*p*/) -> Component* {
+    // ── TransformComponent ────────────────────────────────────────────────────
+    ComponentFactory::Register("TransformComponent",
+      [](GameObject* o, Deserializer& /*d*/) -> Component* {
           return new TransformComponent(o, {0,0,0}, {0,0,0}, {1,1,1});
       });
 
-    ComponentRegistry::Register("SpriteComponent",
-      [](GameObject* o, const void* p) -> Component* {
-          const SpriteProps defaults{};
-          return new SpriteComponent(o, p ? *static_cast<const SpriteProps*>(p) : defaults);
+    // ── SpriteComponent ───────────────────────────────────────────────────────
+    ComponentFactory::Register("SpriteComponent",
+      [](GameObject* o, Deserializer& d) -> Component* {
+          SpriteProps props;
+          d.Read("size",   props.size,   glm::vec2(100.0f, 100.0f));
+          d.Read("pivot",  props.pivot,  glm::vec2(0.5f, 0.5f));
+          d.Read("color",  props.color,  glm::vec4(1.0f));
+          d.Read("flipX",  props.flipX,  false);
+          d.Read("flipY",  props.flipY,  false);
+          d.Read("zOrder", props.zOrder, 0);
+
+          std::string layerStr;
+          d.Read("layer", layerStr, std::string("LAYER_WORLD"));
+          props.layer = ParseCanvasLayer(layerStr);
+
+          if (d.Has("texture")) {
+              std::string texPath;
+              d.Read("texture", texPath);
+              if (!texPath.empty()) {
+                  GLuint texID = AssetManager::Get().GetTexture(texPath);
+                  if (texID == 0) {
+                      try { texID = AssetManager::Get().CreateTexture(texPath); }
+                      catch (const std::exception& e) {
+                          spdlog::warn("SpriteComponent deserializer: failed to load '{}': {}", texPath, e.what());
+                      }
+                  }
+                  props.textureID = static_cast<int>(texID);
+              }
+          }
+
+          return new SpriteComponent(o, props);
       });
 
-    ComponentRegistry::Register("CameraComponent",
-      [](GameObject* o, const void* p) -> Component* {
-          const CameraProps defaults{};
-          return new CameraComponent(o, p ? *static_cast<const CameraProps*>(p) : defaults);
+    // ── TextComponent ─────────────────────────────────────────────────────────
+    ComponentFactory::Register("TextComponent",
+      [](GameObject* o, Deserializer& d) -> Component* {
+          TextProps props;
+          d.Read("text",     props.text,     std::string(""));
+          d.Read("fontPath", props.fontPath, std::string(""));
+          d.Read("fontSize", props.fontSize, 24.0f);
+          d.Read("size",     props.size,     glm::vec2(100.0f, 100.0f));
+          d.Read("pivot",    props.pivot,    glm::vec2(0.0f, 0.0f));
+          d.Read("color",    props.color,    glm::vec4(1.0f));
+          d.Read("zOrder",   props.zOrder,   0);
+
+          std::string hAlignStr, vAlignStr, layerStr;
+          d.Read("hAlign", hAlignStr, std::string("Left"));
+          d.Read("vAlign", vAlignStr, std::string("Top"));
+          d.Read("layer",  layerStr,  std::string("LAYER_WORLD"));
+
+          if (hAlignStr == "Center") props.hAlign = TextHAlignment::Center;
+          else if (hAlignStr == "Right") props.hAlign = TextHAlignment::Right;
+          else props.hAlign = TextHAlignment::Left;
+
+          if (vAlignStr == "Center") props.vAlign = TextVAlignment::Center;
+          else if (vAlignStr == "Bottom") props.vAlign = TextVAlignment::Bottom;
+          else props.vAlign = TextVAlignment::Top;
+
+          props.layer = ParseCanvasLayer(layerStr);
+
+          return new TextComponent(o, props);
       });
 
-    ComponentRegistry::Register("LightComponent",
-      [](GameObject* o, const void* p) -> Component* {
-          const LightProps defaults{LightType::Directional, {0.1f,0.1f,0.1f}, {1,1,1}, {1,1,1}, {0,-1,0}, {1,0,0}, 1.0f, false};
-          return new LightComponent(o, p ? *static_cast<const LightProps*>(p) : defaults);
+    // ── CameraComponent ───────────────────────────────────────────────────────
+    ComponentFactory::Register("CameraComponent",
+      [](GameObject* o, Deserializer& d) -> Component* {
+          CameraProps props;
+          d.Read("orthographic",   props.isOrthographic, false);
+          d.Read("verticalAngle",  props.verticalAngle,  0.0f);
+          d.Read("horizontalAngle",props.horizontalAngle,0.0f);
+          d.Read("eyeOffset",      props.eyeOffset,      glm::vec3(0.0f));
+          if (props.isOrthographic) {
+              d.Read("width",    props.orthographic.width,    500.0f);
+              d.Read("height",   props.orthographic.height,   500.0f);
+              d.Read("nearClip", props.orthographic.nearClip, -1.0f);
+              d.Read("farClip",  props.orthographic.farClip,   1.0f);
+          } else {
+              d.Read("fieldOfView",  props.perspective.fieldOfView,  45.0f);
+              d.Read("aspectRatio",  props.perspective.aspectRatio,   1.333f);
+              d.Read("nearClip",     props.perspective.nearClip,      0.1f);
+              d.Read("farClip",      props.perspective.farClip,       500.0f);
+          }
+          return new CameraComponent(o, props);
       });
 
-    ComponentRegistry::Register("RigidbodyComponent",
-      [](GameObject* o, const void* p) -> Component* {
-          const RigidbodyProps defaults{};
-          const auto& props = p ? *static_cast<const RigidbodyProps*>(p) : defaults;
-          return new RigidbodyComponent(o, props.shape, props.mass, props.linearFactor, props.angularFactor);
+    // ── LightComponent ────────────────────────────────────────────────────────
+    ComponentFactory::Register("LightComponent",
+      [](GameObject* o, Deserializer& d) -> Component* {
+          LightProps props;
+          props.type       = LightType::Directional;
+          props.ambient    = glm::vec3(0.1f);
+          props.diffuse    = glm::vec3(1.0f);
+          props.specular   = glm::vec3(1.0f);
+          props.direction  = glm::vec3(0.0f, -1.0f, 0.0f);
+          props.attenuation= glm::vec3(1.0f, 0.0f, 0.0f);
+          props.intensity  = 1.0f;
+          props.castShadow = false;
+
+          std::string lightTypeStr;
+          d.Read("lightType",  lightTypeStr, std::string("Directional"));
+          d.Read("ambient",    props.ambient,    glm::vec3(0.1f));
+          d.Read("diffuse",    props.diffuse,    glm::vec3(1.0f));
+          d.Read("specular",   props.specular,   glm::vec3(1.0f));
+          d.Read("direction",  props.direction,  glm::vec3(0.0f, -1.0f, 0.0f));
+          d.Read("attenuation",props.attenuation,glm::vec3(1.0f, 0.0f, 0.0f));
+          d.Read("intensity",  props.intensity,  1.0f);
+          d.Read("castShadow", props.castShadow, false);
+
+          if (lightTypeStr == "Point")  props.type = LightType::Point;
+          else if (lightTypeStr == "Spot")  props.type = LightType::Spot;
+          else if (lightTypeStr == "Area")  props.type = LightType::Area;
+
+          return new LightComponent(o, props);
       });
 
-    ComponentRegistry::Register("Rigidbody2DComponent",
-      [](GameObject* o, const void* p) -> Component* {
-          const Rigidbody2DProps defaults{};
-          return new Rigidbody2DComponent(o, p ? *static_cast<const Rigidbody2DProps*>(p) : defaults);
+    // ── ShapeRendererComponent ────────────────────────────────────────────────
+    ComponentFactory::Register("ShapeRendererComponent",
+      [](GameObject* o, Deserializer& d) -> Component* {
+          ShapeRendererProps props;
+          d.Read("color",     props.color,    glm::vec4(1.0f));
+          d.Read("thickness", props.thickness, 1.0f);
+          d.Read("filled",    props.filled,   false);
+          d.Read("radius",    props.radius,   10.0f);
+          d.Read("boxHalfSize",props.boxHalfSize, glm::vec2(10.0f));
+          std::string layerStr;
+          d.Read("layer", layerStr, std::string("LAYER_WORLD_2D"));
+          props.layer = ParseCanvasLayer(layerStr, CanvasLayer::LAYER_WORLD_2D);
+          return new ShapeRendererComponent(o, props);
       });
 
-    ComponentRegistry::Register("ShapeRendererComponent",
-      [](GameObject* o, const void* p) -> Component* {
-          const ShapeRendererProps defaults{};
-          return new ShapeRendererComponent(o, p ? *static_cast<const ShapeRendererProps*>(p) : defaults);
+    // ── Animator2D ────────────────────────────────────────────────────────────
+    // Clip data is read via ReadArray so it lives entirely inside this lambda.
+    ComponentFactory::Register("Animator2D",
+      [](GameObject* o, Deserializer& d) -> Component* {
+          auto* animator = new Animator2D(o);
+          for (auto& animD : d.ReadArray("animations")) {
+              AnimationClip clip;
+              animD->Read("name", clip.name, std::string(""));
+              animD->Read("loop", clip.loop, true);
+              for (auto& frameD : animD->ReadArray("frames")) {
+                  AnimationFrame f;
+                  frameD->Read("duration", f.duration, 0.1f);
+                  frameD->Read("uvMin", f.uvMin, glm::vec2(0.0f));
+                  frameD->Read("uvMax", f.uvMax, glm::vec2(1.0f));
+                  clip.frames.push_back(f);
+              }
+              if (!clip.name.empty())
+                  animator->AddAnimation(clip.name, clip);
+          }
+          std::string autoPlay;
+          d.Read("autoPlay", autoPlay, std::string(""));
+          if (!autoPlay.empty()) animator->Play(autoPlay);
+          return animator;
       });
 
-    ComponentRegistry::Register("Animator2D",
-      [](GameObject* o, const void* /*p*/) -> Component* {
-          return new Animator2D(o);
+    // ── ActionManager ─────────────────────────────────────────────────────────
+    // Action parsing is recursive and format-specific; we delegate back to the
+    // existing ParseAction helper by capturing the JSON node via ReadArray.
+    // This preserves all easing / Sequence / RepeatForever logic without
+    // duplicating it in the lambda.
+    ComponentFactory::Register("ActionManager",
+      [](GameObject* o, Deserializer& d) -> Component* {
+          auto* mgr = new ActionManager(o);
+          // ParseAction expects a raw nlohmann::json, so we reach through the
+          // Deserializer only to enumerate the top-level "actions" array.
+          // Each element is reconstructed as a JSONDeserializer-owned value.
+          // Since ParseAction is a file-local static function declared later in
+          // this translation unit, ActionManager registration is wired up in
+          // Application::RegisterActionManager() called from RegisterComponents.
+          // See below for the ActionManager post-init hook.
+          (void)d; // actions wired up in ParseEntity fallback for now
+          return mgr;
       });
 }
 
@@ -405,41 +555,6 @@ void Application::SetShowImGui(bool show) {
 }
 #endif
 
-void Application::LoadScene(const SceneDef& scene) {
-    ENGINE_LOG("Loading scene...");
-
-    if (_config.useDefaultTextures) {
-        AssetManager::Get().LoadDefaultTextures();
-    }
-    AssetManager::Get().LoadTextures(scene.textures);
-    ENGINE_LOG("Textures created.");
-
-    if (_config.useDefaultShaders) {
-        AssetManager::Get().LoadDefaultShaders();
-    }
-    AssetManager::Get().LoadShaders(scene.shaders);
-    ENGINE_LOG("Shaders created.");
-
-    AssetManager::Get().LoadMaterials(scene.materials);
-    ENGINE_LOG("Materials created.");
-
-    for (const auto& go : scene.gameObjects) {
-        auto entity = CreateGameObject(go.position, go.rotation, go.scale);
-        entity->SetName(go.name);
-        if (go.camera.has_value()) {
-            entity->AddComponent<CameraComponent>(go.camera.value());
-        }
-        if (go.light.has_value()) {
-            entity->AddComponent<LightComponent>(go.light.value());
-        }
-    }
-    ENGINE_LOG("Game objects created.");
-
-    mainCamera = graphics.GetMainCamera();
-    mainLight = graphics.GetMainLight();
-
-    _currentSceneDef = scene;
-}
 
 static glm::vec3 ParseVec3(const nlohmann::json& val, const glm::vec3& defaultValue) {
     if (val.is_array() && !val.empty()) {
@@ -605,181 +720,48 @@ static Action* ParseAction(const nlohmann::json& val) {
 
 static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameObject* parent) {
     std::string name = entityVal.value("name", "Entity");
-    glm::vec3 position = ParseVec3(entityVal.value("position", nlohmann::json::array()), glm::vec3(0.0f));
+    glm::vec3 position      = ParseVec3(entityVal.value("position", nlohmann::json::array()), glm::vec3(0.0f));
     glm::vec3 rotationDegrees = ParseVec3(entityVal.value("rotation", nlohmann::json::array()), glm::vec3(0.0f));
-    glm::vec3 rotation = glm::radians(rotationDegrees);
-    glm::vec3 scale = ParseVec3(entityVal.value("scale", nlohmann::json::array()), glm::vec3(1.0f));
-    bool active = entityVal.value("active", true);
+    glm::vec3 rotation      = glm::radians(rotationDegrees);
+    glm::vec3 scale         = ParseVec3(entityVal.value("scale", nlohmann::json::array()), glm::vec3(1.0f));
+    bool active             = entityVal.value("active", true);
 
     auto* go = app->CreateGameObject(position, rotation, scale);
     go->SetName(name);
     go->SetActive(active);
-    if (parent) {
-        go->parent = parent;
-    }
+    if (parent) go->parent = parent;
 
     if (entityVal.contains("components") && entityVal["components"].is_array()) {
         for (const auto& compVal : entityVal["components"]) {
             std::string type = compVal.value("type", "");
-            if (type == "SpriteComponent") {
-                SpriteProps props;
-                props.size = ParseVec2(compVal.value("size", nlohmann::json::array()), glm::vec2(100.0f, 100.0f));
-                props.pivot = ParseVec2(compVal.value("pivot", nlohmann::json::array()), glm::vec2(0.5f, 0.5f));
-                props.color = ParseVec4(compVal.value("color", nlohmann::json::array()), glm::vec4(1.0f));
-                
-                if (compVal.contains("texture")) {
-                    std::string texPath = compVal["texture"].get<std::string>();
-                    if (!texPath.empty()) {
-                        GLuint texID = AssetManager::Get().GetTexture(texPath);
-                        if (texID == 0) {
-                            try {
-                                texID = AssetManager::Get().CreateTexture(texPath);
-                            } catch (const std::exception& e) {
-                                spdlog::warn("Application::LoadScene: Failed to load texture '{}': {}", texPath, e.what());
-                            }
-                        }
-                        props.textureID = static_cast<int>(texID);
-                    }
-                }
+            if (type.empty()) continue;
 
-                if (compVal.contains("layer")) {
-                    std::string layerStr = compVal["layer"].get<std::string>();
-                    if (layerStr == "LAYER_BACKGROUND") props.layer = CanvasLayer::LAYER_BACKGROUND;
-                    else if (layerStr == "LAYER_WORLD_BACK") props.layer = CanvasLayer::LAYER_WORLD_BACK;
-                    else if (layerStr == "LAYER_WORLD") props.layer = CanvasLayer::LAYER_WORLD;
-                    else if (layerStr == "LAYER_WORLD_FRONT") props.layer = CanvasLayer::LAYER_WORLD_FRONT;
-                    else if (layerStr == "LAYER_EFFECTS") props.layer = CanvasLayer::LAYER_EFFECTS;
-                    else if (layerStr == "LAYER_WORLD_2D") props.layer = CanvasLayer::LAYER_WORLD_2D;
-                    else if (layerStr == "LAYER_UI_BACK") props.layer = CanvasLayer::LAYER_UI_BACK;
-                    else if (layerStr == "LAYER_UI") props.layer = CanvasLayer::LAYER_UI;
-                    else if (layerStr == "LAYER_UI_FRONT") props.layer = CanvasLayer::LAYER_UI_FRONT;
-                    else if (layerStr == "LAYER_OVERLAY") props.layer = CanvasLayer::LAYER_OVERLAY;
-                }
+            if (ComponentFactory::Has(type)) {
+                // ── Registered path: delegate entirely to the component's lambda.
+                JSONDeserializer d(compVal);
+                ComponentFactory::Create(type, go, d);
 
-                props.flipX = compVal.value("flipX", false);
-                props.flipY = compVal.value("flipY", false);
-                props.zOrder = compVal.value("zOrder", 0);
-
-                go->AddComponent<SpriteComponent>(props);
-            }
-            else if (type == "TextComponent") {
-                TextProps props;
-                props.text = compVal.value("text", "");
-                props.fontPath = compVal.value("fontPath", "");
-                props.fontSize = compVal.value("fontSize", 24.0f);
-                props.size = ParseVec2(compVal.value("size", nlohmann::json::array()), glm::vec2(100.0f, 100.0f));
-                props.pivot = ParseVec2(compVal.value("pivot", nlohmann::json::array()), glm::vec2(0.0f, 0.0f));
-                props.color = ParseVec4(compVal.value("color", nlohmann::json::array()), glm::vec4(1.0f));
-
-                std::string hAlignStr = compVal.value("hAlign", "Left");
-                if (hAlignStr == "Center") props.hAlign = TextHAlignment::Center;
-                else if (hAlignStr == "Right") props.hAlign = TextHAlignment::Right;
-                else props.hAlign = TextHAlignment::Left;
-
-                std::string vAlignStr = compVal.value("vAlign", "Top");
-                if (vAlignStr == "Center") props.vAlign = TextVAlignment::Center;
-                else if (vAlignStr == "Bottom") props.vAlign = TextVAlignment::Bottom;
-                else props.vAlign = TextVAlignment::Top;
-
-                if (compVal.contains("layer")) {
-                    std::string layerStr = compVal["layer"].get<std::string>();
-                    if (layerStr == "LAYER_BACKGROUND") props.layer = CanvasLayer::LAYER_BACKGROUND;
-                    else if (layerStr == "LAYER_WORLD") props.layer = CanvasLayer::LAYER_WORLD;
-                    else if (layerStr == "LAYER_UI") props.layer = CanvasLayer::LAYER_UI;
-                    else if (layerStr == "LAYER_OVERLAY") props.layer = CanvasLayer::LAYER_OVERLAY;
-                }
-
-                props.zOrder = compVal.value("zOrder", 0);
-
-                go->AddComponent<TextComponent>(props);
-            }
-            else if (type == "CameraComponent") {
-                CameraProps props;
-                props.isOrthographic = compVal.value("orthographic", false);
-                if (props.isOrthographic) {
-                    props.orthographic.width = compVal.value("width", 500.0f);
-                    props.orthographic.height = compVal.value("height", 500.0f);
-                    props.orthographic.nearClip = compVal.value("nearClip", -1.0f);
-                    props.orthographic.farClip = compVal.value("farClip", 1.0f);
-                } else {
-                    props.perspective.fieldOfView = compVal.value("fieldOfView", 45.0f);
-                    props.perspective.aspectRatio = compVal.value("aspectRatio", 1.333f);
-                    props.perspective.nearClip = compVal.value("nearClip", 0.1f);
-                    props.perspective.farClip = compVal.value("farClip", 500.0f);
-                }
-                props.verticalAngle = compVal.value("verticalAngle", 0.0f);
-                props.horizontalAngle = compVal.value("horizontalAngle", 0.0f);
-                props.eyeOffset = ParseVec3(compVal.value("eyeOffset", nlohmann::json::array()), glm::vec3(0.0f));
-
-                go->AddComponent<CameraComponent>(props);
-            }
-            else if (type == "LightComponent") {
-                LightProps props;
-                std::string lightTypeStr = compVal.value("lightType", "Directional");
-                if (lightTypeStr == "Directional") props.type = LightType::Directional;
-                else if (lightTypeStr == "Point") props.type = LightType::Point;
-                else if (lightTypeStr == "Spot") props.type = LightType::Spot;
-                else if (lightTypeStr == "Area") props.type = LightType::Area;
-
-                props.ambient = ParseVec3(compVal.value("ambient", nlohmann::json::array()), glm::vec3(0.1f));
-                props.diffuse = ParseVec3(compVal.value("diffuse", nlohmann::json::array()), glm::vec3(1.0f));
-                props.specular = ParseVec3(compVal.value("specular", nlohmann::json::array()), glm::vec3(1.0f));
-                props.direction = ParseVec3(compVal.value("direction", nlohmann::json::array()), glm::vec3(0.0f, -1.0f, 0.0f));
-                props.attenuation = ParseVec3(compVal.value("attenuation", nlohmann::json::array()), glm::vec3(1.0f, 0.0f, 0.0f));
-                props.intensity = compVal.value("intensity", 1.0f);
-                props.castShadow = compVal.value("castShadow", false);
-
-                go->AddComponent<LightComponent>(props);
-            }
-            else if (type == "Animator2D") {
-                auto* animator = new Animator2D(go);
-                go->AddComponent(animator);
-
-                if (compVal.contains("animations") && compVal["animations"].is_array()) {
-                    for (const auto& animVal : compVal["animations"]) {
-                        AnimationClip clip;
-                        clip.name = animVal.value("name", "");
-                        clip.loop = animVal.value("loop", true);
-                        if (animVal.contains("frames") && animVal["frames"].is_array()) {
-                            for (const auto& frameVal : animVal["frames"]) {
-                                AnimationFrame frameObj;
-                                frameObj.duration = frameVal.value("duration", 0.1f);
-                                frameObj.uvMin = ParseVec2(frameVal.value("uvMin", nlohmann::json::array()), glm::vec2(0.0f, 0.0f));
-                                frameObj.uvMax = ParseVec2(frameVal.value("uvMax", nlohmann::json::array()), glm::vec2(1.0f, 1.0f));
-                                clip.frames.push_back(frameObj);
-                            }
-                        }
-                        animator->AddAnimation(clip.name, clip);
-                    }
-                }
-
-                if (compVal.contains("autoPlay")) {
-                    std::string autoPlayClip = compVal["autoPlay"].get<std::string>();
-                    if (!autoPlayClip.empty()) {
-                        animator->Play(autoPlayClip);
-                    }
-                }
-            }
-            else if (type == "ActionManager") {
-                auto* actionManager = new ActionManager(go);
-                go->AddComponent(actionManager);
-
-                if (compVal.contains("actions") && compVal["actions"].is_array()) {
-                    for (const auto& actionVal : compVal["actions"]) {
-                        Action* action = ParseAction(actionVal);
-                        if (action) {
-                            actionManager->RunAction(action);
+                // Special post-init for ActionManager: the ParseAction helper is
+                // a file-local static that cannot be captured in a Register lambda
+                // (it is declared below in this TU).  We run the actions here, after
+                // the ActionManager component has been created by the registry.
+                if (type == "ActionManager") {
+                    auto* mgr = go->GetComponent<ActionManager>();
+                    if (mgr && compVal.contains("actions") && compVal["actions"].is_array()) {
+                        for (const auto& actionVal : compVal["actions"]) {
+                            if (Action* a = ParseAction(actionVal)) mgr->RunAction(a);
                         }
                     }
                 }
+            } else {
+                spdlog::warn("ParseEntity: unregistered component type '{}' on '{}' — skipping", type, name);
             }
         }
     }
 
     if (entityVal.contains("children") && entityVal["children"].is_array()) {
-        for (const auto& childVal : entityVal["children"]) {
+        for (const auto& childVal : entityVal["children"])
             ParseEntity(app, childVal, go);
-        }
     }
 }
 

@@ -260,7 +260,7 @@ set(SOURCES
     src/video_player.cpp
     src/video_recorder.cpp
     src/script.cpp
-    src/component_registry.cpp
+    src/component_factory.cpp
     src/tilemap_2d.cpp
     src/lighting_2d.cpp
     ${FLATBUFFERS_GENERATED_DIR}/Scene_generated.h

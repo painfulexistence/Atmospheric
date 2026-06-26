@@ -30,4 +30,6 @@
 #include "Atmospheric/window.hpp"
 #include "Atmospheric/video_player.hpp"
 #include "Atmospheric/video_recorder.hpp"
+#include "Atmospheric/component_factory.hpp"
+#include "Atmospheric/deserializer.hpp"
 #include "imgui.h"

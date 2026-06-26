@@ -133,7 +133,6 @@ public:
 #endif
 
     std::shared_ptr<Window> GetWindow();
-    void LoadScene(const SceneDef& scene);
     void LoadScene(const std::string& jsonContent);
     void ReloadScene();
     void GoScene(const std::string& sceneName, std::function<void()> onReady = nullptr);
@@ -225,7 +224,6 @@ private:
 
     uint64_t _clock = 0;
     uint16_t _sceneIndex = 0;
-    std::optional<SceneDef> _currentSceneDef = std::nullopt;
     std::string _currentSceneName;
     std::string _editorSceneError;
     std::string _lastLoadedScene;

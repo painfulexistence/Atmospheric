@@ -84,6 +84,44 @@ class MidnightSkyraiders : public Application {
     }
 
     void OnLoad() override {
+        // Register local components
+        ComponentFactory::Register("ParallaxLayerComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              int textureID = 0, zOrder = 0;
+              float worldSize = 0.0f, speed = 0.0f;
+              d.Read("textureID", textureID);
+              d.Read("worldSize", worldSize);
+              d.Read("speed", speed);
+              d.Read("zOrder", zOrder);
+              return new ParallaxLayerComponent(o, textureID, worldSize, speed, zOrder);
+          });
+        ComponentFactory::Register("BulletMovementComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              int type = 0;
+              float x = 0.0f, y = 0.0f, maxLife = 0.0f;
+              d.Read("type", type);
+              d.Read("x", x);
+              d.Read("y", y);
+              d.Read("maxLife", maxLife);
+              return new BulletMovementComponent(o, type, x, y, maxLife);
+          });
+        ComponentFactory::Register("EnemyMovementComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              int type = 0, level = 0;
+              float speed = 0.0f, raidDist = 0.0f, raidStart = 0.0f, raidDur = 0.0f;
+              d.Read("type", type);
+              d.Read("level", level);
+              d.Read("speed", speed);
+              d.Read("raidDist", raidDist);
+              d.Read("raidStart", raidStart);
+              d.Read("raidDur", raidDur);
+              return new EnemyMovementComponent(o, type, level, speed, raidDist, raidStart, raidDur);
+          });
+        ComponentFactory::Register("PlayerComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              return new PlayerComponent(o);
+          });
+
         auto& am = AssetManager::Get();
         texPlayer  = am.CreateTexture("assets/images/player.png");
         texEnemy1  = am.CreateTexture("assets/images/enemy1.png");

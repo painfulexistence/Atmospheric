@@ -65,6 +65,54 @@ class CardBattleGame : public Application {
     }
 
     void OnLoad() override {
+        // Register local components
+        ComponentFactory::Register("HealthComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              int maxHp = 100;
+              d.Read("maxHp", maxHp);
+              return new HealthComponent(o, maxHp);
+          });
+        ComponentFactory::Register("EnergyComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              return new EnergyComponent(o);
+          });
+        ComponentFactory::Register("StatusComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              return new StatusComponent(o);
+          });
+        ComponentFactory::Register("CombatantComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              std::string name = "Combatant";
+              bool isPlayer = false;
+              d.Read("name", name);
+              d.Read("isPlayer", isPlayer);
+              return new CombatantComponent(o, name, isPlayer);
+          });
+        ComponentFactory::Register("DeckComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              std::vector<int> startingDeck;
+              int seedVal = 0;
+              d.Read("startingDeck", startingDeck);
+              d.Read("seed", seedVal);
+              return new DeckComponent(o, startingDeck, static_cast<unsigned int>(seedVal));
+          });
+        ComponentFactory::Register("EnemyBrainComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              int enemyId = 0;
+              int seedVal = 0;
+              d.Read("enemyId", enemyId);
+              d.Read("seed", seedVal);
+              const auto& db = EnemyDB();
+              if (enemyId < 0 || enemyId >= (int)db.size()) {
+                  enemyId = 0;
+              }
+              return new EnemyBrainComponent(o, &db[enemyId], static_cast<unsigned int>(seedVal));
+          });
+        ComponentFactory::Register("BattleManagerComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              return new BattleManagerComponent(o, o->GetApp());
+          });
+
         _font = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
         GameObject* mgrGO = CreateGameObject();
