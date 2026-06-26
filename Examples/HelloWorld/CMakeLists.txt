@@ -57,11 +57,11 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND}
             -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts
             -Ddst=${EM_PRELOAD_STAGING_DIR}/fonts
-            -P ${CMAKE_SOURCE_DIR}/cmake/copy_dir_if_exists.cmake
+            -P ${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake
         COMMAND ${CMAKE_COMMAND}
             -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
             -Ddst=${EM_PRELOAD_STAGING_DIR}/scenes
-            -P ${CMAKE_SOURCE_DIR}/cmake/copy_dir_if_exists.cmake
+            -P ${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake
         COMMENT "Staging Emscripten preload assets (shaders, fonts, scenes) for ${GAME_NAME}"
     )
     add_dependencies(${GAME_TARGET} stage_${GAME_NAME}_em_preload)

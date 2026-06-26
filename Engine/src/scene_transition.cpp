@@ -144,15 +144,15 @@ void SceneTransition::Go(const std::string& sceneName, OnReadyFn onReady, OnErro
                 return;
             }
 
+            spdlog::info("SceneTransition: '{}' ready", sceneName);
+            if (onReady) onReady();
+
             // Drop the FileSystem cache — every asset for this scene has been
             // either ConsumeSync'd into a GPU texture or read+parsed into a
             // shader/script. Keeping the raw bytes around just bloats WASM heap
             // across scene transitions. Also unlinks the MEMFS shadow copies
             // for text/audio assets so stale entries don't linger.
             FileSystem::Get().ClearCache();
-
-            spdlog::info("SceneTransition: '{}' ready", sceneName);
-            if (onReady) onReady();
         });
     });
 }

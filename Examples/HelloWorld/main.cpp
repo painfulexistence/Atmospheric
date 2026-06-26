@@ -16,20 +16,76 @@ class HelloWorld : public Application {
     }
 
     void OnLoad() override {
+        // Register local components
+        ComponentFactory::Register("RotatorComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              glm::vec3 angVel(0.0f);
+              d.Read("angVel", angVel);
+              return new RotatorComponent(o, angVel);
+          });
+        ComponentFactory::Register("OscillatorComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              glm::vec3 axis(0,1,0);
+              float amp = 1.0f, freq = 1.0f, phase = 0.0f;
+              d.Read("axis", axis);
+              d.Read("amp", amp);
+              d.Read("freq", freq);
+              d.Read("phase", phase);
+              return new OscillatorComponent(o, axis, amp, freq, phase);
+          });
+        ComponentFactory::Register("WorldLabelComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              std::string fontPath, text;
+              float fontSize = 32.0f, scale = 0.5f;
+              glm::vec3 offset(0, 1.2f, 0);
+              glm::vec4 color(1, 1, 0, 1);
+              d.Read("fontPath", fontPath);
+              d.Read("fontSize", fontSize);
+              d.Read("text", text);
+              d.Read("offset", offset);
+              d.Read("scale", scale);
+              d.Read("color", color);
+              FontID font = GraphicsServer::Get()->LoadFont(fontPath, fontSize);
+              return new WorldLabelComponent(o, font, text, offset, scale, color);
+          });
+        ComponentFactory::Register("ScreenLabelComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              std::string fontPath, text;
+              float fontSize = 32.0f, scale = 1.0f;
+              glm::vec2 pos(0.0f);
+              glm::vec4 color(1, 1, 1, 1);
+              d.Read("fontPath", fontPath);
+              d.Read("fontSize", fontSize);
+              d.Read("text", text);
+              d.Read("pos", pos);
+              d.Read("scale", scale);
+              d.Read("color", color);
+              FontID font = GraphicsServer::Get()->LoadFont(fontPath, fontSize);
+              return new ScreenLabelComponent(o, font, text, pos, scale, color);
+          });
+        ComponentFactory::Register("SpritePulseComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              float minA = 0.0f, maxA = 1.0f, freq = 1.0f, phase = 0.0f;
+              d.Read("min", minA);
+              d.Read("max", maxA);
+              d.Read("freq", freq);
+              d.Read("phase", phase);
+              return new SpritePulseComponent(o, minA, maxA, freq, phase);
+          });
+
         // Load font
         fontID = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
-
-        SceneDef scene = {
-            .materials = { { .baseMap = 0,
-                             .normalMap = 1,
-                             .aoMap = 2,
-                             .roughnessMap = 3,
-                             .diffuse = { 1., 1., 1. },
-                             .specular = { .296648, .296648, .296648 },
-                             .ambient = { .25, .20725, .20725 },
-                             .shininess = 0.088 } },
+        MaterialProps matProps = {
+            .baseMap = 0,
+            .normalMap = 1,
+            .aoMap = 2,
+            .roughnessMap = 3,
+            .diffuse = { 1., 1., 1. },
+            .specular = { .296648, .296648, .296648 },
+            .ambient = { .25, .20725, .20725 },
+            .shininess = 0.088
         };
-        LoadScene(scene);
+        AssetManager::Get().CreateMaterial(matProps);
 
         mainCamera->gameObject->SetPosition(glm::vec3(-10.0, 5.0, 0.0));
 

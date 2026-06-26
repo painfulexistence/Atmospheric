@@ -217,7 +217,7 @@ set(SOURCES
     src/video_player.cpp
     src/video_recorder.cpp
     src/script.cpp
-    src/component_registry.cpp
+    src/component_factory.cpp
     src/tilemap_2d.cpp
     src/lighting_2d.cpp
     ${FLATBUFFERS_GENERATED_DIR}/Scene_generated.h
@@ -234,6 +234,12 @@ if(NOT EMSCRIPTEN)
     list(APPEND SOURCES src/window_sdl3.cpp)
 else()
     list(APPEND SOURCES src/window_glfw.cpp)
+    # WASM editor bridge frontend (Emscripten-only). Kept in frontends/ for
+    # organisational parity with frontends/lua, but compiled into the engine
+    # library because the exports are engine infrastructure (the EXPORTED_FUNCTIONS
+    # link flags below are likewise engine-level INTERFACE options), not per-game
+    # logic like the Lua frontend.
+    list(APPEND SOURCES frontends/wasm/bindings.cpp)
     if(AE_USE_WEBGPU)
         list(APPEND SOURCES src/gpu_buffer.cpp)
         list(APPEND SOURCES src/gpu_render_target.cpp)
@@ -441,7 +447,8 @@ if(EMSCRIPTEN)
             -sINITIAL_MEMORY=134217728
             -sMAXIMUM_MEMORY=536870912
             "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
-            -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"]
+            "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_load_editor_scene_json','_ae_add_scene','_ae_unload_scene','_ae_get_loaded_scenes','_ae_get_last_loaded_scene','_ae_reset_scene','_ae_get_version','_ae_is_ready','_ae_mount_file','_ae_get_scene_error']"
+            "-sEXPORTED_RUNTIME_METHODS=['requestFullscreen','ccall','HEAPU8']"
             "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     else()
         target_link_options(AtmosphericEngine INTERFACE
@@ -452,7 +459,8 @@ if(EMSCRIPTEN)
             -sINITIAL_MEMORY=134217728
             -sMAXIMUM_MEMORY=536870912
             "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
-            -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"]
+            "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_load_editor_scene_json','_ae_add_scene','_ae_unload_scene','_ae_get_loaded_scenes','_ae_get_last_loaded_scene','_ae_reset_scene','_ae_get_version','_ae_is_ready','_ae_mount_file','_ae_get_scene_error']"
+            "-sEXPORTED_RUNTIME_METHODS=['requestFullscreen','ccall','HEAPU8']"
             "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     endif()
 else()
@@ -486,3 +494,40 @@ else()
 endif()
 
 set(AE_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/default_assets" PARENT_SCOPE)
+# ── @atmospheric/engine npm package (Emscripten-only) ────────────────────────
+# Minimal Application shell (module.cpp); all scene loading driven by the
+# JS bridge (bindings.cpp, compiled into AtmosphericEngine above).
+#
+# Build layout — option C:
+#   source  Engine/frontends/wasm/   package.json, index.d.ts (source-of-truth)
+#   build   build/AtmosWasm/          atmos.js/.wasm/.worker.js + metadata
+#
+# POST_BUILD copies package.json + index.d.ts into the build dir so that
+# directory is a self-contained npm package for cloudscape's file:// dep:
+#   "@atmospheric/engine": "file:../atmospheric-src/build/AtmosWasm"
+if(EMSCRIPTEN)
+    set(_AE_WASM_SRC "${CMAKE_CURRENT_SOURCE_DIR}/frontends/wasm")
+    set(_AE_WASM_OUT "${CMAKE_BINARY_DIR}/AtmosWasm")
+
+    add_executable(atmospheric frontends/wasm/module.cpp)
+    target_link_libraries(atmospheric PRIVATE AtmosphericEngine)
+    set_target_properties(atmospheric PROPERTIES
+        OUTPUT_NAME atmos
+        RUNTIME_OUTPUT_DIRECTORY "${_AE_WASM_OUT}"
+    )
+
+    # The pthread build (-sUSE_PTHREADS=1) emits atmos.worker.js next to atmos.js.
+    # Emscripten writes it to $<TARGET_FILE_DIR:atmospheric>; guard the copy so
+    # non-pthread builds (where the worker file does not exist) don't error out.
+    add_custom_command(TARGET atmospheric POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_AE_WASM_OUT}"
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "${_AE_WASM_SRC}/package.json" "${_AE_WASM_OUT}/package.json"
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "${_AE_WASM_SRC}/index.d.ts"  "${_AE_WASM_OUT}/index.d.ts"
+        COMMAND ${CMAKE_COMMAND} -Dsrc="$<TARGET_FILE_DIR:atmospheric>/atmos.worker.js"
+            -Ddst="${_AE_WASM_OUT}/atmos.worker.js"
+            -P "${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake"
+        COMMENT "Assembling @atmospheric/engine package → ${_AE_WASM_OUT}"
+    )
+endif()

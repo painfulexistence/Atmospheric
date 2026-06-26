@@ -297,6 +297,23 @@ class PolyMerge : public Application {
     }
 
     void OnLoad() override {
+        // Register local components
+        ComponentFactory::Register("MergeableComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              int sides = 3, minGroup = 2;
+              d.Read("sides", sides);
+              d.Read("minGroup", minGroup);
+              return new MergeableComponent(o, sides, minGroup);
+          });
+        ComponentFactory::Register("ColorRestoreComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              float speed = 2.0f;
+              glm::vec4 target(-1.0f);
+              d.Read("speed", speed);
+              d.Read("target", target);
+              return new ColorRestoreComponent(o, speed, target);
+          });
+
         rng.seed(std::random_device{}());
         score = 0;
         gameOver = false;
