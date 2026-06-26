@@ -191,6 +191,73 @@ void AssetManager::ClearSceneAssets() {
     _meshCache.clear();
 
     _imageCache.clear();
+    _sceneAssets.clear();
+}
+
+// ============================================================================
+// Per-scene asset ownership
+// ============================================================================
+
+void AssetManager::RecordSceneTextures(const std::string& sceneName, const std::vector<std::string>& paths) {
+    auto& m = _sceneAssets[sceneName];
+    m.textures.insert(m.textures.end(), paths.begin(), paths.end());
+}
+
+void AssetManager::RecordSceneShaders(const std::string& sceneName, const std::vector<std::string>& names) {
+    auto& m = _sceneAssets[sceneName];
+    m.shaders.insert(m.shaders.end(), names.begin(), names.end());
+}
+
+void AssetManager::RecordSceneMaterials(const std::string& sceneName, const std::vector<std::string>& names) {
+    auto& m = _sceneAssets[sceneName];
+    m.materials.insert(m.materials.end(), names.begin(), names.end());
+}
+
+void AssetManager::UnloadSceneAssets(const std::string& sceneName) {
+    auto it = _sceneAssets.find(sceneName);
+    if (it == _sceneAssets.end()) return;
+    const SceneAssetManifest& m = it->second;
+
+    // Textures
+    for (const auto& path : m.textures) {
+        auto texIt = _textureCache.find(path);
+        if (texIt == _textureCache.end()) continue;
+        GLuint glID = texIt->second.glID;
+        glDeleteTextures(1, &glID);
+        _textureCache.erase(texIt);
+        // Remove from the linear textures vector.
+        textures.erase(std::remove(textures.begin(), textures.end(), glID), textures.end());
+    }
+
+    // Shaders
+    for (const auto& name : m.shaders) {
+        auto shaderIt = _shaderCache.find(name);
+        if (shaderIt == _shaderCache.end()) continue;
+        uint32_t idx = shaderIt->second;
+        if (idx < shaders.size()) {
+            delete shaders[idx];
+            shaders[idx] = nullptr;
+        }
+        _shaderCache.erase(shaderIt);
+    }
+    // Compact nulls left by shader deletion.
+    shaders.erase(std::remove(shaders.begin(), shaders.end(), nullptr), shaders.end());
+
+    // Materials
+    for (const auto& name : m.materials) {
+        auto matIt = _materialCache.find(name);
+        if (matIt == _materialCache.end()) continue;
+        uint32_t idx = matIt->second;
+        if (idx < materials.size()) {
+            delete materials[idx];
+            materials[idx] = nullptr;
+        }
+        _materialCache.erase(matIt);
+    }
+    materials.erase(std::remove(materials.begin(), materials.end(), nullptr), materials.end());
+
+    _sceneAssets.erase(it);
+    spdlog::info("[AssetManager] Unloaded assets for scene '{}'.", sceneName);
 }
 
 // ============================================================================

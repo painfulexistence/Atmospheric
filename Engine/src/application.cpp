@@ -791,6 +791,7 @@ void Application::LoadScene(const std::string& jsonContent) {
                 AssetManager::Get().LoadDefaultTextures();
             }
             AssetManager::Get().LoadTextures(texturesToLoad);
+            AssetManager::Get().RecordSceneTextures(sceneName, texturesToLoad);
             ENGINE_LOG("JSON Textures created.");
         }
     }
@@ -818,6 +819,10 @@ void Application::LoadScene(const std::string& jsonContent) {
                 AssetManager::Get().LoadDefaultShaders();
             }
             AssetManager::Get().LoadShaders(shadersToLoad);
+            std::vector<std::string> shaderNames;
+            shaderNames.reserve(shadersToLoad.size());
+            for (const auto& [name, _] : shadersToLoad) shaderNames.push_back(name);
+            AssetManager::Get().RecordSceneShaders(sceneName, shaderNames);
             ENGINE_LOG("JSON Shaders created.");
         }
     }
@@ -940,6 +945,10 @@ void Application::UnloadScene(const std::string& name)
             [&toRemove](GameObject* e) { return toRemove.count(e) > 0; }),
         _entities.end());
     for (auto* e : toRemove) delete e;
+
+    // Free GPU/CPU assets that were first loaded by this scene.
+    // Must come after GameObjects are deleted so no component holds a dangling ref.
+    AssetManager::Get().UnloadSceneAssets(name);
 
     mainCamera = graphics.GetMainCamera();
     mainLight = graphics.GetMainLight();
