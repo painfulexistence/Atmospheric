@@ -557,6 +557,11 @@ if(EMSCRIPTEN)
         OUTPUT_NAME atmos
         RUNTIME_OUTPUT_DIRECTORY "${_AE_WASM_OUT}"
     )
+    # Bundle default_assets/ into atmos.data so the engine can read shaders,
+    # fonts and textures from MEMFS at path assets/ without any JS-side setup.
+    target_link_options(atmospheric PRIVATE
+        "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/default_assets@assets"
+    )
 
     # The pthread build (-sUSE_PTHREADS=1) emits atmos.worker.js next to atmos.js.
     # Emscripten writes it to $<TARGET_FILE_DIR:atmospheric>; guard the copy so
