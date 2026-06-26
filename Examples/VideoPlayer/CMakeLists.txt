@@ -74,25 +74,8 @@ else()
     target_link_libraries(${GAME_TARGET} PRIVATE SDL3::SDL3)
 endif()
 
-# Sync engine default assets (shaders, fonts, etc.)
-add_custom_command(
-    TARGET ${GAME_TARGET} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/Engine/default_assets
-        $<TARGET_FILE_DIR:${GAME_TARGET}>/assets
-    COMMENT "Syncing default assets for ${GAME_NAME}"
-)
-
-# Sync game-specific assets if the directory exists.
-if(EXISTS ${GAME_ASSETS_DIR})
-    add_custom_command(
-        TARGET ${GAME_TARGET} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${GAME_ASSETS_DIR}
-            $<TARGET_FILE_DIR:${GAME_TARGET}>/assets
-        COMMENT "Syncing game assets for ${GAME_NAME}"
-    )
-endif()
+ae_copy_engine_assets(${GAME_TARGET})
+ae_copy_game_assets(${GAME_TARGET} "${GAME_ASSETS_DIR}")
 
 # Download Sprite Fright (CC-BY, Blender Studio) on first build.
 # ~150 MB; skipped on subsequent builds if the file already exists.
