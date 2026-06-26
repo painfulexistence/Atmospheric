@@ -778,7 +778,7 @@ void Application::LoadScene(const std::string& jsonContent) {
     ENGINE_LOG("Loading scene '{}' from JSON...", sceneName);
 
     // Store raw JSON for per-scene asset unload.
-    AssetManager::Get().StoreSceneJson(sceneName, json);
+    AssetManager::Get().StoreSceneJson(sceneName, jsonContent);
 
     // Load textures
     if (j.contains("textures") && j["textures"].is_array()) {
