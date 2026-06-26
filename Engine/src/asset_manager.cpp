@@ -257,7 +257,7 @@ void AssetManager::UnloadSceneAssets(const std::string& sceneName) {
     materials.erase(std::remove(materials.begin(), materials.end(), nullptr), materials.end());
 
     _sceneAssets.erase(it);
-    spdlog::info("[AssetManager] Unloaded assets for scene '{}'.", sceneName);
+    Console::Get()->Info(fmt::format("[AssetManager] Unloaded assets for scene '{}'.", sceneName));
 }
 
 // ============================================================================
