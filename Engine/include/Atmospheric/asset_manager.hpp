@@ -97,18 +97,14 @@ public:
     size_t getTotalTextureBytes() const;
 
     // ========== Per-scene asset ownership ==========
-    // Record assets that were freshly loaded for a named scene.
-    // Only assets that were not already in the cache should be recorded —
-    // the caller (LoadScene) performs the dedup check and passes only the
-    // newly loaded keys.  UnloadSceneAssets then frees exactly those assets,
-    // leaving defaults and shared assets untouched.
+    // Store the raw scene JSON so UnloadSceneAssets can re-parse it to free
+    // every asset type declared by that scene.  Adding new asset types to the
+    // JSON format (fonts, sounds, ui, …) is automatically handled — no struct
+    // changes needed here.
     //
-    // Invariant: correct only when simultaneously-loaded scenes do not share
-    // asset paths.  Namespace demo assets under their own subdirectory
-    // (e.g. "assets/demos/skyraiders/...") to satisfy this.
-    void RecordSceneTextures(const std::string& sceneName, const std::vector<std::string>& paths);
-    void RecordSceneShaders(const std::string& sceneName, const std::vector<std::string>& names);
-    void RecordSceneMaterials(const std::string& sceneName, const std::vector<std::string>& names);
+    // Invariant: correct when simultaneously-loaded scenes do not share asset
+    // paths.  Namespace each demo's assets under its own subdirectory.
+    void StoreSceneJson(const std::string& sceneName, const std::string& json);
     void UnloadSceneAssets(const std::string& sceneName);
 
     // ========== Cleanup ==========
@@ -146,13 +142,8 @@ private:
     std::unordered_map<std::string, Mesh*> _meshCache;
     uint32_t _nextMeshID = 0;
 
-    // Per-scene asset manifests.
-    struct SceneAssetManifest {
-        std::vector<std::string> textures;  // cache keys (paths)
-        std::vector<std::string> shaders;   // cache keys (names)
-        std::vector<std::string> materials; // cache keys (names)
-    };
-    std::unordered_map<std::string, SceneAssetManifest> _sceneAssets;
+    // Raw JSON strings keyed by scene name — re-parsed on unload.
+    std::unordered_map<std::string, std::string> _sceneJsons;
 
 #ifdef AE_USE_BASIS_UNIVERSAL
     // KTX2 / Basis Universal GPU-compressed texture loader.

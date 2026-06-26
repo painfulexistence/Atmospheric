@@ -777,6 +777,9 @@ void Application::LoadScene(const std::string& jsonContent) {
     std::string sceneName = j.value("name", "Unnamed");
     ENGINE_LOG("Loading scene '{}' from JSON...", sceneName);
 
+    // Store raw JSON for per-scene asset unload.
+    AssetManager::Get().StoreSceneJson(sceneName, json);
+
     // Load textures
     if (j.contains("textures") && j["textures"].is_array()) {
         std::vector<std::string> texturesToLoad;
@@ -791,7 +794,6 @@ void Application::LoadScene(const std::string& jsonContent) {
                 AssetManager::Get().LoadDefaultTextures();
             }
             AssetManager::Get().LoadTextures(texturesToLoad);
-            AssetManager::Get().RecordSceneTextures(sceneName, texturesToLoad);
             ENGINE_LOG("JSON Textures created.");
         }
     }
@@ -819,10 +821,6 @@ void Application::LoadScene(const std::string& jsonContent) {
                 AssetManager::Get().LoadDefaultShaders();
             }
             AssetManager::Get().LoadShaders(shadersToLoad);
-            std::vector<std::string> shaderNames;
-            shaderNames.reserve(shadersToLoad.size());
-            for (const auto& [name, _] : shadersToLoad) shaderNames.push_back(name);
-            AssetManager::Get().RecordSceneShaders(sceneName, shaderNames);
             ENGINE_LOG("JSON Shaders created.");
         }
     }
