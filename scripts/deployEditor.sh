@@ -46,10 +46,11 @@ if [ ! -d "${DEPLOY_DEST}" ]; then
     exit 1
 fi
 
-# 2. 啟動 buildWasm release (使用 --no-server 略過伺服器啟動)
+# 2. 啟動 buildWasm release (使用 --no-server 略過伺服器啟動；
+#    使用 --no-examples 只 build engine package，跳過所有 example targets)
 echo -e ""
-echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建...${NC}"
-"${SCRIPT_DIR}/buildWasm.sh" release --no-server
+echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建 (僅 Engine package)...${NC}"
+"${SCRIPT_DIR}/buildWasm.sh" release --no-server --no-examples
 
 # 3. 確認 build 產物完整
 if [ ! -f "${SRC_PKG}/atmos.js" ] || [ ! -f "${SRC_PKG}/atmos.wasm" ]; then

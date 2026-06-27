@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.19)
 
 option(AE_USE_BASIS_UNIVERSAL "Enable Basis Universal transcoder for KTX2 GPU-compressed textures" OFF)
 option(AE_USE_FFMPEG "Enable FFmpeg for VideoPlayer and VideoRecorder (uses the system FFmpeg found via pkg-config)" ON)
+option(AE_BUILD_EXAMPLES "Build the bundled example projects" ON)
 
 # Custom triplets (Android, iOS, etc.) override vcpkg community triplets.
 # Must be set before vcpkg.cmake is included.
@@ -96,9 +97,11 @@ include(FetchContent)
 
 add_subdirectory(Engine)
 
-# Only build the bundled examples when Atmospheric is the top-level project.
-# When consumed via add_subdirectory() (e.g. as a submodule), downstream
-# projects pull in Engine alone and provide their own executables.
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+# Only build the bundled examples when Atmospheric is the top-level project
+# AND AE_BUILD_EXAMPLES is ON. When consumed via add_subdirectory() (e.g. as
+# a submodule), downstream projects pull in Engine alone and provide their
+# own executables. Pass -DAE_BUILD_EXAMPLES=OFF to skip examples (e.g. when
+# only the engine WASM package is needed for editor deployment).
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND AE_BUILD_EXAMPLES)
     add_subdirectory(Examples)
 endif()

@@ -18,6 +18,7 @@ echo -e "${BLUE}===================================================${NC}"
 BUILD_TYPE="Release"
 WEBGPU_SUPPORT="OFF"
 NO_SERVER="OFF"
+NO_EXAMPLES="OFF"
 
 # 解析參數
 for arg in "$@"; do
@@ -34,11 +35,17 @@ for arg in "$@"; do
         --no-server)
             NO_SERVER="ON"
             ;;
+        --no-examples)
+            NO_EXAMPLES="ON"
+            ;;
     esac
 done
 
 echo -e "建置類型: ${GREEN}${BUILD_TYPE}${NC}"
 echo -e "WebGPU 支援: ${GREEN}${WEBGPU_SUPPORT}${NC}"
+if [ "$NO_EXAMPLES" = "ON" ]; then
+    echo -e "Examples: ${YELLOW}略過${NC}"
+fi
 echo -e ""
 
 # 1. 檢查是否已設定 Emscripten SDK 環境變數
@@ -85,6 +92,10 @@ echo -e ""
 
 # 4. 執行 CMake 設定
 echo -e "${YELLOW}🛠️  正在為 Emscripten (WebAssembly) 設定 CMake 專案...${NC}"
+BUILD_EXAMPLES_FLAG="ON"
+if [ "$NO_EXAMPLES" = "ON" ]; then
+    BUILD_EXAMPLES_FLAG="OFF"
+fi
 emcmake cmake -G Ninja \
   -B "$BUILD_DIR" \
   -S . \
@@ -92,7 +103,8 @@ emcmake cmake -G Ninja \
   -DVCPKG_OVERLAY_TRIPLETS="$(pwd)/triplets" \
   -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-  -DAE_USE_WEBGPU="$WEBGPU_SUPPORT"
+  -DAE_USE_WEBGPU="$WEBGPU_SUPPORT" \
+  -DAE_BUILD_EXAMPLES="$BUILD_EXAMPLES_FLAG"
 
 # 5. 進行建置 (自動偵測記憶體以避免 OOM)
 PARALLEL_JOBS="--parallel"
