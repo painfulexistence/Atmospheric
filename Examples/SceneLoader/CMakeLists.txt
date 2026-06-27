@@ -64,7 +64,7 @@ if(EMSCRIPTEN)
         -sEXPORTED_FUNCTIONS=["_main","_printMemoryStats"]
         -Wl,--undefined=printMemoryStats
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@scenes"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
     )
     target_link_options(${GAME_NAME} PRIVATE ${_em_link_opts})

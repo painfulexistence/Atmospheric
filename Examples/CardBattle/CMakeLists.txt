@@ -48,7 +48,7 @@ if(EMSCRIPTEN)
         -Wl,--undefined=printMemoryStats
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@scenes"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
     )
 
     # Use custom centered template only for Release builds

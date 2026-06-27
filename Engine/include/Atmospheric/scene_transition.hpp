@@ -18,7 +18,7 @@ struct GameManifest {
 
 // Async scene transition: prefetch assets → clear previous scene → load new assets → callback.
 //
-// Manifest path convention: scenes/<sceneName>.json
+// Manifest path convention: assets/scenes/<sceneName>.json
 //
 // Usage:
 //   SceneTransition::Go("poker", [this]{
@@ -35,5 +35,5 @@ public:
                    const std::string& currentSceneName = "");
 
 private:
-    static constexpr const char* kManifestDir = "scenes/";
+    static constexpr const char* kManifestDir = "assets/scenes/";
 };

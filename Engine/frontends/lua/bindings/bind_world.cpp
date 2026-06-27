@@ -254,7 +254,7 @@ void BindWorldAPI(sol::state& lua, LuaApplication* app)
 
     // Load scene from file
     scene["load"] = [app, &lua](const std::string& name) {
-        std::string path = "./scenes/" + name + ".lua";
+        std::string path = "./assets/scenes/" + name + ".lua";
         auto result = lua.safe_script_file(path, sol::script_pass_on_error);
         if (result.valid()) {
             sol::table sceneData = result;
