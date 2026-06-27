@@ -40,10 +40,13 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/fonts
             ${EM_PRELOAD_STAGING_DIR}/fonts
-        COMMENT "Staging Emscripten preload assets (shaders, fonts) for ${GAME_NAME}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/ui
+            ${EM_PRELOAD_STAGING_DIR}/ui
+        COMMENT "Staging Emscripten preload assets (shaders, fonts, ui) for ${GAME_NAME}"
     )
     add_dependencies(${GAME_TARGET} stage_${GAME_NAME}_em_preload)
-    
+
     target_link_options(${GAME_TARGET} PRIVATE
         -sALLOW_MEMORY_GROWTH=1
         -sASSERTIONS=1
@@ -52,6 +55,7 @@ if(EMSCRIPTEN)
         -Wl,--undefined=printMemoryStats
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/ui@assets/ui"
     )
     
     # Use custom centered template only for Release builds

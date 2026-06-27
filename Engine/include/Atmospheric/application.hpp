@@ -22,6 +22,7 @@ class GameObject;
 class EditorLayer;
 class VideoRecorder;
 struct SceneBlueprint;
+namespace Rml { class ElementDocument; }
 
 struct FrameData {
     FrameData(uint64_t number, float time, float deltaTime) {
@@ -85,6 +86,12 @@ public:
     virtual void OnUpdate(float dt, float time) = 0;
     virtual void OnReload() {
     }// Reset game objects (side effects clean up and recreate)
+
+    // Called just before a scene transition begins and just after the new scene is ready.
+    // Override to customize the loading screen content (e.g. add a spinner or progress bar).
+    // Base implementation fades a full-screen black overlay in and out via RmlUI.
+    virtual void ShowLoadingScreen();
+    virtual void HideLoadingScreen();
 
     uint64_t GetClock();
 
@@ -249,6 +256,11 @@ private:
     void Render(const FrameData& frame
     );// TODO: Properly separate rendering and drawing logic if the backend supports command buffering
     void SyncTransformWithPhysics();
+
+    // ─── Loading screen ─────────────────────────────────────────────────
+    Rml::ElementDocument* _loadingDoc = nullptr;
+    float _loadingScreenFadeOutTimer = 0.0f;
+    static constexpr float kLoadingScreenFadeDuration = 0.5f;
 
     // ─── Automated capture ──────────────────────────────────────────────
     std::unique_ptr<VideoRecorder> _recorder;

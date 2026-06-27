@@ -515,6 +515,8 @@ void Application::Run() {
     auto windowSize = _window->GetSize();
     RmlUiManager::Get()->Initialize(windowSize.width, windowSize.height, graphics.renderer);
 
+    _loadingDoc = RmlUiManager::Get()->LoadDocument("assets/ui/loading_screen.rml");
+
     OnInit();
 
     _window->MainLoop([this](float currTime, float deltaTime) {
@@ -870,9 +872,24 @@ void Application::LoadScene(const std::string& jsonContent) {
     InstantiateScene(bp);
 }
 
+void Application::ShowLoadingScreen() {
+    if (!_loadingDoc) return;
+    _loadingDoc->Show();
+    auto* body = _loadingDoc->GetElementById("loading-screen");
+    if (body) body->SetClass("visible", true);
+}
+
+void Application::HideLoadingScreen() {
+    if (!_loadingDoc) return;
+    auto* body = _loadingDoc->GetElementById("loading-screen");
+    if (body) body->SetClass("visible", false);
+    _loadingScreenFadeOutTimer = kLoadingScreenFadeDuration;
+}
+
 void Application::GoScene(const std::string& sceneName, std::function<void()> onReady)
 {
     _sceneReady = false;
+    ShowLoadingScreen();
     SceneTransition::Go(sceneName, [this, sceneName, onReady]{
         // Full scene transition: clear all scene containers, then load fresh.
         ClearScenes();
@@ -899,6 +916,7 @@ void Application::GoScene(const std::string& sceneName, std::function<void()> on
 
         if (onReady) onReady();
         _sceneReady = true;
+        HideLoadingScreen();
     }, nullptr, _currentSceneName);
 }
 
@@ -1056,6 +1074,17 @@ void Application::Update(const FrameData& props) {
 #ifdef TRACY_ENABLE
     ZoneScopedN("Application::Update");
 #endif
+    float dt = props.deltaTime;
+
+    // Update RmlUI and tick the loading-screen fade-out timer regardless of
+    // whether the scene is ready, so the black overlay animates during transitions.
+    RmlUiManager::Get()->Update(dt);
+    if (_loadingScreenFadeOutTimer > 0.0f) {
+        _loadingScreenFadeOutTimer -= dt;
+        if (_loadingScreenFadeOutTimer <= 0.0f && _loadingDoc)
+            _loadingDoc->Hide();
+    }
+
     if (!_sceneReady) return;
 
     // Flush deferred spawns queued by component OnTick last frame.
@@ -1066,8 +1095,6 @@ void Application::Update(const FrameData& props) {
         queue.swap(_spawnQueue);
         for (auto& cmd : queue) cmd();
     }
-
-    float dt = props.deltaTime;
 
     OnUpdate(dt, GetWindowTime());
 

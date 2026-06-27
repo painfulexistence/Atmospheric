@@ -3,7 +3,6 @@
 #include "game_object.hpp"
 #include "mesh_component.hpp"
 #include "rigidbody_component.hpp"
-#include "rmlui_manager.hpp"
 #include "ui_page_manager.hpp"
 #include "window.hpp"
 
@@ -15,7 +14,6 @@ void GameLayer::OnUpdate(float dt) {
         entity->Tick(dt);
     }
 
-    RmlUiManager::Get()->Update(dt);
     UIPageManager::Get()->Update(dt);
 }
 
