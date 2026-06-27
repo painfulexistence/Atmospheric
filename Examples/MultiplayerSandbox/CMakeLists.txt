@@ -49,7 +49,7 @@ if(EMSCRIPTEN)
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/ui
             ${EM_PRELOAD_STAGING_DIR}/ui
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
+            ${CMAKE_CURRENT_SOURCE_DIR}/scenes
             ${EM_PRELOAD_STAGING_DIR}/scenes
         COMMENT "Staging Emscripten preload assets (shaders, fonts, ui, scenes) for ${GAME_NAME}"
     )
@@ -64,7 +64,7 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/ui@assets/ui"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@scenes"
     )
 
 

@@ -59,7 +59,7 @@ if(EMSCRIPTEN)
             -Ddst=${EM_PRELOAD_STAGING_DIR}/fonts
             -P ${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake
         COMMAND ${CMAKE_COMMAND}
-            -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
+            -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/scenes
             -Ddst=${EM_PRELOAD_STAGING_DIR}/scenes
             -P ${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake
         COMMENT "Staging Emscripten preload assets (shaders, fonts, scenes) for ${GAME_NAME}"
@@ -80,7 +80,7 @@ if(EMSCRIPTEN)
         -sEXPORTED_FUNCTIONS=["_main","_printMemoryStats"]
         -Wl,--undefined=printMemoryStats
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@scenes"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
     )
 
@@ -138,6 +138,16 @@ elseif(NOT ANDROID)
         ae_auto_convert_textures(${GAME_NAME}
             ${GAME_ASSETS_DIR}/textures
             $<TARGET_FILE_DIR:${GAME_NAME}>/assets/textures
+        )
+    endif()
+
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/scenes)
+        add_custom_command(
+            TARGET ${GAME_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_CURRENT_SOURCE_DIR}/scenes
+                $<TARGET_FILE_DIR:${GAME_NAME}>/scenes
+            COMMENT "Syncing scenes for ${GAME_NAME}"
         )
     endif()
 endif()

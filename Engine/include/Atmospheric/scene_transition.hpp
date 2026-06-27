@@ -7,7 +7,7 @@
 #include <unordered_map>
 
 // Describes the assets required by one game/scene.
-// Loaded from assets/scenes/<name>.json.
+// Loaded from scenes/<name>.json.
 struct GameManifest {
     std::string              name;
     std::vector<std::string> textures;
@@ -18,7 +18,7 @@ struct GameManifest {
 
 // Async scene transition: prefetch assets → clear previous scene → load new assets → callback.
 //
-// Manifest path convention: assets/scenes/<sceneName>.json
+// Manifest path convention: scenes/<sceneName>.json
 //
 // Usage:
 //   SceneTransition::Go("poker", [this]{
@@ -35,5 +35,5 @@ public:
                    const std::string& currentSceneName = "");
 
 private:
-    static constexpr const char* kManifestDir = "assets/scenes/";
+    static constexpr const char* kManifestDir = "scenes/";
 };

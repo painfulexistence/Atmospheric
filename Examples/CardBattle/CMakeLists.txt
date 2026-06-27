@@ -34,7 +34,7 @@ if(EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/fonts
             ${EM_PRELOAD_STAGING_DIR}/fonts
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${GAME_ASSETS_DIR}/scenes
+            ${CMAKE_CURRENT_SOURCE_DIR}/scenes
             ${EM_PRELOAD_STAGING_DIR}/scenes
         COMMENT "Staging Emscripten preload assets (shaders, fonts, scenes) for ${GAME_NAME}"
     )
@@ -48,7 +48,7 @@ if(EMSCRIPTEN)
         -Wl,--undefined=printMemoryStats
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@scenes"
     )
 
     # Use custom centered template only for Release builds
@@ -83,5 +83,15 @@ if(EXISTS ${GAME_ASSETS_DIR})
             ${GAME_ASSETS_DIR}
             $<TARGET_FILE_DIR:${GAME_NAME}>/assets
         COMMENT "Syncing game assets for ${GAME_NAME}"
+    )
+endif()
+
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/scenes)
+    add_custom_command(
+        TARGET ${GAME_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/scenes
+            $<TARGET_FILE_DIR:${GAME_NAME}>/scenes
+        COMMENT "Syncing scenes for ${GAME_NAME}"
     )
 endif()

@@ -860,7 +860,7 @@ void Application::GoScene(const std::string& sceneName, std::function<void()> on
         _currentSceneName = sceneName;
 
         // Load scene.json!
-        std::string manifestPath = "assets/scenes/" + sceneName + ".json";
+        std::string manifestPath = "scenes/" + sceneName + ".json";
         ENGINE_LOG("GoScene: Transitioning to scene '{}'...", sceneName);
         auto bytes = FileSystem::Get().ReadSync(manifestPath);
         if (!bytes.empty()) {
