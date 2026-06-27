@@ -41,7 +41,7 @@ if(EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/fonts
             ${EM_PRELOAD_STAGING_DIR}/fonts
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/Examples/VoxelWorld/scenes
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
             ${EM_PRELOAD_STAGING_DIR}/scenes
         COMMENT "Staging Emscripten preload assets (shaders + fonts + scenes) for ${GAME_NAME}"
     )
