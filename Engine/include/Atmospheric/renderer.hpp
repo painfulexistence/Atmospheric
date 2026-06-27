@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 struct GpuImageData {
@@ -249,12 +250,11 @@ public:
     //
     // Phase 1 – issue this frame's DMA into the next PBO slot (non-blocking).
     void schedulePixelReadback();
-    // Phase 2 – map the PBO written 2 frames ago and invoke callback.
-    // Returns false (and skips callback) for the first 2 frames while the
-    // pipeline primes, or if no readback has been scheduled yet.
-    // GpuImageData.bottomUp will be true; use negative sws_scale stride to
-    // avoid a CPU row-flip copy.
-    bool collectPixelReadback(PixelReadbackCallback callback);
+    // Phase 2 – map the PBO written 2 frames ago and return its pixel data.
+    // Returns nullopt while the pipeline is priming (first 2 frames) or if
+    // no readback has been scheduled. GpuImageData.bottomUp is true; move
+    // GpuImageData.data into the destination to avoid a second memcpy.
+    std::optional<GpuImageData> collectPixelReadback();
     // Release PBO and FBO resources. Call when recording stops or on Cleanup.
     void destroyReadbackPBOs();
 

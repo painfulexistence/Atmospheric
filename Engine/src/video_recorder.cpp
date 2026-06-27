@@ -116,46 +116,38 @@ VideoRecorder::CaptureResult VideoRecorder::captureFrame() {
         return CaptureResult::Dropped;
     }
 
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_frameQueue.size() >= MAX_QUEUE_FRAMES) {
-            // Encoder is lagging; still advance the PBO pipeline so we don't
-            // stall the GPU, but discard the collected pixel data.
-            m_renderer->schedulePixelReadback();
-            m_renderer->collectPixelReadback(nullptr);
-            return CaptureResult::Dropped;
-        }
-    }
-
-    const auto captureTime = std::chrono::steady_clock::now();
-
     // Phase 1: issue this frame's async DMA into the next PBO slot (non-blocking).
     m_renderer->schedulePixelReadback();
 
-    // Phase 2: collect the PBO written 2 frames ago (returns false while priming).
-    bool collected = m_renderer->collectPixelReadback([this, captureTime](const GpuImageData& data) {
-        if (!m_recording) return;
+    // Phase 2: collect the PBO written 2 frames ago (nullopt while priming).
+    auto imgOpt = m_renderer->collectPixelReadback();
+    if (!imgOpt) {
+        return CaptureResult::Dropped;
+    }
 
-        const double timestamp =
-            std::chrono::duration<double>(captureTime - m_recordingStart).count();
-
-        RawFrame frame;
-        frame.pixels    = data.data;
-        frame.width     = data.width;
-        frame.height    = data.height;
-        frame.timestamp = timestamp;
-        frame.bottomUp  = data.bottomUp;
-
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            if (m_frameQueue.size() < MAX_QUEUE_FRAMES) {
-                m_frameQueue.push(std::move(frame));
-            }
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_frameQueue.size() >= MAX_QUEUE_FRAMES) {
+            return CaptureResult::Dropped; // encoder lagging; pixel data discarded
         }
-        m_cv.notify_one();
-    });
+    }
 
-    return collected ? CaptureResult::Captured : CaptureResult::Dropped;
+    const double timestamp = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - m_recordingStart).count();
+
+    RawFrame frame;
+    frame.pixels    = std::move(imgOpt->data); // move: zero extra memcpy
+    frame.width     = imgOpt->width;
+    frame.height    = imgOpt->height;
+    frame.timestamp = timestamp;
+    frame.bottomUp  = imgOpt->bottomUp;
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_frameQueue.push(std::move(frame));
+    }
+    m_cv.notify_one();
+    return CaptureResult::Captured;
 }
 
 // ─── Audio capture (caller thread) ─────────────────────────────────────────────────────────

@@ -1552,10 +1552,10 @@ void Renderer::schedulePixelReadback() {
     ++m_readbackFrameIdx;
 }
 
-bool Renderer::collectPixelReadback(PixelReadbackCallback callback) {
+std::optional<GpuImageData> Renderer::collectPixelReadback() {
     // Pipeline needs READBACK_PBO_COUNT frames to prime before any data is ready.
     if (m_readbackFBO == 0 || m_readbackFrameIdx < static_cast<uint32_t>(READBACK_PBO_COUNT))
-        return false;
+        return std::nullopt;
 
     const uint32_t w       = m_readbackPBOWidth;
     const uint32_t h       = m_readbackPBOHeight;
@@ -1571,21 +1571,20 @@ bool Renderer::collectPixelReadback(PixelReadbackCallback callback) {
         glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0,
                          static_cast<GLsizeiptr>(bufSize), GL_MAP_READ_BIT));
 
-    bool delivered = false;
-    if (gpuPtr && callback) {
+    std::optional<GpuImageData> result;
+    if (gpuPtr) {
         GpuImageData img;
         img.width        = w;
         img.height       = h;
         img.channelCount = 4;
         img.bottomUp     = true; // raw GL data; caller uses negative sws_scale stride
         img.data.assign(gpuPtr, gpuPtr + bufSize);
-        callback(img);
-        delivered = true;
+        result = std::move(img);
     }
 
     glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-    return delivered;
+    return result;
 }
 
 void Renderer::destroyReadbackPBOs() {
