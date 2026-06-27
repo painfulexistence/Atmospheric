@@ -56,7 +56,7 @@ if(EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/fonts
             ${EM_PRELOAD_STAGING_DIR}/fonts
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/scenes
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
             ${EM_PRELOAD_STAGING_DIR}/scenes
         COMMENT "Staging Emscripten preload assets (shaders, scenes) for ${TARGET_NAME}"
     )
@@ -103,7 +103,6 @@ add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
     VERBATIM
 )
 ae_copy_game_assets(${TARGET_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/assets")
-ae_copy_scenes(${TARGET_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/scenes")
 ae_convert_textures(${TARGET_NAME}
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/textures"
     "$<TARGET_FILE_DIR:${TARGET_NAME}>/assets/textures"

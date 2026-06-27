@@ -63,7 +63,6 @@ endif()
 # ── Asset sync ───────────────────────────────────────────────────────────────
 ae_copy_engine_assets(${GAME_NAME})
 ae_copy_game_assets(${GAME_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/assets")
-ae_copy_scenes(${GAME_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/scenes")
 ae_convert_textures(${GAME_NAME}
     "${CMAKE_CURRENT_SOURCE_DIR}/assets/images"
     "${EM_PRELOAD_STAGING_DIR}/images"

@@ -47,7 +47,7 @@ if(EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/fonts
             ${EM_PRELOAD_STAGING_DIR}/fonts
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/scenes
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
             ${EM_PRELOAD_STAGING_DIR}/scenes
         COMMAND ${CMAKE_COMMAND}
             -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts
@@ -91,4 +91,3 @@ endif()
 # ── Asset sync ──
 ae_copy_engine_assets(${GAME_NAME})
 ae_copy_game_assets(${GAME_NAME} "${GAME_ASSETS_DIR}")
-ae_copy_scenes(${GAME_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/scenes")

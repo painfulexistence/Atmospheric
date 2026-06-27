@@ -81,7 +81,6 @@ endif()
 set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 ae_copy_engine_assets(${GAME_NAME})
 ae_copy_game_assets(${GAME_NAME} "${GAME_ASSETS_DIR}")
-ae_copy_scenes(${GAME_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/scenes")
 ae_convert_textures(${GAME_NAME}
     "${GAME_ASSETS_DIR}/textures"
     "$<TARGET_FILE_DIR:${GAME_NAME}>/assets/textures"

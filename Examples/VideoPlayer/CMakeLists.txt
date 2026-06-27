@@ -76,7 +76,6 @@ endif()
 
 ae_copy_engine_assets(${GAME_TARGET})
 ae_copy_game_assets(${GAME_TARGET} "${GAME_ASSETS_DIR}")
-ae_copy_scenes(${GAME_TARGET} "${CMAKE_CURRENT_SOURCE_DIR}/scenes")
 
 # Download Sprite Fright (CC-BY, Blender Studio) on first build.
 # ~150 MB; skipped on subsequent builds if the file already exists.

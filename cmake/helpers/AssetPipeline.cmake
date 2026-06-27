@@ -77,38 +77,6 @@ function(ae_copy_game_assets TARGET ASSETS_DIR)
     endif()
 endfunction()
 
-# ── ae_copy_scenes(<target> <scenes_dir>) ─────────────────────────────────────
-# Copies <scenes_dir> → <target binary dir>/assets/scenes at POST_BUILD.
-# Keeping scenes under assets/ makes cross-platform packaging consistent and
-# allows a second assets/ overlay folder to patch individual scenes at runtime.
-# Silently skips if <scenes_dir> does not exist.
-# No-op on Android and Emscripten (Emscripten handles scenes via --preload-file).
-function(ae_copy_scenes TARGET SCENES_DIR)
-    if(ANDROID OR EMSCRIPTEN)
-        return()
-    endif()
-    if(IOS)
-        if(EXISTS "${SCENES_DIR}")
-            add_custom_command(TARGET ${TARGET} POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_directory
-                    "${SCENES_DIR}"
-                    "$<TARGET_BUNDLE_CONTENT_DIR:${TARGET}>/assets/scenes"
-                COMMENT "[AE] Copying scenes into iOS bundle for ${TARGET}"
-                VERBATIM
-            )
-        endif()
-    else()
-        add_custom_command(TARGET ${TARGET} POST_BUILD
-            COMMAND ${CMAKE_COMMAND}
-                "-Dsrc=${SCENES_DIR}"
-                "-Ddst=$<TARGET_FILE_DIR:${TARGET}>/assets/scenes"
-                -P "${_AE_HELPERS_DIR}/../copy_if_exists.cmake"
-            COMMENT "[AE] Copying scenes for ${TARGET}"
-            VERBATIM
-        )
-    endif()
-endfunction()
-
 # ── ae_convert_textures(<target> <src_dir> <dst_dir>) ─────────────────────────
 # Emscripten + BasisUniversal only: converts PNG/JPG under <src_dir> to KTX2
 # in <dst_dir>. No-op on native builds or when AE_USE_BASIS_UNIVERSAL is OFF.

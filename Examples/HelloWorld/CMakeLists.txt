@@ -59,7 +59,7 @@ if(EMSCRIPTEN)
             -Ddst=${EM_PRELOAD_STAGING_DIR}/fonts
             -P ${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake
         COMMAND ${CMAKE_COMMAND}
-            -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/scenes
+            -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
             -Ddst=${EM_PRELOAD_STAGING_DIR}/scenes
             -P ${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake
         COMMENT "Staging Emscripten preload assets (shaders, fonts, scenes) for ${GAME_NAME}"
@@ -104,7 +104,6 @@ endif()
 # ── Asset sync ───────────────────────────────────────────────────────────────
 ae_copy_engine_assets(${GAME_TARGET})
 ae_copy_game_assets(${GAME_TARGET} "${GAME_ASSETS_DIR}")
-ae_copy_scenes(${GAME_TARGET} "${CMAKE_CURRENT_SOURCE_DIR}/scenes")
 ae_convert_textures(${GAME_TARGET}
     "${GAME_ASSETS_DIR}/textures"
     "$<TARGET_FILE_DIR:${GAME_TARGET}>/assets/textures"
