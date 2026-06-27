@@ -6,6 +6,9 @@
 #   project(MyGame LANGUAGES CXX)
 #   add_subdirectory(Atmospheric)
 
+# Expose cmake/helpers/ so downstream games can include(AssetPipeline) etc.
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/helpers")
+
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_LIST_DIR}/../vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "vcpkg toolchain file")
     message(STATUS "[AtmosphericEngine] Automatically using bundled vcpkg toolchain: ${CMAKE_TOOLCHAIN_FILE}")

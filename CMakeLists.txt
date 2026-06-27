@@ -6,6 +6,7 @@ option(AE_USE_FFMPEG "Enable FFmpeg for VideoPlayer and VideoRecorder (uses the 
 # Custom triplets (Android, iOS, etc.) override vcpkg community triplets.
 # Must be set before vcpkg.cmake is included.
 list(APPEND VCPKG_OVERLAY_TRIPLETS "${CMAKE_CURRENT_LIST_DIR}/triplets")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/helpers")
 
 if(VCPKG_TARGET_TRIPLET STREQUAL "wasm32-emscripten" AND NOT VCPKG_CHAINLOAD_TOOLCHAIN_FILE)
     if(DEFINED ENV{EMSDK})
