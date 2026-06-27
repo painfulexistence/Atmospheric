@@ -92,12 +92,6 @@ else()
 endif()
 
 # ── Asset sync ──
-add_custom_command(
-    TARGET ${GAME_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_SOURCE_DIR}/Engine/default_assets
-    $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_CURRENT_SOURCE_DIR}/assets
-    $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-)
+ae_copy_engine_assets(${GAME_NAME})
+ae_copy_game_assets(${GAME_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+ae_copy_scenes(${GAME_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/scenes")

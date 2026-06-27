@@ -41,7 +41,7 @@ if(EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/fonts
             ${EM_PRELOAD_STAGING_DIR}/fonts
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/Examples/VoxelWorld/assets/scenes
+            ${CMAKE_SOURCE_DIR}/Examples/VoxelWorld/scenes
             ${EM_PRELOAD_STAGING_DIR}/scenes
         COMMENT "Staging Emscripten preload assets (shaders + fonts + scenes) for ${GAME_NAME}"
     )
@@ -55,7 +55,7 @@ if(EMSCRIPTEN)
         -sEXPORTED_FUNCTIONS=["_main","_printMemoryStats"]
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@scenes"
     )
 
 
@@ -78,28 +78,11 @@ else()
 endif()
 
 # ── Asset sync ───────────────────────────────────────────────────────────────
-add_custom_command(
-    TARGET ${GAME_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/Engine/default_assets
-        $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-    COMMENT "Syncing default assets for ${GAME_NAME}"
-)
-
 set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
-if(EXISTS ${GAME_ASSETS_DIR})
-    add_custom_command(
-        TARGET ${GAME_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${GAME_ASSETS_DIR}
-            $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-        COMMENT "Syncing game assets for ${GAME_NAME}"
-    )
-
-    if(NOT EMSCRIPTEN)
-        ae_auto_convert_textures(${GAME_NAME}
-            ${GAME_ASSETS_DIR}/textures
-            $<TARGET_FILE_DIR:${GAME_NAME}>/assets/textures
-        )
-    endif()
-endif()
+ae_copy_engine_assets(${GAME_NAME})
+ae_copy_game_assets(${GAME_NAME} "${GAME_ASSETS_DIR}")
+ae_copy_scenes(${GAME_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/scenes")
+ae_convert_textures(${GAME_NAME}
+    "${GAME_ASSETS_DIR}/textures"
+    "$<TARGET_FILE_DIR:${GAME_NAME}>/assets/textures"
+)

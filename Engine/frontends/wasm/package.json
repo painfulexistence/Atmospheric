@@ -8,12 +8,14 @@
       "types": "./index.d.ts"
     },
     "./atmos.js": "./atmos.js",
-    "./atmos.wasm": "./atmos.wasm"
+    "./atmos.wasm": "./atmos.wasm",
+    "./atmos.data": "./atmos.data"
   },
   "files": [
     "index.d.ts",
     "atmos.js",
     "atmos.wasm",
+    "atmos.data",
     "atmos.worker.js"
   ],
   "license": "MIT"

@@ -44,7 +44,7 @@ if(EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/fonts
             ${EM_PRELOAD_STAGING_DIR}/fonts
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
+            ${CMAKE_CURRENT_SOURCE_DIR}/scenes
             ${EM_PRELOAD_STAGING_DIR}/scenes
         COMMENT "Staging Emscripten preload assets (shaders, scenes) for ${GAME_NAME}"
     )
@@ -58,7 +58,7 @@ if(EMSCRIPTEN)
         -sEXPORTED_FUNCTIONS=["_main","_printMemoryStats"]
         -Wl,--undefined=printMemoryStats
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@scenes"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
     )
 
@@ -82,20 +82,6 @@ else()
 endif()
 
 # ── Asset sync ──
-add_custom_command(
-    TARGET ${GAME_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/Engine/default_assets
-        $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-    COMMENT "Syncing default assets for ${GAME_NAME}"
-)
-
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/assets)
-    add_custom_command(
-        TARGET ${GAME_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets
-            $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-        COMMENT "Syncing game assets for ${GAME_NAME}"
-    )
-endif()
+ae_copy_engine_assets(${GAME_NAME})
+ae_copy_game_assets(${GAME_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+ae_copy_scenes(${GAME_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/scenes")
