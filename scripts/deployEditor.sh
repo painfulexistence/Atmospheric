@@ -76,6 +76,29 @@ fi
 mkdir -p "${DEST_PKG}"
 rsync -av --delete "${SRC_PKG}/" "${DEST_PKG}/"
 
+# 6. 寫入 git commit hash 和編譯時間到 package.json 作為元資料
+GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+if ! git diff --quiet 2>/dev/null; then
+    GIT_COMMIT="${GIT_COMMIT}-dirty"
+fi
+BUILT_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+node -e "
+const fs = require('fs');
+const pkgPath = '${DEST_PKG}/package.json';
+if (fs.existsSync(pkgPath)) {
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  pkg.atmospheric = {
+    commitHash: '${GIT_COMMIT}',
+    builtAt: '${BUILT_AT}'
+  };
+  delete pkg.commit;
+  delete pkg.builtAt;
+  fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
+  console.log('   Metadata injected into package.json (atmospheric.commitHash: ${GIT_COMMIT})');
+}
+"
+
 echo -e ""
 echo -e "${GREEN}✨ 部署成功！${NC}"
 echo -e "Editor 端可透過 ${YELLOW}\"@atmospheric/engine\": \"file:./atmospheric\"${NC} 引用。"
