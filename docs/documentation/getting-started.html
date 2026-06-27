@@ -23,7 +23,7 @@
     .page-header p { color: var(--color-muted); }
 
     .doc-body {
-      max-width: 720px;
+      max-width: 800px;
       padding-bottom: var(--spacing-2xl);
     }
     .doc-body h2 {
@@ -32,23 +32,143 @@
       padding-top: var(--spacing-lg);
       border-top: 1px solid var(--color-border);
     }
-    .doc-body h2:first-child { border-top: none; padding-top: 0; }
+    .doc-body h3 {
+      font-size: var(--text-lg);
+      margin: var(--spacing-lg) 0 var(--spacing-sm);
+    }
     .doc-body p { color: var(--color-muted); margin-bottom: var(--spacing-md); line-height: 1.75; }
     .doc-body ul { padding-left: var(--spacing-lg); margin-bottom: var(--spacing-md); }
     .doc-body li { color: var(--color-muted); margin-bottom: var(--spacing-xs); }
     .doc-body a { color: var(--color-primary); }
 
-    .placeholder-banner {
-      background: var(--color-surface);
-      border: 1px dashed var(--color-border);
-      border-radius: var(--border-radius);
-      padding: var(--spacing-xl);
-      text-align: center;
+    /* OS Selector Cards */
+    .selector-title {
+      font-size: var(--text-xs);
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
       color: var(--color-muted);
-      font-size: var(--text-sm);
+      margin-bottom: var(--spacing-sm);
+    }
+    .os-selector {
+      display: flex;
+      gap: var(--spacing-md);
       margin-bottom: var(--spacing-xl);
     }
-    .placeholder-banner .icon { font-size: 2rem; margin-bottom: var(--spacing-sm); }
+    .os-card {
+      flex: 1;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius);
+      padding: var(--spacing-md);
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-md);
+      cursor: pointer;
+      user-select: none;
+      transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+    }
+    .os-card:hover {
+      border-color: var(--color-primary);
+      background: var(--color-surface-2);
+    }
+    .os-card.active {
+      border-color: var(--color-primary);
+      background: var(--color-surface-2);
+      box-shadow: 0 0 12px rgba(124, 158, 247, 0.15);
+    }
+    .os-card .icon {
+      font-size: 1.5rem;
+      line-height: 1;
+    }
+    .os-card .title {
+      font-weight: 600;
+      font-size: var(--text-sm);
+      color: var(--color-text);
+    }
+
+    /* Tabbed Container */
+    .tab-container {
+      margin: var(--spacing-lg) 0 var(--spacing-md);
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      gap: var(--spacing-xs);
+    }
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--color-muted);
+      font-family: var(--font-heading);
+      font-size: var(--text-sm);
+      font-weight: 600;
+      padding: var(--spacing-sm) var(--spacing-md);
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn:hover {
+      color: var(--color-text);
+    }
+    .tab-btn.active {
+      color: var(--color-primary);
+      border-bottom-color: var(--color-primary);
+    }
+
+    /* Pane visibility logic */
+    .pane-content { display: none; }
+    .pane-content.active { display: block; }
+    .host-os-pane { display: none; }
+    .host-os-pane.active { display: block; }
+
+    /* Code Blocks */
+    .code-container {
+      position: relative;
+      margin-bottom: var(--spacing-md);
+    }
+    pre {
+      background: var(--color-code-bg);
+      border-color: var(--color-border);
+      padding: var(--spacing-md) var(--spacing-lg) var(--spacing-md) var(--spacing-md);
+    }
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      color: var(--color-muted);
+      border-radius: var(--border-radius-sm);
+      font-size: 11px;
+      padding: 3px 6px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s, color 0.15s, background 0.15s;
+    }
+    .code-container:hover .copy-btn {
+      opacity: 1;
+    }
+    .copy-btn:hover {
+      background: var(--color-surface-2);
+      color: var(--color-text);
+    }
+    .copy-btn.copied {
+      color: var(--color-accent-2);
+      border-color: var(--color-accent-2);
+    }
+
+    /* Note Box */
+    .note-box {
+      background: rgba(124, 158, 247, 0.08);
+      border-left: 4px solid var(--color-primary);
+      border-radius: 0 var(--border-radius) var(--border-radius) 0;
+      padding: var(--spacing-md);
+      margin: var(--spacing-md) 0 var(--spacing-lg);
+      font-size: var(--text-sm);
+    }
+    .note-box p {
+      margin: 0;
+      color: var(--color-text);
+    }
 
     footer {
       border-top: 1px solid var(--color-border);
@@ -75,39 +195,248 @@
   <div class="page-header">
     <p class="eyebrow">Documentation</p>
     <h1>Getting Started</h1>
-    <p>Build Atmospheric from source and run your first example.</p>
+    <p>Setup your development environment, build from source, and run the example projects.</p>
   </div>
 
   <div class="doc-body">
-
-    <div class="placeholder-banner">
-      <div class="icon">🚧</div>
-      <p>This page is a placeholder. Full getting-started documentation is coming soon.<br>
-      In the meantime, see the <a href="https://github.com/painfulexistence/Atmospheric#building" target="_blank">README on GitHub</a> for build instructions.</p>
+    <p class="selector-title">1. Select Your Development OS</p>
+    <div class="os-selector">
+      <div class="os-card active" data-os="macos">
+        <span class="icon"></span>
+        <div class="title">macOS</div>
+      </div>
+      <div class="os-card" data-os="windows">
+        <span class="icon">⊞</span>
+        <div class="title">Windows</div>
+      </div>
+      <div class="os-card" data-os="linux">
+        <span class="icon">🐧</span>
+        <div class="title">Linux</div>
+      </div>
     </div>
 
     <h2>Prerequisites</h2>
-    <ul>
-      <li><strong>CMake</strong> 3.20+ — <a href="https://cmake.org/download/" target="_blank">cmake.org</a></li>
-      <li><strong>A C++17 compiler</strong> — Clang (macOS), GCC (Linux), MSVC (Windows)</li>
-      <li><strong>EMSDK</strong> (optional, for WebAssembly builds) — <a href="https://emscripten.org/docs/getting_started/downloads.html" target="_blank">emscripten.org</a></li>
-    </ul>
+    <p>Install the required compilation tools and libraries for your development machine.</p>
 
-    <h2>Clone</h2>
-    <pre><code>git clone --recurse-submodules https://github.com/painfulexistence/Atmospheric.git
+    <!-- macOS Prerequisites -->
+    <div class="host-os-pane active" data-host-os="macos">
+      <ul>
+        <li><strong>Xcode Command Line Tools</strong>: install via terminal:
+          <div class="code-container">
+            <pre><code>xcode-select --install</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+        </li>
+        <li><strong>CMake</strong>: install via <a href="https://brew.sh/" target="_blank">Homebrew</a>:
+          <div class="code-container">
+            <pre><code>brew install cmake ninja</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Windows Prerequisites -->
+    <div class="host-os-pane" data-host-os="windows">
+      <ul>
+        <li><strong>Visual Studio 2022</strong> (Community or higher): Make sure the <strong>"Desktop development with C++"</strong> workload is selected during installation.</li>
+        <li><strong>CMake</strong>: install using the Windows installer from <a href="https://cmake.org/download/" target="_blank">cmake.org</a>, or package manager:
+          <div class="code-container">
+            <pre><code>winget install Kitware.CMake</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+        </li>
+        <li><strong>Git</strong>: ensure Git for Windows is installed and added to your system PATH.</li>
+      </ul>
+    </div>
+
+    <!-- Linux Prerequisites -->
+    <div class="host-os-pane" data-host-os="linux">
+      <ul>
+        <li><strong>Compiler & Build Tools</strong>: Atmospheric requires a C++17 compiler and basic windowing libraries:
+          <div class="code-container">
+            <pre><code># Ubuntu / Debian
+sudo apt update && sudo apt install build-essential cmake ninja-build libx11-dev libxcursor-dev libxinerama-dev libxrandr-dev libxi-dev libgl1-mesa-dev pkg-config
+
+# Arch Linux
+sudo pacman -S base-devel cmake ninja xorg-server mesa</code></pre>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <h2>Repository Setup</h2>
+    <p>Clone the project along with its dependency submodules, and bootstrap the <code>vcpkg</code> package manager.</p>
+
+    <div class="code-container">
+      <pre><code># Clone repo with nested submodules
+git clone --recurse-submodules https://github.com/painfulexistence/Atmospheric.git
 cd Atmospheric</code></pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
 
-    <h2>Setup Vcpkg</h2>
-    <pre><code>./vcpkg/bootstrap-vcpkg.sh -disableMetrics</code></pre>
+    <div class="host-os-pane active" data-host-os="macos linux">
+      <div class="code-container">
+        <pre><code># Bootstrap vcpkg dependency manager
+./vcpkg/bootstrap-vcpkg.sh -disableMetrics</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+    </div>
 
-    <h2>Native Build</h2>
-    <pre><code>cmake --preset=dev
-cmake --build --preset=dev</code></pre>
+    <div class="host-os-pane" data-host-os="windows">
+      <div class="code-container">
+        <pre><code># Bootstrap vcpkg dependency manager (PowerShell / cmd)
+.\vcpkg\bootstrap-vcpkg.bat -disableMetrics</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+    </div>
 
-    <h2>WebAssembly Build</h2>
-    <pre><code># WebGL 2.0 (stable)
+    <h2>Build for Target Platform</h2>
+    <p>Select your compilation target platform to view the build instructions.</p>
+
+    <div class="tab-container">
+      <button class="tab-btn active" data-tab="desktop">Native Desktop</button>
+      <button class="tab-btn" data-tab="wasm">WebAssembly (WASM)</button>
+      <button class="tab-btn" data-tab="android">Android (APK)</button>
+      <button class="tab-btn" data-tab="ios">iOS App</button>
+    </div>
+
+    <!-- TARGET: Native Desktop -->
+    <div class="pane-content active" data-target="desktop">
+      <p>Configure CMake and build the native C++ executable of Atmospheric and the bundled examples.</p>
+      
+      <!-- macOS Native build -->
+      <div class="host-os-pane active" data-host-os="macos">
+        <div class="code-container">
+          <pre><code># Configure and build on macOS
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DAE_BUILD_EXAMPLES=ON
+cmake --build build --parallel
+
+# Run example binary
+./build/Physics2DDemo/Physics2DDemo</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+
+      <!-- Windows Native build -->
+      <div class="host-os-pane" data-host-os="windows">
+        <div class="code-container">
+          <pre><code># Configure and build on Windows (MSVC)
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DAE_BUILD_EXAMPLES=ON
+cmake --build build --config Release --parallel
+
+# Run example binary
+.\build\Physics2DDemo\Release\Physics2DDemo.exe</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+
+      <!-- Linux Native build -->
+      <div class="host-os-pane" data-host-os="linux">
+        <div class="code-container">
+          <pre><code># Configure and build on Linux (using Ninja)
+cmake -G Ninja -B build -S . -DCMAKE_BUILD_TYPE=Release -DAE_BUILD_EXAMPLES=ON
+cmake --build build --parallel
+
+# Run example binary
+./build/Physics2DDemo/Physics2DDemo</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TARGET: WebAssembly -->
+    <div class="pane-content" data-target="wasm">
+      <p>Compile the engine and examples to WebAssembly using Emscripten. The build scripts will staging and package shaders and fonts into the VFS.</p>
+      
+      <div class="note-box">
+        <p><strong>Note:</strong> Ensure you have the Emscripten SDK (emsdk) activated in your shell (e.g. <code>source path/to/emsdk/emsdk_env.sh</code>) before running the build scripts.</p>
+      </div>
+
+      <div class="host-os-pane active" data-host-os="macos linux">
+        <div class="code-container">
+          <pre><code># Compile the engine & all examples to WASM
 ./scripts/buildWasm.sh release
-    </code></pre>
+
+# Sync built assets and HTML wrappers to local web root
+./scripts/deployWWW.sh</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+        <p>You can run the web server using <code>python -m http.server 8000 --directory build-wasm/release</code>, or utilize Caddy as documented in the <a href="deployment.html">Caddy Deployment Guide</a>.</p>
+      </div>
+
+      <div class="host-os-pane" data-host-os="windows">
+        <div class="note-box" style="border-left-color: var(--color-warn); background: rgba(212, 168, 75, 0.08);">
+          <p><strong>Windows User:</strong> It is highly recommended to compile WebAssembly targets within Git Bash or a WSL (Windows Subsystem for Linux) terminal to natively execute the shell scripts.</p>
+        </div>
+        <div class="code-container">
+          <pre><code># Inside Git Bash:
+./scripts/buildWasm.sh release
+./scripts/deployWWW.sh</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TARGET: Android -->
+    <div class="pane-content" data-target="android">
+      <p>Build Android packages (APK) for deploy. Shaders, assets, and dependencies are packed automatically using Gradle.</p>
+      
+      <div class="note-box">
+        <p><strong>Prerequisite:</strong> Ensure <code>ANDROID_HOME</code> and <code>ANDROID_NDK_HOME</code> environment variables point to your Android SDK and NDK installations respectively.</p>
+      </div>
+
+      <div class="host-os-pane active" data-host-os="macos linux">
+        <div class="code-container">
+          <pre><code># Change to example android platform folder
+cd Examples/HelloWorld/platforms/android
+
+# Compile and package Android debug APK
+./gradlew assembleDebug
+
+# Output APK path:
+# app/build/outputs/apk/debug/app-debug.apk</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+
+      <div class="host-os-pane" data-host-os="windows">
+        <div class="code-container">
+          <pre><code># Change to example android platform folder
+cd Examples/HelloWorld/platforms/android
+
+# Compile and package Android debug APK (Command Prompt / PowerShell)
+.\gradlew.bat assembleDebug
+
+# Output APK path:
+# app/build/outputs/apk/debug/app-debug.apk</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TARGET: iOS -->
+    <div class="pane-content" data-target="ios">
+      <p>Configure Xcode project to deploy Atmospheric to iOS devices or Simulators.</p>
+
+      <div class="host-os-pane active" data-host-os="macos">
+        <div class="code-container">
+          <pre><code># Generate Xcode iOS project using CMake toolchain
+cmake -G Xcode -B build-ios -S . -DCMAKE_SYSTEM_NAME=iOS -DAE_BUILD_EXAMPLES=ON
+
+# Open the project in Xcode to configure code signing and run on device
+open build-ios/Atmospheric.xcodeproj</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+
+      <div class="host-os-pane" data-host-os="windows linux">
+        <div class="note-box" style="border-left-color: var(--color-danger); background: rgba(224, 92, 92, 0.08);">
+          <p><strong>iOS Build Unavailable:</strong> Building iOS applications is only supported from a macOS host machine with Xcode installed.</p>
+        </div>
+      </div>
+    </div>
 
   </div>
 </div>
@@ -117,6 +446,72 @@ cmake --build --preset=dev</code></pre>
     Atmospheric Engine — <a href="../index.html">Home</a> · <a href="index.html">Documentation</a>
   </div>
 </footer>
+
+<script>
+  // Global Host OS selector logic
+  function setHostOS(os) {
+    document.querySelectorAll('.os-card').forEach(card => {
+      card.classList.toggle('active', card.dataset.os === os);
+    });
+
+    document.querySelectorAll('.host-os-pane').forEach(pane => {
+      const allowed = pane.dataset.hostOs.split(' ');
+      pane.classList.toggle('active', allowed.includes(os));
+    });
+
+    localStorage.setItem('doc-host-os', os);
+  }
+
+  // Bind OS click events
+  document.querySelectorAll('.os-card').forEach(card => {
+    card.addEventListener('click', () => {
+      setHostOS(card.dataset.os);
+    });
+  });
+
+  // Global Target Platform tabs logic
+  function setTargetPlatform(target) {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === target);
+    });
+
+    document.querySelectorAll('.pane-content').forEach(pane => {
+      pane.classList.toggle('active', pane.dataset.target === target);
+    });
+  }
+
+  // Bind Target Tab click events
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setTargetPlatform(btn.dataset.tab);
+    });
+  });
+
+  // Code Copy button utility
+  async function copyCode(button) {
+    const pre = button.previousElementSibling;
+    const code = pre.querySelector('code').innerText;
+    try {
+      await navigator.clipboard.writeText(code);
+      button.innerText = 'Copied!';
+      button.classList.add('copied');
+      setTimeout(() => {
+        button.innerText = 'Copy';
+        button.classList.remove('copied');
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy text: ', err);
+    }
+  }
+
+  // Initial setup based on OS detection or localStorage
+  document.addEventListener('DOMContentLoaded', () => {
+    const defaultOS = navigator.platform.indexOf('Mac') > -1 ? 'macos' :
+                      navigator.platform.indexOf('Win') > -1 ? 'windows' : 'linux';
+    const savedOS = localStorage.getItem('doc-host-os') || defaultOS;
+    setHostOS(savedOS);
+  });
+</script>
 
 </body>
 </html>
