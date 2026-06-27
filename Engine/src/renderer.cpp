@@ -157,6 +157,7 @@ void Renderer::Cleanup() {
     }
     DestroyRTs();
     DestroyFBOs();
+    destroyReadbackPBOs();
 
     // debug and screen are now std::unique_ptr<Buffer> that auto-destruct
     glDeleteVertexArrays(1, &canvasVAO);
@@ -168,6 +169,8 @@ void Renderer::Cleanup() {
 void Renderer::Resize(int width, int height) {
     DestroyRTs();
     CreateRTs(RenderTargetProps{ width, height });
+    // PBOs are sized to the RT dimensions; invalidate so they're rebuilt next schedule.
+    destroyReadbackPBOs();
 }
 
 
@@ -1498,4 +1501,103 @@ void Renderer::readPixelsAsync(PixelReadbackCallback callback) {
     img.data = std::move(flipped);
 
     callback(img);
+}
+
+// ─── Async PBO readback (Phase 1 / video recording path) ────────────────────
+
+void Renderer::schedulePixelReadback() {
+    RenderTarget* src = msaaResolveRT ? msaaResolveRT.get() : sceneRT.get();
+    if (!src) return;
+
+    const uint32_t w = static_cast<uint32_t>(src->GetWidth());
+    const uint32_t h = static_cast<uint32_t>(src->GetHeight());
+    const size_t   bufSize = static_cast<size_t>(w) * h * 4;
+
+    // Lazy-init or re-init when resolution changes.
+    if (m_readbackFBO == 0 || w != m_readbackPBOWidth || h != m_readbackPBOHeight) {
+        destroyReadbackPBOs();
+
+        glGenFramebuffers(1, &m_readbackFBO);
+        glGenBuffers(READBACK_PBO_COUNT, m_readbackPBOs);
+        for (int i = 0; i < READBACK_PBO_COUNT; ++i) {
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, m_readbackPBOs[i]);
+            glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(bufSize),
+                         nullptr, GL_STREAM_READ);
+        }
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
+        m_readbackPBOWidth  = w;
+        m_readbackPBOHeight = h;
+        m_readbackFrameIdx  = 0;
+    }
+
+    const int writeIdx = static_cast<int>(m_readbackFrameIdx % READBACK_PBO_COUNT);
+
+    GLint prevReadFBO = 0;
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevReadFBO);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, m_readbackFBO);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D,
+                           static_cast<GLuint>(src->GetTextureID()), 0);
+
+    // nullptr offset = write into the bound PBO; returns immediately (async DMA).
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, m_readbackPBOs[writeIdx]);
+    glReadPixels(0, 0, static_cast<GLsizei>(w), static_cast<GLsizei>(h),
+                 GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(prevReadFBO));
+
+    ++m_readbackFrameIdx;
+}
+
+bool Renderer::collectPixelReadback(PixelReadbackCallback callback) {
+    // Pipeline needs READBACK_PBO_COUNT frames to prime before any data is ready.
+    if (m_readbackFBO == 0 || m_readbackFrameIdx < static_cast<uint32_t>(READBACK_PBO_COUNT))
+        return false;
+
+    const uint32_t w       = m_readbackPBOWidth;
+    const uint32_t h       = m_readbackPBOHeight;
+    const size_t   bufSize = static_cast<size_t>(w) * h * 4;
+
+    // After schedulePixelReadback() incremented m_readbackFrameIdx, the oldest
+    // in-flight PBO is at index m_readbackFrameIdx % READBACK_PBO_COUNT.
+    // The GPU finished its DMA into this slot (READBACK_PBO_COUNT-1) frames ago.
+    const int readIdx = static_cast<int>(m_readbackFrameIdx % READBACK_PBO_COUNT);
+
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, m_readbackPBOs[readIdx]);
+    const auto* gpuPtr = static_cast<const uint8_t*>(
+        glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0,
+                         static_cast<GLsizeiptr>(bufSize), GL_MAP_READ_BIT));
+
+    bool delivered = false;
+    if (gpuPtr && callback) {
+        GpuImageData img;
+        img.width        = w;
+        img.height       = h;
+        img.channelCount = 4;
+        img.bottomUp     = true; // raw GL data; caller uses negative sws_scale stride
+        img.data.assign(gpuPtr, gpuPtr + bufSize);
+        callback(img);
+        delivered = true;
+    }
+
+    glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    return delivered;
+}
+
+void Renderer::destroyReadbackPBOs() {
+    if (m_readbackFBO) {
+        glDeleteFramebuffers(1, &m_readbackFBO);
+        m_readbackFBO = 0;
+    }
+    if (m_readbackPBOs[0]) {
+        glDeleteBuffers(READBACK_PBO_COUNT, m_readbackPBOs);
+        for (auto& pbo : m_readbackPBOs) pbo = 0;
+    }
+    m_readbackFrameIdx  = 0;
+    m_readbackPBOWidth  = 0;
+    m_readbackPBOHeight = 0;
 }

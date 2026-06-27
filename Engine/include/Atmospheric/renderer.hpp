@@ -17,6 +17,8 @@ struct GpuImageData {
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t channelCount = 4;
+    // Raw OpenGL readback is bottom-up; set when data has NOT been row-flipped.
+    bool bottomUp = false;
 };
 
 using PixelReadbackCallback = std::function<void(const GpuImageData&)>;
@@ -242,6 +244,20 @@ public:
     // Pixels are in RGBA order, top-to-bottom (flipped from the raw GL output).
     void readPixelsAsync(PixelReadbackCallback callback);
 
+    // Two-phase async readback for high-throughput video recording.
+    // Both must be called each frame from the render/GL thread.
+    //
+    // Phase 1 – issue this frame's DMA into the next PBO slot (non-blocking).
+    void schedulePixelReadback();
+    // Phase 2 – map the PBO written 2 frames ago and invoke callback.
+    // Returns false (and skips callback) for the first 2 frames while the
+    // pipeline primes, or if no readback has been scheduled yet.
+    // GpuImageData.bottomUp will be true; use negative sws_scale stride to
+    // avoid a CPU row-flip copy.
+    bool collectPixelReadback(PixelReadbackCallback callback);
+    // Release PBO and FBO resources. Call when recording stops or on Cleanup.
+    void destroyReadbackPBOs();
+
     glm::vec4 clearColor = glm::vec4(0.15f, 0.183f, 0.2f, 1.0f);
     bool wireframeEnabled = false;
 
@@ -333,6 +349,14 @@ private:
     void CreateScreenBuffer();
     void CreateDebugBuffer();
     void CreateScreenQuadVAO();
+
+    // Async readback state (3-PBO ring buffer + persistent FBO).
+    static constexpr int READBACK_PBO_COUNT = 3;
+    GLuint m_readbackPBOs[READBACK_PBO_COUNT] = {};
+    GLuint m_readbackFBO = 0;
+    uint32_t m_readbackFrameIdx = 0;
+    uint32_t m_readbackPBOWidth = 0;
+    uint32_t m_readbackPBOHeight = 0;
 
     void SortAndBucket(const glm::vec3& cameraPos);
     uint64_t CalculateSortKey(const RenderCommand& cmd, const glm::vec3& cameraPos);

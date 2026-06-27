@@ -97,41 +97,54 @@ void VideoRecorder::stopRecording() {
         m_audioManager->detachVideoRecorder();
 #endif
 
+    // All captureFrame() calls are done; PBO pixel data was already copied into
+    // RawFrame.pixels, so it's safe to release the GL resources now.
+    if (m_renderer)
+        m_renderer->destroyReadbackPBOs();
+
     if (m_encoderThread.joinable()) {
         m_encoderThread.join();
     }
 
-    m_recording  = false;
+    m_recording   = false;
     m_audioActive = false;
-    m_renderer   = nullptr;
+    m_renderer    = nullptr;
 }
 
-void VideoRecorder::captureFrame() {
+VideoRecorder::CaptureResult VideoRecorder::captureFrame() {
     if (!m_recording) {
-        return;
+        return CaptureResult::Dropped;
     }
 
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         if (m_frameQueue.size() >= MAX_QUEUE_FRAMES) {
-            return; // encoder is lagging; drop this frame
+            // Encoder is lagging; still advance the PBO pipeline so we don't
+            // stall the GPU, but discard the collected pixel data.
+            m_renderer->schedulePixelReadback();
+            m_renderer->collectPixelReadback(nullptr);
+            return CaptureResult::Dropped;
         }
     }
 
-    auto captureTime = std::chrono::steady_clock::now();
+    const auto captureTime = std::chrono::steady_clock::now();
 
-    m_renderer->readPixelsAsync([this, captureTime](const GpuImageData& data) {
-        if (!m_recording) {
-            return;
-        }
+    // Phase 1: issue this frame's async DMA into the next PBO slot (non-blocking).
+    m_renderer->schedulePixelReadback();
 
-        double timestamp = std::chrono::duration<double>(captureTime - m_recordingStart).count();
+    // Phase 2: collect the PBO written 2 frames ago (returns false while priming).
+    bool collected = m_renderer->collectPixelReadback([this, captureTime](const GpuImageData& data) {
+        if (!m_recording) return;
+
+        const double timestamp =
+            std::chrono::duration<double>(captureTime - m_recordingStart).count();
 
         RawFrame frame;
         frame.pixels    = data.data;
         frame.width     = data.width;
         frame.height    = data.height;
         frame.timestamp = timestamp;
+        frame.bottomUp  = data.bottomUp;
 
         {
             std::lock_guard<std::mutex> lock(m_mutex);
@@ -141,6 +154,8 @@ void VideoRecorder::captureFrame() {
         }
         m_cv.notify_one();
     });
+
+    return collected ? CaptureResult::Captured : CaptureResult::Dropped;
 }
 
 // ─── Audio capture (caller thread) ─────────────────────────────────────────────────────────
@@ -372,9 +387,19 @@ bool VideoRecorder::encodeFrame(const RawFrame& rawFrame) {
         return false;
     }
 
-    const uint8_t* srcPlanes[1]  = {rawFrame.pixels.data()};
-    int            srcStrides[1] = {static_cast<int>(rawFrame.width) * 4};
-    int srcHeight = std::min(static_cast<int>(rawFrame.height), ff.codecCtx->height);
+    const int rowBytes  = static_cast<int>(rawFrame.width) * 4;
+    const int srcHeight = std::min(static_cast<int>(rawFrame.height), ff.codecCtx->height);
+
+    const uint8_t* srcPlanes[1];
+    int            srcStrides[1];
+    if (rawFrame.bottomUp) {
+        // Point to the last row and walk backwards — eliminates the row-flip memcpy.
+        srcPlanes[0]  = rawFrame.pixels.data() + static_cast<size_t>(srcHeight - 1) * rowBytes;
+        srcStrides[0] = -rowBytes;
+    } else {
+        srcPlanes[0]  = rawFrame.pixels.data();
+        srcStrides[0] = rowBytes;
+    }
     sws_scale(ff.swsCtx, srcPlanes, srcStrides, 0, srcHeight,
               ff.frame->data, ff.frame->linesize);
 
