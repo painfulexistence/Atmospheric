@@ -21,11 +21,6 @@ class CSBDemo : public Application {
 
         // Set up orthographic camera for 2D view
         mainCamera = graphics.GetMainCamera();
-        if (mainCamera) {
-            mainCamera->SetOrthographic(800.0f, 600.0f, -100.0f, 100.0f);
-            mainCamera->gameObject->SetPosition(glm::vec3(400.0f, 300.0f, 0.0f));
-            mainCamera->Yaw(-glm::half_pi<float>());
-        }
 
         loadedScene = sceneLoader->Load("assets/scenes/Canvas.csb", glm::vec3(0.0f), CanvasLayer::LAYER_WORLD);
         if (loadedScene.success) {
@@ -331,6 +326,7 @@ int main(int argc, char* argv[]) {
       .windowHeight = 600,
       .useDefaultTextures = true,
       .useDefaultShaders = true,
+      .preset = "2D"
     });
     game.Run();
     return 0;

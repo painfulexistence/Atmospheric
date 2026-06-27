@@ -17,6 +17,7 @@
 #include "stb_image.h"
 #include <fstream>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/constants.hpp>
 #include <sstream>
 #ifdef TRACY_ENABLE
 #include <tracy/Tracy.hpp>
@@ -58,12 +59,31 @@ void GraphicsServer::Init(Application* app) {
     debugLines.reserve(1 << 16);
 
     CameraProps defaultCameraProps{};
-    defaultCameraProps.isOrthographic = false;
-    defaultCameraProps.perspective = {
-        .fieldOfView = 45.0f, .aspectRatio = 4.0f / 3.0f, .nearClip = 0.1f, .farClip = 1000.0f
-    };
+    if (app->GetConfig().preset == "2D") {
+        defaultCameraProps.isOrthographic = true;
+        defaultCameraProps.orthographic = {
+            .width = static_cast<float>(width),
+            .height = static_cast<float>(height),
+            .nearClip = -100.0f,
+            .farClip = 1000.0f
+        };
+        // 2D horizontal angle defaults to pointing down -Z/forward (Yaw equivalent to -half_pi)
+        defaultCameraProps.horizontalAngle = -glm::half_pi<float>();
+    } else {
+        defaultCameraProps.isOrthographic = false;
+        defaultCameraProps.perspective = {
+            .fieldOfView = 45.0f,
+            .aspectRatio = static_cast<float>(width) / static_cast<float>(height),
+            .nearClip = 0.1f,
+            .farClip = 1000.0f
+        };
+    }
     defaultCamera =
       dynamic_cast<CameraComponent*>(app->GetDefaultGameObject()->AddComponent<CameraComponent>(defaultCameraProps));
+
+    if (app->GetConfig().preset == "2D") {
+        defaultCamera->gameObject->SetPosition(glm::vec3(static_cast<float>(width) * 0.5f, static_cast<float>(height) * 0.5f, 0.0f));
+    }
 
     defaultLight = dynamic_cast<LightComponent*>(app->GetDefaultGameObject()->AddComponent<LightComponent>(LightProps{
       .type = LightType::Directional,

@@ -47,6 +47,7 @@ struct AppConfig {
     float fixedTimeStep = FIXED_TIME_STEP;
     bool useDefaultTextures = false;
     bool useDefaultShaders = true;
+    std::string preset = "3D"; // "2D" | "3D"
 };
 
 // Drives an automated "warm up → capture → quit" sequence so every example can

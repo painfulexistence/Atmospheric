@@ -325,11 +325,6 @@ class PolyMerge : public Application {
         fontID = graphics.LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
 
         mainCamera = graphics.GetMainCamera();
-        if (mainCamera) {
-            mainCamera->SetOrthographic(W, H, -100.0f, 100.0f);
-            mainCamera->gameObject->SetPosition(glm::vec3(W * 0.5f, H * 0.5f, 0.0f));
-            mainCamera->Yaw(-glm::half_pi<float>());
-        }
 
         physics2D.SetGravity({0.0f, -520.0f});
 
@@ -448,6 +443,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
         .windowHeight = (int)H,
         .useDefaultTextures = true,
         .useDefaultShaders  = true,
+        .preset = "2D"
     });
     game.Run();
     return 0;
