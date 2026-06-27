@@ -21,6 +21,7 @@ class Window;
 class GameObject;
 class EditorLayer;
 class VideoRecorder;
+struct SceneBlueprint;
 
 struct FrameData {
     FrameData(uint64_t number, float time, float deltaTime) {
@@ -215,6 +216,11 @@ private:
     static Application* s_instance;
 
     void RegisterComponents();
+
+    // Phase 2a: upload GPU resources declared in the blueprint.  Must run on the main thread.
+    void LoadSceneResources(const SceneBlueprint& bp);
+    // Phase 2b: create GameObjects + Components from resolved entity blueprints.
+    void InstantiateScene(const SceneBlueprint& bp);
 
     AppConfig _config;
 

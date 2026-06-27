@@ -23,6 +23,12 @@ WaterComponent::WaterComponent(GameObject* owner, const WaterProps& props)
     owner->AddComponent<MeshComponent>(_mesh);
 }
 
+WaterComponent::~WaterComponent() {
+    auto& am = AssetManager::Get();
+    am.RemoveMaterial(_material);
+    am.RemoveMesh(_mesh);
+}
+
 void WaterComponent::OnAttach() {
     float line = (_props.waterLine > -1e29f)
         ? _props.waterLine

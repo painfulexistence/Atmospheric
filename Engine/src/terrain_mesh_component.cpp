@@ -18,8 +18,11 @@ TerrainMeshComponent::TerrainMeshComponent(
     _mesh = am.CreateTerrainMesh("Terrain_" + owner->GetName(), props.worldSize, props.resolution);
 
     Material* mat = props.material;
-    if (!mat)
+    if (!mat) {
         mat = am.CreateMaterial(MaterialProps{});
+        _ownsMaterial = true;
+    }
+    _material = mat;
 
     _mesh->terrainData = TerrainShaderData{
         .heightScale        = props.heightScale,
@@ -40,4 +43,11 @@ TerrainMeshComponent::TerrainMeshComponent(
 
     _mesh->SetMaterial(mat);
     owner->AddComponent<MeshComponent>(_mesh);
+}
+
+TerrainMeshComponent::~TerrainMeshComponent() {
+    auto& am = AssetManager::Get();
+    if (_ownsMaterial) am.RemoveMaterial(_material);
+    am.RemoveMesh(_mesh);
+    if (gameObject) am.RemoveTexture("hm_" + gameObject->GetName());
 }

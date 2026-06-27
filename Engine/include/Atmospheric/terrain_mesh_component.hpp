@@ -27,6 +27,7 @@ public:
         const std::shared_ptr<HeightField>& heightField,
         const TerrainMeshProps&             props
     );
+    ~TerrainMeshComponent();
 
     std::string GetName() const override { return "TerrainMesh"; }
     void OnAttach() override {}
@@ -35,5 +36,7 @@ public:
     Mesh* GetMesh() const { return _mesh; }
 
 private:
-    Mesh* _mesh = nullptr;
+    Mesh*      _mesh         = nullptr;
+    Material*  _material     = nullptr;
+    bool       _ownsMaterial = false;
 };

@@ -96,6 +96,13 @@ public:
 
     size_t getTotalTextureBytes() const;
 
+    // ========== Component-owned asset cleanup ==========
+    // Null the slot in the flat vector, erase from the name cache, and delete
+    // the object.  Index stability is preserved (no vector compaction).
+    void RemoveMaterial(Material* mat);
+    void RemoveMesh(Mesh* mesh);
+    void RemoveTexture(const std::string& path);
+
     // ========== Per-scene asset ownership ==========
     // Store the raw scene JSON so UnloadSceneAssets can re-parse it to free
     // every asset type declared by that scene.  Adding new asset types to the

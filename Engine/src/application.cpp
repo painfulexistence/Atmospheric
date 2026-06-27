@@ -1,4 +1,5 @@
 #include "application.hpp"
+#include "scene_blueprint.hpp"
 #include "scene_loader.hpp"
 #include <algorithm>
 #include <unordered_set>
@@ -765,82 +766,108 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
     }
 }
 
-void Application::LoadScene(const std::string& jsonContent) {
+// Phase 1: pure JSON parse — no GPU calls, no side effects, can run off-thread.
+// Returns a SceneBlueprint with name="" on parse failure.
+static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent) {
+    SceneBlueprint bp;
+    bp.rawJson = jsonContent;
+
     nlohmann::json j;
     try {
         j = nlohmann::json::parse(jsonContent);
     } catch (const std::exception& e) {
-        spdlog::error("Application::LoadScene: JSON parse error: {}", e.what());
-        return;
+        spdlog::error("ParseSceneBlueprint: JSON parse error: {}", e.what());
+        return bp; // bp.name is "" — caller checks this
     }
 
-    std::string sceneName = j.value("name", "Unnamed");
-    ENGINE_LOG("Loading scene '{}' from JSON...", sceneName);
+    bp.name = j.value("name", "Unnamed");
 
-    // Store raw JSON for per-scene asset unload.
-    AssetManager::Get().StoreSceneJson(sceneName, jsonContent);
-
-    // Load textures
     if (j.contains("textures") && j["textures"].is_array()) {
-        std::vector<std::string> texturesToLoad;
-        for (const auto& tex : j["textures"]) {
-            std::string texPath = tex.get<std::string>();
-            if (AssetManager::Get().GetTexture(texPath) == 0) {
-                texturesToLoad.push_back(texPath);
-            }
-        }
-        if (!texturesToLoad.empty()) {
-            if (_config.useDefaultTextures) {
-                AssetManager::Get().LoadDefaultTextures();
-            }
-            AssetManager::Get().LoadTextures(texturesToLoad);
-            ENGINE_LOG("JSON Textures created.");
-        }
+        for (const auto& tex : j["textures"])
+            bp.textures.push_back(tex.get<std::string>());
     }
 
-    // Load shaders
     if (j.contains("shaders") && j["shaders"].is_object()) {
-        std::unordered_map<std::string, ShaderProgramProps> shadersToLoad;
-        for (auto& [name, shaderVal] : j["shaders"].items()) {
-            if (AssetManager::Get().GetShader(name) != nullptr) {
-                continue;
-            }
+        for (const auto& [name, shaderVal] : j["shaders"].items()) {
             ShaderProgramProps props;
             props.vert = shaderVal.value("vert", "");
             props.frag = shaderVal.value("frag", "");
-            if (shaderVal.contains("tesc")) {
-                props.tesc = shaderVal["tesc"].get<std::string>();
-            }
-            if (shaderVal.contains("tese")) {
-                props.tese = shaderVal["tese"].get<std::string>();
-            }
-            shadersToLoad[name] = props;
-        }
-        if (!shadersToLoad.empty()) {
-            if (_config.useDefaultShaders) {
-                AssetManager::Get().LoadDefaultShaders();
-            }
-            AssetManager::Get().LoadShaders(shadersToLoad);
-            ENGINE_LOG("JSON Shaders created.");
+            if (shaderVal.contains("tesc")) props.tesc = shaderVal["tesc"].get<std::string>();
+            if (shaderVal.contains("tese")) props.tese = shaderVal["tese"].get<std::string>();
+            bp.shaders[name] = props;
         }
     }
 
-    // Create a scene container under __root__ so scenes can be layered.
-    // All entities from this JSON become children of this container.
-    auto* container = CreateGameObject();
-    container->SetName(sceneName);
-    container->parent = GetDefaultGameObject();
+    if (j.contains("meshes") && j["meshes"].is_array()) {
+        for (const auto& mesh : j["meshes"])
+            bp.meshes.push_back(mesh.get<std::string>());
+    }
 
-    // Load entities recursively
     if (j.contains("entities") && j["entities"].is_array()) {
         for (const auto& entityVal : j["entities"]) {
-            ParseEntity(this, entityVal, container);
+            EntityBlueprint eb;
+            eb.resolvedData = entityVal;
+            bp.entities.push_back(std::move(eb));
         }
-        ENGINE_LOG("JSON Game objects created.");
     }
+
+    return bp;
+}
+
+// Phase 2a: upload GPU resources — must run on the main thread.
+void Application::LoadSceneResources(const SceneBlueprint& bp) {
+    AssetManager::Get().StoreSceneJson(bp.name, bp.rawJson);
+
+    std::vector<std::string> texturesToLoad;
+    for (const auto& path : bp.textures) {
+        if (AssetManager::Get().GetTexture(path) == 0)
+            texturesToLoad.push_back(path);
+    }
+    if (!texturesToLoad.empty()) {
+        if (_config.useDefaultTextures)
+            AssetManager::Get().LoadDefaultTextures();
+        AssetManager::Get().LoadTextures(texturesToLoad);
+        ENGINE_LOG("JSON Textures created.");
+    }
+
+    std::unordered_map<std::string, ShaderProgramProps> shadersToLoad;
+    for (const auto& [name, props] : bp.shaders) {
+        if (AssetManager::Get().GetShader(name) != nullptr) continue;
+        shadersToLoad[name] = props;
+    }
+    if (!shadersToLoad.empty()) {
+        if (_config.useDefaultShaders)
+            AssetManager::Get().LoadDefaultShaders();
+        AssetManager::Get().LoadShaders(shadersToLoad);
+        ENGINE_LOG("JSON Shaders created.");
+    }
+
+    // TODO: load meshes from bp.meshes
+}
+
+// Phase 2b: create GameObjects + Components from resolved blueprints.
+void Application::InstantiateScene(const SceneBlueprint& bp) {
+    ENGINE_LOG("Loading scene '{}' from JSON...", bp.name);
+
+    auto* container = CreateGameObject();
+    container->SetName(bp.name);
+    container->parent = GetDefaultGameObject();
+
+    for (const auto& eb : bp.entities)
+        ParseEntity(this, eb.resolvedData, container);
+
+    if (!bp.entities.empty())
+        ENGINE_LOG("JSON Game objects created.");
 
     mainCamera = graphics.GetMainCamera();
     mainLight = graphics.GetMainLight();
+}
+
+void Application::LoadScene(const std::string& jsonContent) {
+    SceneBlueprint bp = ParseSceneBlueprint(jsonContent);
+    if (bp.name.empty()) return; // parse failed — error already logged
+    LoadSceneResources(bp);
+    InstantiateScene(bp);
 }
 
 void Application::GoScene(const std::string& sceneName, std::function<void()> onReady)
