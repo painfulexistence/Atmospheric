@@ -316,13 +316,13 @@ void Window::SetTime(double time) {
     ENGINE_LOG("SetTime is not implemented");
 }
 
-ImageSize Window::GetSize() {
+ImageSize Window::GetLogicalSize() {
     int width, height;
     SDL_GetWindowSize(static_cast<SDL_Window*>(_internal), &width, &height);
     return ImageSize(width, height);
 }
 
-ImageSize Window::GetFramebufferSize() {
+ImageSize Window::GetPhysicalSize() {
     int width, height;
     SDL_GetWindowSizeInPixels(static_cast<SDL_Window*>(_internal), &width, &height);
     return ImageSize(width, height);
@@ -332,7 +332,7 @@ glm::vec2 Window::GetDPI() {
     auto window = static_cast<SDL_Window*>(_internal);
     int fw, fh;
     SDL_GL_GetDrawableSize(window, &fw, &fh);
-    return glm::vec2(fw / GetSize().width, fh / GetSize().height);
+    return glm::vec2(fw / GetLogicalSize().width, fh / GetLogicalSize().height);
 }
 
 glm::vec2 Window::GetMousePosition() {

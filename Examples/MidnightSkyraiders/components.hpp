@@ -20,12 +20,12 @@ static inline float toEngY(float oy) { return oy + HALF; }
 
 // A single horizontally-scrolling background layer.
 class ParallaxLayerComponent : public Component {
-    int _textureID; float _worldSize, _speed; int _zOrder;
+    TextureHandle _texture; float _worldSize, _speed; int _zOrder;
     GameObject* _tiles[2] = {};
     float _t = 0;
 public:
-    ParallaxLayerComponent(GameObject* go, int textureID, float worldSize, float speed, int zOrder)
-        : _textureID(textureID), _worldSize(worldSize), _speed(speed), _zOrder(zOrder) {
+    ParallaxLayerComponent(GameObject* go, TextureHandle texture, float worldSize, float speed, int zOrder)
+        : _texture(texture), _worldSize(worldSize), _speed(speed), _zOrder(zOrder) {
         gameObject = go;
     }
     std::string GetName() const override { return "ParallaxLayerComponent"; }
@@ -37,7 +37,7 @@ public:
                 .size = glm::vec2(_worldSize, _worldSize),
                 .pivot = glm::vec2(0.0f, 0.0f),
                 .color = glm::vec4(1.0f),
-                .textureID = _textureID,
+                .texture = _texture,
                 .layer = CanvasLayer::LAYER_WORLD_2D,
                 .flipY = true,
                 .zOrder = _zOrder,
@@ -303,9 +303,9 @@ public:
 class HUDComponent : public Component {
     GameDirectorComponent* _director;
     PlayerComponent*       _player = nullptr;
-    FontID                 _fontID;
+    FontHandle                 _fontID;
 public:
-    HUDComponent(GameObject* go, GameDirectorComponent* director, FontID fontID)
+    HUDComponent(GameObject* go, GameDirectorComponent* director, FontHandle fontID)
         : _director(director), _fontID(fontID) { gameObject = go; }
 
     std::string GetName() const override { return "HUDComponent"; }

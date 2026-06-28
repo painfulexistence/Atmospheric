@@ -21,7 +21,7 @@ class VideoPlayerDemo : public Application {
     uint32_t m_texHeight   = 0;
     bool     m_texReady    = false; // true once glTexImage2D has been called
 
-    FontID m_fontID = 0;
+    FontHandle m_fontID = 0;
 
     void OnInit() override {
         GoScene("main", [this] { OnLoad(); });
@@ -60,7 +60,7 @@ class VideoPlayerDemo : public Application {
         // Fullscreen 2D sprite.  CanvasPass uses top-left origin, Y-down, pixels.
         // flipY=true corrects the GL bottom-up vs. video top-down convention.
         auto* win  = Window::Get();
-        auto  sz   = win->GetSize();
+        auto  sz   = win->GetLogicalSize();
         float winW = static_cast<float>(sz.width);
         float winH = static_cast<float>(sz.height);
 
@@ -69,16 +69,16 @@ class VideoPlayerDemo : public Application {
             .size      = glm::vec2(winW, winH),
             .pivot     = glm::vec2(0.0f, 0.0f), // top-left anchor
             .color     = glm::vec4(1.0f),
-            .textureID = static_cast<int>(m_videoTex),
+            .texture   = m_videoTex,
             .layer     = CanvasLayer::LAYER_WORLD_2D,
             .flipY     = false, // video rows are top-down
         });
 
         // HUD overlay
         auto* hud = CreateGameObject(glm::vec3(10.0f, 10.0f, 0.0f));
-        hud->AddComponent<TextComponent>(TextProps{
+        hud->AddComponent<Text2DComponent>(Text2DProps{
             .text    = "SPACE: play / pause   |   ESC: quit",
-            .fontID  = m_fontID,
+            .font    = m_fontID,
             .size    = glm::vec2(600.0f, 40.0f),
             .color   = glm::vec4(1.0f),
             .layer   = CanvasLayer::LAYER_WORLD_2D,

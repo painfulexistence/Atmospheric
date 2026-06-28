@@ -178,7 +178,7 @@ struct Sprite3DProps {
     glm::vec2 size = glm::vec2(1.0f, 1.0f);// Size in world units
     glm::vec2 pivot = glm::vec2(0.5f, 0.5f);// (0,0) = bottom-left, (1,1) = top-right
     glm::vec4 color = glm::vec4(1.0f);
-    int textureID = -1;
+    TextureHandle texture;
     BillboardMode billboardMode = BillboardMode::ViewPlane;// Default: face camera (Y-locked)
 
     // Mesh subdivision for deformation (0 = no mesh, use simple quad)
@@ -215,14 +215,14 @@ public:
     glm::vec2 GetSize() const { return _size; }
     glm::vec2 GetPivot() const { return _pivot; }
     glm::vec4 GetColor() const { return _color; }
-    int GetTextureID() const { return _textureID; }
+    TextureHandle GetTexture() const { return _texture; }
     BillboardMode GetBillboardMode() const { return _billboardMode; }
 
     Sprite3DComponent& SetSize(const glm::vec2& size);
     Sprite3DComponent& SetSize(float w, float h) { return SetSize(glm::vec2(w, h)); }
     Sprite3DComponent& SetPivot(const glm::vec2& pivot) { _pivot = pivot; return *this; }
     Sprite3DComponent& SetColor(const glm::vec4& color) { _color = color; return *this; }
-    Sprite3DComponent& SetTextureID(int textureID) { _textureID = textureID; return *this; }
+    Sprite3DComponent& SetTexture(TextureHandle texture) { _texture = texture; return *this; }
     Sprite3DComponent& SetBillboardMode(BillboardMode mode) { _billboardMode = mode; return *this; }
 
     // ─── UV for Spritesheets ───
@@ -291,7 +291,7 @@ private:
     glm::vec2 _size;
     glm::vec2 _pivot;
     glm::vec4 _color;
-    int _textureID;
+    TextureHandle _texture;
     BillboardMode _billboardMode;
     glm::vec2 _uvMin = glm::vec2(0.0f, 0.0f);
     glm::vec2 _uvMax = glm::vec2(1.0f, 1.0f);

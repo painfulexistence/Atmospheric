@@ -61,26 +61,10 @@ else()
 endif()
 
 # ── Asset sync ───────────────────────────────────────────────────────────────
-add_custom_command(
-    TARGET ${GAME_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/Engine/default_assets
-        $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-    COMMENT "Syncing default assets for ${GAME_NAME}"
+ae_copy_engine_assets(${GAME_NAME})
+ae_copy_game_assets(${GAME_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+ae_convert_textures(${GAME_NAME}
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/images"
+    "${EM_PRELOAD_STAGING_DIR}/images"
 )
-
-add_custom_command(
-    TARGET ${GAME_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets
-        $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-    COMMENT "Syncing game assets for ${GAME_NAME}"
-)
-
-if(EMSCRIPTEN)
-    ae_auto_convert_textures(${GAME_NAME}
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets/images
-        ${EM_PRELOAD_STAGING_DIR}/images
-    )
-endif()
 

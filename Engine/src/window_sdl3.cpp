@@ -501,21 +501,21 @@ void Window::SetMouseCursor(const std::string& cursorName) {
     }
 }
 
-ImageSize Window::GetSize() {
+ImageSize Window::GetLogicalSize() {
     int width, height;
     SDL_GetWindowSize(static_cast<SDL_Window*>(_internal), &width, &height);
     return ImageSize(width, height);
 }
 
-ImageSize Window::GetFramebufferSize() {
+ImageSize Window::GetPhysicalSize() {
     int width, height;
     SDL_GetWindowSizeInPixels(static_cast<SDL_Window*>(_internal), &width, &height);
     return ImageSize(width, height);
 }
 
 glm::vec2 Window::GetDPI() {
-    auto fb = GetFramebufferSize();
-    auto lp = GetSize();
+    auto fb = GetPhysicalSize();
+    auto lp = GetLogicalSize();
     float sx = (lp.width  > 0) ? float(fb.width)  / float(lp.width)  : 1.0f;
     float sy = (lp.height > 0) ? float(fb.height) / float(lp.height) : 1.0f;
     return glm::vec2(sx, sy);

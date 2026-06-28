@@ -1,49 +1,6 @@
 option(BUILD_SHARED_LIBS OFF)
 
-# ── ae_auto_convert_textures(<target> <src_dir> <dst_dir>) ─────────────────────────────────
-# Emscripten-only: converts every PNG/JPG under <src_dir> to KTX2 in the
-# corresponding path under <dst_dir>.  Each file is its own custom command so
-# only changed images are re-converted.  Adds CMAKE_CONFIGURE_DEPENDS on
-# <src_dir> so new files are picked up on the next configure.
-# No-op on native builds or when AE_USE_BASIS_UNIVERSAL is off.
-macro(ae_auto_convert_textures TARGET SRC_DIR DST_DIR)
-    if(EMSCRIPTEN AND AE_USE_BASIS_UNIVERSAL)
-        if(EXISTS "${SRC_DIR}")
-            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${SRC_DIR}")
-
-            file(GLOB_RECURSE _IMGS
-                LIST_DIRECTORIES false
-                "${SRC_DIR}/*.png" "${SRC_DIR}/*.jpg" "${SRC_DIR}/*.jpeg"
-            )
-            if(_IMGS)
-                set(_OUTPUTS)
-                foreach(_IMG ${_IMGS})
-                    if(_IMG MATCHES "heightmap")
-                        continue()
-                    endif()
-                    file(RELATIVE_PATH _REL "${SRC_DIR}" "${_IMG}")
-                    get_filename_component(_STEM    "${_REL}" NAME_WE)
-                    get_filename_component(_SUBDIR  "${_REL}" DIRECTORY)
-                    set(_OUT_DIR "${DST_DIR}/${_SUBDIR}")
-                    set(_KTX2    "${_OUT_DIR}/${_STEM}.ktx2")
-                    list(APPEND _OUTPUTS "${_KTX2}")
-
-                    add_custom_command(
-                        OUTPUT "${_KTX2}"
-                        COMMAND "${CMAKE_COMMAND}" -E make_directory "${_OUT_DIR}"
-                        COMMAND "${BASISU_EXECUTABLE}" -ktx2 -mipmap -y_flip "${_IMG}" -output_path "${_OUT_DIR}"
-                        DEPENDS "${_IMG}" basisu_host_tool
-                        COMMENT "Converting ${_STEM} → KTX2"
-                        VERBATIM
-                    )
-                endforeach()
-
-                add_custom_target(${TARGET}_convert_textures ALL DEPENDS ${_OUTPUTS})
-                add_dependencies(${TARGET} ${TARGET}_convert_textures)
-            endif()
-        endif()
-    endif()
-endmacro()
+include(AssetPipeline)
 
 
 # FetchContent_Populate is called directly for lua_src, sol2_src, and
@@ -219,7 +176,8 @@ set(SOURCES
     src/mesh_component.cpp
     src/sprite_component.cpp
     src/sprite_3d_component.cpp
-    src/text_component.cpp
+    src/text_2d_component.cpp
+    src/text_3d_component.cpp
     src/height_field.cpp
     src/terrain_mesh_component.cpp
     src/height_field_collider_component.cpp
@@ -578,3 +536,5 @@ if(EMSCRIPTEN)
         COMMENT "Assembling @atmospheric/engine package → ${_AE_WASM_OUT}"
     )
 endif()
+
+set(AE_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/default_assets" PARENT_SCOPE)

@@ -443,13 +443,13 @@ void Window::SetTime(double time) {
     glfwSetTime(time);
 }
 
-ImageSize Window::GetSize() {
+ImageSize Window::GetLogicalSize() {
     int width, height;
     glfwGetWindowSize(static_cast<GLFWwindow*>(_internal), &width, &height);
     return ImageSize(width, height);
 }
 
-ImageSize Window::GetFramebufferSize() {
+ImageSize Window::GetPhysicalSize() {
     int width, height;
     glfwGetFramebufferSize(static_cast<GLFWwindow*>(_internal), &width, &height);
     return ImageSize(width, height);
@@ -459,8 +459,8 @@ glm::vec2 Window::GetDPI() {
 #ifdef __EMSCRIPTEN__
     // glfwGetWindowContentScale returns 1.0 on Emscripten regardless of devicePixelRatio,
     // so derive the scale from the framebuffer size divided by the logical window size.
-    auto logical = GetSize();
-    auto physical = GetFramebufferSize();
+    auto logical = GetLogicalSize();
+    auto physical = GetPhysicalSize();
     float scaleX = logical.width  > 0 ? float(physical.width)  / float(logical.width)  : 1.0f;
     float scaleY = logical.height > 0 ? float(physical.height) / float(logical.height) : 1.0f;
     return glm::vec2(scaleX, scaleY);
