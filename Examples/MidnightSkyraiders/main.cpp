@@ -372,25 +372,9 @@ class MidnightSkyraiders : public Application {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #ifdef __EMSCRIPTEN__
+// Textures are preloaded by SceneTransition via main.json manifest.
+// Audio files are not yet part of the manifest system, so prefetch them here.
 static const std::vector<std::string> kAssets = {
-    "assets/textures/default_diff.ktx2",
-    "assets/textures/default_norm.ktx2",
-    "assets/textures/default_ao.ktx2",
-    "assets/textures/default_rough.ktx2",
-    "assets/textures/default_metallic.ktx2",
-    "assets/images/player.ktx2",
-    "assets/images/enemy1.ktx2",
-    "assets/images/enemy2.ktx2",
-    "assets/images/enemy3.ktx2",
-    "assets/images/bullet.ktx2",
-    "assets/images/circle-bullet.ktx2",
-    "assets/images/orbit-bullet.ktx2",
-    "assets/images/enemy-bullet.ktx2",
-    "assets/images/enemy-circle-bullet.ktx2",
-    "assets/images/nightsky-bg.ktx2",
-    "assets/images/nightsky-mountains.ktx2",
-    "assets/images/nightsky-fg.ktx2",
-    "assets/images/title.ktx2",
     "assets/sounds/sky-lines.ogg",
     "assets/sounds/explosion.wav",
     "assets/sounds/game-over.wav",

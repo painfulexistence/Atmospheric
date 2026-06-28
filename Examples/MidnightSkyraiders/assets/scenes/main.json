@@ -1,5 +1,19 @@
 {
   "name": "main",
-  "textures": [],
+  "textures": [
+    "assets/images/player.png",
+    "assets/images/enemy1.png",
+    "assets/images/enemy2.png",
+    "assets/images/enemy3.png",
+    "assets/images/bullet.png",
+    "assets/images/circle-bullet.png",
+    "assets/images/orbit-bullet.png",
+    "assets/images/enemy-bullet.png",
+    "assets/images/enemy-circle-bullet.png",
+    "assets/images/nightsky-bg.png",
+    "assets/images/nightsky-mountains.png",
+    "assets/images/nightsky-fg.png",
+    "assets/images/title.png"
+  ],
   "shaders": []
 }
