@@ -44,6 +44,11 @@ class AudioManager;
 //   rec.stopRecording();
 class VideoRecorder {
 public:
+    enum class CaptureResult {
+        Captured, // frame queued for encoding
+        Dropped,  // encoder queue full; frame silently dropped to preserve FPS
+    };
+
     struct Config {
         std::string outputPath = "recording.mp4";
         int fps = 30;
@@ -79,9 +84,10 @@ public:
 
     bool isRecording() const { return m_recording.load(); }
 
-    // Schedule capture of the current rendered frame. Call once per frame.
-    // Drops frames silently if the encoder queue is full.
-    void captureFrame();
+    // Schedule capture of the current rendered frame. Call once per frame
+    // from the render/GL thread. Uses a 3-PBO async ring buffer so the GPU
+    // pipeline never stalls. Returns Dropped if the encoder queue is full.
+    CaptureResult captureFrame();
 
     // Feed interleaved float32 PCM into the audio track.
     // frameCount is the number of multi-channel frames (NOT total samples).
@@ -144,6 +150,7 @@ private:
         uint32_t width;
         uint32_t height;
         double timestamp; // seconds since recording started (wall-clock)
+        bool bottomUp = false; // true when coming from PBO; encodeFrame uses negative stride
     };
 
     struct FFmpegContext;
