@@ -21,6 +21,7 @@
 
 #include <filesystem>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <cstdio>
@@ -125,8 +126,10 @@ bool FileSystem::IsCached(const std::string& path) const {
     return g_cache.count(normPath) != 0;
 }
 
-std::string FileSystem::ResolvePath(const std::string& path) const {
-    return NormalizePath(path);
+std::optional<std::string> FileSystem::ResolvePath(const std::string& path) const {
+    std::string normPath = NormalizePath(path);
+    if (!Exists(normPath)) return std::nullopt;
+    return normPath;
 }
 
 void FileSystem::EvictCache(const std::string& path) {

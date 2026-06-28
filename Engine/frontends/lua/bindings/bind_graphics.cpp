@@ -193,7 +193,7 @@ void BindGraphicsAPI(sol::state& lua, GraphicsServer* graphics) {
       [](Mesh* mesh, int index) {
           auto& materials = AssetManager::Get().GetMaterials();
           if (index >= 0 && index < static_cast<int>(materials.size())) {
-              mesh->SetMaterial(materials[index]);
+              mesh->SetMaterial(materials[index].get());
           }
       }
     );

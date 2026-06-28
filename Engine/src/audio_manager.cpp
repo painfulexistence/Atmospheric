@@ -303,7 +303,7 @@ void AudioManager::Reset() {
 
 MusicID AudioManager::LoadMusic(const char* filename) {
     MusicID id = nextMusicId++;
-    std::string path = FileSystem::Get().ResolvePath(filename);
+    std::string path = FileSystem::Get().ResolvePath(filename).value_or(filename);
     musicPaths[id] = path;
     musicVolumes[id] = 1.0f;
     
@@ -395,7 +395,7 @@ bool AudioManager::IsMusicPlaying(MusicID id) {
 
 SoundID AudioManager::LoadSound(const char* filename) {
     SoundID id = nextSoundId++;
-    std::string path = FileSystem::Get().ResolvePath(filename);
+    std::string path = FileSystem::Get().ResolvePath(filename).value_or(filename);
     soundPaths[id] = path;
     soundVolumes[id] = 1.0f;
     
@@ -619,7 +619,7 @@ void AudioManager::Reset() {
 
 MusicID AudioManager::LoadMusic(const char* filename) {
     MusicID id = nextMusicId;
-    std::string path = FileSystem::Get().ResolvePath(filename);
+    std::string path = FileSystem::Get().ResolvePath(filename).value_or(filename);
     musics[id] = ::LoadMusicStream(path.c_str());
     nextMusicId++;
     return id;
@@ -673,7 +673,7 @@ bool AudioManager::IsMusicPlaying(MusicID id) {
 
 SoundID AudioManager::LoadSound(const char* filename) {
     SoundID id = nextSoundId;
-    std::string path = FileSystem::Get().ResolvePath(filename);
+    std::string path = FileSystem::Get().ResolvePath(filename).value_or(filename);
     sounds[id] = ::LoadSound(path.c_str());
     nextSoundId++;
     return id;

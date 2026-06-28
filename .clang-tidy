@@ -1,0 +1,11 @@
+Checks: >
+  readability-avoid-const-params-in-decls,
+  modernize-use-nullptr,
+  modernize-use-override,
+  bugprone-use-after-move,
+  bugprone-dangling-handle,
+  performance-unnecessary-copy-initialization,
+  performance-move-const-arg,
+  -readability-magic-numbers,
+  -readability-braces-around-statements,
+  -readability-misleading-indentation

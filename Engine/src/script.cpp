@@ -57,7 +57,12 @@ void Script::Bind(const std::string& func)
 
 void Script::Source(const std::string& filename)
 {
-    std::string resolvedPath = FileSystem::Get().ResolvePath(filename);
+    auto resolvedOpt = FileSystem::Get().ResolvePath(filename);
+    if (!resolvedOpt) {
+        fmt::print("Skip loading script file {} (not found)\n", filename);
+        return;
+    }
+    const std::string& resolvedPath = *resolvedOpt;
     sol::protected_function_result result = _env.script_file(resolvedPath, sol::script_pass_on_error);
     if (!result.valid()) {
         sol::error err = result;

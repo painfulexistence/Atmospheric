@@ -336,7 +336,7 @@ void GraphicsServer::DrawImGui(float dt) {
         }
         if (ImGui::TreeNode("Materials")) {
             auto& assetManager = AssetManager::Get();
-            for (auto m : assetManager.GetMaterials()) {
+            for (const auto& m : assetManager.GetMaterials()) {
                 if (ImGui::TreeNode("Mat")) {
                     ImGui::Text("Base Map ID: %d", (int)m->baseMap);
                     ImGui::Text("Normal Map ID: %d", (int)m->normalMap);

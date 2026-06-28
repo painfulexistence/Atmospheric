@@ -137,25 +137,16 @@ void AssetManager::Clear() {
     _textureCache.clear();
     _nextTextureID = 0;
 
-    // Clean up shaders
-    for (auto* shader : shaders) {
-        delete shader;
-    }
+    // Clean up shaders (unique_ptr destructors handle deallocation)
     shaders.clear();
     _shaderCache.clear();
     _nextShaderID = 0;
 
     // Clean up meshes
-    for (auto* mesh : meshes) {
-        delete mesh;
-    }
     meshes.clear();
     _meshCache.clear();
 
     // Clean up materials
-    for (auto* material : materials) {
-        delete material;
-    }
     materials.clear();
     _materialCache.clear();
     _nextMaterialID = 0;
@@ -179,9 +170,7 @@ void AssetManager::ClearSceneAssets() {
             it = _textureCache.erase(it);
     }
 
-    // Shaders: delete only scene shaders (indices >= _defaultShaderCount).
-    for (uint32_t i = _defaultShaderCount; i < (uint32_t)shaders.size(); ++i)
-        delete shaders[i];
+    // Shaders: release only scene shaders (indices >= _defaultShaderCount).
     shaders.resize(_defaultShaderCount);
     // Rebuild shader cache to only contain default shaders.
     for (auto it = _shaderCache.begin(); it != _shaderCache.end(); )
@@ -189,12 +178,10 @@ void AssetManager::ClearSceneAssets() {
     _nextShaderID = _defaultShaderCount;
 
     // Materials and meshes are always scene-specific.
-    for (auto* m : materials) delete m;
     materials.clear();
     _materialCache.clear();
     _nextMaterialID = 0;
 
-    for (auto* m : meshes) delete m;
     meshes.clear();
     _meshCache.clear();
 
@@ -319,28 +306,29 @@ ShaderProgram* AssetManager::CreateShader(const std::string& name, const ShaderP
     auto it = _shaderCache.find(name);
     if (it != _shaderCache.end()) {
         ENGINE_LOG("Shader '{}' already exists, returning existing shader", name);
-        return shaders[it->second];
+        return shaders[it->second].get();
     }
 
-    auto* shader = new GLShaderProgram(props);
-    shaders.push_back(shader);
+    auto shader = std::make_unique<GLShaderProgram>(props);
+    auto* ptr = shader.get();
+    shaders.push_back(std::move(shader));
     _shaderCache[name] = _nextShaderID++;
 
     ENGINE_LOG("Shader '{}' loaded", name);
-    return shader;
+    return ptr;
 }
 
 ShaderProgram* AssetManager::GetShader(const std::string& name) const {
     auto it = _shaderCache.find(name);
     if (it != _shaderCache.end()) {
-        return shaders[it->second];
+        return shaders[it->second].get();
     }
     throw std::runtime_error(fmt::format("Shader '{}' not found", name));
 }
 
 ShaderProgram* AssetManager::GetShaderByID(uint32_t id) const {
     if (id < shaders.size()) {
-        return shaders[id];
+        return shaders[id].get();
     }
     throw std::runtime_error(fmt::format("Shader ID {} out of range", id));
 }
@@ -356,7 +344,7 @@ void AssetManager::ReloadShaders() {
 
 void AssetManager::LoadMaterials(const std::vector<MaterialProps>& materialDefs) {
     for (const auto& props : materialDefs) {
-        materials.push_back(new Material(props));
+        materials.push_back(std::make_unique<Material>(props));
     }
 }
 
@@ -368,17 +356,19 @@ Material* AssetManager::CreateMaterial(const std::string& name, const MaterialPr
         return GetMaterialByID(it->second);
     }
 
-    auto* material = new Material(props);
-    materials.push_back(material);
+    auto material = std::make_unique<Material>(props);
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
     _materialCache[name] = _nextMaterialID++;
-    return material;
+    return ptr;
 }
 
 Material* AssetManager::CreateMaterial(const MaterialProps& props) {
-    auto* material = new Material(props);
-    materials.push_back(material);
+    auto material = std::make_unique<Material>(props);
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
     _materialCache["unnamed_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
-    return material;
+    return ptr;
 }
 
 Material* AssetManager::GetMaterial(const std::string& name) const {
@@ -391,7 +381,7 @@ Material* AssetManager::GetMaterial(const std::string& name) const {
 
 Material* AssetManager::GetMaterialByID(uint32_t id) const {
     if (id < materials.size()) {
-        return materials[id];
+        return materials[id].get();
     }
     throw std::runtime_error(fmt::format("Material ID {} out of range", id));
 }
@@ -799,25 +789,28 @@ Mesh* AssetManager::CreateMesh(const std::string& name, Mesh* mesh) {
     if (!mesh) {
         mesh = new Mesh();
     }
-    meshes.push_back(mesh);
-    _meshCache[name] = mesh;
-    return mesh;
+    auto* ptr = mesh;
+    meshes.push_back(std::unique_ptr<Mesh>(mesh));
+    _meshCache[name] = ptr;
+    return ptr;
 }
 
 Mesh* AssetManager::CreateCubeMesh(const std::string& name, float size) {
-    auto mesh = MeshBuilder::CreateCube(size);
+    auto* mesh = MeshBuilder::CreateCube(size);
     if (_materialCache.find("Default") != _materialCache.end()) {
         mesh->SetMaterial(GetMaterial("Default"));
     }
+    meshes.push_back(std::unique_ptr<Mesh>(mesh));
     _meshCache[name] = mesh;
     return mesh;
 }
 
 Mesh* AssetManager::CreatePlaneMesh(const std::string& name, float width, float height) {
-    auto mesh = MeshBuilder::CreatePlane(width, height);
+    auto* mesh = MeshBuilder::CreatePlane(width, height);
     if (_materialCache.find("Default") != _materialCache.end()) {
         mesh->SetMaterial(GetMaterial("Default"));
     }
+    meshes.push_back(std::unique_ptr<Mesh>(mesh));
     _meshCache[name] = mesh;
     return mesh;
 }
@@ -851,17 +844,19 @@ Mesh* AssetManager::CreatePlaneMeshSubdivided(const std::string& name,
         }
     }
 
-    auto mesh = new Mesh(MeshType::PRIM);
+    auto* mesh = new Mesh(MeshType::PRIM);
     mesh->Initialize(verts, tris);
+    meshes.push_back(std::unique_ptr<Mesh>(mesh));
     _meshCache[name] = mesh;
     return mesh;
 }
 
 Mesh* AssetManager::CreateSphereMesh(const std::string& name, float radius, int division) {
-    auto mesh = MeshBuilder::CreateSphere(radius, division);
+    auto* mesh = MeshBuilder::CreateSphere(radius, division);
     if (_materialCache.find("Default") != _materialCache.end()) {
         mesh->SetMaterial(GetMaterial("Default"));
     }
+    meshes.push_back(std::unique_ptr<Mesh>(mesh));
     _meshCache[name] = mesh;
     return mesh;
 }
@@ -869,19 +864,21 @@ Mesh* AssetManager::CreateSphereMesh(const std::string& name, float radius, int 
 Mesh* AssetManager::CreateCapsuleMesh(const std::string& name, float radius, float height) {
     // TODO: Implement capsule mesh generation
     ENGINE_LOG("Capsule mesh '{}' created (generation not yet implemented)", name);
-    auto mesh = new Mesh();
+    auto* mesh = new Mesh();
     if (_materialCache.find("Default") != _materialCache.end()) {
         mesh->SetMaterial(GetMaterial("Default"));
     }
+    meshes.push_back(std::unique_ptr<Mesh>(mesh));
     _meshCache[name] = mesh;
     return mesh;
 }
 
 Mesh* AssetManager::CreateTerrainMesh(const std::string& name, float worldSize, int resolution) {
-    auto mesh = MeshBuilder::CreateTerrain(worldSize, resolution);
+    auto* mesh = MeshBuilder::CreateTerrain(worldSize, resolution);
     if (_materialCache.find("Default") != _materialCache.end()) {
         mesh->SetMaterial(GetMaterial("Default"));
     }
+    meshes.push_back(std::unique_ptr<Mesh>(mesh));
     _meshCache[name] = mesh;
     return mesh;
 }
