@@ -30,7 +30,7 @@ class CardBattleGame : public Application {
     using Application::Application;
 
     // ---- resources & state -------------------------------------------------
-    FontID _font = 0;
+    FontHandle _font = 0;
     BattleManagerComponent* _mgr = nullptr;
 
     const float W = 1280.0f;

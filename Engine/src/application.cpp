@@ -331,7 +331,7 @@ void Application::RegisterComponents() {
                           spdlog::warn("SpriteComponent deserializer: failed to load '{}': {}", texPath, e.what());
                       }
                   }
-                  props.textureID = static_cast<int>(texID);
+                  props.texture = texID;
               }
           }
 

@@ -337,12 +337,12 @@ void GraphicsServer::DrawImGui(float dt) {
             auto& assetManager = AssetManager::Get();
             for (auto m : assetManager.GetMaterials()) {
                 if (ImGui::TreeNode("Mat")) {
-                    ImGui::Text("Base Map ID: %d", m->baseMap);
-                    ImGui::Text("Normal Map ID: %d", m->normalMap);
-                    ImGui::Text("AO Map ID: %d", m->aoMap);
-                    ImGui::Text("Roughness Map ID: %d", m->roughnessMap);
-                    ImGui::Text("Metallic Map ID: %d", m->metallicMap);
-                    ImGui::Text("Height Map ID: %d", m->heightMap);
+                    ImGui::Text("Base Map ID: %d", (int)m->baseMap);
+                    ImGui::Text("Normal Map ID: %d", (int)m->normalMap);
+                    ImGui::Text("AO Map ID: %d", (int)m->aoMap);
+                    ImGui::Text("Roughness Map ID: %d", (int)m->roughnessMap);
+                    ImGui::Text("Metallic Map ID: %d", (int)m->metallicMap);
+                    ImGui::Text("Height Map ID: %d", (int)m->heightMap);
                     ImGui::Text("Ambient: %.3f, %.3f, %.3f", m->ambient.x, m->ambient.y, m->ambient.z);
                     ImGui::Text("Diffuse: %.3f, %.3f, %.3f", m->diffuse.x, m->diffuse.y, m->diffuse.z);
                     ImGui::Text("Specular: %.3f, %.3f, %.3f", m->specular.x, m->specular.y, m->specular.z);
@@ -692,16 +692,16 @@ void GraphicsServer::DrawCircle(float x, float y, float radius, const glm::vec4&
 
 // ===== Text Rendering Implementation =====
 
-FontID GraphicsServer::LoadFont(const std::string& path, float baseSize) {
+FontHandle GraphicsServer::LoadFont(const std::string& path, float baseSize) {
     return _fontManager.LoadFont(path, baseSize);
 }
 
-void GraphicsServer::UnloadFont(FontID id) {
+void GraphicsServer::UnloadFont(FontHandle id) {
     _fontManager.UnloadFont(id);
 }
 
 void GraphicsServer::DrawText(
-  FontID fontID, const std::string& text, float x, float y, float scale, const glm::vec4& color
+  FontHandle fontID, const std::string& text, float x, float y, float scale, const glm::vec4& color
 ) {
     _textCommands.push_back({ fontID, text, x, y, scale, color });
 }
@@ -785,18 +785,18 @@ void GraphicsServer::FlushTextToQueue() {
     _textCommands.clear();
 }
 
-glm::vec2 GraphicsServer::MeasureText(FontID fontID, const std::string& text, float scale) {
+glm::vec2 GraphicsServer::MeasureText(FontHandle fontID, const std::string& text, float scale) {
     return _fontManager.MeasureText(fontID, text, scale);
 }
 
-float GraphicsServer::GetFontLineHeight(FontID fontID, float scale) {
+float GraphicsServer::GetFontLineHeight(FontHandle fontID, float scale) {
     Font* font = _fontManager.GetFont(fontID);
     return font ? font->lineHeight * scale : 0.0f;
 }
 
 // Draw text at 3D position
 void GraphicsServer::DrawText3D(
-  FontID fontID, const std::string& text, glm::vec3 position, float scale, const glm::vec4& color
+  FontHandle fontID, const std::string& text, glm::vec3 position, float scale, const glm::vec4& color
 ) {
     auto* camera = GetMainCamera();
     if (!camera) return;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "globals.hpp"
+
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
 #include <glad/glad.h>
 #else
@@ -20,7 +22,7 @@ struct Glyph {
 
 /// Font information
 struct Font {
-    GLuint textureID = 0;
+    GLuint textureID = 0;         // Atlas texture ID
     int textureWidth = 0;
     int textureHeight = 0;
     float fontSize = 0;           // Base font size (design size)
@@ -30,8 +32,6 @@ struct Font {
     std::unordered_map<int, Glyph> glyphs;  // Codepoint -> Glyph
 };
 
-using FontID = uint32_t;
-
 /// FontManager - Manages font loading and text rendering
 ///
 /// Supports resolution-independent text rendering by:
@@ -40,7 +40,7 @@ using FontID = uint32_t;
 /// 3. Using linear texture filtering for quality scaling
 ///
 /// Usage:
-///   FontID font = fontManager.LoadFont("assets/fonts/arial.ttf", 48.0f);
+///   FontHandle font = fontManager.LoadFont("assets/fonts/arial.ttf", 48.0f);
 ///   fontManager.DrawText(font, "Hello", 100, 100, 1.0f);  // Scale 1.0 = 48px
 ///   fontManager.DrawText(font, "Small", 100, 150, 0.5f); // Scale 0.5 = 24px
 ///
@@ -55,31 +55,31 @@ public:
     /// @param firstChar First character to include (default 32 = space)
     /// @param numChars Number of characters to include (default 95 = ASCII printable)
     /// @return Font ID, or 0 on failure
-    FontID LoadFont(const std::string& path, float baseSize = 48.0f,
+    FontHandle LoadFont(const std::string& path, float baseSize = 48.0f,
                     int firstChar = 32, int numChars = 95);
 
     /// Unload a font and free its resources
-    void UnloadFont(FontID id);
+    void UnloadFont(FontHandle id);
 
     /// Get font information
-    Font* GetFont(FontID id);
+    Font* GetFont(FontHandle id);
 
     /// Get the texture ID for a font (for custom rendering)
-    GLuint GetFontTexture(FontID id);
+    GLuint GetFontTexture(FontHandle id);
 
     /// Measure text dimensions
     /// @param id Font ID
     /// @param text Text to measure
     /// @param scale Scale factor (1.0 = base size)
     /// @return Width and height as vec2
-    glm::vec2 MeasureText(FontID id, const std::string& text, float scale = 1.0f);
+    glm::vec2 MeasureText(FontHandle id, const std::string& text, float scale = 1.0f);
 
     /// Get individual glyph info (for custom rendering)
-    const Glyph* GetGlyph(FontID id, int codepoint);
+    const Glyph* GetGlyph(FontHandle id, int codepoint);
 
 private:
-    std::unordered_map<FontID, Font> _fonts;
-    FontID _nextFontID = 1;
+    std::unordered_map<FontHandle, Font> _fonts;
+    uint32_t _nextFontID = 1;
 
     /// Bake font glyphs into a texture atlas
     bool BakeFontAtlas(Font& font, const unsigned char* fontData,

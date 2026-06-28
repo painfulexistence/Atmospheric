@@ -21,7 +21,7 @@ class VideoPlayerDemo : public Application {
     uint32_t m_texHeight   = 0;
     bool     m_texReady    = false; // true once glTexImage2D has been called
 
-    FontID m_fontID = 0;
+    FontHandle m_fontID = 0;
 
     void OnInit() override {
         GoScene("main", [this] { OnLoad(); });
@@ -69,7 +69,7 @@ class VideoPlayerDemo : public Application {
             .size      = glm::vec2(winW, winH),
             .pivot     = glm::vec2(0.0f, 0.0f), // top-left anchor
             .color     = glm::vec4(1.0f),
-            .textureID = static_cast<int>(m_videoTex),
+            .texture   = m_videoTex,
             .layer     = CanvasLayer::LAYER_WORLD_2D,
             .flipY     = false, // video rows are top-down
         });

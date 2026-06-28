@@ -78,7 +78,7 @@ class NoitaLikeGame : public Application {
     // Rendering state.
     GLuint gridTex = 0;
     std::vector<uint32_t> pixels;
-    FontID fontID = 0;
+    FontHandle fontID = 0;
 
     // RmlUi HUD elements.
     Rml::ElementDocument* hud = nullptr;

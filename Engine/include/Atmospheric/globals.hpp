@@ -44,6 +44,93 @@
 #define GRAVITY 9.8
 #define FIXED_TIME_STEP 1.0 / 60.0
 
+struct TextureHandle {
+    static constexpr uint32_t INVALID = 0;
+    uint32_t id = INVALID;
+
+    TextureHandle() = default;
+    TextureHandle(uint32_t val) : id(val) {}
+    TextureHandle(int val) : id(val == -1 ? INVALID : static_cast<uint32_t>(val)) {}
+    TextureHandle(const char* path);
+    TextureHandle(const std::string& path);
+
+    bool IsValid() const { return id != INVALID; }
+    bool operator==(const TextureHandle& other) const { return id == other.id; }
+    bool operator!=(const TextureHandle& other) const { return id != other.id; }
+    bool operator==(uint32_t val) const { return id == val; }
+    bool operator!=(uint32_t val) const { return id != val; }
+    bool operator==(int val) const { return (val == -1 ? id == INVALID : id == static_cast<uint32_t>(val)); }
+    bool operator!=(int val) const { return !(*this == val); }
+
+    // Implicit conversion to uint32_t/int to return raw GL texture ID directly
+    operator uint32_t() const { return id; }
+    operator int() const { return static_cast<int>(id); }
+    operator bool() const noexcept { return IsValid(); }
+};
+
+struct ShaderHandle {
+    static constexpr uint32_t INVALID = 0;
+    uint32_t id = INVALID;
+
+    ShaderHandle() = default;
+    ShaderHandle(uint32_t val) : id(val) {}
+    ShaderHandle(int val) : id(val == -1 ? INVALID : static_cast<uint32_t>(val)) {}
+
+    bool IsValid() const { return id != INVALID; }
+    bool operator==(const ShaderHandle& other) const { return id == other.id; }
+    bool operator!=(const ShaderHandle& other) const { return id != other.id; }
+    bool operator==(uint32_t val) const { return id == val; }
+    bool operator!=(uint32_t val) const { return id != val; }
+    bool operator==(int val) const { return (val == -1 ? id == INVALID : id == static_cast<uint32_t>(val)); }
+    bool operator!=(int val) const { return !(*this == val); }
+
+    operator uint32_t() const { return id; }
+    operator int() const { return static_cast<int>(id); }
+    operator bool() const noexcept { return IsValid(); }
+};
+
+struct MaterialHandle {
+    static constexpr uint32_t INVALID = 0;
+    uint32_t id = INVALID;
+
+    MaterialHandle() = default;
+    MaterialHandle(uint32_t val) : id(val) {}
+    MaterialHandle(int val) : id(val == -1 ? INVALID : static_cast<uint32_t>(val)) {}
+
+    bool IsValid() const { return id != INVALID; }
+    bool operator==(const MaterialHandle& other) const { return id == other.id; }
+    bool operator!=(const MaterialHandle& other) const { return id != other.id; }
+    bool operator==(uint32_t val) const { return id == val; }
+    bool operator!=(uint32_t val) const { return id != val; }
+    bool operator==(int val) const { return (val == -1 ? id == INVALID : id == static_cast<uint32_t>(val)); }
+    bool operator!=(int val) const { return !(*this == val); }
+
+    operator uint32_t() const { return id; }
+    operator int() const { return static_cast<int>(id); }
+    operator bool() const noexcept { return IsValid(); }
+};
+
+struct FontHandle {
+    static constexpr uint32_t INVALID = 0;
+    uint32_t id = INVALID;
+
+    FontHandle() = default;
+    FontHandle(uint32_t val) : id(val) {}
+    FontHandle(int val) : id(val == -1 ? INVALID : static_cast<uint32_t>(val)) {}
+
+    bool IsValid() const { return id != INVALID; }
+    bool operator==(const FontHandle& other) const { return id == other.id; }
+    bool operator!=(const FontHandle& other) const { return id != other.id; }
+    bool operator==(uint32_t val) const { return id == val; }
+    bool operator!=(uint32_t val) const { return id != val; }
+    bool operator==(int val) const { return (val == -1 ? id == INVALID : id == static_cast<uint32_t>(val)); }
+    bool operator!=(int val) const { return !(*this == val); }
+
+    operator uint32_t() const { return id; }
+    operator int() const { return static_cast<int>(id); }
+    operator bool() const noexcept { return IsValid(); }
+};
+
 enum Axis { UP, DOWN, BACK, FRONT, RIGHT, LEFT };
 
 // Canvas layer constants for z-ordering
@@ -116,3 +203,18 @@ struct Shape {
         ConeShapeData coneData;
     } data;
 };
+
+namespace std {
+    template<> struct hash<TextureHandle> {
+        size_t operator()(const TextureHandle& h) const noexcept { return hash<uint32_t>{}(h.id); }
+    };
+    template<> struct hash<ShaderHandle> {
+        size_t operator()(const ShaderHandle& h) const noexcept { return hash<uint32_t>{}(h.id); }
+    };
+    template<> struct hash<MaterialHandle> {
+        size_t operator()(const MaterialHandle& h) const noexcept { return hash<uint32_t>{}(h.id); }
+    };
+    template<> struct hash<FontHandle> {
+        size_t operator()(const FontHandle& h) const noexcept { return hash<uint32_t>{}(h.id); }
+    };
+}

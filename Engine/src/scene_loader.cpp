@@ -526,7 +526,7 @@ GameObject* SceneLoader::CreateSprite(const flatbuffers::SpriteOptions* options,
 
     // Load texture from fileNameData
     if (options->fileNameData() && options->fileNameData()->path()) {
-        props.textureID = ResolveTexture(
+        props.texture = ResolveTexture(
           options->fileNameData()->path()->c_str(),
           options->fileNameData()->plistFile() ? options->fileNameData()->plistFile()->c_str() : "",
           options->fileNameData()->resourceType(),
@@ -566,7 +566,7 @@ GameObject* SceneLoader::CreateImageView(const flatbuffers::ImageViewOptions* op
 
     // Load texture
     if (options->fileNameData() && options->fileNameData()->path()) {
-        props.textureID = ResolveTexture(
+        props.texture = ResolveTexture(
           options->fileNameData()->path()->c_str(),
           options->fileNameData()->plistFile() ? options->fileNameData()->plistFile()->c_str() : "",
           options->fileNameData()->resourceType(),
