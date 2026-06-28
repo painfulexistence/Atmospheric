@@ -1,5 +1,13 @@
 {
   "name": "main",
   "textures": [],
-  "shaders": []
+  "shaders": {},
+  "entities": [
+    {
+      "name": "NetSession",
+      "components": [
+        { "type": "LockstepNetComponent" }
+      ]
+    }
+  ]
 }

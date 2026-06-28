@@ -113,11 +113,13 @@ class CardBattleGame : public Application {
     void OnLoad() override {
         _font = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
-        GameObject* mgrGO = CreateGameObject();
-        mgrGO->SetName("BattleManager");
-        mgrGO->AddComponent<BattleManagerComponent>(this);
-        _mgr = mgrGO->GetComponent<BattleManagerComponent>();
-        _mgr->StartRun();
+        for (auto* go : GetEntities()) {
+            if (go->GetName() == "BattleManager") {
+                _mgr = go->GetComponent<BattleManagerComponent>();
+                break;
+            }
+        }
+        if (_mgr) _mgr->StartRun();
     }
 
     void OnUpdate(float dt, float /*time*/) override {

@@ -70,59 +70,6 @@ class HelloWorld : public Application {
             .color    = glm::vec4(1.0f, 1.0f, 0.0f, 1.0f),
         });
 
-        // === World Space Sprites (WorldCanvasPass) ===
-        // Rendered with depth testing - occluded by 3D geometry. Each one bobs
-        // up and down via an OscillatorComponent.
-        glm::vec4 worldColors[] = {
-            { 1.0f, 0.3f, 0.3f, 0.8f },// Red
-            { 0.3f, 1.0f, 0.3f, 0.8f },// Green
-            { 0.3f, 0.3f, 1.0f, 0.8f },// Blue
-            { 1.0f, 1.0f, 0.3f, 0.8f },// Yellow
-        };
-
-        for (int i = 0; i < 4; i++) {
-            auto* spriteObj = CreateGameObject(glm::vec3(i * 2.0f - 3.0f, 2.0f, 3.0f));
-            spriteObj->AddComponent<SpriteComponent>(SpriteProps{
-              .size = glm::vec2(1.0f, 1.0f),
-              .pivot = glm::vec2(0.5f, 0.5f),
-              .color = worldColors[i],
-              .texture = -1,
-              .layer = CanvasLayer::LAYER_WORLD,
-            });
-            spriteObj->AddComponent<OscillatorComponent>(glm::vec3(0.0f, 1.0f, 0.0f), 0.5f, 2.0f, i * 0.5f);
-        }
-
-        // === 2D Sprites (CanvasPass) ===
-        // Screen coordinates (pixels), rendered after 3D. Each pulses its alpha
-        // via a SpritePulseComponent.
-        glm::vec4 sprite2DColors[] = {
-            { 1.0f, 0.5f, 0.0f, 0.9f },// Orange
-            { 0.5f, 0.0f, 1.0f, 0.9f },// Purple
-            { 0.0f, 1.0f, 1.0f, 0.9f },// Cyan
-        };
-
-        for (int i = 0; i < 3; i++) {
-            // Screen coordinates: top-left origin, pixels
-            auto* spriteObj = CreateGameObject(glm::vec3(20.0f + i * 70.0f, 20.0f, 0.0f));
-            spriteObj->AddComponent<SpriteComponent>(SpriteProps{
-              .size = glm::vec2(50.0f, 50.0f),// Pixels
-              .pivot = glm::vec2(0.0f, 0.0f),// Top-left pivot
-              .color = sprite2DColors[i],
-              .texture = -1,
-              // Default layer is LAYER_WORLD_2D (2D screen space)
-            });
-            spriteObj->AddComponent<SpritePulseComponent>(0.4f, 1.0f, 3.0f, i * 1.0f);
-        }
-
-        // === HUD text ===
-        auto* hud = CreateGameObject(glm::vec3(50.0f, 100.0f, 0.0f));
-        hud->AddComponent<Text2DComponent>(Text2DProps{
-            .text = "Hello World from C++!",
-            .font = fontID,
-            .fontSize = 32.0f,
-            .layer = CanvasLayer::LAYER_WORLD_2D
-        });
-
         console.Info(fmt::format("Game fully loaded in {:.1f} seconds", GetWindowTime()));
         console.Info("Press R to reload shaders, ESC to quit");
         console.Info("3D sprites: 4 (depth tested), 2D sprites: 3 (screen space)");

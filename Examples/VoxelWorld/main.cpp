@@ -29,9 +29,6 @@ class VoxelWorldApp : public Application {
         mainCamera->gameObject->SetRotation(glm::vec3(glm::radians(-20.0f), 0.0f, 0.0f));
         mainCamera->gameObject->AddComponent<FlyCameraComponent>(/*moveSpeed=*/20.0f, /*lookSpeed=*/1.5f);
 
-        auto* worldObj = CreateGameObject();
-        worldObj->AddComponent<VoxelWorldComponent>(/*seed=*/1337);
-
         Renderer* renderer = GetGraphicsServer()->renderer;
         if (auto* bloom = renderer->GetPass<BloomPass>()) {
             bloom->enabled       = true;
