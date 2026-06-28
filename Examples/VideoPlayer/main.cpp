@@ -76,9 +76,9 @@ class VideoPlayerDemo : public Application {
 
         // HUD overlay
         auto* hud = CreateGameObject(glm::vec3(10.0f, 10.0f, 0.0f));
-        hud->AddComponent<TextComponent>(TextProps{
+        hud->AddComponent<Text2DComponent>(Text2DProps{
             .text    = "SPACE: play / pause   |   ESC: quit",
-            .fontID  = m_fontID,
+            .font    = m_fontID,
             .size    = glm::vec2(600.0f, 40.0f),
             .color   = glm::vec4(1.0f),
             .layer   = CanvasLayer::LAYER_WORLD_2D,

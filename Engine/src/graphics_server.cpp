@@ -701,6 +701,19 @@ void GraphicsServer::UnloadFont(FontHandle id) {
     _fontManager.UnloadFont(id);
 }
 
+FontHandle GraphicsServer::GetOrCreateDefaultFont() {
+    if (_defaultFont == 0) {
+        _defaultFont = LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 48.0f);
+    }
+    return _defaultFont;
+}
+
+float GraphicsServer::GetFontBaseSize(FontHandle fontID) {
+    if (auto* font = _fontManager.GetFont(fontID))
+        return font->fontSize;
+    return 48.0f;
+}
+
 void GraphicsServer::DrawText(
   FontHandle fontID, const std::string& text, float x, float y, float scale, const glm::vec4& color
 ) {

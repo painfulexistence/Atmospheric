@@ -169,6 +169,9 @@ public:
     // ===== Text Rendering =====
     FontHandle LoadFont(const std::string& path, float baseSize);
     void UnloadFont(FontHandle id);
+    FontHandle GetOrCreateDefaultFont();
+    /// Returns the base size (in pixels) that the font was baked at, or 48.0f as fallback.
+    float GetFontBaseSize(FontHandle fontID);
     void DrawText(FontHandle fontID, const std::string& text, float x, float y,
                   float scale, const glm::vec4& color);
     void DrawText3D(FontHandle fontID, const std::string& text, glm::vec3 position,
@@ -221,6 +224,7 @@ private:
         glm::vec4 color;
     };
     std::vector<TextCommand> _textCommands;
+    FontHandle _defaultFont = 0;
 
 public:
     void RenderBufferedText(BatchRenderer2D* batch);

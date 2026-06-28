@@ -33,36 +33,7 @@ class HelloWorld : public Application {
               d.Read("phase", phase);
               return new OscillatorComponent(o, axis, amp, freq, phase);
           });
-        ComponentFactory::Register("WorldLabelComponent",
-          [](GameObject* o, Deserializer& d) -> Component* {
-              std::string fontPath, text;
-              float fontSize = 32.0f, scale = 0.5f;
-              glm::vec3 offset(0, 1.2f, 0);
-              glm::vec4 color(1, 1, 0, 1);
-              d.Read("fontPath", fontPath);
-              d.Read("fontSize", fontSize);
-              d.Read("text", text);
-              d.Read("offset", offset);
-              d.Read("scale", scale);
-              d.Read("color", color);
-              FontHandle font = GraphicsServer::Get()->LoadFont(fontPath, fontSize);
-              return new WorldLabelComponent(o, font, text, offset, scale, color);
-          });
-        ComponentFactory::Register("ScreenLabelComponent",
-          [](GameObject* o, Deserializer& d) -> Component* {
-              std::string fontPath, text;
-              float fontSize = 32.0f, scale = 1.0f;
-              glm::vec2 pos(0.0f);
-              glm::vec4 color(1, 1, 1, 1);
-              d.Read("fontPath", fontPath);
-              d.Read("fontSize", fontSize);
-              d.Read("text", text);
-              d.Read("pos", pos);
-              d.Read("scale", scale);
-              d.Read("color", color);
-              FontHandle font = GraphicsServer::Get()->LoadFont(fontPath, fontSize);
-              return new ScreenLabelComponent(o, font, text, pos, scale, color);
-          });
+
         ComponentFactory::Register("SpritePulseComponent",
           [](GameObject* o, Deserializer& d) -> Component* {
               float minA = 0.0f, maxA = 1.0f, freq = 1.0f, phase = 0.0f;
@@ -95,7 +66,12 @@ class HelloWorld : public Application {
         // Bob along Z; phase pi/2 makes the sine read as cosine (matches the
         // original cos(time) motion).
         cube->AddComponent<OscillatorComponent>(glm::vec3(0.0f, 0.0f, 1.0f), 2.0f, 1.0f, glm::half_pi<float>());
-        cube->AddComponent<WorldLabelComponent>(fontID, "Cube");
+        cube->AddComponent<Text3DComponent>(Text3DProps{
+            .text     = "Cube",
+            .font     = fontID,
+            .fontSize = 16.0f,                             // 16/32 base = scale 0.5, matches original WorldLabelComponent
+            .color    = glm::vec4(1.0f, 1.0f, 0.0f, 1.0f),
+        });
 
         // === World Space Sprites (WorldCanvasPass) ===
         // Rendered with depth testing - occluded by 3D geometry. Each one bobs
@@ -142,10 +118,13 @@ class HelloWorld : public Application {
         }
 
         // === HUD text ===
-        auto* hud = CreateGameObject();
-        hud->AddComponent<ScreenLabelComponent>(
-          fontID, "Hello World from C++!", glm::vec2(50.0f, 100.0f)
-        );
+        auto* hud = CreateGameObject(glm::vec3(50.0f, 100.0f, 0.0f));
+        hud->AddComponent<Text2DComponent>(Text2DProps{
+            .text = "Hello World from C++!",
+            .font = fontID,
+            .fontSize = 32.0f,
+            .layer = CanvasLayer::LAYER_WORLD_2D
+        });
 
         console.Info(fmt::format("Game fully loaded in {:.1f} seconds", GetWindowTime()));
         console.Info("Press R to reload shaders, ESC to quit");

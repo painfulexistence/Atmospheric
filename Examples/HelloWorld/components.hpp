@@ -26,35 +26,6 @@ public:
     }
 };
 
-class WorldLabelComponent : public Component {
-    FontHandle _font; std::string _text; glm::vec3 _offset; float _scale; glm::vec4 _color;
-public:
-    WorldLabelComponent(GameObject* go, FontHandle font, std::string text,
-                        glm::vec3 offset = {0, 1.2f, 0}, float scale = 0.5f,
-                        glm::vec4 color = {1, 1, 0, 1})
-        : _font(font), _text(std::move(text)), _offset(offset), _scale(scale), _color(color) {
-        gameObject = go;
-    }
-    std::string GetName() const override { return "WorldLabelComponent"; }
-    void OnTick(float) override {
-        GraphicsServer::Get()->DrawText3D(_font, _text, gameObject->GetPosition() + _offset, _scale, _color);
-    }
-};
-
-class ScreenLabelComponent : public Component {
-    FontHandle _font; std::string _text; glm::vec2 _pos; float _scale; glm::vec4 _color;
-public:
-    ScreenLabelComponent(GameObject* go, FontHandle font, std::string text, glm::vec2 pos,
-                         float scale = 1.0f, glm::vec4 color = {1, 1, 1, 1})
-        : _font(font), _text(std::move(text)), _pos(pos), _scale(scale), _color(color) {
-        gameObject = go;
-    }
-    std::string GetName() const override { return "ScreenLabelComponent"; }
-    void OnTick(float) override {
-        GraphicsServer::Get()->DrawText(_font, _text, _pos.x, _pos.y, _scale, _color);
-    }
-};
-
 class SpritePulseComponent : public Component {
     float _min, _max, _freq, _phase, _t = 0;
 public:

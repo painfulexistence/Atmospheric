@@ -5,7 +5,8 @@
 #include "asset_manager.hpp"
 #include "game_object.hpp"
 #include "sprite_component.hpp"
-#include "text_component.hpp"
+#include "text_2d_component.hpp"
+#include "text_3d_component.hpp"
 
 #include "Scene_generated.h"
 
@@ -427,7 +428,7 @@ GameObject* SceneLoader::ParseNodeTree(
     } else if (classname == "Text") {
         go = CreateNode(widgetOptions, config);
         if (go) {
-            go->AddComponent<TextComponent>(CreateTextProps(nodeTree, widgetOptions, config));
+            go->AddComponent<Text2DComponent>(CreateTextProps(nodeTree, widgetOptions, config));
             spdlog::debug(
               "SceneLoader: Created Text node '{}'",
               widgetOptions && widgetOptions->name() ? widgetOptions->name()->c_str() : "Text"
@@ -649,10 +650,10 @@ std::vector<std::string> SceneLoader::GetSupportedNodeTypes() {
     return { "Node", "SingleNode", "Sprite", "ImageView", "Text" };
 }
 
-TextProps SceneLoader::CreateTextProps(
+Text2DProps SceneLoader::CreateTextProps(
   const flatbuffers::NodeTree* nodeTree, const flatbuffers::WidgetOptions* widgetOptions, const SceneLoadConfig& config
 ) {
-    TextProps props;
+    Text2DProps props;
 
     // CSB stores TextOptions in the Options.data field for Text nodes
     // We can reinterpret the WidgetOptions pointer as TextOptions
@@ -674,7 +675,10 @@ TextProps SceneLoader::CreateTextProps(
         if (props.fontSize <= 0) props.fontSize = 24.0f;
 
         if (textOptions->fontName()) {
-            props.fontPath = textOptions->fontName()->c_str();
+            std::string fontPath = textOptions->fontName()->c_str();
+            if (!fontPath.empty()) {
+                props.font = GraphicsServer::Get()->LoadFont(fontPath, props.fontSize);
+            }
         }
 
         // Get alignment
