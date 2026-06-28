@@ -125,13 +125,11 @@ class NoitaLikeGame : public Application {
         }
 
         // Lockstep session: owns net + sim, drives fixed-update loop via OnTick.
-        for (auto* go : GetEntities()) {
-            if (go->GetName() == "NetSession") {
-                _netComp = go->GetComponent<LockstepNetComponent>();
-                break;
-            }
-        }
-        if (_netComp) _netComp->Start(g_cli.mode, g_cli.port, g_cli.seed, g_cli.delay, g_cli.joinIp);
+        auto* netObj = CreateGameObject();
+        netObj->SetName("NetSession");
+        netObj->AddComponent<LockstepNetComponent>();
+        _netComp = netObj->GetComponent<LockstepNetComponent>();
+        _netComp->Start(g_cli.mode, g_cli.port, g_cli.seed, g_cli.delay, g_cli.joinIp);
 
         // Inspector: one entity per player slot.
         for (int i = 0; i < 2; i++) {
