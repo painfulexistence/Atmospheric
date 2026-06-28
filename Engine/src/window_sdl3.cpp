@@ -7,6 +7,17 @@
 #include "backends/imgui_impl_sdl3.h"
 #include "console.hpp"
 
+// Define AE_GL_DEBUG_PROBES at build time to log any sticky GL errors at
+// frame-loop boundaries. Useful for chasing INVALID_OPERATION on GLES3 ports
+// where the offending call lies outside any renderer pass.
+#ifdef AE_GL_DEBUG_PROBES
+#define AE_GL_PROBE(name) \
+    do { GLenum _e; while ((_e = glGetError()) != GL_NO_ERROR) \
+        Console::Get()->Error(fmt::format("GL probe [{}]: 0x{:x}", name, _e)); } while (0)
+#else
+#define AE_GL_PROBE(name) ((void)0)
+#endif
+
 static int convertToSDLKey(Key key) {
     switch (key) {
     case Key::UP:
@@ -202,7 +213,7 @@ Window::Window(WindowProps props) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("SDL could not initialize! Error: %s\n", SDL_GetError());
     }
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
@@ -261,7 +272,7 @@ void Window::InitImGui() {
 
     ImGui::CreateContext();
     ImGui_ImplSDL3_InitForOpenGL(static_cast<SDL_Window*>(_internal), SDL_GL_GetCurrentContext());
-#ifdef __EMSCRIPTEN__
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     ImGui_ImplOpenGL3_Init("#version 300 es");
 #else
     ImGui_ImplOpenGL3_Init("#version 410");
@@ -271,14 +282,18 @@ void Window::InitImGui() {
 }
 
 void Window::BeginImGuiFrame() {
+    AE_GL_PROBE("BeginImGuiFrame entry");
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
+    AE_GL_PROBE("BeginImGuiFrame exit");
 }
 
 void Window::EndImGuiFrame() {
+    AE_GL_PROBE("EndImGuiFrame entry");
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    AE_GL_PROBE("EndImGuiFrame exit");
 }
 
 void Window::DeinitImGui() {
@@ -341,10 +356,25 @@ void Window::MainLoop(std::function<void(float, float)> callback) {
         ctx.lastTime = currTime;
 
         ctx.window->BeginImGuiFrame();
+        AE_GL_PROBE("after BeginImGuiFrame");
         ctx.callback(currTime, ctx.deltaTime);
+        AE_GL_PROBE("after callback");
         ctx.window->EndImGuiFrame();
+        AE_GL_PROBE("after EndImGuiFrame");
+
+#if defined(__APPLE__) && TARGET_OS_IOS
+        // SDL3 iOS GLES requires the view's framebuffer + renderbuffer to be bound before swap.
+        {
+            SDL_PropertiesID props = SDL_GetWindowProperties(static_cast<SDL_Window*>(ctx.window->_internal));
+            Sint64 fb = SDL_GetNumberProperty(props, SDL_PROP_WINDOW_UIKIT_OPENGL_FRAMEBUFFER_NUMBER, 0);
+            Sint64 rb = SDL_GetNumberProperty(props, SDL_PROP_WINDOW_UIKIT_OPENGL_RENDERBUFFER_NUMBER, 0);
+            glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(fb));
+            glBindRenderbuffer(GL_RENDERBUFFER, static_cast<GLuint>(rb));
+        }
+#endif
 
         SDL_GL_SwapWindow(static_cast<SDL_Window*>(ctx.window->_internal));
+        AE_GL_PROBE("after SwapWindow");
     };
 
     LoopContext ctx = { callback, GetTime(), 0, this };
@@ -367,6 +397,17 @@ void Window::MainLoop(std::function<void(float, float)> callback) {
         SDL_GL_SwapWindow(static_cast<SDL_Window*>(ctx.window->_internal));
     };
     emscripten_set_main_loop_arg(em_callback, ctxPtr, 0, true);
+#elif defined(__APPLE__) && TARGET_OS_IOS
+    // Hand the per-frame work to SDL via CADisplayLink. SDL automatically
+    // pauses the animation callback on background and resumes on foreground,
+    // so we never touch GL while the context is suspended.
+    // MainLoop returns; UIApplicationMain drives the run-loop.
+    static LoopContext s_ctx = ctx;
+    static auto s_loop = loop;
+    SDL_SetiOSAnimationCallback(
+        static_cast<SDL_Window*>(_internal), 1,
+        [](void* userdata) { s_loop(*static_cast<LoopContext*>(userdata)); },
+        &s_ctx);
 #else
     while (_isRunning) {
         loop(ctx);
@@ -460,21 +501,21 @@ void Window::SetMouseCursor(const std::string& cursorName) {
     }
 }
 
-ImageSize Window::GetSize() {
+ImageSize Window::GetLogicalSize() {
     int width, height;
     SDL_GetWindowSize(static_cast<SDL_Window*>(_internal), &width, &height);
     return ImageSize(width, height);
 }
 
-ImageSize Window::GetFramebufferSize() {
+ImageSize Window::GetPhysicalSize() {
     int width, height;
     SDL_GetWindowSizeInPixels(static_cast<SDL_Window*>(_internal), &width, &height);
     return ImageSize(width, height);
 }
 
 glm::vec2 Window::GetDPI() {
-    auto fb = GetFramebufferSize();
-    auto lp = GetSize();
+    auto fb = GetPhysicalSize();
+    auto lp = GetLogicalSize();
     float sx = (lp.width  > 0) ? float(fb.width)  / float(lp.width)  : 1.0f;
     float sy = (lp.height > 0) ? float(fb.height) / float(lp.height) : 1.0f;
     return glm::vec2(sx, sy);

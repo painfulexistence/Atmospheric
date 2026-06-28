@@ -78,7 +78,7 @@ class NoitaLikeGame : public Application {
     // Rendering state.
     GLuint gridTex = 0;
     std::vector<uint32_t> pixels;
-    FontID fontID = 0;
+    FontHandle fontID = 0;
 
     // RmlUi HUD elements.
     Rml::ElementDocument* hud = nullptr;
@@ -96,6 +96,11 @@ class NoitaLikeGame : public Application {
     }
 
     void OnLoad() override {
+        ComponentFactory::Register("LockstepNetComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              return new LockstepNetComponent(o);
+          });
+
         fontID = graphics.LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
         pixels.assign(size_t(SandWorld::W) * SandWorld::H, 0);
@@ -146,7 +151,7 @@ class NoitaLikeGame : public Application {
 
     void RenderWorld() {
         const GameSim& sim = _netComp->GetSim();
-        auto ws  = GetWindow()->GetSize();
+        auto ws  = GetWindow()->GetLogicalSize();
         auto dpi = GetWindow()->GetDPI();
         float sx = float(ws.width)  / float(SandWorld::W);
         float sy = float(ws.height) / float(SandWorld::H);
@@ -255,7 +260,7 @@ class NoitaLikeGame : public Application {
             RenderWorld();
         } else {
             const LockstepNet& net = _netComp->GetNet();
-            auto ws = GetWindow()->GetSize();
+            auto ws = GetWindow()->GetLogicalSize();
             graphics.DrawQuad(ws.width * 0.5f, ws.height * 0.5f,
                               float(ws.width), float(ws.height), 0.0f,
                               { 0.09f, 0.08f, 0.13f, 1.0f });

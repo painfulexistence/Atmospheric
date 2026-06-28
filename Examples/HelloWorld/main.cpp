@@ -1,6 +1,6 @@
 #include "Atmospheric.hpp"
 #include "components.hpp"
-#ifdef ANDROID
+#if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
 #include <SDL3/SDL_main.h>
 #endif
 
@@ -9,27 +9,50 @@
 class HelloWorld : public Application {
     using Application::Application;
 
-    FontID fontID;
+    FontHandle fontID;
 
     void OnInit() override {
         GoScene("main", [this]{ OnLoad(); });
     }
 
     void OnLoad() override {
+        // Register local components
+        ComponentFactory::Register("RotatorComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              glm::vec3 angVel(0.0f);
+              d.Read("angVel", angVel);
+              return new RotatorComponent(o, angVel);
+          });
+        ComponentFactory::Register("OscillatorComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              glm::vec3 axis(0,1,0);
+              float amp = 1.0f, freq = 1.0f, phase = 0.0f;
+              d.Read("axis", axis);
+              d.Read("amp", amp);
+              d.Read("freq", freq);
+              d.Read("phase", phase);
+              return new OscillatorComponent(o, axis, amp, freq, phase);
+          });
+
+        ComponentFactory::Register("SpritePulseComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              float minA = 0.0f, maxA = 1.0f, freq = 1.0f, phase = 0.0f;
+              d.Read("min", minA);
+              d.Read("max", maxA);
+              d.Read("freq", freq);
+              d.Read("phase", phase);
+              return new SpritePulseComponent(o, minA, maxA, freq, phase);
+          });
+
         // Load font
         fontID = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
-
-        SceneDef scene = {
-            .materials = { { .baseMap = 0,
-                             .normalMap = 1,
-                             .aoMap = 2,
-                             .roughnessMap = 3,
-                             .diffuse = { 1., 1., 1. },
-                             .specular = { .296648, .296648, .296648 },
-                             .ambient = { .25, .20725, .20725 },
-                             .shininess = 0.088 } },
+        MaterialProps matProps = {
+            .diffuse = { 1., 1., 1. },
+            .specular = { .296648, .296648, .296648 },
+            .ambient = { .25, .20725, .20725 },
+            .shininess = 0.088
         };
-        LoadScene(scene);
+        AssetManager::Get().CreateMaterial(matProps);
 
         mainCamera->gameObject->SetPosition(glm::vec3(-10.0, 5.0, 0.0));
 
@@ -43,7 +66,12 @@ class HelloWorld : public Application {
         // Bob along Z; phase pi/2 makes the sine read as cosine (matches the
         // original cos(time) motion).
         cube->AddComponent<OscillatorComponent>(glm::vec3(0.0f, 0.0f, 1.0f), 2.0f, 1.0f, glm::half_pi<float>());
-        cube->AddComponent<WorldLabelComponent>(fontID, "Cube");
+        cube->AddComponent<Text3DComponent>(Text3DProps{
+            .text     = "Cube",
+            .font     = fontID,
+            .fontSize = 16.0f,                             // 16/32 base = scale 0.5, matches original WorldLabelComponent
+            .color    = glm::vec4(1.0f, 1.0f, 0.0f, 1.0f),
+        });
 
         // === World Space Sprites (WorldCanvasPass) ===
         // Rendered with depth testing - occluded by 3D geometry. Each one bobs
@@ -61,7 +89,7 @@ class HelloWorld : public Application {
               .size = glm::vec2(1.0f, 1.0f),
               .pivot = glm::vec2(0.5f, 0.5f),
               .color = worldColors[i],
-              .textureID = -1,
+              .texture = -1,
               .layer = CanvasLayer::LAYER_WORLD,
             });
             spriteObj->AddComponent<OscillatorComponent>(glm::vec3(0.0f, 1.0f, 0.0f), 0.5f, 2.0f, i * 0.5f);
@@ -83,17 +111,20 @@ class HelloWorld : public Application {
               .size = glm::vec2(50.0f, 50.0f),// Pixels
               .pivot = glm::vec2(0.0f, 0.0f),// Top-left pivot
               .color = sprite2DColors[i],
-              .textureID = -1,
+              .texture = -1,
               // Default layer is LAYER_WORLD_2D (2D screen space)
             });
             spriteObj->AddComponent<SpritePulseComponent>(0.4f, 1.0f, 3.0f, i * 1.0f);
         }
 
         // === HUD text ===
-        auto* hud = CreateGameObject();
-        hud->AddComponent<ScreenLabelComponent>(
-          fontID, "Hello World from C++!", glm::vec2(50.0f, 100.0f)
-        );
+        auto* hud = CreateGameObject(glm::vec3(50.0f, 100.0f, 0.0f));
+        hud->AddComponent<Text2DComponent>(Text2DProps{
+            .text = "Hello World from C++!",
+            .font = fontID,
+            .fontSize = 32.0f,
+            .layer = CanvasLayer::LAYER_WORLD_2D
+        });
 
         console.Info(fmt::format("Game fully loaded in {:.1f} seconds", GetWindowTime()));
         console.Info("Press R to reload shaders, ESC to quit");
@@ -170,14 +201,27 @@ static void StartGame() {
 
 #else
 // ─────────────────────────────────────────────────────────────────────────────
-// Native entry point (Linux / macOS / Windows)
+// Native entry point (Linux / macOS / Windows / iOS / Android)
 // ─────────────────────────────────────────────────────────────────────────────
 int main(int argc, char* argv[]) {
+#if defined(__APPLE__) && TARGET_OS_IOS
+    // On iOS, main() must return so UIApplicationMain can drive the run-loop
+    // (SDL fires our animation callback via CADisplayLink). The game object
+    // therefore has to outlive main — heap-allocate and intentionally leak;
+    // the OS reclaims memory on process exit.
+    auto* game = new HelloWorld({
+        .useDefaultTextures = true,
+        .useDefaultShaders  = true,
+    });
+    game->Run();
+    return 0;
+#else
     HelloWorld game({
         .useDefaultTextures = true,
         .useDefaultShaders  = true,
     });
     game.Run();
     return 0;
+#endif
 }
 #endif

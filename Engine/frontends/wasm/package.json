@@ -1,0 +1,22 @@
+{
+  "name": "@atmospheric/engine",
+  "version": "0.2.0",
+  "description": "Atmospheric Engine WASM runtime for Project Cloudscape editor integration",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts"
+    },
+    "./atmos.js": "./atmos.js",
+    "./atmos.wasm": "./atmos.wasm",
+    "./atmos.data": "./atmos.data"
+  },
+  "files": [
+    "index.d.ts",
+    "atmos.js",
+    "atmos.wasm",
+    "atmos.data",
+    "atmos.worker.js"
+  ],
+  "license": "MIT"
+}

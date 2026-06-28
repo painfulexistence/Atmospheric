@@ -53,7 +53,7 @@ class PolyMerge : public Application {
     using Application::Application;
 
     std::mt19937 rng;
-    FontID fontID = 0;
+    FontHandle fontID = 0;
 
     // All live shape game objects (excluding ground/walls)
     std::vector<GameObject*> shapes;
@@ -297,6 +297,23 @@ class PolyMerge : public Application {
     }
 
     void OnLoad() override {
+        // Register local components
+        ComponentFactory::Register("MergeableComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              int sides = 3, minGroup = 2;
+              d.Read("sides", sides);
+              d.Read("minGroup", minGroup);
+              return new MergeableComponent(o, sides, minGroup);
+          });
+        ComponentFactory::Register("ColorRestoreComponent",
+          [](GameObject* o, Deserializer& d) -> Component* {
+              float speed = 2.0f;
+              glm::vec4 target(-1.0f);
+              d.Read("speed", speed);
+              d.Read("target", target);
+              return new ColorRestoreComponent(o, speed, target);
+          });
+
         rng.seed(std::random_device{}());
         score = 0;
         gameOver = false;
@@ -308,11 +325,6 @@ class PolyMerge : public Application {
         fontID = graphics.LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
 
         mainCamera = graphics.GetMainCamera();
-        if (mainCamera) {
-            mainCamera->SetOrthographic(W, H, -100.0f, 100.0f);
-            mainCamera->gameObject->SetPosition(glm::vec3(W * 0.5f, H * 0.5f, 0.0f));
-            mainCamera->Yaw(-glm::half_pi<float>());
-        }
 
         physics2D.SetGravity({0.0f, -520.0f});
 
@@ -431,6 +443,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
         .windowHeight = (int)H,
         .useDefaultTextures = true,
         .useDefaultShaders  = true,
+        .preset = "2D"
     });
     game.Run();
     return 0;

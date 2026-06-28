@@ -10,7 +10,7 @@ struct SpriteProps {
     glm::vec2 size = glm::vec2(100.0f, 100.0f);
     glm::vec2 pivot = glm::vec2(0.5f, 0.5f);
     glm::vec4 color = glm::vec4(1.0f);
-    int textureID = -1;
+    TextureHandle texture;
     CanvasLayer layer = CanvasLayer::LAYER_WORLD;// Default to main game layer
     bool flipX = false;
     bool flipY = false;
@@ -44,10 +44,9 @@ public:
     glm::vec4 GetColor() {
         return _color;
     }
-    int GetTextureID() {
-        return _textureID;
+    TextureHandle GetTexture() {
+        return _texture;
     }
-
     void SetSize(const glm::vec2& size) {
         _size = size;
     }
@@ -57,8 +56,8 @@ public:
     void SetColor(const glm::vec4& color) {
         _color = color;
     }
-    void SetTextureID(int textureID) {
-        _textureID = textureID;
+    void SetTexture(TextureHandle texture) {
+        _texture = texture;
     }
 
     CanvasLayer GetLayer() const override {
@@ -103,7 +102,7 @@ private:
     glm::vec2 _size;// Base size in pixels
     glm::vec2 _pivot;// Pivot point (0,0 = top-left, 1,1 = bottom-right)
     glm::vec4 _color;
-    int _textureID;
+    TextureHandle _texture;
     CanvasLayer _layer;
     glm::vec2 _uvMin = glm::vec2(0.0f, 0.0f);
     glm::vec2 _uvMax = glm::vec2(1.0f, 1.0f);

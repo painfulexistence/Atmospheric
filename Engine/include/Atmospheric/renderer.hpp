@@ -7,7 +7,19 @@
 #include "globals.hpp"
 #include "mesh.hpp"
 #include "render_target.hpp"
+#include <cstdint>
+#include <functional>
 #include <memory>
+#include <vector>
+
+struct GpuImageData {
+    std::vector<uint8_t> data;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t channelCount = 4;
+};
+
+using PixelReadbackCallback = std::function<void(const GpuImageData&)>;
 
 class GraphicsServer;
 class ShaderProgram;
@@ -225,6 +237,11 @@ public:
         return _canvasQueue;
     }
 
+    // Read rendered pixels asynchronously. On this OpenGL backend the readback
+    // is actually synchronous; the callback fires before this method returns.
+    // Pixels are in RGBA order, top-to-bottom (flipped from the raw GL output).
+    void readPixelsAsync(PixelReadbackCallback callback);
+
     glm::vec4 clearColor = glm::vec4(0.15f, 0.183f, 0.2f, 1.0f);
     bool wireframeEnabled = false;
 
@@ -263,22 +280,22 @@ public:
     // Per-frame time (seconds) forwarded from RenderFrame for animated passes.
     float frameTime = 0.0f;
 
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
-    GLuint webglResolvedDepthTex = 0;
-    GLuint webglResolvedDepthFBO = 0;
-    int    webglResolvedDepthWidth = 0;
-    int    webglResolvedDepthHeight = 0;
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
+    GLuint glesResolvedDepthTex = 0;
+    GLuint glesResolvedDepthFBO = 0;
+    int    glesResolvedDepthWidth = 0;
+    int    glesResolvedDepthHeight = 0;
 #endif
 
     // Returns the resolved (non-MSAA) depth texture for screen-space effects.
     GLuint GetResolvedDepthTexture() const {
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
         // WebGL 2.0 does not allow reading from the depth texture of the bound FBO (feedback loop).
         // Since sceneRT is single-sampled on WebGL, we can read from sceneRT's depth texture instead!
         // But if sceneRT is multi-sampled (MSAA enabled), sceneRT has no depth texture (returns 0),
-        // so we must read from the webglResolvedDepthTex where we resolved the depth.
+        // so we must read from the glesResolvedDepthTex where we resolved the depth.
         if (sceneRT && sceneRT->GetNumSamples() > 1) {
-            return webglResolvedDepthTex;
+            return glesResolvedDepthTex;
         }
         if (!sceneRT) return 0;
         return static_cast<GLuint>(sceneRT->GetDepthTextureID());

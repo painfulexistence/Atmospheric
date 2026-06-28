@@ -75,6 +75,12 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
     )
 
+
+    # Use custom centered template only for Release builds
+    # Keep default Emscripten shell layout in Debug builds for easier console/stdout debugging
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_link_options(${TARGET_NAME} PRIVATE "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell.html")
+    endif()
 else()
     find_package(spdlog CONFIG REQUIRED)
     find_package(glad CONFIG REQUIRED)
@@ -89,27 +95,15 @@ else()
 endif()
 
 # ── Asset sync ───────────────────────────────────────────────────────────────
-add_custom_command(
-    TARGET ${TARGET_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/Engine/default_assets
-        $<TARGET_FILE_DIR:${TARGET_NAME}>/assets
+ae_copy_engine_assets(${TARGET_NAME})
+# Ensure scripts/ directory exists for Lua script loading
+add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
-        $<TARGET_FILE_DIR:${TARGET_NAME}>/assets/scripts
-    COMMENT "Syncing default assets for ${TARGET_NAME}"
+        "$<TARGET_FILE_DIR:${TARGET_NAME}>/assets/scripts"
+    VERBATIM
 )
-
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/assets)
-    add_custom_command(
-        TARGET ${TARGET_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets
-            $<TARGET_FILE_DIR:${TARGET_NAME}>/assets
-        COMMENT "Syncing game assets for ${TARGET_NAME}"
-    )
-
-    ae_auto_convert_textures(${TARGET_NAME}
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets/textures
-        $<TARGET_FILE_DIR:${TARGET_NAME}>/assets/textures
-    )
-endif()
+ae_copy_game_assets(${TARGET_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+ae_convert_textures(${TARGET_NAME}
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets/textures"
+    "$<TARGET_FILE_DIR:${TARGET_NAME}>/assets/textures"
+)

@@ -1,4 +1,5 @@
 #include "renderer.hpp"
+#include <cstring>
 #include "asset_manager.hpp"
 #include "batch_renderer_2d.hpp"
 #include "canvas_drawable.hpp"
@@ -16,9 +17,32 @@
 #include "gpu_canvas_pass.hpp"
 #include <webgpu/webgpu.h>
 #endif
+#if defined(__APPLE__) && TARGET_OS_IOS
+#include <SDL3/SDL.h>
+#endif
 #ifdef TRACY_ENABLE
 #include <tracy/Tracy.hpp>
 #endif
+
+// Define AE_GL_DEBUG_PROBES at build time to enable fine-grained GL error
+// probes inside render passes. Used to bisect sticky INVALID_OPERATION etc.
+// on GLES3 ports. Off by default to avoid the per-call glGetError cost.
+#ifdef AE_GL_DEBUG_PROBES
+#define AE_GL_PROBE(target, name) (target).CheckErrors(name)
+#else
+#define AE_GL_PROBE(target, name) ((void)0)
+#endif
+
+static GLenum GetGLPrimitiveType(PrimitiveTopology topology) {
+    switch (topology) {
+        case PrimitiveTopology::Triangles:     return GL_TRIANGLES;
+        case PrimitiveTopology::TriangleStrip: return GL_TRIANGLE_STRIP;
+        case PrimitiveTopology::Lines:          return GL_LINES;
+        case PrimitiveTopology::LineStrip:     return GL_LINE_STRIP;
+        case PrimitiveTopology::Points:        return GL_POINTS;
+    }
+    return GL_TRIANGLES;
+}
 
 struct RenderBatch {
     Mesh* mesh = nullptr;
@@ -102,7 +126,7 @@ void Renderer::Init(int width, int height) {
         glBindVertexArray(0);
     }
 
-    // ── Skybox cube VAO ─────────────────────────────────────────────
+    // ── Skybox cube VAO ───────────────────────────────────────────────
     {
         static const float cubeVerts[] = {
             -1, -1, -1,  1, -1, -1,  1,  1, -1,  1,  1, -1, -1,  1, -1, -1, -1, -1,
@@ -265,6 +289,17 @@ void Renderer::BucketCommands(const glm::vec3& cameraPos) {
 
 void Renderer::RenderFrame(GraphicsServer* ctx, float dt) {
     ZoneScopedN("Renderer::RenderFrame");
+    AE_GL_PROBE(*this, "RenderFrame: entry");
+#if defined(__APPLE__) && TARGET_OS_IOS
+    // SDL3 iOS GLES view uses its own FBO (not 0). Query each frame.
+    {
+        SDL_Window* win = static_cast<SDL_Window*>(Window::Get()->GetNativeHandle());
+        SDL_PropertiesID props = SDL_GetWindowProperties(win);
+        Sint64 fb = SDL_GetNumberProperty(props, SDL_PROP_WINDOW_UIKIT_OPENGL_FRAMEBUFFER_NUMBER, 0);
+        finalFBO = static_cast<GLuint>(fb);
+    }
+    AE_GL_PROBE(*this, "RenderFrame: after query iOS FBO");
+#endif
     frameTime += dt;
     SortAndBucket(ctx->GetMainCamera()->GetEyePosition());
     _renderGraph->Render(ctx, *this);
@@ -287,7 +322,7 @@ void Renderer::CheckFramebufferStatus(const std::string& prefix) {
             throw std::runtime_error(fmt::format("{}: GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT", prefix));
         case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
             throw std::runtime_error(fmt::format("{}: GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE", prefix));
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
         case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER:
             throw std::runtime_error(fmt::format("{}: GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER", prefix));
         case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER:
@@ -316,7 +351,7 @@ void Renderer::CheckErrors(const std::string& prefix) {
         case GL_INVALID_OPERATION:
             error = "INVALID_OPERATION";
             break;
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
         case GL_STACK_OVERFLOW:
             error = "STACK_OVERFLOW";
             break;
@@ -386,7 +421,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
         omniShadowMaps[i] = map;
     }
 
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     glBindFramebuffer(GL_FRAMEBUFFER, shadowFBO);
     GLenum drawBuffers[] = { GL_NONE };
     glDrawBuffers(1, drawBuffers);
@@ -417,10 +452,10 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
         sceneRT = GfxFactory::CreateRenderTarget(p);
     }
 
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     if (sceneRT && sceneRT->GetNumSamples() > 1) {
-        glGenTextures(1, &webglResolvedDepthTex);
-        glBindTexture(GL_TEXTURE_2D, webglResolvedDepthTex);
+        glGenTextures(1, &glesResolvedDepthTex);
+        glBindTexture(GL_TEXTURE_2D, glesResolvedDepthTex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, props.width, props.height, 0,
                      GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -428,18 +463,18 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        glGenFramebuffers(1, &webglResolvedDepthFBO);
-        glBindFramebuffer(GL_FRAMEBUFFER, webglResolvedDepthFBO);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, webglResolvedDepthTex, 0);
+        glGenFramebuffers(1, &glesResolvedDepthFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, glesResolvedDepthFBO);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, glesResolvedDepthTex, 0);
 
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
             Console::Get()->Error("Renderer: WebGL resolved depth FBO incomplete!");
         }
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, finalFBO);
 
-        webglResolvedDepthWidth = props.width;
-        webglResolvedDepthHeight = props.height;
+        glesResolvedDepthWidth = props.width;
+        glesResolvedDepthHeight = props.height;
     }
 #endif
 
@@ -498,7 +533,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
     glDrawBuffers(attachments.size(), attachments.data());
     CheckFramebufferStatus("G-buffer incomplete");
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, finalFBO);
     CheckErrors("Create G-buffer RTs");
 }
 
@@ -506,17 +541,17 @@ void Renderer::DestroyRTs() {
     sceneRT.reset();
     msaaResolveRT.reset();
 
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
-    if (webglResolvedDepthFBO) {
-        glDeleteFramebuffers(1, &webglResolvedDepthFBO);
-        webglResolvedDepthFBO = 0;
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
+    if (glesResolvedDepthFBO) {
+        glDeleteFramebuffers(1, &glesResolvedDepthFBO);
+        glesResolvedDepthFBO = 0;
     }
-    if (webglResolvedDepthTex) {
-        glDeleteTextures(1, &webglResolvedDepthTex);
-        webglResolvedDepthTex = 0;
+    if (glesResolvedDepthTex) {
+        glDeleteTextures(1, &glesResolvedDepthTex);
+        glesResolvedDepthTex = 0;
     }
-    webglResolvedDepthWidth = 0;
-    webglResolvedDepthHeight = 0;
+    glesResolvedDepthWidth = 0;
+    glesResolvedDepthHeight = 0;
 #endif
 
     glDeleteTextures(1, &gBuffer.positionRT);
@@ -562,8 +597,9 @@ void Renderer::CreateDebugBuffer() {
 
 void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("ShadowPass");
+    AE_GL_PROBE(renderer, "Shadow pass: entry");
     glViewport(0, 0, SHADOW_W, SHADOW_H);
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 #endif
 
@@ -587,7 +623,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
     auto mainLight = ctx->GetMainLight();
 
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, renderer.uniShadowMaps[0], 0);
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     GLenum drawBuffers[] = { GL_NONE };
     glDrawBuffers(1, drawBuffers);
 #endif
@@ -616,12 +652,12 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         if (mesh->type == MeshType::PRIM) {
             glBindVertexArray(mesh->vao);
 
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
             // WebGL 2.0 Fallback: Non-instanced draw calls using World uniform
             for (const auto& inst : instances) {
                 depthShader->SetUniform(std::string("World"), inst.modelMatrix);
                 glDrawElements(
-                  mesh->GetMaterial()->primitiveType, mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
+                  GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
                 );
             }
 #else
@@ -631,14 +667,14 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
             // Instanced Draw
             glDrawElementsInstanced(
-              mesh->GetMaterial()->primitiveType, mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+              GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
             );
 #endif
         }
         glBindVertexArray(0);
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
 
     // 2. Render shadow maps for point lights
     if (ctx->pointLights.size() == 0) {
@@ -656,7 +692,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         for (int f = 0; f < 6; ++f) {
             GLenum face = GL_TEXTURE_CUBE_MAP_POSITIVE_X + f;
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, face, renderer.omniShadowMaps[i], 0);
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
             GLenum drawBuffers[] = { GL_NONE };
             glDrawBuffers(1, drawBuffers);
 #endif
@@ -683,12 +719,12 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
                 if (mesh->type == MeshType::PRIM) {
                     glBindVertexArray(mesh->vao);
 
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
                     // WebGL 2.0 Fallback: Non-instanced draw calls using World uniform
                     for (const auto& inst : instances) {
                         depthCubemapShader->SetUniform(std::string("World"), inst.modelMatrix);
                         glDrawElements(
-                          mesh->GetMaterial()->primitiveType, mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
+                          GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
                         );
                     }
 #else
@@ -700,7 +736,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
                     // Instanced Draw
                     glDrawElementsInstanced(
-                      mesh->GetMaterial()->primitiveType, mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+                      GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
                     );
 #endif
                 }
@@ -709,15 +745,17 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         }
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
 }
 
 void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("ForwardOpaquePass");
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    AE_GL_PROBE(renderer, "Opaque pass: entry");
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
 
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
+    AE_GL_PROBE(renderer, "Opaque pass: after bind sceneRT");
     // Bind textures
     auto& assetManager = AssetManager::Get();
     for (int i = 0; i < MAX_UNI_LIGHTS; ++i) {
@@ -728,6 +766,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
         glActiveTexture(GL_TEXTURE0 + UNI_SHADOW_MAP_COUNT + i);
         glBindTexture(GL_TEXTURE_CUBE_MAP, renderer.omniShadowMaps[i]);
     }
+    AE_GL_PROBE(renderer, "Opaque pass: after bind shadow maps");
     // Global static binding removed; textures are now dynamically bound per draw call
 
     auto mainLight = ctx->GetMainLight();
@@ -736,6 +775,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
     glClearColor(renderer.clearColor.x, renderer.clearColor.y, renderer.clearColor.z, renderer.clearColor.w);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    AE_GL_PROBE(renderer, "Opaque pass: after clear");
 
     auto terrainShader = ctx->GetShader("terrain");
     auto colorShader = ctx->GetShader("color");
@@ -753,11 +793,13 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
         if (!mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
+        AE_GL_PROBE(renderer, fmt::format("Opaque pass: batch entry (type={})", (int)mesh->type));
+
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
-        if (renderer.wireframeEnabled || mesh->GetMaterial()->polygonMode == GL_LINE)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
+        if (renderer.wireframeEnabled || mesh->GetMaterial()->polygonMode == PolygonMode::Line)
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         else
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -790,9 +832,9 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             terrainShader->SetUniform(std::string("tessellation_factor"), td.tessellationFactor);
             terrainShader->SetUniform(std::string("height_scale"),         td.heightScale);
             glActiveTexture(GL_TEXTURE7);
-            int heightMap = mesh->GetMaterial()->heightMap;
-            if (heightMap >= 0 && (size_t)heightMap < assetManager.GetTextures().size()) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetTextures()[heightMap]);
+            TextureHandle heightMap = mesh->GetMaterial()->heightMap;
+            if (heightMap.IsValid() && (uint32_t)heightMap != 0) {
+                glBindTexture(GL_TEXTURE_2D, (uint32_t)heightMap);
             } else {
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
@@ -804,11 +846,13 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             terrainShader->SetUniform(std::string("World"), instances[0].modelMatrix);
 
             glBindVertexArray(mesh->vao);
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+            AE_GL_PROBE(renderer, "Opaque pass: TERRAIN after bind VAO");
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
             glDrawArrays(GL_PATCHES, 0, mesh->vertCount);
 #else
             glDrawArrays(GL_TRIANGLES, 0, mesh->vertCount);
 #endif
+            AE_GL_PROBE(renderer, "Opaque pass: TERRAIN after draw");
             glBindVertexArray(0);
             break;
         }
@@ -878,9 +922,9 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             // Material textures - dynamically bound to Units 2-6
             // Base Map (Unit 2)
             glActiveTexture(GL_TEXTURE2);
-            int baseMap = mesh->GetMaterial()->baseMap;
-            if (baseMap >= 0 && (size_t)baseMap < assetManager.GetTextures().size()) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetTextures()[baseMap]);
+            TextureHandle baseMap = mesh->GetMaterial()->baseMap;
+            if (baseMap.IsValid() && (uint32_t)baseMap != 0) {
+                glBindTexture(GL_TEXTURE_2D, (uint32_t)baseMap);
             } else if (assetManager.GetDefaultTextures().size() > 0) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[0]);
             } else {
@@ -890,9 +934,9 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
             // Normal Map (Unit 3)
             glActiveTexture(GL_TEXTURE3);
-            int normalMap = mesh->GetMaterial()->normalMap;
-            if (normalMap >= 0 && (size_t)normalMap < assetManager.GetTextures().size()) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetTextures()[normalMap]);
+            TextureHandle normalMap = mesh->GetMaterial()->normalMap;
+            if (normalMap.IsValid() && (uint32_t)normalMap != 0) {
+                glBindTexture(GL_TEXTURE_2D, (uint32_t)normalMap);
             } else if (assetManager.GetDefaultTextures().size() > 1) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[1]);
             } else {
@@ -902,9 +946,9 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
             // AO Map (Unit 4)
             glActiveTexture(GL_TEXTURE4);
-            int aoMap = mesh->GetMaterial()->aoMap;
-            if (aoMap >= 0 && (size_t)aoMap < assetManager.GetTextures().size()) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetTextures()[aoMap]);
+            TextureHandle aoMap = mesh->GetMaterial()->aoMap;
+            if (aoMap.IsValid() && (uint32_t)aoMap != 0) {
+                glBindTexture(GL_TEXTURE_2D, (uint32_t)aoMap);
             } else if (assetManager.GetDefaultTextures().size() > 2) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[2]);
             } else {
@@ -914,9 +958,9 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
             // Roughness Map (Unit 5)
             glActiveTexture(GL_TEXTURE5);
-            int roughnessMap = mesh->GetMaterial()->roughnessMap;
-            if (roughnessMap >= 0 && (size_t)roughnessMap < assetManager.GetTextures().size()) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetTextures()[roughnessMap]);
+            TextureHandle roughnessMap = mesh->GetMaterial()->roughnessMap;
+            if (roughnessMap.IsValid() && (uint32_t)roughnessMap != 0) {
+                glBindTexture(GL_TEXTURE_2D, (uint32_t)roughnessMap);
             } else if (assetManager.GetDefaultTextures().size() > 3) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[3]);
             } else {
@@ -926,9 +970,9 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
             // Metallic Map (Unit 6)
             glActiveTexture(GL_TEXTURE6);
-            int metallicMap = mesh->GetMaterial()->metallicMap;
-            if (metallicMap >= 0 && (size_t)metallicMap < assetManager.GetTextures().size()) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetTextures()[metallicMap]);
+            TextureHandle metallicMap = mesh->GetMaterial()->metallicMap;
+            if (metallicMap.IsValid() && (uint32_t)metallicMap != 0) {
+                glBindTexture(GL_TEXTURE_2D, (uint32_t)metallicMap);
             } else if (assetManager.GetDefaultTextures().size() > 4) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[4]);
             } else {
@@ -939,13 +983,15 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             glBindVertexArray(mesh->vao);
             glBindBuffer(GL_ARRAY_BUFFER, mesh->ibo);
 
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
-            // WebGL 2.0 Fallback: Non-instanced draw calls using World uniform
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
+            // GLES 3 / WebGL 2.0 fallback: Non-instanced draw calls using World uniform
+            AE_GL_PROBE(renderer, "Opaque pass: PRIM-GLES before non-instanced loop");
             for (const auto& inst : instances) {
                 colorShader->SetUniform(std::string("World"), inst.modelMatrix);
                 glDrawElements(
-                  mesh->GetMaterial()->primitiveType, mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
+                  GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
                 );
+                AE_GL_PROBE(renderer, "Opaque pass: PRIM-GLES after glDrawElements");
             }
 #else
             // Upload batched instance data
@@ -953,9 +999,11 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
                 glBufferData(
                   GL_ARRAY_BUFFER, instances.size() * sizeof(InstanceData), instances.data(), GL_DYNAMIC_DRAW
                 );
+                AE_GL_PROBE(renderer, "Opaque pass: PRIM after upload instance VBO");
                 glDrawElementsInstanced(
-                  mesh->GetMaterial()->primitiveType, mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+                  GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
                 );
+                AE_GL_PROBE(renderer, "Opaque pass: PRIM after instanced draw");
             }
 #endif
 
@@ -985,7 +1033,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
 void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("DeferredGeometryPass");
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
 
     glBindFramebuffer(GL_FRAMEBUFFER, renderer.gBuffer.id);
@@ -1040,9 +1088,9 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
             // Material textures - dynamically bound to Units 2-6
             // Base Map (Unit 2)
             glActiveTexture(GL_TEXTURE2);
-            int baseMap = mesh->GetMaterial()->baseMap;
-            if (baseMap >= 0 && (size_t)baseMap < assetManager.GetTextures().size()) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetTextures()[baseMap]);
+            TextureHandle baseMap = mesh->GetMaterial()->baseMap;
+            if (baseMap.IsValid() && (uint32_t)baseMap != 0) {
+                glBindTexture(GL_TEXTURE_2D, (uint32_t)baseMap);
             } else if (assetManager.GetDefaultTextures().size() > 0) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[0]);
             } else {
@@ -1052,9 +1100,9 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
 
             // Normal Map (Unit 3)
             glActiveTexture(GL_TEXTURE3);
-            int normalMap = mesh->GetMaterial()->normalMap;
-            if (normalMap >= 0 && (size_t)normalMap < assetManager.GetTextures().size()) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetTextures()[normalMap]);
+            TextureHandle normalMap = mesh->GetMaterial()->normalMap;
+            if (normalMap.IsValid() && (uint32_t)normalMap != 0) {
+                glBindTexture(GL_TEXTURE_2D, (uint32_t)normalMap);
             } else if (assetManager.GetDefaultTextures().size() > 1) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[1]);
             } else {
@@ -1064,9 +1112,9 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
 
             // AO Map (Unit 4)
             glActiveTexture(GL_TEXTURE4);
-            int aoMap = mesh->GetMaterial()->aoMap;
-            if (aoMap >= 0 && (size_t)aoMap < assetManager.GetTextures().size()) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetTextures()[aoMap]);
+            TextureHandle aoMap = mesh->GetMaterial()->aoMap;
+            if (aoMap.IsValid() && (uint32_t)aoMap != 0) {
+                glBindTexture(GL_TEXTURE_2D, (uint32_t)aoMap);
             } else if (assetManager.GetDefaultTextures().size() > 2) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[2]);
             } else {
@@ -1076,9 +1124,9 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
 
             // Roughness Map (Unit 5)
             glActiveTexture(GL_TEXTURE5);
-            int roughnessMap = mesh->GetMaterial()->roughnessMap;
-            if (roughnessMap >= 0 && (size_t)roughnessMap < assetManager.GetTextures().size()) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetTextures()[roughnessMap]);
+            TextureHandle roughnessMap = mesh->GetMaterial()->roughnessMap;
+            if (roughnessMap.IsValid() && (uint32_t)roughnessMap != 0) {
+                glBindTexture(GL_TEXTURE_2D, (uint32_t)roughnessMap);
             } else if (assetManager.GetDefaultTextures().size() > 3) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[3]);
             } else {
@@ -1088,9 +1136,9 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
 
             // Metallic Map (Unit 6)
             glActiveTexture(GL_TEXTURE6);
-            int metallicMap = mesh->GetMaterial()->metallicMap;
-            if (metallicMap >= 0 && (size_t)metallicMap < assetManager.GetTextures().size()) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetTextures()[metallicMap]);
+            TextureHandle metallicMap = mesh->GetMaterial()->metallicMap;
+            if (metallicMap.IsValid() && (uint32_t)metallicMap != 0) {
+                glBindTexture(GL_TEXTURE_2D, (uint32_t)metallicMap);
             } else if (assetManager.GetDefaultTextures().size() > 4) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[4]);
             } else {
@@ -1105,7 +1153,7 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
                   GL_ARRAY_BUFFER, instances.size() * sizeof(InstanceData), instances.data(), GL_DYNAMIC_DRAW
                 );
                 glDrawElementsInstanced(
-                  mesh->GetMaterial()->primitiveType, mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+                  GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
                 );
             }
             glBindVertexArray(0);
@@ -1117,7 +1165,7 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
 
 void DeferredLightingPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("DeferredLightingPass");
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
 
@@ -1180,7 +1228,7 @@ void TransparentPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("MSAAResolvePass");
     
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
  
     // Resolve MSAA color + depth — both RTs now use GL_DEPTH_COMPONENT32F.
@@ -1189,16 +1237,16 @@ void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
     glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
                       GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
-    if (renderer.webglResolvedDepthFBO != 0) {
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, renderer.webglResolvedDepthFBO);
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
+    if (renderer.glesResolvedDepthFBO != 0) {
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, renderer.glesResolvedDepthFBO);
         glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
                           GL_DEPTH_BUFFER_BIT, GL_NEAREST);
     }
 #endif
- 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
- 
+
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
+
     renderer.CheckErrors("MSAA resolve pass");
 }
 
@@ -1217,7 +1265,7 @@ void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 
     if (worldDrawables.empty()) return;
 
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID());
 
@@ -1233,7 +1281,7 @@ void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
     glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 #endif
 
@@ -1275,7 +1323,7 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
         if (renderer.GetCanvasQueue().empty()) return;
 
-        auto [width, height] = Window::Get()->GetFramebufferSize();
+        auto [width, height] = Window::Get()->GetPhysicalSize();
         const glm::mat4 viewProj = glm::ortho(0.0f, (float)width, (float)height, 0.0f, -1.0f, 1.0f);
 
         WGPUTextureView targetView = GfxFactory::GetCurrentSwapchainView();
@@ -1307,7 +1355,7 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
     if (drawables2D.empty() && renderer.GetCanvasQueue().empty()) return;
 
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID());
 
@@ -1315,7 +1363,7 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
     glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 #endif
 
@@ -1328,7 +1376,7 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         // Fallback or perspective camera handling for 2D?
         // For now, if perspective, we might just use screen space or a default ortho.
         // Let's assume default ortho for safety if no 2D camera is set.
-        auto [winW, winH] = Window::Get()->GetSize();
+        auto [winW, winH] = Window::Get()->GetLogicalSize();
         worldViewProj = glm::ortho(0.0f, (float)winW, (float)winH, 0.0f, -1.0f, 1.0f);
     }
 
@@ -1353,9 +1401,9 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("PostProcessPass");
 
-    auto size = Window::Get()->GetFramebufferSize();
+    auto size = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, size.width, size.height);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, renderer.msaaResolveRT->GetTextureID());
@@ -1395,11 +1443,11 @@ void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* en
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // RmlUi context dimensions are in logical pixels, so projection must match.
-    auto logicalSize = Window::Get()->GetSize();
+    auto logicalSize = Window::Get()->GetLogicalSize();
     float width = (float)logicalSize.width;
     float height = (float)logicalSize.height;
 
-    glViewport(0, 0, Window::Get()->GetFramebufferSize().width, Window::Get()->GetFramebufferSize().height);
+    glViewport(0, 0, Window::Get()->GetPhysicalSize().width, Window::Get()->GetPhysicalSize().height);
     glm::mat4 projection = glm::ortho(0.0f, width, height, 0.0f, -1.0f, 1.0f);
 
     batchRenderer->BeginBatch(projection);
@@ -1415,4 +1463,50 @@ void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* en
     // Restore state
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
+}
+
+void Renderer::readPixelsAsync(PixelReadbackCallback callback) {
+    if (!callback) return;
+
+    // Prefer the resolved (non-MSAA) target; fall back to the main scene RT.
+    RenderTarget* src = msaaResolveRT ? msaaResolveRT.get() : sceneRT.get();
+    if (!src) return;
+
+    int w = src->GetWidth();
+    int h = src->GetHeight();
+
+    GpuImageData img;
+    img.width = static_cast<uint32_t>(w);
+    img.height = static_cast<uint32_t>(h);
+    img.channelCount = 4;
+    img.data.resize(static_cast<size_t>(w) * h * 4);
+
+    // Attach the color texture to a temporary FBO so glReadPixels can read it.
+    GLuint tmpFBO = 0;
+    glGenFramebuffers(1, &tmpFBO);
+
+    GLint prevReadFBO = 0;
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevReadFBO);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, tmpFBO);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D,
+                           static_cast<GLuint>(src->GetTextureID()), 0);
+    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, img.data.data());
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(prevReadFBO));
+    glDeleteFramebuffers(1, &tmpFBO);
+
+    // Flip rows: OpenGL origin is bottom-left; callers expect top-to-bottom.
+    const size_t rowBytes = static_cast<size_t>(w) * 4;
+    std::vector<uint8_t> flipped(img.data.size());
+    for (int row = 0; row < h; ++row) {
+        std::memcpy(
+            flipped.data() + static_cast<size_t>(row) * rowBytes,
+            img.data.data() + static_cast<size_t>(h - 1 - row) * rowBytes,
+            rowBytes);
+    }
+    img.data = std::move(flipped);
+
+    callback(img);
 }

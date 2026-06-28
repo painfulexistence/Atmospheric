@@ -280,7 +280,7 @@ Sprite3DComponent::Sprite3DComponent(GameObject* gameObject, const Sprite3DProps
     _size = props.size;
     _color = props.color;
     _pivot = props.pivot;
-    _textureID = props.textureID;
+    _texture = props.texture;
     _billboardMode = props.billboardMode;
 
     if (props.meshCols > 0 && props.meshRows > 0) {
@@ -407,7 +407,7 @@ void Sprite3DComponent::DrawSimpleQuad(BatchRenderer2D* renderer, const glm::mat
         { _uvMax.x, _uvMax.y },
         { _uvMin.x, _uvMax.y }
     };
-    renderer->DrawQuad(transform, _textureID, uvs, _color);
+    renderer->DrawQuad(transform, _texture, uvs, _color);
 }
 
 void Sprite3DComponent::DrawMesh(BatchRenderer2D* renderer, const glm::mat4& transform) {
@@ -433,7 +433,7 @@ void Sprite3DComponent::DrawMesh(BatchRenderer2D* renderer, const glm::mat4& tra
         batchVertices.push_back(bv);
     }
 
-    renderer->DrawGeometry(batchVertices, meshIndices, _textureID, glm::mat4(1.0f));
+    renderer->DrawGeometry(batchVertices, meshIndices, _texture, glm::mat4(1.0f));
 }
 
 void Sprite3DComponent::Draw(BatchRenderer2D* renderer) {

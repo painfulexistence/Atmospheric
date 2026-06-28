@@ -52,7 +52,7 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND}
             -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts
             -Ddst=${EM_PRELOAD_STAGING_DIR}/fonts
-            -P ${CMAKE_SOURCE_DIR}/cmake/copy_dir_if_exists.cmake
+            -P ${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake
         COMMENT "Staging Emscripten preload assets (shaders, scenes, fonts) for ${GAME_NAME}"
     )
     add_dependencies(${GAME_NAME} stage_${GAME_NAME}_em_preload)
@@ -69,6 +69,12 @@ if(EMSCRIPTEN)
     )
     target_link_options(${GAME_NAME} PRIVATE ${_em_link_opts})
 
+
+    # Use custom centered template only for Release builds
+    # Keep default Emscripten shell layout in Debug builds for easier console/stdout debugging
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_link_options(${GAME_NAME} PRIVATE "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell.html")
+    endif()
 else()
     # ── Native build ─────────────────────────────────────────────────────────
     find_package(spdlog CONFIG REQUIRED)
@@ -82,21 +88,6 @@ else()
     )
 endif()
 
-# ── Asset sync for desktop ──
-if(NOT EMSCRIPTEN)
-    add_custom_command(
-        TARGET ${GAME_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/Engine/default_assets
-        $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-    )
-
-    if(EXISTS ${GAME_ASSETS_DIR})
-        add_custom_command(
-            TARGET ${GAME_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${GAME_ASSETS_DIR}
-            $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-        )
-    endif()
-endif()
+# ── Asset sync ──
+ae_copy_engine_assets(${GAME_NAME})
+ae_copy_game_assets(${GAME_NAME} "${GAME_ASSETS_DIR}")

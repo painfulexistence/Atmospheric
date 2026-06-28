@@ -58,6 +58,12 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
     )
 
+
+    # Use custom centered template only for Release builds
+    # Keep default Emscripten shell layout in Debug builds for easier console/stdout debugging
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_link_options(${GAME_NAME} PRIVATE "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell.html")
+    endif()
 else()
     # ── Native build ─────────────────────────────────────────────────────────
     find_package(spdlog CONFIG REQUIRED)
@@ -72,28 +78,10 @@ else()
 endif()
 
 # ── Asset sync ───────────────────────────────────────────────────────────────
-if(NOT EMSCRIPTEN)
-    add_custom_command(
-        TARGET ${GAME_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/Engine/default_assets
-            $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-        COMMENT "Syncing default assets for ${GAME_NAME}"
-    )
-
-    set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
-    if(EXISTS ${GAME_ASSETS_DIR})
-        add_custom_command(
-            TARGET ${GAME_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                ${GAME_ASSETS_DIR}
-                $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-            COMMENT "Syncing game assets for ${GAME_NAME}"
-        )
-
-        ae_auto_convert_textures(${GAME_NAME}
-            ${GAME_ASSETS_DIR}/textures
-            $<TARGET_FILE_DIR:${GAME_NAME}>/assets/textures
-        )
-    endif()
-endif()
+set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
+ae_copy_engine_assets(${GAME_NAME})
+ae_copy_game_assets(${GAME_NAME} "${GAME_ASSETS_DIR}")
+ae_convert_textures(${GAME_NAME}
+    "${GAME_ASSETS_DIR}/textures"
+    "$<TARGET_FILE_DIR:${GAME_NAME}>/assets/textures"
+)

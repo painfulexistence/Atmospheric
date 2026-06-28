@@ -165,7 +165,7 @@ void RmlUiManager::OnResize(int width, int height) {
     m_height = height;
 
     if (m_context) {
-        // TODO: width/height must be logical pixels (GetSize()), not framebuffer pixels (GetFramebufferSize()),
+        // TODO: width/height must be logical pixels (GetSize()), not framebuffer pixels (GetPhysicalSize()),
         // to match RmlUi's CSS px unit expectations. Wire this to ViewportResizeCallback, not FramebufferResizeCallback.
         m_context->SetDimensions(Rml::Vector2i(width, height));
     }

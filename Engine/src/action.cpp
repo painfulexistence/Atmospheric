@@ -1,7 +1,8 @@
 #include "action.hpp"
 #include "animator_2d.hpp"// For AnimationClip definition
 #include "sprite_component.hpp"
-#include "text_component.hpp"
+#include "text_2d_component.hpp"
+#include "text_3d_component.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -456,11 +457,13 @@ ColorTo::ColorTo(float duration, const glm::vec4& color) : ActionInterval(durati
 
 void ColorTo::StartWithTarget(GameObject* target) {
     ActionInterval::StartWithTarget(target);
-    // Try SpriteComponent first, then TextComponent
+    // Try SpriteComponent first, then Text2DComponent / Text3DComponent
     if (auto* sprite = target->GetComponent<SpriteComponent>()) {
         _startColor = sprite->GetColor();
-    } else if (auto* text = target->GetComponent<TextComponent>()) {
+    } else if (auto* text = target->GetComponent<Text2DComponent>()) {
         _startColor = text->GetColor();
+    } else if (auto* text3d = target->GetComponent<Text3DComponent>()) {
+        _startColor = text3d->GetColor();
     } else {
         _startColor = glm::vec4(1.0f);
     }
@@ -472,8 +475,10 @@ void ColorTo::Update(float t) {
     glm::vec4 newColor = _startColor + _delta * t;
     if (auto* sprite = _target->GetComponent<SpriteComponent>()) {
         sprite->SetColor(newColor);
-    } else if (auto* text = _target->GetComponent<TextComponent>()) {
+    } else if (auto* text = _target->GetComponent<Text2DComponent>()) {
         text->SetColor(newColor);
+    } else if (auto* text3d = _target->GetComponent<Text3DComponent>()) {
+        text3d->SetColor(newColor);
     }
 }
 
@@ -486,8 +491,10 @@ void FadeTo::StartWithTarget(GameObject* target) {
     ActionInterval::StartWithTarget(target);
     if (auto* sprite = target->GetComponent<SpriteComponent>()) {
         _startAlpha = sprite->GetColor().a;
-    } else if (auto* text = target->GetComponent<TextComponent>()) {
+    } else if (auto* text = target->GetComponent<Text2DComponent>()) {
         _startAlpha = text->GetColor().a;
+    } else if (auto* text3d = target->GetComponent<Text3DComponent>()) {
+        _startAlpha = text3d->GetColor().a;
     } else {
         _startAlpha = 1.0f;
     }
@@ -500,9 +507,13 @@ void FadeTo::Update(float t) {
         glm::vec4 color = sprite->GetColor();
         color.a = newAlpha;
         sprite->SetColor(color);
-    } else if (auto* text = _target->GetComponent<TextComponent>()) {
+    } else if (auto* text = _target->GetComponent<Text2DComponent>()) {
         glm::vec4 color = text->GetColor();
         color.a = newAlpha;
         text->SetColor(color);
+    } else if (auto* text3d = _target->GetComponent<Text3DComponent>()) {
+        glm::vec4 color = text3d->GetColor();
+        color.a = newAlpha;
+        text3d->SetColor(color);
     }
 }

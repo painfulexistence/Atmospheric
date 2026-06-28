@@ -91,6 +91,12 @@ Colors taken directly from the existing `webgpu_support_devlog_1.html` and `2d_c
 
 /* Focus ring */
 --focus-ring: 0 0 0 2px var(--color-primary);
+
+/* Modal */
+--modal-overlay-bg: rgba(0, 0, 0, 0.85);
+--modal-max-width: 1024px;
+--modal-max-height: 640px;
+--modal-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
 ```
 
 <!-- spec:yaml
@@ -129,6 +135,12 @@ typography:
 
 layout:
   max-width: "860px"
+
+modal:
+  --modal-overlay-bg: "rgba(0, 0, 0, 0.85)"
+  --modal-max-width: "1024px"
+  --modal-max-height: "640px"
+  --modal-shadow: "0 20px 50px rgba(0, 0, 0, 0.8)"
 
 css-output: "styles/global.css"
 -->

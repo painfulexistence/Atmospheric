@@ -43,7 +43,7 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND}
             -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts
             -Ddst=${EM_PRELOAD_STAGING_DIR}/fonts
-            -P ${CMAKE_SOURCE_DIR}/cmake/copy_dir_if_exists.cmake
+            -P ${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake
         COMMENT "Staging Emscripten preload assets for ${GAME_NAME}"
     )
     add_dependencies(${GAME_NAME} stage_${GAME_NAME}_em_preload)
@@ -61,21 +61,17 @@ if(EMSCRIPTEN)
         list(APPEND RPG_EM_LINK_OPTIONS -O3 -sASSERTIONS=1)
     endif()
     target_link_options(${GAME_NAME} PRIVATE ${RPG_EM_LINK_OPTIONS})
+
+    # Use custom centered template only for Release builds
+    # Keep default Emscripten shell layout in Debug builds for easier console/stdout debugging
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_link_options(${GAME_NAME} PRIVATE "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell.html")
+    endif()
 else()
     find_package(spdlog CONFIG REQUIRED)
     find_package(glad CONFIG REQUIRED)
     target_link_libraries(${GAME_NAME} PRIVATE glad::glad spdlog::spdlog raudio SDL3::SDL3)
 endif()
 
-if(NOT EMSCRIPTEN)
-    add_custom_command(
-        TARGET ${GAME_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/Engine/default_assets
-            $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${GAME_ASSETS_DIR}
-            $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-        COMMENT "Copying default assets for ${GAME_NAME}"
-    )
-endif()
+ae_copy_engine_assets(${GAME_NAME})
+ae_copy_game_assets(${GAME_NAME} "${GAME_ASSETS_DIR}")

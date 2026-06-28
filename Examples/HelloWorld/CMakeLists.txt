@@ -9,6 +9,9 @@ find_package(Bullet CONFIG REQUIRED)
 if(ANDROID)
     set(GAME_TARGET main)
     add_library(${GAME_TARGET} SHARED main.cpp)
+elseif(IOS)
+    set(GAME_TARGET main)
+    add_executable(${GAME_TARGET} MACOSX_BUNDLE main.cpp)
 else()
     set(GAME_TARGET ${GAME_NAME})
     add_executable(${GAME_TARGET} main.cpp)
@@ -54,11 +57,11 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND}
             -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts
             -Ddst=${EM_PRELOAD_STAGING_DIR}/fonts
-            -P ${CMAKE_SOURCE_DIR}/cmake/copy_dir_if_exists.cmake
+            -P ${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake
         COMMAND ${CMAKE_COMMAND}
             -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
             -Ddst=${EM_PRELOAD_STAGING_DIR}/scenes
-            -P ${CMAKE_SOURCE_DIR}/cmake/copy_dir_if_exists.cmake
+            -P ${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake
         COMMENT "Staging Emscripten preload assets (shaders, fonts, scenes) for ${GAME_NAME}"
     )
     add_dependencies(${GAME_TARGET} stage_${GAME_NAME}_em_preload)
@@ -81,45 +84,30 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
     )
 
+
+    # Use custom centered template only for Release builds
+    # Keep default Emscripten shell layout in Debug builds for easier console/stdout debugging
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_link_options(${GAME_TARGET} PRIVATE "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell.html")
+    endif()
 else()
     # ── Native build ─────────────────────────────────────────────────────────
-    find_package(spdlog CONFIG REQUIRED)
-    find_package(glad CONFIG REQUIRED)
-
-    target_link_libraries(${GAME_TARGET} PRIVATE
-        glad::glad
-        spdlog::spdlog
-        raudio
-    )
+    if(NOT IOS)
+        find_package(spdlog CONFIG REQUIRED)
+        find_package(glad CONFIG REQUIRED)
+        target_link_libraries(${GAME_TARGET} PRIVATE glad::glad spdlog::spdlog raudio)
+    endif()
 
     target_link_libraries(${GAME_TARGET} PRIVATE SDL3::SDL3)
 endif()
 
 # ── Asset sync ───────────────────────────────────────────────────────────────
-if(NOT ANDROID AND NOT IOS)
-    add_custom_command(
-        TARGET ${GAME_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/Engine/default_assets
-            $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-        COMMENT "Syncing default assets for ${GAME_NAME}"
-    )
-
-    if(EXISTS ${GAME_ASSETS_DIR})
-        add_custom_command(
-            TARGET ${GAME_NAME} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                ${GAME_ASSETS_DIR}
-                $<TARGET_FILE_DIR:${GAME_NAME}>/assets
-            COMMENT "Syncing game assets for ${GAME_NAME}"
-        )
-
-        ae_auto_convert_textures(${GAME_NAME}
-            ${GAME_ASSETS_DIR}/textures
-            $<TARGET_FILE_DIR:${GAME_NAME}>/assets/textures
-        )
-    endif()
-endif()
+ae_copy_engine_assets(${GAME_TARGET})
+ae_copy_game_assets(${GAME_TARGET} "${GAME_ASSETS_DIR}")
+ae_convert_textures(${GAME_TARGET}
+    "${GAME_ASSETS_DIR}/textures"
+    "$<TARGET_FILE_DIR:${GAME_TARGET}>/assets/textures"
+)
 
 if(ANDROID)
     # Automatically copy SDL3 Java sources from the fetched dependency to Gradle source sets
@@ -140,3 +128,4 @@ if(ANDROID)
         message(WARNING "Android CMake: SDL3 Java sources not found at '${SDL3_JAVA_SRC_DIR}'!")
     endif()
 endif()
+

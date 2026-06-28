@@ -77,6 +77,14 @@ public:
     //   auto bytes = FileSystem::Get().ConsumeSync("hero.ktx2");
     //   // upload bytes to GPU
     //   // bytes is freed when it goes out of scope; cache entry already gone
+    //
+    // Cross-platform asymmetry on cache miss:
+    //   Native — falls back to a synchronous disk read (lenient).
+    //   Web    — returns {} and logs an error. The asset MUST be Prefetch()'d
+    //            first; emscripten_fetch is async-only.
+    // Write call sites assuming the native lenient behaviour and they break
+    // silently on the web. Always pair ConsumeSync() of web-targeted assets
+    // with a prior Prefetch().
     Bytes ConsumeSync(const std::string& path);
 
     // ── Batch prefetch ────────────────────────────────────────────────────────
@@ -110,6 +118,16 @@ public:
     // Drop the entire cache. Call after a loading phase completes and you no
     // longer need the cached bytes (e.g., between level loads).
     void ClearCache();
+
+    // ── In-memory mount ───────────────────────────────────────────────────────
+    // Inject a file directly from a memory buffer, without any disk/network I/O.
+    // The bytes are copied into the in-process cache (so ReadSync/ConsumeSync
+    // return them instantly) and, on web, also written to Emscripten MEMFS so
+    // that fopen() / std::filesystem::exists() find them. This is how the editor
+    // bridge supplies textures/audio referenced by an in-memory scene before
+    // calling LoadEditorScene — there is no server to fetch them from.
+    // Overwrites any existing entry at `path`.
+    void WriteFile(const std::string& path, const uint8_t* data, size_t len);
 
 private:
     FileSystem()                             = default;

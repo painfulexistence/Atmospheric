@@ -161,9 +161,12 @@ public:
     std::string GetClipboardText();
     void SetMouseCursor(const std::string& cursorName);
 
-    ImageSize GetSize();
-    ImageSize GetFramebufferSize();
+    ImageSize GetLogicalSize();
+    ImageSize GetPhysicalSize();
     glm::vec2 GetDPI();
+
+    // Returns the native window handle (SDL_Window* on SDL backend).
+    void* GetNativeHandle() const { return _internal; }
 
 private:
     void* _internal = nullptr;

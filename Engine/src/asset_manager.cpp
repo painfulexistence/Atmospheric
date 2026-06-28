@@ -1,7 +1,6 @@
 #include "asset_manager.hpp"
 #include <algorithm>
 #include <unordered_set>
-#include <spdlog/spdlog.h>
 #include "console.hpp"
 #include "file_system.hpp"
 #include "job_system.hpp"
@@ -12,6 +11,14 @@
 #ifdef AE_USE_RMLUI
 #include "rmlui_manager.hpp"
 #endif
+
+TextureHandle::TextureHandle(const char* path) {
+    *this = AssetManager::Get().CreateTexture(path);
+}
+
+TextureHandle::TextureHandle(const std::string& path) {
+    *this = AssetManager::Get().CreateTexture(path);
+}
 
 #include "fmt/core.h"
 
@@ -227,13 +234,13 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
     // Read raw bytes via FileSystem to support transparent web prefetching
     FileSystem::Bytes fileData = FileSystem::Get().ReadSync(path);
     if (fileData.empty()) {
-        spdlog::warn("AssetManager::LoadImage: Failed to read file bytes via FileSystem at '{}'", path);
+        Console::Get()->Warn(fmt::format("AssetManager::LoadImage: Failed to read file bytes via FileSystem at '{}'", path));
         return nullptr;
     }
 
     int width, height, numChannels;
     if (!stbi_info_from_memory(fileData.data(), (int)fileData.size(), &width, &height, &numChannels)) {
-        spdlog::warn("stbi_info_from_memory: Failed to read image metadata at '{}'", path);
+        Console::Get()->Warn(fmt::format("stbi_info_from_memory: Failed to read image metadata at '{}'", path));
         return nullptr;
     }
 
@@ -291,11 +298,11 @@ void AssetManager::LoadDefaultShaders() {
                     "hdr",
                     { .vert = "assets/shaders/hdr.vert", .frag = "assets/shaders/hdr.frag" },
                   },
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
                   {
                     "terrain",
-                    { .vert = "assets/shaders/simple.vert",
-                      .frag = "assets/shaders/flat.frag" },
+                    { .vert = "assets/shaders/terrain_simple.vert",
+                      .frag = "assets/shaders/terrain.frag" },
                   },
 #else
                   {
@@ -334,7 +341,7 @@ ShaderProgram* AssetManager::CreateShader(const std::string& name, const ShaderP
         return shaders[it->second];
     }
 
-    auto* shader = new ShaderProgram(props);
+    auto* shader = new GLShaderProgram(props);
     shaders.push_back(shader);
     _shaderCache[name] = _nextShaderID++;
 
@@ -560,7 +567,7 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
         GLuint texID = regularTexIDs[j];
 
         if (!img) {
-            spdlog::warn("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]);
+            Console::Get()->Warn(fmt::format("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]));
             // Re-use the default texture (defaultTextures[0]) as a safe fallback
             textures[oldCount + i] = defaultTextures.empty() ? 0u : defaultTextures[0];
             _textureCache[regularPaths[j]] = { textures[oldCount + i], 0, 0, 0 };
@@ -597,7 +604,7 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
     }
 }
 
-GLuint AssetManager::CreateTexture(const std::string& path) {
+TextureHandle AssetManager::CreateTexture(const std::string& path) {
     std::string redirectedPath = path;
     if (redirectedPath.size() >= 2 && redirectedPath[0] == '.' && redirectedPath[1] == '/')
         redirectedPath = redirectedPath.substr(2);
@@ -605,10 +612,10 @@ GLuint AssetManager::CreateTexture(const std::string& path) {
     redirectedPath = RedirectToKTX2(redirectedPath); // also normalizes "./" internally
 #endif
 
-    // Return cached texture (GLuint) if already uploaded.
+    // Return cached texture (TextureHandle) if already uploaded.
     auto it = _textureCache.find(redirectedPath);
     if (it != _textureCache.end()) {
-        return it->second.glID;
+        return TextureHandle(it->second.glID);
     }
 
 #ifdef AE_USE_BASIS_UNIVERSAL
@@ -618,18 +625,26 @@ GLuint AssetManager::CreateTexture(const std::string& path) {
         GLuint texID = LoadKTX2Texture(redirectedPath, &tex2d);
         textures.push_back(texID);
         _textureCache[redirectedPath] = tex2d;
-        return texID;
+        return TextureHandle(texID);
     }
 #endif
 
     // Regular image (PNG / JPG / etc.) via stb_image.
     auto image = LoadImage(redirectedPath);
+    if (!image) {
+        Console::Get()->Warn(fmt::format("AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.", redirectedPath));
+        GLuint fallbackTex = defaultTextures.empty() ? 0u : defaultTextures[0];
+        _textureCache[redirectedPath] = { fallbackTex, 0, 0, 0 };
+        return TextureHandle(fallbackTex);
+    }
     return CreateTextureFromImage(image);
 }
 
-GLuint AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>& image) {
+TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>& image) {
     if (!image) {
-        throw std::runtime_error("Cannot create texture from null image");
+        Console::Get()->Warn("AssetManager::CreateTextureFromImage: Null image, returning default fallback texture.");
+        GLuint fallbackTex = defaultTextures.empty() ? 0u : defaultTextures[0];
+        return TextureHandle(fallbackTex);
     }
 
     GLuint texID;
@@ -662,22 +677,22 @@ GLuint AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>& image)
     size_t bytes = (size_t)image->width * image->height * image->channelCount;
     _textureCache["unnamed_" + std::to_string(_nextTextureID++)] = { texID, (uint32_t)image->width, (uint32_t)image->height, bytes };
     textures.push_back(texID);
-    return texID;
+    return TextureHandle(texID);
 }
 
-GLuint AssetManager::GetTexture(const std::string& name) const {
+TextureHandle AssetManager::GetTexture(const std::string& name) const {
     auto it = _textureCache.find(name);
     if (it != _textureCache.end()) {
-        return it->second.glID;
+        return TextureHandle(it->second.glID);
     }
-    throw std::runtime_error(fmt::format("Texture '{}' not found", name));
+    return TextureHandle(); // Return invalid handle (id = INVALID)
 }
 
 GLuint AssetManager::GetTextureByID(uint32_t id) const {
     if (id < textures.size()) {
         return textures[id];
     }
-    throw std::runtime_error(fmt::format("Texture ID {} out of range", id));
+    return 0;
 }
 
 std::string AssetManager::GetTexturePath(GLuint id) const {
@@ -1087,15 +1102,12 @@ std::shared_ptr<Mesh> AssetManager::LoadOBJ(const std::string& path) {
     return mesh;
 }
 
-int AssetManager::CreateHeightmapTexture(
+TextureHandle AssetManager::CreateHeightmapTexture(
     const std::string& name, const std::vector<float>& grid, int width, int height
 ) {
     auto it = _textureCache.find(name);
     if (it != _textureCache.end()) {
-        // Return existing index
-        const GLuint target = it->second.glID;
-        for (int i = 0; i < (int)textures.size(); ++i)
-            if (textures[i] == target) return i;
+        return TextureHandle(it->second.glID);
     }
 
     std::vector<uint8_t> bytes(width * height);
@@ -1113,8 +1125,7 @@ int AssetManager::CreateHeightmapTexture(
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    int idx = (int)textures.size();
     textures.push_back(texID);
     _textureCache[name] = { texID, (uint32_t)width, (uint32_t)height, (size_t)(width * height) };
-    return idx;
+    return TextureHandle(texID);
 }

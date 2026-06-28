@@ -1,49 +1,6 @@
 option(BUILD_SHARED_LIBS OFF)
 
-# ── ae_auto_convert_textures(<target> <src_dir> <dst_dir>) ───────────────────
-# Emscripten-only: converts every PNG/JPG under <src_dir> to KTX2 in the
-# corresponding path under <dst_dir>.  Each file is its own custom command so
-# only changed images are re-converted.  Adds CMAKE_CONFIGURE_DEPENDS on
-# <src_dir> so new files are picked up on the next configure.
-# No-op on native builds or when AE_USE_BASIS_UNIVERSAL is off.
-macro(ae_auto_convert_textures TARGET SRC_DIR DST_DIR)
-    if(EMSCRIPTEN AND AE_USE_BASIS_UNIVERSAL)
-        if(EXISTS "${SRC_DIR}")
-            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${SRC_DIR}")
-
-            file(GLOB_RECURSE _IMGS
-                LIST_DIRECTORIES false
-                "${SRC_DIR}/*.png" "${SRC_DIR}/*.jpg" "${SRC_DIR}/*.jpeg"
-            )
-            if(_IMGS)
-                set(_OUTPUTS)
-                foreach(_IMG ${_IMGS})
-                    if(_IMG MATCHES "heightmap")
-                        continue()
-                    endif()
-                    file(RELATIVE_PATH _REL "${SRC_DIR}" "${_IMG}")
-                    get_filename_component(_STEM    "${_REL}" NAME_WE)
-                    get_filename_component(_SUBDIR  "${_REL}" DIRECTORY)
-                    set(_OUT_DIR "${DST_DIR}/${_SUBDIR}")
-                    set(_KTX2    "${_OUT_DIR}/${_STEM}.ktx2")
-                    list(APPEND _OUTPUTS "${_KTX2}")
-
-                    add_custom_command(
-                        OUTPUT "${_KTX2}"
-                        COMMAND "${CMAKE_COMMAND}" -E make_directory "${_OUT_DIR}"
-                        COMMAND "${BASISU_EXECUTABLE}" -ktx2 -mipmap -y_flip "${_IMG}" -output_path "${_OUT_DIR}"
-                        DEPENDS "${_IMG}" basisu_host_tool
-                        COMMENT "Converting ${_STEM} → KTX2"
-                        VERBATIM
-                    )
-                endforeach()
-
-                add_custom_target(${TARGET}_convert_textures ALL DEPENDS ${_OUTPUTS})
-                add_dependencies(${TARGET} ${TARGET}_convert_textures)
-            endif()
-        endif()
-    endif()
-endmacro()
+include(AssetPipeline)
 
 
 # FetchContent_Populate is called directly for lua_src, sol2_src, and
@@ -53,7 +10,7 @@ if(POLICY CMP0169)
     cmake_policy(SET CMP0169 OLD)
 endif()
 
-# ── FastNoiseLite (single-header noise library) ───────────────────────────────
+# ── FastNoiseLite (single-header noise library) ────────────────────────────────────────────
 FetchContent_Declare(
     FastNoiseLite
     GIT_REPOSITORY https://github.com/Auburn/FastNoiseLite.git
@@ -77,7 +34,9 @@ if(NOT EMSCRIPTEN)
     set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(SDL_TESTS_LIBRARY OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(SDL3)
-    find_package(glad CONFIG REQUIRED)
+    if(NOT IOS)
+        find_package(glad CONFIG REQUIRED)
+    endif()
 endif()
 find_package(glm CONFIG REQUIRED)
 find_package(Tracy CONFIG)
@@ -101,7 +60,7 @@ find_package(spdlog REQUIRED)
 find_package(RmlUi REQUIRED)
 find_package(flatbuffers CONFIG REQUIRED)
 
-# ── Lua 5.4 (built from source) ───────────────────────────────────────────────
+# ── Lua 5.4 (built from source) ───────────────────────────────────────────────────────────────
 # Building from source rather than find_package(lua) because:
 #   1. Emscripten must compile Lua to WASM — system lua.a is host-arch only.
 #   2. Avoids architecture mismatch on Apple Silicon (arm64 vs x86_64).
@@ -120,14 +79,18 @@ endif()
 # Lua's repo has all .c files in the root (no src/ subdir).
 # Exclude the standalone interpreter (lua.c) and compiler (luac.c).
 file(GLOB LUA_CORE_SOURCES "${lua_src_SOURCE_DIR}/*.c")
-list(FILTER LUA_CORE_SOURCES EXCLUDE REGEX ".*(lua|luac)\\.c$")
+list(FILTER LUA_CORE_SOURCES EXCLUDE REGEX ".*(lua|luac)\.c$")
 
 add_library(lua_static STATIC ${LUA_CORE_SOURCES})
 target_include_directories(lua_static PUBLIC "${lua_src_SOURCE_DIR}")
-if(UNIX AND NOT EMSCRIPTEN)
+if(UNIX AND NOT EMSCRIPTEN AND NOT IOS)
     # Enable POSIX APIs (better file I/O, signals, etc.) on Linux / macOS.
-    # Not needed on Windows or Emscripten.
+    # Not needed on Windows, Emscripten, or iOS.
     target_compile_definitions(lua_static PRIVATE LUA_USE_POSIX)
+endif()
+if(IOS)
+    # LUA_USE_IOS disables os.execute() and other APIs unavailable in the iOS sandbox.
+    target_compile_definitions(lua_static PRIVATE LUA_USE_IOS)
 endif()
 # Suppress warnings from Lua's C code (not our code, not our problem)
 if(MSVC)
@@ -139,7 +102,7 @@ if(EMSCRIPTEN)
     target_compile_options(lua_static PRIVATE -pthread)
 endif()
 
-# ── sol2 (develop branch, header-only) ────────────────────────────────────────
+# ── sol2 (develop branch, header-only) ──────────────────────────────────────────────────────────────
 # v3.3.0 had a bug in optional_implementation.hpp where tl::optional's CRTP
 # base 'construct' method is not visible in the reference-type specialisation
 # (optional<T&>).  Apple Clang 15+ (Xcode 15 / macOS 14) enforces this more
@@ -184,6 +147,11 @@ add_custom_command(
 
 if(NOT EMSCRIPTEN)
     add_subdirectory(external/raudio/projects/CMake)
+    if(IOS)
+        # miniaudio on Apple platforms includes ObjC frameworks (CoreAudio, AVFoundation).
+        # Force Clang to treat raudio.c as Objective-C so those headers compile correctly.
+        target_compile_options(raudio PRIVATE -x objective-c)
+    endif()
 endif()
 
 
@@ -208,7 +176,8 @@ set(SOURCES
     src/mesh_component.cpp
     src/sprite_component.cpp
     src/sprite_3d_component.cpp
-    src/text_component.cpp
+    src/text_2d_component.cpp
+    src/text_3d_component.cpp
     src/height_field.cpp
     src/terrain_mesh_component.cpp
     src/height_field_collider_component.cpp
@@ -246,13 +215,15 @@ set(SOURCES
     src/sun_component.cpp
     src/scene_loader.cpp
     src/scene_transition.cpp
+    src/video_player.cpp
+    src/video_recorder.cpp
     src/script.cpp
-    src/component_registry.cpp
+    src/component_factory.cpp
     src/tilemap_2d.cpp
     src/lighting_2d.cpp
     ${FLATBUFFERS_GENERATED_DIR}/Scene_generated.h
 )
-# ── Graphics backend selection ────────────────────────────────────────────────
+# ── Graphics backend selection ────────────────────────────────────────────────────────────────────
 # Native  : Dawn WebGPU (not yet integrated — falls back to OpenGL 4.1).
 # Web     : browser WebGPU via Emscripten (AE_USE_WEBGPU=ON)
 #           or WebGL 2.0 fallback (AE_USE_WEBGPU=OFF, default).
@@ -264,6 +235,12 @@ if(NOT EMSCRIPTEN)
     list(APPEND SOURCES src/window_sdl3.cpp)
 else()
     list(APPEND SOURCES src/window_glfw.cpp)
+    # WASM editor bridge frontend (Emscripten-only). Kept in frontends/ for
+    # organisational parity with frontends/lua, but compiled into the engine
+    # library because the exports are engine infrastructure (the EXPORTED_FUNCTIONS
+    # link flags below are likewise engine-level INTERFACE options), not per-game
+    # logic like the Lua frontend.
+    list(APPEND SOURCES frontends/wasm/bindings.cpp)
     if(AE_USE_WEBGPU)
         list(APPEND SOURCES src/gpu_buffer.cpp)
         list(APPEND SOURCES src/gpu_render_target.cpp)
@@ -403,14 +380,40 @@ if(AE_USE_BASIS_UNIVERSAL)
     target_link_libraries(AtmosphericEngine PUBLIC basisu_transcoder)
     target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_BASIS_UNIVERSAL)
 endif()
-if(EMSCRIPTEN)
+if(AE_USE_FFMPEG AND NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
+    # Use the system FFmpeg located via pkg-config rather than building the
+    # heavy ffmpeg port through vcpkg. Install it with:
+    #   macOS:        brew install ffmpeg pkg-config
+    #   Debian/Ubuntu: apt install libavcodec-dev libavformat-dev libavutil-dev \
+    #                              libswscale-dev libswresample-dev pkg-config
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(FFMPEG IMPORTED_TARGET
+            libavcodec libavformat libavutil libswscale libswresample)
+    endif()
+    if(FFMPEG_FOUND)
+        message(STATUS "FFmpeg enabled (AE_USE_FFMPEG=ON, system via pkg-config). VideoPlayer and VideoRecorder available.")
+        target_compile_definitions(AtmosphericEngine PUBLIC AE_HAS_FFMPEG)
+        target_link_libraries(AtmosphericEngine PUBLIC PkgConfig::FFMPEG)
+    else()
+        message(WARNING
+            "AE_USE_FFMPEG=ON but no system FFmpeg was found via pkg-config. Install it "
+            "(macOS: `brew install ffmpeg pkg-config`; Debian/Ubuntu: `apt install "
+            "libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev "
+            "pkg-config`), or pass -DAE_USE_FFMPEG=OFF. VideoPlayer and VideoRecorder are disabled.")
+    endif()
+elseif(NOT AE_USE_FFMPEG)
+    message(STATUS "FFmpeg disabled (AE_USE_FFMPEG=OFF). VideoPlayer and VideoRecorder will be unavailable.")
+endif()
+if(EMSCRIPTEN OR ANDROID OR IOS)
     # IMGUI_IMPL_OPENGL_ES3 : tell Dear ImGui's OpenGL3 backend to use GLES3
-    #   headers (GLES3/gl3.h) instead of the default desktop GL3 loader
-    #   (imgui_impl_opengl3_loader.h) which tries to dlopen("libGL.so").
-    #   Without this, imgui_impl_opengl3.cpp fails to work on WebGL 2.0.
+    #   headers instead of the default desktop GL3 loader.
+    #   Required on WebGL 2.0, Android (GLES3), and iOS (OpenGLES).
+    target_compile_definitions(AtmosphericEngine PRIVATE IMGUI_IMPL_OPENGL_ES3)
+endif()
+if(EMSCRIPTEN)
     # spdlog::spdlog : console.cpp and scene_loader.cpp call spdlog directly;
     #   Emscripten maps stdout → browser console so spdlog works fine on web.
-    target_compile_definitions(AtmosphericEngine PRIVATE IMGUI_IMPL_OPENGL_ES3)
     target_compile_definitions(AtmosphericEngine PUBLIC BT_THREADSAFE=1)
     target_link_libraries(AtmosphericEngine PUBLIC spdlog::spdlog)
     # -pthread        : enable WASM threads (SharedArrayBuffer + Atomics)
@@ -442,24 +445,30 @@ if(EMSCRIPTEN)
             -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
             -sFETCH=1
             -sUSE_PTHREADS=1
-            "-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency"
-            -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])
+            -sINITIAL_MEMORY=134217728
+            -sMAXIMUM_MEMORY=536870912
+            "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
+            "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_load_editor_scene_json','_ae_add_scene','_ae_unload_scene','_ae_get_loaded_scenes','_ae_get_last_loaded_scene','_ae_reset_scene','_ae_get_version','_ae_is_ready','_ae_mount_file','_ae_get_scene_error']"
+            "-sEXPORTED_RUNTIME_METHODS=['requestFullscreen','ccall','HEAPU8']"
+            "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     else()
         target_link_options(AtmosphericEngine INTERFACE
             -sWASM=1 -O3 -sUSE_GLFW=3
             -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
             -sFETCH=1
             -sUSE_PTHREADS=1
-            "-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency"
-            -sEXPORTED_RUNTIME_METHODS=["requestFullscreen"])
+            -sINITIAL_MEMORY=134217728
+            -sMAXIMUM_MEMORY=536870912
+            "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
+            "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_load_editor_scene_json','_ae_add_scene','_ae_unload_scene','_ae_get_loaded_scenes','_ae_get_last_loaded_scene','_ae_reset_scene','_ae_get_version','_ae_is_ready','_ae_mount_file','_ae_get_scene_error']"
+            "-sEXPORTED_RUNTIME_METHODS=['requestFullscreen','ccall','HEAPU8']"
+            "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     endif()
 else()
     target_compile_definitions(AtmosphericEngine PUBLIC BT_THREADSAFE=1)
-    target_link_libraries(AtmosphericEngine
-        PUBLIC
-            glad::glad
-            spdlog::spdlog
-    )
+    if(NOT IOS)
+        target_link_libraries(AtmosphericEngine PUBLIC glad::glad spdlog::spdlog)
+    endif()
     if(AE_USE_TRACY)
         target_link_libraries(AtmosphericEngine PUBLIC Tracy::TracyClient)
         target_compile_definitions(AtmosphericEngine PUBLIC TRACY_ENABLE TRACY_VERBOSE TRACY_ON_DEMAND)
@@ -474,4 +483,58 @@ else()
         endif()
         target_link_libraries(AtmosphericEngine PUBLIC log android)
     endif()
+    if(IOS)
+        target_link_libraries(AtmosphericEngine PUBLIC
+            "-framework OpenGLES"
+            "-framework UIKit"
+            "-framework Foundation"
+            "-framework GameController"
+            "-framework CoreMotion"
+        )
+    endif()
 endif()
+
+# ── @atmospheric/engine npm package (Emscripten-only) ────────────────────────
+# Minimal Application shell (module.cpp); all scene loading driven by the
+# JS bridge (bindings.cpp, compiled into AtmosphericEngine above).
+#
+# Build layout — option C:
+#   source  Engine/frontends/wasm/   package.json, index.d.ts (source-of-truth)
+#   build   build/AtmosWasm/          atmos.js/.wasm/.worker.js + metadata
+#
+# POST_BUILD copies package.json + index.d.ts into the build dir so that
+# directory is a self-contained npm package for cloudscape's file:// dep:
+#   "@atmospheric/engine": "file:../atmospheric-src/build/AtmosWasm"
+if(EMSCRIPTEN)
+    set(_AE_WASM_SRC "${CMAKE_CURRENT_SOURCE_DIR}/frontends/wasm")
+    set(_AE_WASM_OUT "${CMAKE_BINARY_DIR}/AtmosWasm")
+
+    add_executable(atmospheric frontends/wasm/module.cpp)
+    target_link_libraries(atmospheric PRIVATE AtmosphericEngine)
+    set_target_properties(atmospheric PROPERTIES
+        OUTPUT_NAME atmos
+        RUNTIME_OUTPUT_DIRECTORY "${_AE_WASM_OUT}"
+    )
+    # Bundle default_assets/ into atmos.data so the engine can read shaders,
+    # fonts and textures from MEMFS at path assets/ without any JS-side setup.
+    target_link_options(atmospheric PRIVATE
+        "SHELL:--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/default_assets@assets"
+    )
+
+    # The pthread build (-sUSE_PTHREADS=1) emits atmos.worker.js next to atmos.js.
+    # Emscripten writes it to $<TARGET_FILE_DIR:atmospheric>; guard the copy so
+    # non-pthread builds (where the worker file does not exist) don't error out.
+    add_custom_command(TARGET atmospheric POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_AE_WASM_OUT}"
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "${_AE_WASM_SRC}/package.json" "${_AE_WASM_OUT}/package.json"
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "${_AE_WASM_SRC}/index.d.ts"  "${_AE_WASM_OUT}/index.d.ts"
+        COMMAND ${CMAKE_COMMAND} -Dsrc="$<TARGET_FILE_DIR:atmospheric>/atmos.worker.js"
+            -Ddst="${_AE_WASM_OUT}/atmos.worker.js"
+            -P "${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake"
+        COMMENT "Assembling @atmospheric/engine package → ${_AE_WASM_OUT}"
+    )
+endif()
+
+set(AE_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/default_assets" PARENT_SCOPE)

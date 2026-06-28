@@ -6,22 +6,6 @@
 
 class GameObject;
 
-struct GameObjectProps {
-    std::string name;
-    glm::vec3 position;
-    glm::vec3 rotation;
-    glm::vec3 scale;
-    std::optional<CameraProps> camera;
-    std::optional<LightProps> light;
-};
-
-struct SceneDef {
-    std::vector<std::string> textures;
-    std::unordered_map<std::string, ShaderProgramProps> shaders;
-    std::vector<MaterialProps> materials;
-    std::vector<GameObjectProps> gameObjects;
-};
-
 struct SceneNode {
     std::string name;
     SceneNode* parent;
@@ -35,7 +19,7 @@ struct SceneNode {
 
 class Scene {
 public:
-    Scene(const SceneDef& data);
+    Scene() : root(nullptr) {}
 
     SceneNode* GetRoot() {
         return root;

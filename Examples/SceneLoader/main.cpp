@@ -21,11 +21,6 @@ class CSBDemo : public Application {
 
         // Set up orthographic camera for 2D view
         mainCamera = graphics.GetMainCamera();
-        if (mainCamera) {
-            mainCamera->SetOrthographic(800.0f, 600.0f, -100.0f, 100.0f);
-            mainCamera->gameObject->SetPosition(glm::vec3(400.0f, 300.0f, 0.0f));
-            mainCamera->Yaw(-glm::half_pi<float>());
-        }
 
         loadedScene = sceneLoader->Load("assets/scenes/Canvas.csb", glm::vec3(0.0f), CanvasLayer::LAYER_WORLD);
         if (loadedScene.success) {
@@ -307,12 +302,20 @@ class CSBDemo : public Application {
                 ImGui::Text("  zOrder: %d", sprite->GetZOrder());
             }
 
-            if (auto* text = go->GetComponent<TextComponent>()) {
-                ImGui::Text("  [Text]");
+            if (auto* text = go->GetComponent<Text2DComponent>()) {
+                ImGui::Text("  [Text2D]");
                 ImGui::Text("  Content: %s", text->GetText().c_str());
-                ImGui::Text("  Font: %s", text->GetFontPath().c_str());
+                ImGui::Text("  Font ID: %u", text->GetFont().id);
                 ImGui::Text("  Size: %.1f", text->GetFontSize());
                 auto col = text->GetColor();
+                ImGui::Text("  Color: (%.2f, %.2f, %.2f, %.2f)", col.r, col.g, col.b, col.a);
+            }
+            if (auto* text3d = go->GetComponent<Text3DComponent>()) {
+                ImGui::Text("  [Text3D]");
+                ImGui::Text("  Content: %s", text3d->GetText().c_str());
+                ImGui::Text("  Font ID: %u", text3d->GetFont().id);
+                ImGui::Text("  Size: %.1f", text3d->GetFontSize());
+                auto col = text3d->GetColor();
                 ImGui::Text("  Color: (%.2f, %.2f, %.2f, %.2f)", col.r, col.g, col.b, col.a);
             }
 
@@ -331,6 +334,7 @@ int main(int argc, char* argv[]) {
       .windowHeight = 600,
       .useDefaultTextures = true,
       .useDefaultShaders = true,
+      .preset = "2D"
     });
     game.Run();
     return 0;

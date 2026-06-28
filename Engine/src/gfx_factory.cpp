@@ -117,7 +117,7 @@ void GfxFactory::Init() {
     }
 
     // ── Configure surface ─────────────────────────────────────────────────────
-    auto [w, h] = Window::Get()->GetFramebufferSize();
+    auto [w, h] = Window::Get()->GetPhysicalSize();
     _swapchainFormat = WGPUTextureFormat_BGRA8Unorm;
     WGPUSurfaceConfiguration cfg{};
     cfg.device      = device;

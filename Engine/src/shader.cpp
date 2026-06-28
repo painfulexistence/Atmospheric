@@ -1,7 +1,7 @@
 #include "shader.hpp"
 #include "file.hpp"
 
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
 #include <regex>
 
 static std::string PreprocessShaderForWebGL(std::string src, ShaderType type) {
@@ -10,7 +10,7 @@ static std::string PreprocessShaderForWebGL(std::string src, ShaderType type) {
     src = std::regex_replace(src, versionRegex, "#version 300 es");
 
     // Insert precision qualifiers for fragment shaders if not present
-    if (type == ShaderType::FRAGMENT) {
+    if (type == ShaderType::Fragment) {
         // Strip layout(location = ...) from fragment shader inputs (in)
         std::regex fragInputLayoutRegex(R"(layout\s*\(\s*location\s*=\s*[0-9]+\s*\)\s*in\b)");
         src = std::regex_replace(src, fragInputLayoutRegex, "in");
@@ -28,7 +28,7 @@ static std::string PreprocessShaderForWebGL(std::string src, ShaderType type) {
                 src = "precision highp float;\nprecision highp int;\n" + src;
             }
         }
-    } else if (type == ShaderType::VERTEX) {
+    } else if (type == ShaderType::Vertex) {
         // Transform instanced matrix attribute to uniform for non-instanced WebGL 2.0 fallback
         std::regex worldAttrRegex(R"(layout\s*\(\s*location\s*=\s*5\s*\)\s*in\s+mat4\s+World\s*;)");
         src = std::regex_replace(src, worldAttrRegex, "uniform mat4 World;");
@@ -37,15 +37,27 @@ static std::string PreprocessShaderForWebGL(std::string src, ShaderType type) {
 }
 #endif
 
+static GLenum GetGLShaderType(ShaderType type) {
+    switch (type) {
+        case ShaderType::Vertex:         return GL_VERTEX_SHADER;
+        case ShaderType::Fragment:       return GL_FRAGMENT_SHADER;
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
+        case ShaderType::TessControl:    return GL_TESS_CONTROL_SHADER;
+        case ShaderType::TessEvaluation: return GL_TESS_EVALUATION_SHADER;
+#endif
+        default: return GL_VERTEX_SHADER;
+    }
+}
+
 Shader::Shader(const std::string& path, ShaderType type) {
     std::string shaderSrc = File(path).GetContent();
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     shaderSrc = PreprocessShaderForWebGL(shaderSrc, type);
 #endif
     const char* src = shaderSrc.c_str();
     const int len = shaderSrc.size();
 
-    shader = glCreateShader(type);
+    shader = glCreateShader(GetGLShaderType(type));
     glShaderSource(shader, 1, &src, &len);
 
     glCompileShader(shader);
@@ -62,15 +74,15 @@ Shader::Shader(const std::string& path, ShaderType type) {
     }
 }
 
-ShaderProgram::ShaderProgram(const ShaderProgramProps& props) : _program(glCreateProgram()), _props(props) {
-    glAttachShader(_program, Shader(props.vert, ShaderType::VERTEX).shader);
-    glAttachShader(_program, Shader(props.frag, ShaderType::FRAGMENT).shader);
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
+GLShaderProgram::GLShaderProgram(const ShaderProgramProps& props) : _program(glCreateProgram()), _props(props) {
+    glAttachShader(_program, Shader(props.vert, ShaderType::Vertex).shader);
+    glAttachShader(_program, Shader(props.frag, ShaderType::Fragment).shader);
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
     if (props.tesc.has_value()) {
-        glAttachShader(_program, Shader(props.tesc.value(), ShaderType::TESS_CONTROL).shader);
+        glAttachShader(_program, Shader(props.tesc.value(), ShaderType::TessControl).shader);
     }
     if (props.tese.has_value()) {
-        glAttachShader(_program, Shader(props.tese.value(), ShaderType::TESS_EVALUATION).shader);
+        glAttachShader(_program, Shader(props.tese.value(), ShaderType::TessEvaluation).shader);
     }
 #endif
 
@@ -100,22 +112,43 @@ ShaderProgram::ShaderProgram(const ShaderProgramProps& props) : _program(glCreat
     }
 }
 
-bool ShaderProgram::Reload() {
+GLShaderProgram::GLShaderProgram(
+  std::string vert, std::string frag, std::optional<std::string> tesc, std::optional<std::string> tese
+)
+  : _program(glCreateProgram()), _props{vert, frag, tesc, tese} {
+    glAttachShader(_program, Shader(vert, ShaderType::Vertex).shader);
+    glAttachShader(_program, Shader(frag, ShaderType::Fragment).shader);
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
+    if (tesc.has_value() && tese.has_value()) {
+        glAttachShader(_program, Shader(tesc.value(), ShaderType::TessControl).shader);
+        glAttachShader(_program, Shader(tese.value(), ShaderType::TessEvaluation).shader);
+    }
+#endif
+    glLinkProgram(_program);
+}
+
+GLShaderProgram::~GLShaderProgram() {
+    if (_program != 0) {
+        glDeleteProgram(_program);
+    }
+}
+
+bool GLShaderProgram::Reload() {
     if (_props.vert.empty() || _props.frag.empty()) {
         return false;
     }
 
-    GLuint newProgram = glCreateProgram();
+    uint32_t newProgram = glCreateProgram();
 
     try {
-        glAttachShader(newProgram, Shader(_props.vert, ShaderType::VERTEX).shader);
-        glAttachShader(newProgram, Shader(_props.frag, ShaderType::FRAGMENT).shader);
-#ifndef __EMSCRIPTEN__
+        glAttachShader(newProgram, Shader(_props.vert, ShaderType::Vertex).shader);
+        glAttachShader(newProgram, Shader(_props.frag, ShaderType::Fragment).shader);
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
         if (_props.tesc.has_value()) {
-            glAttachShader(newProgram, Shader(_props.tesc.value(), ShaderType::TESS_CONTROL).shader);
+            glAttachShader(newProgram, Shader(_props.tesc.value(), ShaderType::TessControl).shader);
         }
         if (_props.tese.has_value()) {
-            glAttachShader(newProgram, Shader(_props.tese.value(), ShaderType::TESS_EVALUATION).shader);
+            glAttachShader(newProgram, Shader(_props.tese.value(), ShaderType::TessEvaluation).shader);
         }
 #endif
 
@@ -154,39 +187,52 @@ bool ShaderProgram::Reload() {
     }
 }
 
-ShaderProgram::ShaderProgram(
-  std::string vert, std::string frag, std::optional<std::string> tesc, std::optional<std::string> tese
-)
-  : _program(glCreateProgram()), _props{vert, frag, tesc, tese} {
-    glAttachShader(_program, Shader(vert, ShaderType::VERTEX).shader);
-    glAttachShader(_program, Shader(frag, ShaderType::FRAGMENT).shader);
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID)
-    if (tesc.has_value() && tese.has_value()) {
-        glAttachShader(_program, Shader(tesc.value(), ShaderType::TESS_CONTROL).shader);
-        glAttachShader(_program, Shader(tese.value(), ShaderType::TESS_EVALUATION).shader);
-    }
-#endif
-    glLinkProgram(_program);
-}
-
-ShaderProgram::ShaderProgram(std::array<Shader, 2>& shaders) : _program(glCreateProgram()) {
-    for (int i = shaders.size() - 1; i >= 0; i--) {
-        glAttachShader(_program, shaders[i].shader);
-    }
-    glLinkProgram(_program);
-}
-
-ShaderProgram::ShaderProgram(std::array<Shader, 4>& shaders) : _program(glCreateProgram()) {
-    for (int i = shaders.size() - 1; i >= 0; i--) {
-        glAttachShader(_program, shaders[i].shader);
-    }
-    glLinkProgram(_program);
-}
-
-void ShaderProgram::Activate() {
+void GLShaderProgram::Activate() {
     glUseProgram(_program);
 }
 
-void ShaderProgram::Deactivate() {
+void GLShaderProgram::Deactivate() {
     glUseProgram(0);
+}
+
+int GLShaderProgram::GetAttrib(const std::string& attrib) {
+    return glGetAttribLocation(_program, attrib.c_str());
+}
+
+int GLShaderProgram::GetUniform(const std::string& uniform) {
+    auto it = _uniformLocationCache.find(uniform);
+    if (it != _uniformLocationCache.end()) {
+        return it->second;
+    }
+    return CacheUniform(uniform.c_str());
+}
+
+void GLShaderProgram::SetUniform(const std::string& uniform, const glm::mat4& val) {
+    glUniformMatrix4fv(GetUniform(uniform), 1, GL_FALSE, &val[0][0]);
+}
+
+void GLShaderProgram::SetUniform(const std::string& uniform, const glm::vec2& val) {
+    glUniform2fv(GetUniform(uniform), 1, &val[0]);
+}
+
+void GLShaderProgram::SetUniform(const std::string& uniform, const glm::vec3& val) {
+    glUniform3fv(GetUniform(uniform), 1, &val[0]);
+}
+
+void GLShaderProgram::SetUniform(const std::string& uniform, int val) {
+    glUniform1i(GetUniform(uniform), val);
+}
+
+void GLShaderProgram::SetUniform(const std::string& uniform, float val) {
+    glUniform1f(GetUniform(uniform), val);
+}
+
+int GLShaderProgram::CacheUniform(const std::string& uniform) {
+    auto it = _uniformLocationCache.find(uniform);
+    if (it != _uniformLocationCache.end()) {
+        return it->second;
+    }
+    GLint location = glGetUniformLocation(_program, uniform.c_str());
+    _uniformLocationCache[uniform] = location;
+    return location;
 }

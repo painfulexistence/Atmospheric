@@ -17,6 +17,8 @@ echo -e "${BLUE}===================================================${NC}"
 # 預設建置類型為 Release
 BUILD_TYPE="Release"
 WEBGPU_SUPPORT="OFF"
+NO_SERVER="OFF"
+NO_EXAMPLES="OFF"
 
 # 解析參數
 for arg in "$@"; do
@@ -30,11 +32,20 @@ for arg in "$@"; do
         --webgpu)
             WEBGPU_SUPPORT="ON"
             ;;
+        --no-server)
+            NO_SERVER="ON"
+            ;;
+        --no-examples)
+            NO_EXAMPLES="ON"
+            ;;
     esac
 done
 
 echo -e "建置類型: ${GREEN}${BUILD_TYPE}${NC}"
 echo -e "WebGPU 支援: ${GREEN}${WEBGPU_SUPPORT}${NC}"
+if [ "$NO_EXAMPLES" = "ON" ]; then
+    echo -e "Examples: ${YELLOW}略過${NC}"
+fi
 echo -e ""
 
 # 1. 檢查是否已設定 Emscripten SDK 環境變數
@@ -81,6 +92,10 @@ echo -e ""
 
 # 4. 執行 CMake 設定
 echo -e "${YELLOW}🛠️  正在為 Emscripten (WebAssembly) 設定 CMake 專案...${NC}"
+BUILD_EXAMPLES_FLAG="ON"
+if [ "$NO_EXAMPLES" = "ON" ]; then
+    BUILD_EXAMPLES_FLAG="OFF"
+fi
 emcmake cmake -G Ninja \
   -B "$BUILD_DIR" \
   -S . \
@@ -88,25 +103,49 @@ emcmake cmake -G Ninja \
   -DVCPKG_OVERLAY_TRIPLETS="$(pwd)/triplets" \
   -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-  -DAE_USE_WEBGPU="$WEBGPU_SUPPORT"
+  -DAE_USE_WEBGPU="$WEBGPU_SUPPORT" \
+  -DAE_BUILD_EXAMPLES="$BUILD_EXAMPLES_FLAG"
 
-# 5. 進行建置 (目標包含 AtmosLua, HelloWorld 與 Maze 迷宮遊戲)
+# 5. 進行建置 (自動偵測記憶體以避免 OOM)
+PARALLEL_JOBS="--parallel"
+TOTAL_MEM_MB=""
+
+if [ -f /proc/meminfo ]; then
+    # Linux 系統偵測
+    TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+    TOTAL_MEM_MB=$((TOTAL_MEM_KB / 1024))
+elif [ "$(uname)" = "Darwin" ]; then
+    # macOS 系統偵測
+    TOTAL_MEM_BYTES=$(sysctl -n hw.memsize)
+    TOTAL_MEM_MB=$((TOTAL_MEM_BYTES / 1024 / 1024))
+fi
+
+if [ -n "$TOTAL_MEM_MB" ]; then
+    # 記憶體小於 2GB -> 單執行緒編譯；小於 4GB -> 雙執行緒編譯
+    if [ "$TOTAL_MEM_MB" -lt 2048 ]; then
+        PARALLEL_JOBS="-j 1"
+        echo -e "${YELLOW}⚠️ 偵測到系統記憶體偏低 (${TOTAL_MEM_MB}MB)，限制編譯並行數為 1 (單執行緒)，以防止編譯器被系統強制終止 (OOM Killed)。${NC}"
+    elif [ "$TOTAL_MEM_MB" -lt 4096 ]; then
+        PARALLEL_JOBS="-j 2"
+        echo -e "${YELLOW}⚠️ 偵測到系統記憶體偏低 (${TOTAL_MEM_MB}MB)，限制編譯並行數為 2，以防止記憶體耗盡。${NC}"
+    fi
+fi
+
 echo -e ""
 echo -e "${YELLOW}🔨 正在使用 Emscripten 建置所有 WebAssembly 目標...${NC}"
-cmake --build "$BUILD_DIR" --parallel
+cmake --build "$BUILD_DIR" $PARALLEL_JOBS
 
 echo -e ""
 echo -e "${GREEN}✨ WebAssembly / Emscripten 建置成功！(${BUILD_TYPE})${NC}"
-echo -e "網頁版產物已輸出至："
-echo -e "  - AtmosLua:      ${YELLOW}$BUILD_DIR/AtmosLua/${NC}"
-echo -e "  - HelloWorld:    ${YELLOW}$BUILD_DIR/HelloWorld/${NC}"
-echo -e "  - Maze 迷宮:     ${YELLOW}$BUILD_DIR/Maze/${NC}"
-echo -e "  - Physics2D 物理:${YELLOW}$BUILD_DIR/Physics2DDemo/${NC}"
-echo -e "  - CSBDemo 角色:  ${YELLOW}$BUILD_DIR/CSBDemo/${NC}"
-echo -e "  - VoxelWorld:    ${YELLOW}$BUILD_DIR/VoxelWorld/${NC}"
+echo -e "網頁版產物已輸出至：${YELLOW}$BUILD_DIR/${NC}"
 echo -e ""
 
 # 6. 提供啟動本地伺服器的選項以便立即測試
+if [ "$NO_SERVER" = "ON" ] || [ ! -t 0 ]; then
+    echo -e "${YELLOW}偵測到非互動式環境或已設定 --no-server，略過本地伺服器啟動。${NC}"
+    exit 0
+fi
+
 echo -e "${BLUE}===================================================${NC}"
 echo -e "${YELLOW}是否要在本地開啟 Web 伺服器以測試瀏覽器運行效果？(y/n)${NC}"
 read -r RUN_SERVER
@@ -116,23 +155,51 @@ if [ "$RUN_SERVER" = "y" ] || [ "$RUN_SERVER" = "Y" ]; then
     echo -e ""
     echo -e "${GREEN}正在以建置輸出目錄為根目錄啟動 HTTP 伺服器...${NC}"
     echo -e "您可以透過以下連結存取各個網頁版目標："
-    echo -e "  👉 AtmosLua (Lua 前端): ${BLUE}http://localhost:$PORT/AtmosLua/AtmosLua.html${NC}"
-    echo -e "  👉 HelloWorld 範例:    ${BLUE}http://localhost:$PORT/HelloWorld/HelloWorld.html${NC}"
-    echo -e "  👉 Maze 迷宮大作:      ${BLUE}http://localhost:$PORT/Maze/Maze.html${NC}"
-    echo -e "  👉 Physics2D 物理範例:  ${BLUE}http://localhost:$PORT/Physics2DDemo/Physics2DDemo.html${NC}"
-    echo -e "  👉 CSBDemo 角色範例:    ${BLUE}http://localhost:$PORT/CSBDemo/CSBDemo.html${NC}"
-    echo -e "  👉 VoxelWorld 體素範例:  ${BLUE}http://localhost:$PORT/VoxelWorld/VoxelWorld.html${NC}"
+    for target_dir in "$BUILD_DIR"/*/; do
+        # 移除結尾的斜線
+        target_dir=${target_dir%/}
+        target_name=$(basename "$target_dir")
+        
+        # 排除系統/輔助目錄
+        if [ "$target_name" = "CMakeFiles" ] || [ "$target_name" = "vcpkg_installed" ] || [ "$target_name" = "lib" ] || [ "$target_name" = "bin" ]; then
+            continue
+        fi
+        
+        # 尋找該目錄下的首個 .html 檔案
+        html_file=$(find "$target_dir" -maxdepth 1 -name "*.html" | head -n 1)
+        if [ -n "$html_file" ]; then
+            html_name=$(basename "$html_file")
+            if [ "$html_name" = "index.html" ]; then
+                echo -e "  👉 ${GREEN}$target_name${NC}: ${BLUE}http://localhost:$PORT/$target_name/${NC}"
+            else
+                echo -e "  👉 ${GREEN}$target_name${NC}: ${BLUE}http://localhost:$PORT/$target_name/$html_name${NC}"
+            fi
+        fi
+    done
     echo -e ""
     echo -e "按下 ${RED}Ctrl+C${NC} 可以停止伺服器。"
     echo -e ""
 
-    # 如果是 Mac，自動幫忙在瀏覽器中開啟 Maze 迷宮遊戲
+    # 如果是 Mac，自動在瀏覽器中開啟 HelloWorld 範例
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        sleep 1 && open "http://localhost:$PORT/Maze/Maze.html" &
+        hw_dir="$BUILD_DIR/HelloWorld"
+        if [ -d "$hw_dir" ]; then
+            html_file=$(find "$hw_dir" -maxdepth 1 -name "*.html" | head -n 1)
+            if [ -n "$html_file" ]; then
+                html_name=$(basename "$html_file")
+                if [ "$html_name" = "index.html" ]; then
+                    sleep 1 && open "http://localhost:$PORT/HelloWorld/" &
+                else
+                    sleep 1 && open "http://localhost:$PORT/HelloWorld/$html_name" &
+                fi
+            else
+                sleep 1 && open "http://localhost:$PORT/" &
+            fi
+        else
+            sleep 1 && open "http://localhost:$PORT/" &
+        fi
     fi
 
     # 使用 emrun 啟動伺服器（自動設定 COOP/COEP headers，支援 SharedArrayBuffer）
     emrun --no_browser --port $PORT "$BUILD_DIR"
-    # 備案：若 emrun 不可用，改用以下指令（需要 Node.js）：
-    # npx serve "$BUILD_DIR" --listen $PORT --config "$SCRIPT_DIR/serve.json"
 fi

@@ -33,6 +33,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include "fmt/core.h"
+#include "fmt/format.h"
 
 using Vector3 = glm::vec3;

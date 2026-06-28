@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atmospheric Engine - WASM VideoPlayer Demo</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        
+        #canvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 100vw;
+            max-height: 100vh;
+            border: 0px none;
+            background-color: #000000;
+            display: block;
+            /* To scale up to fill the viewport while keeping aspect ratio (contain), uncomment below: */
+            /* width: 100vw; height: 100vh; object-fit: contain; */
+        }
+        
+        #canvas:focus {
+            outline: none;
+        }
+        
+        #loading-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255, 255, 255, 0.05);
+            border-radius: 50%;
+            border-top-color: #3b82f6;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 20px;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+        }
+        
+        #loading-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #f3f4f6;
+            margin-bottom: 8px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        
+        #loading-status {
+            font-size: 14px;
+            color: #9ca3af;
+            font-weight: 300;
+        }
+        
+        #play-button {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background-color: rgba(0, 0, 0, 0.7);
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            color: #ffffff;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.9);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            padding: 0;
+        }
+        
+        #play-button svg {
+            margin-left: 6px; /* Optically center play triangle */
+            transition: transform 0.25s ease;
+        }
+        
+        #play-button:hover {
+            background-color: #3b82f6;
+            border-color: #3b82f6;
+            transform: translate(-50%, -50%) scale(1.1);
+            box-shadow: 0 0 35px rgba(59, 130, 246, 0.6);
+        }
+        
+        #play-button:hover svg {
+            transform: scale(1.1);
+        }
+        
+        #play-button:active {
+            transform: translate(-50%, -50%) scale(0.95);
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+
+    <div id="loading-container">
+        <div class="spinner" id="loading-spinner"></div>
+        <div id="loading-title">Atmospheric Engine</div>
+        <div id="loading-status">Downloading...</div>
+        <button id="play-button" style="display: none;" aria-label="Play Video">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+            </svg>
+        </button>
+    </div>
+
+    <script type="text/javascript">
+      var statusElement = document.getElementById('loading-status');
+      var spinnerElement = document.getElementById('loading-spinner');
+      var playButton = document.getElementById('play-button');
+      
+      var loadingContainer = document.getElementById('loading-container');
+      
+      var Module = {
+        preRun: [],
+        postRun: [function() {
+          // Hide spinner and status text, show PLAY icon in center when loaded
+          spinnerElement.style.display = 'none';
+          statusElement.style.display = 'none';
+          playButton.style.display = 'flex';
+          loadingContainer.style.cursor = 'pointer';
+        }],
+        canvas: (function() {
+          var canvas = document.getElementById('canvas');
+          canvas.addEventListener("webglcontextlost", function(e) { 
+              if (typeof cleanupRan !== 'undefined' && cleanupRan) {
+                  e.preventDefault();
+                  return;
+              }
+              alert('WebGL context lost. Please reload the page.'); 
+              e.preventDefault(); 
+          }, false);
+          return canvas;
+        })(),
+        setStatus: function(text) {
+          if (!Module.setStatus.last) Module.setStatus.last = { time: Date.now(), text: '' };
+          if (text === Module.setStatus.last.text) return;
+          var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+          var now = Date.now();
+          if (m && now - Module.setStatus.last.time < 30) return; // limit update rate
+          Module.setStatus.last.time = now;
+          Module.setStatus.last.text = text;
+          if (m) {
+            text = m[1];
+          }
+          statusElement.innerHTML = text;
+        },
+        totalDependencies: 0,
+        monitorRunDependencies: function(left) {
+          this.totalDependencies = Math.max(this.totalDependencies, left);
+          Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+        }
+      };
+      Module.setStatus('Downloading...');
+      
+      // Click anywhere on loading container (when loaded) to start video and hide loading screen
+      loadingContainer.addEventListener('click', function() {
+        // Only trigger if the play button is visible (meaning loading is complete)
+        if (playButton.style.display !== 'flex') {
+          return;
+        }
+        
+        loadingContainer.style.opacity = 0;
+        setTimeout(function() {
+          loadingContainer.style.display = 'none';
+        }, 500);
+        
+        // Trigger a click/focus on the canvas to register user interaction in the browser
+        var canvas = document.getElementById('canvas');
+        if (canvas) {
+          canvas.click();
+          canvas.focus();
+        }
+      });
+    
+      // Clean up Web Workers, WebGL contexts, and Audio contexts on page unload
+      // to prevent memory leaks in iframes and avoid iOS WebContent jetsam on
+      // reload. See docs/resource-cleaning-up.md for the rationale behind
+      // ordering and the Path A / Path B split.
+      var cleanupRan = false;
+      function cleanupWorkers(e) {
+        // ── Path A: BFCache freeze ──────────────────────────────────────
+        // Page being frozen, not torn down. Destructive cleanup here would
+        // wreck the runtime if user navigates back. Only safe action is to
+        // disqualify BFCache so the next real reload uses Path B.
+        if (e && e.persisted) {
+          try {
+            var req = indexedDB.open('__bfcache_evict__');
+            req.onsuccess = function(ev) { ev.target.result.close(); };
+          } catch (_) {}
+          return;
+        }
+
+        // ── Path B: real unload ────────────────────────────────────────
+        // pagehide + unload can both fire on desktop Safari; idempotency
+        // guard makes the second call a no-op.
+        if (cleanupRan) return;
+        cleanupRan = true;
+        console.log("Cleaning up Emscripten Web Workers, WebGL, and Audio contexts...");
+
+        // B2. Explicitly lose the WebGL context to release GPU resources immediately.
+        var canvas = document.getElementById('canvas');
+        try {
+          if (canvas) {
+            var gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            if (gl) {
+              var loseContextExt = gl.getExtension('WEBGL_lose_context');
+              if (loseContextExt) {
+                loseContextExt.loseContext();
+                console.log("WebGL context lost explicitly.");
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error losing WebGL context:", e);
+        }
+
+        // B2a. Detach canvas backing store. loseContext invalidates GL state
+        //      but does NOT free the canvas framebuffer (multi-MB on retina).
+        try {
+          if (canvas) {
+            canvas.width = 1; canvas.height = 1;
+            if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+          }
+        } catch (e) { console.error(e); }
+
+        // B3. Close all Web Audio API contexts. AudioContext.close() returns
+        //     a Promise — DO NOT await. The synchronous detach happens before
+        //     close() returns; awaiting freezes pagehide.
+        try {
+          if (window.AudioManager && typeof window.AudioManager.shutdown === 'function') {
+            try {
+              window.AudioManager.shutdown();
+              window.AudioManager = null;
+              console.log("window.AudioManager shut down successfully.");
+            } catch (err) {
+              console.error("Error shutting down window.AudioManager:", err);
+            }
+          }
+          if (typeof AL !== 'undefined' && AL.contexts) {
+            AL.contexts.forEach(function(ctx) {
+              if (ctx && ctx.audioCtx && typeof ctx.audioCtx.close === 'function') {
+                ctx.audioCtx.close();
+              }
+            });
+          }
+          if (typeof SDL2 !== 'undefined' && SDL2.audioContext && typeof SDL2.audioContext.close === 'function') {
+            SDL2.audioContext.close();
+          }
+          if (typeof Module !== 'undefined' && Module) {
+            for (var prop in Module) {
+              if (Module[prop] && typeof Module[prop].close === 'function' &&
+                  (Module[prop].constructor && (Module[prop].constructor.name === 'AudioContext' || Module[prop].constructor.name === 'webkitAudioContext'))) {
+                Module[prop].close();
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error closing AudioContext:", e);
+        }
+
+        // B4. Null HEAP* views + WASM module handles. Each view is an independent
+        //     strong reference to the linear-memory ArrayBuffer; Safari needs
+        //     all of them dropped before the heap can GC.
+        try {
+          if (typeof Module !== 'undefined') {
+            Module.HEAPU8  = null; Module.HEAP8   = null;
+            Module.HEAPU16 = null; Module.HEAP16  = null;
+            Module.HEAPU32 = null; Module.HEAP32  = null;
+            Module.HEAPF32 = null; Module.HEAPF64 = null;
+            if (Module.wasmMemory)      Module.wasmMemory      = null;
+            if (Module.asm)             Module.asm             = null;
+            if (Module.wasmExports)     Module.wasmExports     = null;  // Emscripten 3.x renamed asm → wasmExports
+            if (Module.preloadedImages) Module.preloadedImages = null;
+            if (Module.preloadedAudios) Module.preloadedAudios = null;
+            if (Module.preloadedWasm)   Module.preloadedWasm   = null;
+          }
+        } catch (e) { console.error(e); }
+
+        // B5. Terminate Emscripten pthread Workers. POINT OF NO RETURN —
+        //     any cross-thread WASM call after this hangs forever. Must come
+        //     last among runtime-touching steps. Engine's post.js wrap of
+        //     terminateAllThreads already includes a manual worker.terminate
+        //     sweep, so no extra sweep needed here.
+        try {
+          if (typeof Module !== 'undefined' && typeof Module.terminateAllThreads === 'function') {
+            Module.terminateAllThreads();
+            console.log("Emscripten threads terminated successfully.");
+          }
+        } catch (e) {
+          console.error("Error during thread cleanup:", e);
+        }
+
+        // B6. Null Module last — every previous step reads Module.
+        if (typeof Module !== 'undefined') Module = null;
+      }
+      window.addEventListener('pagehide', cleanupWorkers);
+      window.addEventListener('unload', cleanupWorkers);
+    </script>
+    {{{ SCRIPT }}}
+</body>
+</html>
