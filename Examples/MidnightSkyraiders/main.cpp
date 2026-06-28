@@ -47,12 +47,12 @@ class MidnightSkyraiders : public Application {
     GameState state = GameState::Title;
 
     // Textures
-    GLuint texPlayer  = 0, texEnemy1 = 0, texEnemy2 = 0, texEnemy3  = 0;
-    GLuint texBullet  = 0, texCircle = 0, texOrbit  = 0;
-    GLuint texEBullet = 0, texECircle = 0;
-    GLuint texBg[3]   = {};
-    GLuint texTitle   = 0;
-    FontID fontID     = 0;
+    TextureHandle texPlayer, texEnemy1, texEnemy2, texEnemy3;
+    TextureHandle texBullet, texCircle, texOrbit;
+    TextureHandle texEBullet, texECircle;
+    TextureHandle texBg[3]   = {};
+    TextureHandle texTitle;
+    FontHandle fontID     = 0;
 
     MusicID bgm     = 0;
     SoundID sfxExp  = 0;
@@ -122,20 +122,19 @@ class MidnightSkyraiders : public Application {
               return new PlayerComponent(o);
           });
 
-        auto& am = AssetManager::Get();
-        texPlayer  = am.CreateTexture("assets/images/player.png");
-        texEnemy1  = am.CreateTexture("assets/images/enemy1.png");
-        texEnemy2  = am.CreateTexture("assets/images/enemy2.png");
-        texEnemy3  = am.CreateTexture("assets/images/enemy3.png");
-        texBullet  = am.CreateTexture("assets/images/bullet.png");
-        texCircle  = am.CreateTexture("assets/images/circle-bullet.png");
-        texOrbit   = am.CreateTexture("assets/images/orbit-bullet.png");
-        texEBullet = am.CreateTexture("assets/images/enemy-bullet.png");
-        texECircle = am.CreateTexture("assets/images/enemy-circle-bullet.png");
-        texBg[0]   = am.CreateTexture("assets/images/nightsky-bg.png");
-        texBg[1]   = am.CreateTexture("assets/images/nightsky-mountains.png");
-        texBg[2]   = am.CreateTexture("assets/images/nightsky-fg.png");
-        texTitle   = am.CreateTexture("assets/images/title.png");
+        texPlayer  = "assets/images/player.png";
+        texEnemy1  = "assets/images/enemy1.png";
+        texEnemy2  = "assets/images/enemy2.png";
+        texEnemy3  = "assets/images/enemy3.png";
+        texBullet  = "assets/images/bullet.png";
+        texCircle  = "assets/images/circle-bullet.png";
+        texOrbit   = "assets/images/orbit-bullet.png";
+        texEBullet = "assets/images/enemy-bullet.png";
+        texECircle = "assets/images/enemy-circle-bullet.png";
+        texBg[0]   = "assets/images/nightsky-bg.png";
+        texBg[1]   = "assets/images/nightsky-mountains.png";
+        texBg[2]   = "assets/images/nightsky-fg.png";
+        texTitle   = "assets/images/title.png";
 
         fontID = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 22.0f);
 
@@ -146,7 +145,7 @@ class MidnightSkyraiders : public Application {
         auto* background = CreateGameObject();
         background->SetName("Background");
         for (int i = 0; i < 3; i++) {
-            background->AddComponent<ParallaxLayerComponent>((int)texBg[i], WORLD, BG_SPEED[i], i);
+            background->AddComponent<ParallaxLayerComponent>(texBg[i], WORLD, BG_SPEED[i], i);
         }
 
         // World director: a single "GameWorld" entity owns match-wide state.
@@ -193,7 +192,7 @@ class MidnightSkyraiders : public Application {
             .size      = glm::vec2(WORLD, WORLD),
             .pivot     = glm::vec2(0.5f, 0.5f),
             .color     = glm::vec4(1,1,1,1),
-            .textureID = (int)texTitle,
+            .texture   = texTitle,
             .layer     = CanvasLayer::LAYER_WORLD_2D,
             .flipY     = true,
             .zOrder    = 20,
@@ -225,7 +224,7 @@ class MidnightSkyraiders : public Application {
             .size      = glm::vec2(PL_W, PL_H),
             .pivot     = glm::vec2(0.5f, 0.5f),
             .color     = glm::vec4(1,1,1,1),
-            .textureID = (int)texPlayer,
+            .texture   = texPlayer,
             .layer     = CanvasLayer::LAYER_WORLD_2D,
             .flipY     = true,
             .zOrder    = 5,
@@ -268,7 +267,7 @@ class MidnightSkyraiders : public Application {
         if (type ==  2) maxLife = 2.0f;
         if (type == -3) maxLife = 2.5f;
 
-        GLuint tex = texBullet;
+        TextureHandle tex = texBullet;
         switch (type) {
         case  1: tex = texCircle;  break;
         case  2: tex = texOrbit;   break;
@@ -282,7 +281,7 @@ class MidnightSkyraiders : public Application {
             .size      = glm::vec2(8.0f, 8.0f),
             .pivot     = glm::vec2(0.5f, 0.5f),
             .color     = glm::vec4(1,1,1,1),
-            .textureID = (int)tex,
+            .texture   = tex,
             .layer     = CanvasLayer::LAYER_WORLD_2D,
             .flipY     = true,
             .zOrder    = 3,
@@ -316,13 +315,13 @@ class MidnightSkyraiders : public Application {
         float raidDist = (y < HALF ? +1.0f : -1.0f) * 600.0f * rnd();
         float raidStart = (raidDur > 0.0f) ? (1000.0f / spd) * rnd() : 0.0f;
 
-        GLuint tex = (type == 1) ? texEnemy1 : (type == 2 ? texEnemy2 : texEnemy3);
+        TextureHandle tex = (type == 1) ? texEnemy1 : (type == 2 ? texEnemy2 : texEnemy3);
         auto* obj = CreateGameObject(glm::vec2(x, y));
         obj->AddComponent<SpriteComponent>(SpriteProps{
             .size      = glm::vec2(32.0f, 32.0f),
             .pivot     = glm::vec2(0.5f, 0.5f),
             .color     = glm::vec4(1,1,1,1),
-            .textureID = (int)tex,
+            .texture   = tex,
             .layer     = CanvasLayer::LAYER_WORLD_2D,
             .flipY     = true,
             .zOrder    = 4,

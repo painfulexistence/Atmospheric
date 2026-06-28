@@ -167,14 +167,17 @@ public:
                       const glm::vec4& color = glm::vec4(1.0f));
 
     // ===== Text Rendering =====
-    FontID LoadFont(const std::string& path, float baseSize);
-    void UnloadFont(FontID id);
-    void DrawText(FontID fontID, const std::string& text, float x, float y,
+    FontHandle LoadFont(const std::string& path, float baseSize);
+    void UnloadFont(FontHandle id);
+    FontHandle GetOrCreateDefaultFont();
+    /// Returns the base size (in pixels) that the font was baked at, or 48.0f as fallback.
+    float GetFontBaseSize(FontHandle fontID);
+    void DrawText(FontHandle fontID, const std::string& text, float x, float y,
                   float scale, const glm::vec4& color);
-    void DrawText3D(FontID fontID, const std::string& text, glm::vec3 position,
+    void DrawText3D(FontHandle fontID, const std::string& text, glm::vec3 position,
                     float scale, const glm::vec4& color);
-    glm::vec2 MeasureText(FontID fontID, const std::string& text, float scale = 1.0f);
-    float GetFontLineHeight(FontID fontID, float scale = 1.0f);
+    glm::vec2 MeasureText(FontHandle fontID, const std::string& text, float scale = 1.0f);
+    float GetFontLineHeight(FontHandle fontID, float scale = 1.0f);
 
     Renderer* renderer = nullptr;
 
@@ -215,12 +218,13 @@ private:
                       const glm::vec4& color);
 
     struct TextCommand {
-        FontID fontID;
+        FontHandle fontID;
         std::string text;
         float x, y, scale;
         glm::vec4 color;
     };
     std::vector<TextCommand> _textCommands;
+    FontHandle _defaultFont = 0;
 
 public:
     void RenderBufferedText(BatchRenderer2D* batch);

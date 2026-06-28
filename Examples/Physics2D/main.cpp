@@ -53,7 +53,7 @@ class PolyMerge : public Application {
     using Application::Application;
 
     std::mt19937 rng;
-    FontID fontID = 0;
+    FontHandle fontID = 0;
 
     // All live shape game objects (excluding ground/walls)
     std::vector<GameObject*> shapes;

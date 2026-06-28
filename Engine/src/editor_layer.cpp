@@ -85,9 +85,9 @@ void EditorLayer::DrawSystemInfo() {
         ImGui::Text("Renderer: %s", glGetString(GL_RENDERER));
 
         auto window = _app->GetWindow();
-        auto [wx, wy] = window->GetSize();
+        auto [wx, wy] = window->GetLogicalSize();
         ImGui::Text("Window size: %dx%d", wx, wy);
-        auto [fx, fy] = window->GetFramebufferSize();
+        auto [fx, fy] = window->GetPhysicalSize();
         ImGui::Text("Framebuffer size: %dx%d", fx, fy);
 
         GLint depth, stencil;

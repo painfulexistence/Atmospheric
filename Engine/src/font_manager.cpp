@@ -20,7 +20,7 @@ FontManager::~FontManager() {
     }
 }
 
-FontID FontManager::LoadFont(const std::string& path, float baseSize, int firstChar, int numChars) {
+FontHandle FontManager::LoadFont(const std::string& path, float baseSize, int firstChar, int numChars) {
     auto fontData = FileSystem::Get().ReadSync(path);
     if (fontData.empty()) {
         fmt::print(stderr, "[FontManager] Failed to read font file: {}\n", path);
@@ -28,7 +28,7 @@ FontID FontManager::LoadFont(const std::string& path, float baseSize, int firstC
     }
 
     // Create font entry
-    FontID id = _nextFontID++;
+    FontHandle id = _nextFontID++;
     Font& font = _fonts[id];
     font.fontSize = baseSize;
 
@@ -49,7 +49,7 @@ FontID FontManager::LoadFont(const std::string& path, float baseSize, int firstC
     return id;
 }
 
-void FontManager::UnloadFont(FontID id) {
+void FontManager::UnloadFont(FontHandle id) {
     auto it = _fonts.find(id);
     if (it != _fonts.end()) {
         if (it->second.textureID != 0) {
@@ -59,17 +59,17 @@ void FontManager::UnloadFont(FontID id) {
     }
 }
 
-Font* FontManager::GetFont(FontID id) {
+Font* FontManager::GetFont(FontHandle id) {
     auto it = _fonts.find(id);
     return (it != _fonts.end()) ? &it->second : nullptr;
 }
 
-GLuint FontManager::GetFontTexture(FontID id) {
+GLuint FontManager::GetFontTexture(FontHandle id) {
     auto it = _fonts.find(id);
     return (it != _fonts.end()) ? it->second.textureID : 0;
 }
 
-glm::vec2 FontManager::MeasureText(FontID id, const std::string& text, float scale) {
+glm::vec2 FontManager::MeasureText(FontHandle id, const std::string& text, float scale) {
     Font* font = GetFont(id);
     if (!font) return glm::vec2(0.0f);
 
@@ -88,7 +88,7 @@ glm::vec2 FontManager::MeasureText(FontID id, const std::string& text, float sca
     return glm::vec2(width, maxHeight > 0 ? maxHeight : font->lineHeight * scale);
 }
 
-const Glyph* FontManager::GetGlyph(FontID id, int codepoint) {
+const Glyph* FontManager::GetGlyph(FontHandle id, int codepoint) {
     Font* font = GetFont(id);
     if (!font) return nullptr;
 

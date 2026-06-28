@@ -302,12 +302,20 @@ class CSBDemo : public Application {
                 ImGui::Text("  zOrder: %d", sprite->GetZOrder());
             }
 
-            if (auto* text = go->GetComponent<TextComponent>()) {
-                ImGui::Text("  [Text]");
+            if (auto* text = go->GetComponent<Text2DComponent>()) {
+                ImGui::Text("  [Text2D]");
                 ImGui::Text("  Content: %s", text->GetText().c_str());
-                ImGui::Text("  Font: %s", text->GetFontPath().c_str());
+                ImGui::Text("  Font ID: %u", text->GetFont().id);
                 ImGui::Text("  Size: %.1f", text->GetFontSize());
                 auto col = text->GetColor();
+                ImGui::Text("  Color: (%.2f, %.2f, %.2f, %.2f)", col.r, col.g, col.b, col.a);
+            }
+            if (auto* text3d = go->GetComponent<Text3DComponent>()) {
+                ImGui::Text("  [Text3D]");
+                ImGui::Text("  Content: %s", text3d->GetText().c_str());
+                ImGui::Text("  Font ID: %u", text3d->GetFont().id);
+                ImGui::Text("  Size: %.1f", text3d->GetFontSize());
+                auto col = text3d->GetColor();
                 ImGui::Text("  Color: (%.2f, %.2f, %.2f, %.2f)", col.r, col.g, col.b, col.a);
             }
 

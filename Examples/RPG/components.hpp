@@ -147,7 +147,7 @@ class BattleSystemComponent : public Component {
     std::vector<Enemy>* _enemies;
     GameMode*           _mode;
     float*              _transition;
-    FontID              _fontID;
+    FontHandle              _fontID;
     GLuint              _playerTex, _enemyTex;
     int                 _screenW, _screenH;
 
@@ -160,7 +160,7 @@ public:
                           Player* player, SpriteAnimator* playerAnim,
                           std::vector<Enemy>* enemies,
                           GameMode* mode, float* transition,
-                          FontID fontID, GLuint playerTex, GLuint enemyTex,
+                          FontHandle fontID, GLuint playerTex, GLuint enemyTex,
                           int screenW, int screenH)
         : _player(player), _playerAnim(playerAnim), _enemies(enemies),
           _mode(mode), _transition(transition),
