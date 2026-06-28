@@ -3,6 +3,8 @@
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
 #include <glad/glad.h>
 #endif
+#include <unordered_map>
+#include <vector>
 
 // Forward declarations
 class Application;
@@ -36,6 +38,7 @@ private:
 
     void DrawSystemInfo();
     void DrawAppView();
+    void DrawEntityTree(GameObject* entity, const std::unordered_map<GameObject*, std::vector<GameObject*>>& childrenMap);
     void DrawEntityInspector(GameObject* entity);
     void DrawEngineView();
     void ToggleRecording();
