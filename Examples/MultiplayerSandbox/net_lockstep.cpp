@@ -19,6 +19,8 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
+#else
+#include <emscripten/emscripten.h>
 #endif
 
 namespace {
@@ -71,7 +73,7 @@ void PutU32(uint8_t* p, uint32_t v) {
 uint32_t GetU32(const uint8_t* p) {
     return uint32_t(p[0]) | uint32_t(p[1]) << 8 | uint32_t(p[2]) << 16 | uint32_t(p[3]) << 24;
 }
-}
+}// namespace
 
 void LockstepNet::StartSolo(uint32_t s) {
     mode = Mode::Solo;
@@ -80,6 +82,10 @@ void LockstepNet::StartSolo(uint32_t s) {
     localPlayer = 0;
     inputDelay = 0;
 }
+
+// ── Platform-specific transport ────────────────────────────────────────────
+// Native: raw UDP sockets (POSIX / Winsock2)
+// Web:    RTCDataChannel via EM_JS glue (window._rtcChannel / _rtcRecvQueue)
 
 #ifndef __EMSCRIPTEN__
 
@@ -157,6 +163,121 @@ void LockstepNet::SendRaw(const uint8_t* data, int len) {
     to.sin_port = peerPort;
     ::sendto(sock, reinterpret_cast<const char*>(data), len, 0, reinterpret_cast<sockaddr*>(&to), sizeof(to));
 }
+
+void LockstepNet::Pump(uint32_t nowMs) {
+    if (mode == Mode::Solo || sock == kInvalidSocket) return;
+
+    uint8_t buf[1500];
+    for (;;) {
+        sockaddr_in from{};
+        socklen_t fromLen = sizeof(from);
+        int n = ::recvfrom(
+          sock, reinterpret_cast<char*>(buf), int(sizeof(buf)), 0, reinterpret_cast<sockaddr*>(&from), &fromLen
+        );
+        if (n <= 0) break;
+        HandlePacket(buf, n, from.sin_addr.s_addr, from.sin_port, nowMs);
+    }
+
+    if (mode == Mode::Client && state == State::Connecting) {
+        SendHello(nowMs);
+    }
+    if (state == State::Running) {
+        SendInputs();
+        if (nowMs - lastPingMs > 1000) {
+            lastPingMs = nowMs;
+            uint8_t ping[9];
+            PutU32(ping, MAGIC);
+            ping[4] = PKT_PING;
+            PutU32(ping + 5, nowMs);
+            SendRaw(ping, 9);
+        }
+    }
+}
+
+#else// __EMSCRIPTEN__: WebRTC P2P transport via RTCDataChannel
+
+// Send a binary frame over the WebRTC DataChannel (set up by the JS lobby).
+// HEAPU8.buffer.slice() copies the bytes before async send so the WASM heap
+// reallocation can't corrupt the in-flight buffer.
+EM_JS(void, js_rtc_send, (const uint8_t* data, int len), {
+    var ch = window['_rtcChannel'];
+    if (ch && ch.readyState === 'open') {
+        ch.send(HEAPU8.buffer.slice(data, data + len));
+    }
+});
+
+// Pull one queued message from the JS receive ring into buf.
+// Returns bytes written, or 0 if the queue is empty.
+EM_JS(int, js_rtc_recv, (uint8_t* buf, int maxLen), {
+    var q = window['_rtcRecvQueue'];
+    if (!q || !q.length) return 0;
+    var ab = q.shift();
+    var src = new Uint8Array(ab);
+    var n = Math.min(src.byteLength, maxLen);
+    HEAPU8.set(src.subarray(0, n), buf);
+    return n;
+});
+
+bool LockstepNet::OpenSocket(uint16_t) { return true; }
+
+bool LockstepNet::StartHost(uint16_t, uint32_t s, int delay) {
+    mode = Mode::Host;
+    state = State::Connecting;
+    seed = s;
+    inputDelay = delay;
+    localPlayer = 0;
+    havePeer = false;// host waits for client's PKT_HELLO over the DataChannel
+    return true;
+}
+
+bool LockstepNet::StartClient(const std::string&, uint16_t) {
+    // IP/port are irrelevant; the DataChannel is already open from the JS lobby.
+    mode = Mode::Client;
+    state = State::Connecting;
+    localPlayer = 1;
+    havePeer = true;
+    peerAddr = 0;
+    peerPort = 0;
+    return true;
+}
+
+void LockstepNet::Shutdown() { state = State::Idle; }
+
+void LockstepNet::SendRaw(const uint8_t* data, int len) {
+    js_rtc_send(data, len);
+}
+
+void LockstepNet::Pump(uint32_t nowMs) {
+    if (mode == Mode::Solo) return;
+
+    uint8_t buf[1500];
+    for (;;) {
+        int n = js_rtc_recv(buf, int(sizeof(buf)));
+        if (n <= 0) break;
+        // fromAddr/fromPort are 0; HandlePacket uses the same values for
+        // peerAddr/peerPort so the "ignore unknown sender" check still passes.
+        HandlePacket(buf, n, 0, 0, nowMs);
+    }
+
+    if (mode == Mode::Client && state == State::Connecting) {
+        SendHello(nowMs);
+    }
+    if (state == State::Running) {
+        SendInputs();
+        if (nowMs - lastPingMs > 1000) {
+            lastPingMs = nowMs;
+            uint8_t ping[9];
+            PutU32(ping, MAGIC);
+            ping[4] = PKT_PING;
+            PutU32(ping + 5, nowMs);
+            SendRaw(ping, 9);
+        }
+    }
+}
+
+#endif// __EMSCRIPTEN__
+
+// ── Shared packet logic (same protocol over UDP or RTCDataChannel) ─────────
 
 void LockstepNet::SendHello(uint32_t nowMs) {
     if (nowMs - lastHelloMs < 200) return;
@@ -273,68 +394,6 @@ void LockstepNet::HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, 
     default: break;
     }
 }
-
-void LockstepNet::Pump(uint32_t nowMs) {
-    if (mode == Mode::Solo || sock == kInvalidSocket) return;
-
-    uint8_t buf[1500];
-    for (;;) {
-        sockaddr_in from{};
-        socklen_t fromLen = sizeof(from);
-        int n = ::recvfrom(
-          sock, reinterpret_cast<char*>(buf), int(sizeof(buf)), 0, reinterpret_cast<sockaddr*>(&from), &fromLen
-        );
-        if (n <= 0) break;
-        HandlePacket(buf, n, from.sin_addr.s_addr, from.sin_port, nowMs);
-    }
-
-    if (mode == Mode::Client && state == State::Connecting) {
-        SendHello(nowMs);
-    }
-    if (state == State::Running) {
-        SendInputs();// redundant resend every pump; tiny packets, lowest latency
-        if (nowMs - lastPingMs > 1000) {
-            lastPingMs = nowMs;
-            uint8_t ping[9];
-            PutU32(ping, MAGIC);
-            ping[4] = PKT_PING;
-            PutU32(ping + 5, nowMs);
-            SendRaw(ping, 9);
-        }
-    }
-}
-
-#else// __EMSCRIPTEN__: no UDP sockets in the browser; solo mode only
-
-bool LockstepNet::OpenSocket(uint16_t) {
-    return false;
-}
-bool LockstepNet::StartHost(uint16_t, uint32_t s, int) {
-    StartSolo(s);
-    return true;
-}
-bool LockstepNet::StartClient(const std::string&, uint16_t) {
-    error = "networking is not available in web builds";
-    state = State::Failed;
-    return false;
-}
-void LockstepNet::Shutdown() {
-    state = State::Idle;
-}
-void LockstepNet::SendRaw(const uint8_t*, int) {
-}
-void LockstepNet::SendHello(uint32_t) {
-}
-void LockstepNet::SendWelcome() {
-}
-void LockstepNet::SendInputs() {
-}
-void LockstepNet::HandlePacket(const uint8_t*, int, uint32_t, uint16_t, uint32_t) {
-}
-void LockstepNet::Pump(uint32_t) {
-}
-
-#endif
 
 // --------------------------------------------------------------------------
 // Mode-independent input bookkeeping
