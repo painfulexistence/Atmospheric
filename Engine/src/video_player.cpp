@@ -335,7 +335,12 @@ bool VideoPlayer::update(double deltaTime) {
     }
     return false;
 #else
-    m_currentTime += deltaTime;
+    if (m_ffmpeg && m_ffmpeg->audioReady) {
+        unsigned int played = GetAudioStreamFramesPlayed(m_ffmpeg->audioStream);
+        m_currentTime = static_cast<double>(played) / m_ffmpeg->audioSampleRate;
+    } else {
+        m_currentTime += deltaTime;
+    }
 
     bool frameChanged = false;
     {

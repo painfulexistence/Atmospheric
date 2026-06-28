@@ -88,14 +88,15 @@ const fs = require('fs');
 const pkgPath = '${DEST_PKG}/package.json';
 if (fs.existsSync(pkgPath)) {
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  const baseVersion = pkg.version.split('-')[0];
+  pkg.version = baseVersion + '-${GIT_COMMIT}';
   pkg.atmospheric = {
-    commitHash: '${GIT_COMMIT}',
     builtAt: '${BUILT_AT}'
   };
   delete pkg.commit;
   delete pkg.builtAt;
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
-  console.log('   Metadata injected into package.json (atmospheric.commitHash: ${GIT_COMMIT})');
+  console.log('   Updated package version to ' + pkg.version + ' and injected metadata.');
 }
 "
 

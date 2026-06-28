@@ -2182,6 +2182,24 @@ bool IsAudioStreamPlaying(AudioStream stream)
     return IsAudioBufferPlaying(stream.buffer);
 }
 
+// Get number of audio frames played by the stream
+unsigned int GetAudioStreamFramesPlayed(AudioStream stream)
+{
+    if (stream.buffer != NULL)
+    {
+        unsigned int subBufferSize = stream.buffer->sizeInFrames / 2;
+        unsigned int bufferedFrames = 0;
+        if (!stream.buffer->isSubBufferProcessed[0]) bufferedFrames += subBufferSize;
+        if (!stream.buffer->isSubBufferProcessed[1]) bufferedFrames += subBufferSize;
+        
+        if (stream.buffer->framesProcessed > bufferedFrames)
+        {
+            return stream.buffer->framesProcessed - bufferedFrames;
+        }
+    }
+    return 0;
+}
+
 // Stop audio stream
 void StopAudioStream(AudioStream stream)
 {
