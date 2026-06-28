@@ -202,11 +202,45 @@
             color: #374151;
             margin-top: 6px;
         }
+
+        #btn-fullscreen {
+            position: fixed;
+            bottom: 12px;
+            right: 12px;
+            z-index: 400;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 6px;
+            color: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, color 0.15s;
+        }
+        #btn-fullscreen:hover {
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+        }
+        #btn-fullscreen svg { display: block; }
     </style>
 </head>
 <body>
 
     <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+
+    <button id="btn-fullscreen" title="Toggle fullscreen" onclick="toggleFullscreen()">
+        <!-- expand icon; swapped for collapse icon when fullscreen is active -->
+        <svg id="fs-icon-expand" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M1 1h5v1.5H2.5V5H1V1zm9 0h5v4h-1.5V2.5H10V1zM1 10h1.5v2.5H5V14H1v-4zm9.5 2.5V10H11v4h4v-1.5h-2.5v-2z"/>
+        </svg>
+        <svg id="fs-icon-collapse" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="display:none">
+            <path d="M5 1v1.5H2.5V5H1V1h4zm6 0h4v4h-1.5V2.5H11V1zM1 11h1.5v2.5H5V15H1v-4zm9.5 2.5V11H11v4h4v-1.5h-2.5V13.5z"/>
+        </svg>
+    </button>
 
     <!-- Loading overlay (shown while WASM downloads) -->
     <div id="loading-container">
@@ -558,6 +592,24 @@
     };
 
     Module.setStatus('Downloading...');
+
+    // ── Fullscreen ────────────────────────────────────────────────────────
+    function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(function() {});
+        } else {
+            document.exitFullscreen();
+        }
+    }
+    document.addEventListener('fullscreenchange', function() {
+        var fs = !!document.fullscreenElement;
+        document.getElementById('fs-icon-expand').style.display  = fs ? 'none' : '';
+        document.getElementById('fs-icon-collapse').style.display = fs ? '' : 'none';
+    });
+    // F key also toggles fullscreen while the game is running.
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'F' && !e.ctrlKey && !e.metaKey && !e.altKey) toggleFullscreen();
+    });
 
     // ── Page cleanup (BFCache / unload) ───────────────────────────────────
 
