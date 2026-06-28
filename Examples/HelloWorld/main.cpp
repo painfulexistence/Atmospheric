@@ -12,11 +12,6 @@ class HelloWorld : public Application {
     FontHandle fontID;
 
     void OnInit() override {
-        GoScene("main", [this]{ OnLoad(); });
-    }
-
-    void OnLoad() override {
-        // Register local components
         ComponentFactory::Register("RotatorComponent",
           [](GameObject* o, Deserializer& d) -> Component* {
               glm::vec3 angVel(0.0f);
@@ -33,7 +28,6 @@ class HelloWorld : public Application {
               d.Read("phase", phase);
               return new OscillatorComponent(o, axis, amp, freq, phase);
           });
-
         ComponentFactory::Register("SpritePulseComponent",
           [](GameObject* o, Deserializer& d) -> Component* {
               float minA = 0.0f, maxA = 1.0f, freq = 1.0f, phase = 0.0f;
@@ -43,7 +37,10 @@ class HelloWorld : public Application {
               d.Read("phase", phase);
               return new SpritePulseComponent(o, minA, maxA, freq, phase);
           });
+        GoScene("main", [this]{ OnLoad(); });
+    }
 
+    void OnLoad() override {
         // Load font
         fontID = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
         MaterialProps matProps = {

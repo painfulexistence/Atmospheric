@@ -7,11 +7,6 @@ class VoxelWorldApp : public Application {
     using Application::Application;
 
     void OnInit() override {
-        GoScene("main", [this]{ OnLoad(); });
-    }
-
-    void OnLoad() override {
-        // Register local components
         ComponentFactory::Register("FlyCameraComponent",
           [](GameObject* o, Deserializer& d) -> Component* {
               float moveSpeed = 20.0f, lookSpeed = 1.5f;
@@ -25,6 +20,10 @@ class VoxelWorldApp : public Application {
               d.Read("seed", seed);
               return new VoxelWorldComponent(o, seed);
           });
+        GoScene("main", [this]{ OnLoad(); });
+    }
+
+    void OnLoad() override {
 
         mainCamera->gameObject->SetPosition(glm::vec3(200.0f, 80.0f, 200.0f));
         mainCamera->gameObject->SetRotation(glm::vec3(glm::radians(-20.0f), 0.0f, 0.0f));
