@@ -126,13 +126,20 @@ void Script::LoadScene(int index)
         std::vector<MaterialProps> materials;
         for (const auto& kv : materialsTable) {
             sol::table materialData = kv.second;
+            int baseMapIdx = materialData.get_or("baseMapId", -1);
+            int normalMapIdx = materialData.get_or("normalMapId", -1);
+            int aoMapIdx = materialData.get_or("aoMapId", -1);
+            int roughnessMapIdx = materialData.get_or("roughnessMapId", (int)materialData.get_or("roughtnessMapId", -1));
+            int metallicMapIdx = materialData.get_or("metallicMapId", -1);
+            int heightMapIdx = materialData.get_or("heightMapId", -1);
+
             materials.push_back({
-                .baseMap = (int)materialData.get_or("baseMapId", -1),
-                .normalMap = (int)materialData.get_or("normalMapId", -1),
-                .aoMap = (int)materialData.get_or("aoMapId", -1),
-                .roughnessMap = (int)materialData.get_or("roughnessMapId", (int)materialData.get_or("roughtnessMapId", -1)),
-                .metallicMap = (int)materialData.get_or("metallicMapId", -1),
-                .heightMap = (int)materialData.get_or("heightMapId", -1),
+                .baseMap = (baseMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(baseMapIdx)) : TextureHandle(),
+                .normalMap = (normalMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(normalMapIdx)) : TextureHandle(),
+                .aoMap = (aoMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(aoMapIdx)) : TextureHandle(),
+                .roughnessMap = (roughnessMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(roughnessMapIdx)) : TextureHandle(),
+                .metallicMap = (metallicMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(metallicMapIdx)) : TextureHandle(),
+                .heightMap = (heightMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(heightMapIdx)) : TextureHandle(),
                 .diffuse = glm::vec3(materialData["diffuse"][1], materialData["diffuse"][2], materialData["diffuse"][3]),
                 .specular = glm::vec3(materialData["specular"][1], materialData["specular"][2], materialData["specular"][3]),
                 .ambient = glm::vec3(materialData["ambient"][1], materialData["ambient"][2], materialData["ambient"][3]),

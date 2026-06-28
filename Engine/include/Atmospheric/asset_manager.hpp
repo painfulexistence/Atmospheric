@@ -26,9 +26,6 @@ public:
 };
 
 
-using TextureID = uint32_t;
-using ShaderID = uint32_t;
-using MaterialID = uint32_t;
 
 struct Texture2D {
     GLuint   glID   = 0;
@@ -61,9 +58,9 @@ public:
     void ReloadShaders();
 
     // ========== GPU Resource Management ==========
-    GLuint CreateTexture(const std::string& path);
-    GLuint CreateTextureFromImage(const std::shared_ptr<Image>& image);
-    GLuint GetTexture(const std::string& name) const;
+    TextureHandle CreateTexture(const std::string& path);
+    TextureHandle CreateTextureFromImage(const std::shared_ptr<Image>& image);
+    TextureHandle GetTexture(const std::string& name) const;
     GLuint GetTextureByID(uint32_t id) const;
     std::string GetTexturePath(GLuint id) const;
     void LoadDefaultTextures();
@@ -79,7 +76,7 @@ public:
     Mesh* GetMesh(const std::string& name) const;
     // Upload a normalized [0,1] float grid as a GL_R8 grayscale texture.
     // Returns the scene-texture index usable as Material::heightMap.
-    int CreateHeightmapTexture(const std::string& name, const std::vector<float>& grid, int width, int height);
+    TextureHandle CreateHeightmapTexture(const std::string& name, const std::vector<float>& grid, int width, int height);
     std::shared_ptr<Mesh> LoadOBJ(const std::string& path);
     std::shared_ptr<Mesh> LoadGLTF(const std::string& path);
 

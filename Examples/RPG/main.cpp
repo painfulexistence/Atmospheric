@@ -13,7 +13,7 @@ using glm::vec4;
 class RPGGame : public Application {
     // ── resources ──────────────────────────────────────────────────────
     uint32_t _tilesetTex = 0, _playerTex = 0, _enemyTex = 0, _npcTex = 0;
-    FontID   _fontID = 0;
+    FontHandle   _fontID = 0;
 
     std::unique_ptr<Tilemap2D> _tilemap;
     LightingSystem2D           _lighting;

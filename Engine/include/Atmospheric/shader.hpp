@@ -3,19 +3,20 @@
 #include <glm/mat4x4.hpp>
 #include <optional>
 #include <unordered_map>
+#include <string>
+#include <vector>
+#include <array>
 
-enum ShaderType {
-    VERTEX = GL_VERTEX_SHADER,
-    FRAGMENT = GL_FRAGMENT_SHADER,
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
-    TESS_CONTROL = GL_TESS_CONTROL_SHADER,
-    TESS_EVALUATION = GL_TESS_EVALUATION_SHADER
-#endif
+enum class ShaderType {
+    Vertex,
+    Fragment,
+    TessControl,
+    TessEvaluation
 };
 
 struct Shader {
     Shader(const std::string& path, ShaderType type);
-    GLuint shader;
+    uint32_t shader; // Store as raw uint32_t instead of GLuint
 };
 
 struct ShaderProgramProps {
@@ -26,65 +27,53 @@ struct ShaderProgramProps {
     std::optional<std::vector<std::string>> feedbackVaryings = std::nullopt;
 };
 
+// Abstract base class representing a GPU shader program.
 class ShaderProgram {
 public:
-    ShaderProgram() = default;
-    ShaderProgram(const ShaderProgramProps& props);
-    ShaderProgram(
+    virtual ~ShaderProgram() = default;
+    
+    virtual void Activate() = 0;
+    virtual void Deactivate() = 0;
+    
+    virtual void SetUniform(const std::string& uniform, const glm::mat4& val) = 0;
+    virtual void SetUniform(const std::string& uniform, const glm::vec2& val) = 0;
+    virtual void SetUniform(const std::string& uniform, const glm::vec3& val) = 0;
+    virtual void SetUniform(const std::string& uniform, int val) = 0;
+    virtual void SetUniform(const std::string& uniform, float val) = 0;
+};
+
+// OpenGL implementation of ShaderProgram.
+class GLShaderProgram : public ShaderProgram {
+public:
+    GLShaderProgram() = default;
+    GLShaderProgram(const ShaderProgramProps& props);
+    GLShaderProgram(
       std::string vert,
       std::string frag,
       std::optional<std::string> tesc = std::nullopt,
       std::optional<std::string> tese = std::nullopt
     );
-    ShaderProgram(std::array<Shader, 2>&);
-    ShaderProgram(std::array<Shader, 4>&);
+    ~GLShaderProgram() override;
 
-    GLint GetAttrib(const std::string& attrib) {
-        return glGetAttribLocation(_program, attrib.c_str());
-    };
+    void Activate() override;
+    void Deactivate() override;
 
-    GLint GetUniform(const std::string& uniform) {
-        auto it = _uniformLocationCache.find(uniform);
-        if (it != _uniformLocationCache.end()) {
-            return it->second;
-        }
-        return CacheUniform(uniform.c_str());
-    }
-    void SetUniform(const std::string& uniform, const glm::mat4& val) {
-        glUniformMatrix4fv(GetUniform(uniform), 1, GL_FALSE, &val[0][0]);
-    };
-    void SetUniform(const std::string& uniform, const glm::vec2& val) {
-        glUniform2fv(GetUniform(uniform), 1, &val[0]);
-    };
-    void SetUniform(const std::string& uniform, const glm::vec3& val) {
-        glUniform3fv(GetUniform(uniform), 1, &val[0]);
-    };
-    void SetUniform(const std::string& uniform, int val) {
-        glUniform1i(GetUniform(uniform), val);
-    };
-    void SetUniform(const std::string& uniform, float val) {
-        glUniform1f(GetUniform(uniform), val);
-    };
+    void SetUniform(const std::string& uniform, const glm::mat4& val) override;
+    void SetUniform(const std::string& uniform, const glm::vec2& val) override;
+    void SetUniform(const std::string& uniform, const glm::vec3& val) override;
+    void SetUniform(const std::string& uniform, int val) override;
+    void SetUniform(const std::string& uniform, float val) override;
 
-    void Activate();
+    int GetAttrib(const std::string& attrib);
+    int GetUniform(const std::string& uniform);
 
-    void Deactivate();
-
-    GLuint GetProgramID() const {
+    uint32_t GetProgramID() const {
         return _program;
     }
 
 private:
-    GLuint _program;
-    std::unordered_map<std::string, GLint> _uniformLocationCache;
+    uint32_t _program = 0;
+    std::unordered_map<std::string, int> _uniformLocationCache;
 
-    GLint CacheUniform(const std::string& uniform) {
-        auto it = _uniformLocationCache.find(uniform);
-        if (it != _uniformLocationCache.end()) {
-            return it->second;
-        }
-        GLint location = glGetUniformLocation(_program, uniform.c_str());
-        _uniformLocationCache[uniform] = location;
-        return location;
-    }
+    int CacheUniform(const std::string& uniform);
 };

@@ -176,7 +176,8 @@ set(SOURCES
     src/mesh_component.cpp
     src/sprite_component.cpp
     src/sprite_3d_component.cpp
-    src/text_component.cpp
+    src/text_2d_component.cpp
+    src/text_3d_component.cpp
     src/height_field.cpp
     src/terrain_mesh_component.cpp
     src/height_field_collider_component.cpp

@@ -17,13 +17,13 @@ void BindGraphicsAPI(sol::state& lua, GraphicsServer* graphics) {
 
     // Screen dimensions (via Window)
     gfx["getScreenSize"] = []() -> std::tuple<int, int> {
-        auto size = Window::Get()->GetSize();
+        auto size = Window::Get()->GetLogicalSize();
         return std::make_tuple(size.width, size.height);
     };
 
-    gfx["getWidth"] = []() { return Window::Get()->GetSize().width; };
+    gfx["getWidth"] = []() { return Window::Get()->GetLogicalSize().width; };
 
-    gfx["getHeight"] = []() { return Window::Get()->GetSize().height; };
+    gfx["getHeight"] = []() { return Window::Get()->GetLogicalSize().height; };
 
     // Shader management
     gfx["reloadShaders"] = []() { AssetManager::Get().ReloadShaders(); };
@@ -83,40 +83,40 @@ void BindGraphicsAPI(sol::state& lua, GraphicsServer* graphics) {
     // ===== Text Rendering =====
 
 
-    // Load a font (returns FontID)
-    gfx["loadFont"] = [graphics](const std::string& path, float size) -> FontID {
+    // Load a font (returns FontHandle)
+    gfx["loadFont"] = [graphics](const std::string& path, float size) -> FontHandle {
         return graphics->LoadFont(path, size);
     };
 
     // Unload a font
-    gfx["unloadFont"] = [graphics](FontID id) { graphics->UnloadFont(id); };
+    gfx["unloadFont"] = [graphics](FontHandle id) { graphics->UnloadFont(id); };
 
     // Draw text with current color
     // drawText(font, text, x, y)           -- uses base font size
     // drawText(font, text, x, y, scale)    -- scale relative to base size
     gfx["drawText"] = sol::overload(
-      [graphics](FontID fontID, const std::string& text, float x, float y) {
+      [graphics](FontHandle fontID, const std::string& text, float x, float y) {
           graphics->DrawText(fontID, text, x, y, 1.0f, s_CurrentColor);
       },
-      [graphics](FontID fontID, const std::string& text, float x, float y, float scale) {
+      [graphics](FontHandle fontID, const std::string& text, float x, float y, float scale) {
           graphics->DrawText(fontID, text, x, y, scale, s_CurrentColor);
       }
     );
 
     // Measure text dimensions
     gfx["measureText"] = sol::overload(
-      [graphics](FontID fontID, const std::string& text) -> std::tuple<float, float> {
+      [graphics](FontHandle fontID, const std::string& text) -> std::tuple<float, float> {
           glm::vec2 size = graphics->MeasureText(fontID, text, 1.0f);
           return std::make_tuple(size.x, size.y);
       },
-      [graphics](FontID fontID, const std::string& text, float scale) -> std::tuple<float, float> {
+      [graphics](FontHandle fontID, const std::string& text, float scale) -> std::tuple<float, float> {
           glm::vec2 size = graphics->MeasureText(fontID, text, scale);
           return std::make_tuple(size.x, size.y);
       }
     );
 
     // Get font line height
-    gfx["getFontHeight"] = [graphics](FontID fontID, float scale) -> float {
+    gfx["getFontHeight"] = [graphics](FontHandle fontID, float scale) -> float {
         return graphics->GetFontLineHeight(fontID, scale);
     };
 

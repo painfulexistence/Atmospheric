@@ -1,6 +1,13 @@
 #pragma once
 #include "globals.hpp"
+#include "buffer.hpp"
 #include <glm/vec3.hpp>
+
+enum class PolygonMode {
+    Fill,
+    Line,
+    Point
+};
 
 enum class RenderQueue {
     Background = 1000,// Skybox, far background
@@ -11,40 +18,36 @@ enum class RenderQueue {
 };
 
 struct MaterialProps {
-    int baseMap = -1;
-    int normalMap = -1;
-    int aoMap = -1;
-    int roughnessMap = -1;
-    int metallicMap = -1;
-    int heightMap = -1;
+    TextureHandle baseMap;
+    TextureHandle normalMap;
+    TextureHandle aoMap;
+    TextureHandle roughnessMap;
+    TextureHandle metallicMap;
+    TextureHandle heightMap;
     glm::vec3 diffuse = glm::vec3(.55, .55, .55);
     glm::vec3 specular = glm::vec3(.7, .7, .7);
     glm::vec3 ambient = glm::vec3(0, 0, 0);
     float shininess = .25;
     bool cullFaceEnabled = true;
-    GLenum primitiveType = GL_TRIANGLES;
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
-    GLenum polygonMode = GL_FILL;
-#endif
+    PrimitiveTopology primitiveType = PrimitiveTopology::Triangles;
+    PolygonMode polygonMode = PolygonMode::Fill;
 };
 
 class Material {
 public:
-    int baseMap = -1;
-    int normalMap = -1;
-    int aoMap = -1;
-    int roughnessMap = -1;
-    int metallicMap = -1;
-    int heightMap = -1;
+    TextureHandle baseMap;
+    TextureHandle normalMap;
+    TextureHandle aoMap;
+    TextureHandle roughnessMap;
+    TextureHandle metallicMap;
+    TextureHandle heightMap;
     glm::vec3 diffuse = glm::vec3(.55, .55, .55);
     glm::vec3 specular = glm::vec3(.7, .7, .7);
     glm::vec3 ambient = glm::vec3(0, 0, 0);
     float shininess = .25;
     bool cullFaceEnabled = true;
-    GLenum primitiveType = GL_TRIANGLES;
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
-    GLenum polygonMode = GL_FILL;
-#endif
+    PrimitiveTopology primitiveType = PrimitiveTopology::Triangles;
+    PolygonMode polygonMode = PolygonMode::Fill;
 
     RenderQueue renderQueue = RenderQueue::Opaque;
     int renderQueueOffset = 0;// Fine-tune rendering order within queue
@@ -66,8 +69,6 @@ public:
         shininess = props.shininess;
         cullFaceEnabled = props.cullFaceEnabled;
         primitiveType = props.primitiveType;
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
         polygonMode = props.polygonMode;
-#endif
     }
 };

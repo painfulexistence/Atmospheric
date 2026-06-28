@@ -12,6 +12,7 @@ int main() {
     EditorShell app(AppConfig{
         .windowTitle = "Atmospheric Engine",
         .enableAudio = false,
+        .preset = "2D",
     });
     app.Run();
     return 0;

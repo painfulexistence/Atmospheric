@@ -8,7 +8,7 @@
 class Application;
 class GameObject;
 
-struct TextProps;
+struct Text2DProps;
 
 namespace flatbuffers {
     struct CSParseBinary;
@@ -97,8 +97,8 @@ private:
       const std::string& path, const std::string& plistFile, int resourceType, const SceneLoadConfig& config
     );
 
-    // Create TextProps from CSB TextOptions
-    TextProps CreateTextProps(
+    // Create Text2DProps from CSB TextOptions
+    Text2DProps CreateTextProps(
       const flatbuffers::NodeTree* nodeTree,
       const flatbuffers::WidgetOptions* widgetOptions,
       const SceneLoadConfig& config

@@ -11,7 +11,7 @@ SpriteComponent::SpriteComponent(GameObject* gameObject, const SpriteProps& prop
     _size = props.size;
     _color = props.color;
     _pivot = props.pivot;
-    _textureID = props.textureID;
+    _texture = props.texture;
     _layer = props.layer;
     _uvMin = glm::vec2(0.0f, 0.0f);
     _uvMax = glm::vec2(1.0f, 1.0f);
@@ -28,14 +28,14 @@ void SpriteComponent::DrawImGui() {
     glm::vec2 size = GetSize();
     glm::vec2 pivot = GetPivot();
     glm::vec4 color = GetColor();
-    uint8_t textureID = GetTextureID();
+    int textureVal = GetTexture();
     if (ImGui::DragFloat2("Size",  &size.x,  0.001f, 9999.999f)) SetSize(size);
     if (ImGui::DragFloat2("Pivot", &pivot.x, 0.0f,   1.0f))      SetPivot(pivot);
     if (ImGui::ColorEdit4("Color", &color.r))                     SetColor(color);
     auto* graphics = gameObject->GetApp()->GetGraphicsServer();
-    uint8_t minTex = 0, maxTex = (uint8_t)(graphics->canvasTextures.size() - 1);
-    if (ImGui::SliderScalar("Texture ID", ImGuiDataType_U8, &textureID, &minTex, &maxTex))
-        SetTextureID(textureID);
+    int minTex = 0, maxTex = (int)(graphics->canvasTextures.size() - 1);
+    if (ImGui::SliderInt("Texture ID", &textureVal, minTex, maxTex))
+        SetTexture(textureVal);
 }
 
 void SpriteComponent::OnAttach() {
@@ -72,5 +72,5 @@ void SpriteComponent::Draw(BatchRenderer2D* renderer) {
 
     // Combine layer and zOrder for sorting (layer * 1000 + zOrder)
     int sortKey = (int)_layer * 1000 + _zOrder;
-    renderer->DrawQuad(transform, _textureID, uvs, _color, sortKey);
+    renderer->DrawQuad(transform, _texture, uvs, _color, sortKey);
 }

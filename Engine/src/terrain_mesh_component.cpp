@@ -32,13 +32,13 @@ TerrainMeshComponent::TerrainMeshComponent(
     // Always bake the height grid to a GPU texture so callers don't need to
     // manually wire up mat->heightMap via LoadScene.
     {
-        int idx = am.CreateHeightmapTexture(
+        TextureHandle hmap = am.CreateHeightmapTexture(
             "hm_" + owner->GetName(),
             heightField->Grid(),
             heightField->Width(),
             heightField->Depth()
         );
-        mat->heightMap = idx;
+        mat->heightMap = hmap;
     }
 
     _mesh->SetMaterial(mat);

@@ -25,7 +25,8 @@
 #include "shape_renderer_component.hpp"
 #include "sprite_3d_component.hpp"
 #include "sprite_component.hpp"
-#include "text_component.hpp"
+#include "text_2d_component.hpp"
+#include "text_3d_component.hpp"
 #include "action_manager.hpp"
 #include "action.hpp"
 #include "file_system.hpp"
@@ -332,24 +333,35 @@ void Application::RegisterComponents() {
                           spdlog::warn("SpriteComponent deserializer: failed to load '{}': {}", texPath, e.what());
                       }
                   }
-                  props.textureID = static_cast<int>(texID);
+                  props.texture = texID;
               }
           }
 
           return new SpriteComponent(o, props);
       });
 
-    // ── TextComponent ─────────────────────────────────────────────────────────
-    ComponentFactory::Register("TextComponent",
+    // ── Text2DComponent ─────────────────────────────────────────────────────────
+    ComponentFactory::Register("Text2DComponent",
       [](GameObject* o, Deserializer& d) -> Component* {
-          TextProps props;
+          Text2DProps props;
           d.Read("text",     props.text,     std::string(""));
-          d.Read("fontPath", props.fontPath, std::string(""));
           d.Read("fontSize", props.fontSize, 24.0f);
           d.Read("size",     props.size,     glm::vec2(100.0f, 100.0f));
           d.Read("pivot",    props.pivot,    glm::vec2(0.0f, 0.0f));
           d.Read("color",    props.color,    glm::vec4(1.0f));
           d.Read("zOrder",   props.zOrder,   0);
+
+          std::string fontPath = "";
+          d.Read("fontPath", fontPath, std::string(""));
+          if (!fontPath.empty()) {
+              props.font = GraphicsServer::Get()->LoadFont(fontPath, props.fontSize);
+          } else {
+              int fontVal = 0;
+              d.Read("font", fontVal, 0);
+              if (fontVal > 0) {
+                  props.font = FontHandle(fontVal);
+              }
+          }
 
           std::string hAlignStr, vAlignStr, layerStr;
           d.Read("hAlign", hAlignStr, std::string("Left"));
@@ -366,7 +378,36 @@ void Application::RegisterComponents() {
 
           props.layer = ParseCanvasLayer(layerStr);
 
-          return new TextComponent(o, props);
+          return new Text2DComponent(o, props);
+      });
+
+    ComponentFactory::Register("TextComponent",
+      [](GameObject* o, Deserializer& d) -> Component* {
+          return ComponentFactory::Create("Text2DComponent", o, d);
+      });
+
+    // ── Text3DComponent ─────────────────────────────────────────────────────────
+    ComponentFactory::Register("Text3DComponent",
+      [](GameObject* o, Deserializer& d) -> Component* {
+          Text3DProps props;
+          d.Read("text",     props.text,     std::string(""));
+          d.Read("fontSize", props.fontSize, 24.0f);
+          d.Read("offset",   props.offset,   glm::vec3(0.0f, 1.2f, 0.0f));
+          d.Read("color",    props.color,    glm::vec4(1.0f));
+
+          std::string fontPath = "";
+          d.Read("fontPath", fontPath, std::string(""));
+          if (!fontPath.empty()) {
+              props.font = GraphicsServer::Get()->LoadFont(fontPath, props.fontSize);
+          } else {
+              int fontVal = 0;
+              d.Read("font", fontVal, 0);
+              if (fontVal > 0) {
+                  props.font = FontHandle(fontVal);
+              }
+          }
+
+          return new Text3DComponent(o, props);
       });
 
     // ── CameraComponent ───────────────────────────────────────────────────────
@@ -512,7 +553,7 @@ void Application::Run() {
     }
     ENGINE_LOG("Subsystems initialized.");
 
-    auto windowSize = _window->GetSize();
+    auto windowSize = _window->GetLogicalSize();
     RmlUiManager::Get()->Initialize(windowSize.width, windowSize.height, graphics.renderer);
 
     _loadingDoc = RmlUiManager::Get()->LoadDocument("assets/ui/loading_screen.rml");
