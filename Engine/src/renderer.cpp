@@ -751,7 +751,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("ForwardOpaquePass");
     AE_GL_PROBE(renderer, "Opaque pass: entry");
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
 
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
@@ -1033,7 +1033,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
 void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("DeferredGeometryPass");
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
 
     glBindFramebuffer(GL_FRAMEBUFFER, renderer.gBuffer.id);
@@ -1165,7 +1165,7 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
 
 void DeferredLightingPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("DeferredLightingPass");
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
 
@@ -1228,7 +1228,7 @@ void TransparentPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("MSAAResolvePass");
     
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
  
     // Resolve MSAA color + depth — both RTs now use GL_DEPTH_COMPONENT32F.
@@ -1265,7 +1265,7 @@ void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 
     if (worldDrawables.empty()) return;
 
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID());
 
@@ -1323,7 +1323,7 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
         if (renderer.GetCanvasQueue().empty()) return;
 
-        auto [width, height] = Window::Get()->GetFramebufferSize();
+        auto [width, height] = Window::Get()->GetPhysicalSize();
         const glm::mat4 viewProj = glm::ortho(0.0f, (float)width, (float)height, 0.0f, -1.0f, 1.0f);
 
         WGPUTextureView targetView = GfxFactory::GetCurrentSwapchainView();
@@ -1355,7 +1355,7 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
     if (drawables2D.empty() && renderer.GetCanvasQueue().empty()) return;
 
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID());
 
@@ -1376,7 +1376,7 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         // Fallback or perspective camera handling for 2D?
         // For now, if perspective, we might just use screen space or a default ortho.
         // Let's assume default ortho for safety if no 2D camera is set.
-        auto [winW, winH] = Window::Get()->GetSize();
+        auto [winW, winH] = Window::Get()->GetLogicalSize();
         worldViewProj = glm::ortho(0.0f, (float)winW, (float)winH, 0.0f, -1.0f, 1.0f);
     }
 
@@ -1401,7 +1401,7 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("PostProcessPass");
 
-    auto size = Window::Get()->GetFramebufferSize();
+    auto size = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, size.width, size.height);
     glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
 
@@ -1443,11 +1443,11 @@ void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* en
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // RmlUi context dimensions are in logical pixels, so projection must match.
-    auto logicalSize = Window::Get()->GetSize();
+    auto logicalSize = Window::Get()->GetLogicalSize();
     float width = (float)logicalSize.width;
     float height = (float)logicalSize.height;
 
-    glViewport(0, 0, Window::Get()->GetFramebufferSize().width, Window::Get()->GetFramebufferSize().height);
+    glViewport(0, 0, Window::Get()->GetPhysicalSize().width, Window::Get()->GetPhysicalSize().height);
     glm::mat4 projection = glm::ortho(0.0f, width, height, 0.0f, -1.0f, 1.0f);
 
     batchRenderer->BeginBatch(projection);

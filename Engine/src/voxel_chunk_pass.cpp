@@ -33,7 +33,7 @@ void SunPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /
     SunComponent*    sun    = ctx->GetMainSun();
     if (!sun) return;
 
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
 
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
@@ -119,7 +119,7 @@ void SkyboxPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
     CameraComponent* camera = ctx->GetMainCamera();
     if (!camera) return;
 
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
 
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
@@ -162,7 +162,7 @@ void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEnc
     if (!camera) return;
     LightComponent*  light  = ctx->GetMainLight();
 
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
 
     // Render into the same target as ForwardOpaquePass (no clear — already done)
@@ -219,7 +219,7 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
     if (!camera) return;
     LightComponent*  light  = ctx->GetMainLight();
 
-    auto [width, height] = Window::Get()->GetFramebufferSize();
+    auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
 
     // Render into msaaResolveRT so water goes through bloom + tonemapping
@@ -345,7 +345,7 @@ void BloomPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
     if (!renderer.msaaResolveRT)      return;
     if (renderer.screenQuadVAO == 0)  return;
 
-    auto [w, h] = Window::Get()->GetFramebufferSize();
+    auto [w, h] = Window::Get()->GetPhysicalSize();
     if (!_initialized || w != _lastW || h != _lastH) {
         InitMips(w, h);
         _lastW = w; _lastH = h;

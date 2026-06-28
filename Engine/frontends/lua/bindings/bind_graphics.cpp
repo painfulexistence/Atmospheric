@@ -17,13 +17,13 @@ void BindGraphicsAPI(sol::state& lua, GraphicsServer* graphics) {
 
     // Screen dimensions (via Window)
     gfx["getScreenSize"] = []() -> std::tuple<int, int> {
-        auto size = Window::Get()->GetSize();
+        auto size = Window::Get()->GetLogicalSize();
         return std::make_tuple(size.width, size.height);
     };
 
-    gfx["getWidth"] = []() { return Window::Get()->GetSize().width; };
+    gfx["getWidth"] = []() { return Window::Get()->GetLogicalSize().width; };
 
-    gfx["getHeight"] = []() { return Window::Get()->GetSize().height; };
+    gfx["getHeight"] = []() { return Window::Get()->GetLogicalSize().height; };
 
     // Shader management
     gfx["reloadShaders"] = []() { AssetManager::Get().ReloadShaders(); };

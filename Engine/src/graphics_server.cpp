@@ -52,7 +52,8 @@ void GraphicsServer::Init(Application* app) {
     GfxFactory::Init();
 
     auto window = Window::Get();
-    auto [width, height] = window->GetFramebufferSize();
+    auto [width, height] = window->GetPhysicalSize();
+    auto [logicalWidth, logicalHeight] = window->GetLogicalSize();
 
     // ── Common scene objects (backend-independent) ────────────────────────────
     canvasDrawList.reserve(1 << 16);
@@ -62,8 +63,8 @@ void GraphicsServer::Init(Application* app) {
     if (app->GetConfig().preset == "2D") {
         defaultCameraProps.isOrthographic = true;
         defaultCameraProps.orthographic = {
-            .width = static_cast<float>(width),
-            .height = static_cast<float>(height),
+            .width = static_cast<float>(logicalWidth),
+            .height = static_cast<float>(logicalHeight),
             .nearClip = -100.0f,
             .farClip = 1000.0f
         };
@@ -82,7 +83,7 @@ void GraphicsServer::Init(Application* app) {
       dynamic_cast<CameraComponent*>(app->GetDefaultGameObject()->AddComponent<CameraComponent>(defaultCameraProps));
 
     if (app->GetConfig().preset == "2D") {
-        defaultCamera->gameObject->SetPosition(glm::vec3(static_cast<float>(width) * 0.5f, static_cast<float>(height) * 0.5f, 0.0f));
+        defaultCamera->gameObject->SetPosition(glm::vec3(static_cast<float>(logicalWidth) * 0.5f, static_cast<float>(logicalHeight) * 0.5f, 0.0f));
     }
 
     defaultLight = dynamic_cast<LightComponent*>(app->GetDefaultGameObject()->AddComponent<LightComponent>(LightProps{
@@ -554,7 +555,7 @@ void GraphicsServer::SetRenderTarget(RenderTarget* target) {
     } else if (!target && _currentRenderTarget) {
         // Switching to default framebuffer
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        auto [width, height] = Window::Get()->GetFramebufferSize();
+        auto [width, height] = Window::Get()->GetPhysicalSize();
         glViewport(0, 0, width, height);
     }
 
@@ -816,7 +817,7 @@ void GraphicsServer::DrawText3D(
     glm::vec3 ndc = glm::vec3(clipSpacePos) / clipSpacePos.w;
 
     // Viewport transform — use logical size to match UIPass projection space
-    auto [width, height] = Window::Get()->GetSize();
+    auto [width, height] = Window::Get()->GetLogicalSize();
     float x = (ndc.x + 1.0f) * 0.5f * width;
     float y = (1.0f - ndc.y) * 0.5f * height; // Y-Down: match UIPass coordinate space
 

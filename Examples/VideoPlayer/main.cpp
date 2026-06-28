@@ -60,7 +60,7 @@ class VideoPlayerDemo : public Application {
         // Fullscreen 2D sprite.  CanvasPass uses top-left origin, Y-down, pixels.
         // flipY=true corrects the GL bottom-up vs. video top-down convention.
         auto* win  = Window::Get();
-        auto  sz   = win->GetSize();
+        auto  sz   = win->GetLogicalSize();
         float winW = static_cast<float>(sz.width);
         float winH = static_cast<float>(sz.height);
 

@@ -511,7 +511,7 @@ void Application::Run() {
     }
     ENGINE_LOG("Subsystems initialized.");
 
-    auto windowSize = _window->GetSize();
+    auto windowSize = _window->GetLogicalSize();
     RmlUiManager::Get()->Initialize(windowSize.width, windowSize.height, graphics.renderer);
 
     OnInit();

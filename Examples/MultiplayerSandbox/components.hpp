@@ -53,7 +53,7 @@ private:
         f.spell = _curSpell;
 
         const Player& me = _sim->players[_net->localPlayer];
-        auto ws = Window::Get()->GetSize();
+        auto ws = Window::Get()->GetLogicalSize();
         auto dpi = Window::Get()->GetDPI();
         glm::vec2 mouse = inp->GetMousePosition() / dpi;
         float wx = mouse.x * float(SandWorld::W) / float(ws.width);
