@@ -249,12 +249,12 @@
 
         <!-- Join flow -->
         <div id="panel-join" class="lobby-panel">
-            <p class="step-hint" id="join-hint">Paste the host's invite code to generate your reply.</p>
+            <p class="step-hint" id="join-hint">Paste the host's invite link to generate your reply.</p>
 
-            <!-- Step 1: input offer code -->
+            <!-- Step 1: input offer (shown when joining manually, hidden when via URL) -->
             <div id="join-step1" style="width:100%">
-                <div class="lobby-label">Host's invite code</div>
-                <textarea id="offer-input" class="lobby-code" placeholder="Paste here..."></textarea>
+                <div class="lobby-label">Host's invite link or code</div>
+                <textarea id="offer-input" class="lobby-code" placeholder="Paste link or code here..."></textarea>
                 <div class="lobby-row">
                     <button class="lobby-btn primary" onclick="lobby.submitOffer()">Generate Reply</button>
                 </div>
@@ -262,12 +262,12 @@
 
             <!-- Step 2: show answer code -->
             <div id="join-step2" style="width:100%; display:none">
-                <div class="lobby-label">Your reply code — send this to the host</div>
+                <div class="lobby-label">Your reply — send this back to the host</div>
                 <textarea id="answer-code" class="lobby-code" readonly placeholder="Generating..."></textarea>
                 <div class="lobby-row">
-                    <button class="lobby-btn" onclick="lobby.copyCode('answer-code')">Copy</button>
+                    <button class="lobby-btn primary" onclick="lobby.copyCode('answer-code')">Copy Reply</button>
                 </div>
-                <p class="step-hint">Waiting for the host to enter your code and connect...</p>
+                <p class="step-hint">Waiting for the host to paste your reply and connect...</p>
             </div>
 
             <span class="back-link" onclick="lobby.showMenu()">← Back</span>
@@ -278,112 +278,158 @@
 
     <script type="text/javascript">
 
-    // ── WebRTC + Lobby logic ───────────────────────────────────────────────
-    // window._rtcChannel    — RTCDataChannel used by C++ via EM_JS
-    // window._rtcRecvQueue  — ArrayBuffer[] drained each Pump() call
+    // ── Signaling abstraction ──────────────────────────────────────────────
+    // Currently: manual copy-paste (no server needed).
+    // To add a relay later, replace publishOffer/pollAnswer with API calls
+    // and hide the answer-input textarea — nothing else needs to change.
+    var Signaling = {
+        publishOffer: function(/*code*/) { return Promise.resolve(null); },
+        pollAnswer:   function(/*roomId*/) { return Promise.resolve(null); }
+    };
 
+    // ── Compression: deflate-raw + base64url (~55% smaller than plain btoa) ─
+    function _toB64url(bytes) {
+        return btoa(String.fromCharCode.apply(null, bytes))
+            .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+    }
+    function _fromB64url(s) {
+        s = s.replace(/-/g,'+').replace(/_/g,'/');
+        s += '='.repeat((4 - s.length % 4) % 4);
+        return Uint8Array.from(atob(s), function(c){ return c.charCodeAt(0); });
+    }
+    function compress(obj) {
+        var bytes = new TextEncoder().encode(JSON.stringify(obj));
+        var cs = new CompressionStream('deflate-raw');
+        var w = cs.writable.getWriter(); w.write(bytes); w.close();
+        return new Response(cs.readable).arrayBuffer()
+            .then(function(buf){ return _toB64url(new Uint8Array(buf)); });
+    }
+    function decompress(s) {
+        var ds = new DecompressionStream('deflate-raw');
+        var w = ds.writable.getWriter(); w.write(_fromB64url(s.trim())); w.close();
+        return new Response(ds.readable).text().then(JSON.parse);
+    }
+    // Accept either a full invite URL (?join=xxx) or a bare code.
+    function extractCode(input) {
+        input = input.trim();
+        try { var p = new URL(input).searchParams.get('join'); if (p) return p; } catch(_){}
+        return input;
+    }
+    function buildInviteUrl(code) {
+        return location.origin + location.pathname + '?join=' + code;
+    }
+
+    // ── WebRTC globals read by C++ EM_JS transport ─────────────────────────
     window._rtcChannel   = null;
     window._rtcRecvQueue = [];
 
-    const ICE_SERVERS = [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-    ];
+    var ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' },
+                       { urls: 'stun:stun1.l.google.com:19302' }];
+    var DC_OPTS     = { ordered: false, maxRetransmits: 0 };
 
-    const DATA_CHANNEL_OPTS = {
-        ordered: false,     // UDP-like: no ordering guarantee
-        maxRetransmits: 0   // UDP-like: no retransmission (lockstep handles redundancy)
-    };
-
+    // ── Lobby controller ───────────────────────────────────────────────────
     var lobby = (function() {
-        var _pc        = null;
-        var _hostSeed  = 0;
-        var _wasmReady = false;
-        var _pendingArgs = null; // args to pass to callMain once WASM is ready
+        var _pc          = null;
+        var _wasmReady   = false;
+        var _pendingCall = null;  // set when DataChannel opens before WASM is ready
+        var _pendingAns  = null;  // compressed answer ready before lobby is visible
+
+        // Detect invite URL on load; processing runs in parallel with WASM download.
+        var _joinParam = new URLSearchParams(location.search).get('join');
 
         function setStatus(msg, isError) {
             var el = document.getElementById('lobby-status');
             el.textContent = msg;
             el.className = isError ? 'error' : '';
         }
-
         function showPanel(id) {
-            ['panel-menu', 'panel-host', 'panel-join'].forEach(function(p) {
-                var el = document.getElementById(p);
-                el.classList.toggle('active', el.id === id);
+            ['panel-menu','panel-host','panel-join'].forEach(function(p) {
+                document.getElementById(p).classList.toggle('active', p === id);
             });
             setStatus('');
         }
-
-        // Encode the fully-gathered local description as a compact base64 string.
-        function encodeDesc(desc) {
-            return btoa(JSON.stringify({ type: desc.type, sdp: desc.sdp }));
-        }
-
-        function decodeDesc(code) {
-            try { return JSON.parse(atob(code.trim())); } catch(e) { return null; }
-        }
-
-        // Returns a Promise that resolves once ICE gathering is complete
-        // (or after a 10-second timeout so we don't wait forever on restricted networks).
         function waitForIce(pc) {
             return new Promise(function(resolve) {
                 if (pc.iceGatheringState === 'complete') { resolve(); return; }
-                var timer = setTimeout(resolve, 10000);
+                var t = setTimeout(resolve, 10000);
                 pc.addEventListener('icegatheringstatechange', function() {
-                    if (pc.iceGatheringState === 'complete') {
-                        clearTimeout(timer);
-                        resolve();
-                    }
+                    if (pc.iceGatheringState === 'complete') { clearTimeout(t); resolve(); }
                 });
             });
         }
-
-        function attachChannelHandlers(ch) {
+        // gameArgs are captured per-connection so there is no shared _pendingArgs race.
+        function attachChannel(ch, gameArgs) {
             ch.binaryType = 'arraybuffer';
-            ch.onmessage = function(e) { window._rtcRecvQueue.push(e.data); };
-            ch.onopen = function() {
+            ch.onmessage  = function(e) { window._rtcRecvQueue.push(e.data); };
+            ch.onerror    = function()  { setStatus('Connection error. Try again.', true); };
+            ch.onopen     = function()  {
                 setStatus('Connected! Starting game...');
-                setTimeout(function() {
-                    startGame(_pendingArgs || []);
-                }, 100);
-            };
-            ch.onerror = function(e) {
-                setStatus('Connection error. Try again.', true);
+                setTimeout(function() { startGame(gameArgs); }, 100);
             };
         }
-
         function startGame(args) {
             document.getElementById('lobby').style.display = 'none';
-            if (_wasmReady) {
-                Module['callMain'](args);
-            } else {
-                _pendingArgs = args;
-                // callMain will fire from onRuntimeInitialized → _pendingArgs check
-            }
+            if (_wasmReady) { Module['callMain'](args); }
+            else            { _pendingCall = args; }
+        }
+        function showAnswerCode(code) {
+            document.getElementById('join-step1').style.display = 'none';
+            document.getElementById('join-step2').style.display = '';
+            document.getElementById('answer-code').value = code;
+            document.getElementById('join-hint').textContent =
+                'Send this reply to the host, then wait for them to connect.';
+        }
+        // Build and return a compressed answer code; also wires up the DataChannel.
+        function processOffer(desc) {
+            _pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+            _pc.ondatachannel = function(e) {
+                window._rtcChannel = e.channel;
+                attachChannel(e.channel, ['--join', '0.0.0.0']);
+            };
+            return _pc.setRemoteDescription(desc)
+                .then(function() { return _pc.createAnswer(); })
+                .then(function(a) { return _pc.setLocalDescription(a); })
+                .then(function()  { return waitForIce(_pc); })
+                .then(function()  {
+                    return compress({ type: _pc.localDescription.type,
+                                      sdp:  _pc.localDescription.sdp });
+                });
+        }
+
+        // If opened via invite URL, start processing immediately (parallel with WASM).
+        if (_joinParam) {
+            decompress(_joinParam)
+                .then(function(desc) { return processOffer(desc); })
+                .then(function(code) {
+                    _pendingAns = code;
+                    if (_wasmReady) { showPanel('panel-join'); showAnswerCode(code); }
+                })
+                .catch(function() { setStatus('Invalid invite link.', true); });
         }
 
         return {
             onWasmReady: function() {
                 _wasmReady = true;
                 document.getElementById('wasm-hint').style.display = 'none';
-                if (_pendingArgs !== null) {
-                    // Solo or pre-connected case: WASM finished loading while user waited
-                    Module['callMain'](_pendingArgs);
-                    _pendingArgs = null;
+                if (_pendingCall) {
+                    Module['callMain'](_pendingCall); _pendingCall = null; return;
+                }
+                if (_joinParam) {
+                    showPanel('panel-join');
+                    if (_pendingAns) { showAnswerCode(_pendingAns); }
+                    else             { setStatus('Generating reply...'); }
                 }
             },
 
             doSolo: function() {
-                var seed = String(Math.floor(Math.random() * 0xFFFFFFFF) >>> 0);
-                startGame(['--seed', seed]);
+                startGame(['--seed', String(Math.floor(Math.random() * 0xFFFFFFFF) >>> 0)]);
             },
 
             showMenu: function() {
                 if (_pc) { _pc.close(); _pc = null; }
                 window._rtcChannel = null;
                 window._rtcRecvQueue = [];
-                _pendingArgs = null;
+                _pendingCall = null; _pendingAns = null;
                 showPanel('panel-menu');
             },
 
@@ -391,43 +437,43 @@
                 showPanel('panel-host');
                 document.getElementById('offer-code').value = '';
                 document.getElementById('answer-input').value = '';
+                document.getElementById('btn-connect').disabled = false;
                 setStatus('Gathering connection info...');
 
-                _hostSeed = Math.floor(Math.random() * 0xFFFFFFFF) >>> 0;
+                var seed = Math.floor(Math.random() * 0xFFFFFFFF) >>> 0;
                 _pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-
-                var ch = _pc.createDataChannel('game', DATA_CHANNEL_OPTS);
+                var ch = _pc.createDataChannel('game', DC_OPTS);
                 window._rtcChannel = ch;
-                attachChannelHandlers(ch);
-
-                _pendingArgs = ['--host', '--seed', String(_hostSeed)];
+                attachChannel(ch, ['--host', '--seed', String(seed)]);
 
                 _pc.createOffer()
-                  .then(function(offer) { return _pc.setLocalDescription(offer); })
-                  .then(function() { return waitForIce(_pc); })
-                  .then(function() {
-                      document.getElementById('offer-code').value = encodeDesc(_pc.localDescription);
-                      setStatus('Share your invite code, then paste their reply.');
-                  })
-                  .catch(function(e) {
-                      setStatus('Failed to create offer: ' + e.message, true);
-                  });
+                    .then(function(o) { return _pc.setLocalDescription(o); })
+                    .then(function()  { return waitForIce(_pc); })
+                    .then(function()  {
+                        return compress({ type: _pc.localDescription.type,
+                                          sdp:  _pc.localDescription.sdp });
+                    })
+                    .then(function(code) {
+                        document.getElementById('offer-code').value = buildInviteUrl(code);
+                        setStatus('Share the link, then paste your friend\'s reply here.');
+                        Signaling.publishOffer(code); // no-op until relay is added
+                    })
+                    .catch(function(e) { setStatus('Failed: ' + e.message, true); });
             },
 
             submitAnswer: function() {
-                var code = document.getElementById('answer-input').value.trim();
-                var desc = decodeDesc(code);
-                if (!desc || desc.type !== 'answer') {
-                    setStatus('Invalid answer code. Make sure you pasted the full reply.', true);
-                    return;
-                }
+                var raw = document.getElementById('answer-input').value.trim();
                 document.getElementById('btn-connect').disabled = true;
                 setStatus('Connecting...');
-                _pc.setRemoteDescription(desc)
-                  .catch(function(e) {
-                      document.getElementById('btn-connect').disabled = false;
-                      setStatus('Failed to connect: ' + e.message, true);
-                  });
+                decompress(raw)
+                    .then(function(desc) {
+                        if (desc.type !== 'answer') throw new Error('not an answer');
+                        return _pc.setRemoteDescription(desc);
+                    })
+                    .catch(function() {
+                        document.getElementById('btn-connect').disabled = false;
+                        setStatus('Invalid reply — paste the full text your friend sent.', true);
+                    });
             },
 
             showJoin: function() {
@@ -437,41 +483,19 @@
                 document.getElementById('join-step1').style.display = '';
                 document.getElementById('join-step2').style.display = 'none';
                 document.getElementById('join-hint').textContent =
-                    'Paste the host\'s invite code to generate your reply.';
+                    'Paste the host\'s invite link to generate your reply.';
             },
 
             submitOffer: function() {
-                var code = document.getElementById('offer-input').value.trim();
-                var desc = decodeDesc(code);
-                if (!desc || desc.type !== 'offer') {
-                    setStatus('Invalid invite code. Make sure you pasted the full code.', true);
-                    return;
-                }
+                var code = extractCode(document.getElementById('offer-input').value);
                 setStatus('Generating reply...');
-
-                _pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-                _pc.ondatachannel = function(e) {
-                    window._rtcChannel = e.channel;
-                    attachChannelHandlers(e.channel);
-                };
-
-                _pendingArgs = ['--join', '0.0.0.0'];
-
-                _pc.setRemoteDescription(desc)
-                  .then(function() { return _pc.createAnswer(); })
-                  .then(function(answer) { return _pc.setLocalDescription(answer); })
-                  .then(function() { return waitForIce(_pc); })
-                  .then(function() {
-                      document.getElementById('join-step1').style.display = 'none';
-                      document.getElementById('join-step2').style.display = '';
-                      document.getElementById('answer-code').value = encodeDesc(_pc.localDescription);
-                      document.getElementById('join-hint').textContent =
-                          'Send this reply to the host, then wait for them to connect.';
-                      setStatus('');
-                  })
-                  .catch(function(e) {
-                      setStatus('Failed to process offer: ' + e.message, true);
-                  });
+                decompress(code)
+                    .then(function(desc) {
+                        if (desc.type !== 'offer') throw new Error('not an offer');
+                        return processOffer(desc);
+                    })
+                    .then(function(ansCode) { showAnswerCode(ansCode); setStatus(''); })
+                    .catch(function() { setStatus('Invalid invite link or code.', true); });
             },
 
             copyCode: function(id) {
@@ -480,7 +504,7 @@
                 navigator.clipboard.writeText(el.value).catch(function() {
                     document.execCommand('copy');
                 });
-                setStatus('Copied to clipboard!');
+                setStatus('Copied!');
                 setTimeout(function() { setStatus(''); }, 2000);
             }
         };
