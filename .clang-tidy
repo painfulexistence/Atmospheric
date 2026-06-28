@@ -1,5 +1,8 @@
 Checks: >
+  readability-identifier-naming,
   readability-avoid-const-params-in-decls,
+  readability-function-cognitive-complexity,
+  modernize-use-auto,
   modernize-use-nullptr,
   modernize-use-override,
   bugprone-use-after-move,
@@ -9,3 +12,16 @@ Checks: >
   -readability-magic-numbers,
   -readability-braces-around-statements,
   -readability-misleading-indentation
+
+CheckOptions:
+  readability-identifier-naming.ClassCase: CamelCase
+  readability-identifier-naming.TypeCase: CamelCase
+  readability-identifier-naming.EnumCase: CamelCase
+  readability-identifier-naming.EnumConstantCase: CamelCase
+  readability-identifier-naming.FunctionCase: CamelCase
+  readability-identifier-naming.MethodCase: CamelCase
+  readability-identifier-naming.MemberCase: camelBack
+  readability-identifier-naming.PrivateMemberPrefix: _
+  readability-identifier-naming.VariableCase: camelBack
+  readability-identifier-naming.ParameterCase: camelBack
+  readability-identifier-naming.NamespaceCase: CamelCase
