@@ -239,6 +239,16 @@ void GraphicsServer::DrawImGui(float dt) {
         ImGui::Text("Opaque Queue Size: %d", (int)renderer->GetOpaqueQueue().size());
 
         ImGui::Separator();
+        if (ImGui::TreeNode("GPU Pass Timings")) {
+            auto timings = renderer->GetTimings();
+            for (auto& [name, ms] : timings) {
+                bool isTotal = (name == "[Total]");
+                if (isTotal) ImGui::Separator();
+                ImGui::Text("%-26s %.3f ms", name.c_str(), ms);
+            }
+            ImGui::TreePop();
+        }
+        ImGui::Separator();
 
         if (ImGui::TreeNode("Cameras")) {
             for (auto c : cameras) {

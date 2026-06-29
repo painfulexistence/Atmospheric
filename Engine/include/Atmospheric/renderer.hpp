@@ -1,5 +1,6 @@
 #pragma once
 #include "asset_manager.hpp"
+#include "gpu_timer.hpp"
 #include "batch_renderer_2d.hpp"
 #include "buffer.hpp"
 #include "config.hpp"
@@ -11,6 +12,8 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 struct GpuImageData {
@@ -169,16 +172,26 @@ private:
 };
 
 class RenderGraph {
-    std::vector<std::unique_ptr<RenderPass>> _passes;
+    struct PassEntry {
+        std::unique_ptr<RenderPass> pass;
+        GpuTimer                    timer;
+        std::string                 name;
+    };
+    std::vector<PassEntry> _entries;
 
 public:
+    ~RenderGraph();
+
     void AddPass(std::unique_ptr<RenderPass> pass);
     void Render(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr);
 
+    // Returns {passName, gpuMs} for every pass (one frame behind, stall-free).
+    std::vector<std::pair<std::string, float>> GetTimings() const;
+
     template<typename T>
     T* GetPass() {
-        for (auto& p : _passes) {
-            if (auto* t = dynamic_cast<T*>(p.get())) return t;
+        for (auto& e : _entries) {
+            if (auto* t = dynamic_cast<T*>(e.pass.get())) return t;
         }
         return nullptr;
     }
@@ -212,6 +225,10 @@ public:
 
     template<typename T>
     T* GetPass() { return _renderGraph ? _renderGraph->GetPass<T>() : nullptr; }
+
+    std::vector<std::pair<std::string, float>> GetTimings() const {
+        return _renderGraph ? _renderGraph->GetTimings() : std::vector<std::pair<std::string, float>>{};
+    }
 
     void SetCapability(const GLenum& cap, bool enable = true) {
         if (enable) {

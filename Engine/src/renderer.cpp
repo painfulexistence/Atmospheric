@@ -1,5 +1,8 @@
 #include "renderer.hpp"
+#include <cctype>
 #include <cstring>
+#include <string>
+#include <utility>
 #include "asset_manager.hpp"
 #include "batch_renderer_2d.hpp"
 #include "canvas_drawable.hpp"
@@ -78,15 +81,49 @@ static std::vector<RenderBatch> BuildBatches(const std::vector<Renderer::Sortabl
 
 static constexpr int MAX_CANVAS_TEXTURES = 32;
 
+// Strips the leading digit-length prefix (GCC mangled names) and
+// "class "/"struct " prefix (MSVC) from a typeid name string.
+static std::string CleanTypeName(const char* raw) {
+    while (*raw && std::isdigit(static_cast<unsigned char>(*raw))) ++raw;
+    for (const char* prefix : {"class ", "struct "}) {
+        if (std::strncmp(raw, prefix, std::strlen(prefix)) == 0) {
+            raw += std::strlen(prefix);
+            break;
+        }
+    }
+    return raw;
+}
+
+RenderGraph::~RenderGraph() {
+    for (auto& e : _entries) e.timer.Destroy();
+}
+
 void RenderGraph::AddPass(std::unique_ptr<RenderPass> pass) {
-    _passes.push_back(std::move(pass));
+    PassEntry e;
+    e.name = CleanTypeName(typeid(*pass).name());
+    e.timer.Init();
+    e.pass = std::move(pass);
+    _entries.push_back(std::move(e));
 }
 
 void RenderGraph::Render(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
-    // Execute all passes in order (sorting, batching, drawing)
-    for (auto& pass : _passes) {
-        pass->Execute(ctx, renderer, enc);
+    for (auto& e : _entries) {
+        e.timer.Begin();
+        e.pass->Execute(ctx, renderer, enc);
+        e.timer.End();
     }
+}
+
+std::vector<std::pair<std::string, float>> RenderGraph::GetTimings() const {
+    std::vector<std::pair<std::string, float>> out;
+    out.reserve(_entries.size() + 1);
+    float total = 0.0f;
+    for (auto& e : _entries) {
+        out.push_back({e.name, e.timer.GetMs()});
+        total += e.timer.GetMs();
+    }
+    out.push_back({"[Total]", total});
+    return out;
 }
 
 void Renderer::Init(int width, int height) {
