@@ -2,12 +2,5 @@
   "name": "main",
   "textures": [],
   "shaders": {},
-  "entities": [
-    {
-      "name": "VoxelWorld",
-      "components": [
-        { "type": "VoxelWorld", "seed": 1337 }
-      ]
-    }
-  ]
+  "entities": []
 }

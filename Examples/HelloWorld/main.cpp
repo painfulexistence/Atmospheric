@@ -51,7 +51,8 @@ class HelloWorld : public Application {
         };
         AssetManager::Get().CreateMaterial(matProps);
 
-        mainCamera->gameObject->SetPosition(glm::vec3(-10.0, 5.0, 0.0));
+        mainCamera->gameObject->SetPosition(glm::vec3(0.0f, 5.0f, -10.0f));
+        mainCamera->Yaw(glm::half_pi<float>());
 
         // === Rotating, bobbing cube ===
         auto cubeMesh = AssetManager::Get().CreateCubeMesh("CubeMesh", 1.0f);
