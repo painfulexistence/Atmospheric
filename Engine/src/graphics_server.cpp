@@ -224,9 +224,9 @@ void GraphicsServer::DrawImGui(float dt) {
         if (auto* pp = renderer->GetPass<PostProcessPass>()) {
             ImGui::Checkbox("Tonemap", &pp->tonemapEnabled);
             ImGui::Checkbox("Chromatic Aberration", &pp->caEnabled);
-            const char* effectNames[] = { "None", "CRT", "VHS", "Color Grading", "Posterize", "Sobel", "Edges" };
+            const char* effectNames[] = { "None", "CRT", "VHS", "Color Grading", "Posterize", "Sobel", "Edges", "Vignette", "Chromatic" };
             int effectIdx = (int)pp->postEffect;
-            if (ImGui::Combo("Post Effect", &effectIdx, effectNames, 7))
+            if (ImGui::Combo("Post Effect", &effectIdx, effectNames, 9))
                 pp->postEffect = (PostEffect)effectIdx;
         }
         ImGui::Text("Opaque Queue Size: %d", (int)renderer->GetOpaqueQueue().size());

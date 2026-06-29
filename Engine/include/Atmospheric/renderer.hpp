@@ -85,7 +85,7 @@ public:
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
-enum class PostEffect { None, CRT, VHS, ColorGrading, Posterize, Sobel, Edges };
+enum class PostEffect { None, CRT, VHS, ColorGrading, Posterize, Sobel, Edges, Vignette, Chromatic };
 
 // Final composite blit: ACES tonemapping + optional chromatic aberration.
 class PostProcessPass : public RenderPass {

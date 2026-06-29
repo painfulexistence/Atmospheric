@@ -1422,6 +1422,8 @@ void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
         case PostEffect::Posterize:    shaderName = "post_posterize";     break;
         case PostEffect::Sobel:        shaderName = "post_sobel";         break;
         case PostEffect::Edges:        shaderName = "post_edges";         break;
+        case PostEffect::Vignette:     shaderName = "post_vignette";      break;
+        case PostEffect::Chromatic:    shaderName = "post_chromatic";     break;
         default: break;
     }
 
