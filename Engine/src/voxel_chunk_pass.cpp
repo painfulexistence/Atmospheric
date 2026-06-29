@@ -180,8 +180,9 @@ void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEnc
     shader->SetUniform("u_lightDir",    lightDir);
     shader->SetUniform("u_lightColor",  lightColor);
     shader->SetUniform("u_ambientColor",ambient);
-    shader->SetUniform("u_fogColor",    glm::vec3(0.55f, 0.65f, 0.75f));
-    shader->SetUniform("u_fogDensity",  0.003f);
+    shader->SetUniform("u_fogColor",     glm::vec3(0.55f, 0.65f, 0.75f));
+    shader->SetUniform("u_fogDensity",   0.003f);
+    shader->SetUniform("u_paletteIndex", paletteIndex);
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);

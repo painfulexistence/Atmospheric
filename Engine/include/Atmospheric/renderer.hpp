@@ -126,6 +126,8 @@ public:
 class VoxelChunkPass : public RenderPass {
 public:
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+    int paletteIndex = 4;  // 0-5; 4 = VX Palette 5 (soft cool blue-grey)
 };
 
 // Renders MeshType::PRIM water meshes tagged via material renderQueue.
