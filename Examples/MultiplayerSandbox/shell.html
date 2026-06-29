@@ -532,6 +532,11 @@
                     .catch(function() { setStatus('Invalid invite link or code.', true); });
             },
 
+            cleanup: function() {
+                if (_pc) { _pc.close(); _pc = null; }
+                window._rtcChannel = null;
+            },
+
             copyCode: function(id) {
                 var el = document.getElementById(id);
                 el.select();
@@ -684,7 +689,7 @@
 
         // Close any open RTCPeerConnection on unload.
         try {
-            if (window._rtcPc) { window._rtcPc.close(); window._rtcPc = null; }
+            lobby.cleanup();
         } catch (_) {}
     }
     window.addEventListener('pagehide', cleanupWorkers);
