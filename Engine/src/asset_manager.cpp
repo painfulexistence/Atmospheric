@@ -304,7 +304,13 @@ void AssetManager::LoadDefaultShaders() {
                   { "bloom_threshold", { .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_threshold.frag" } },
                   { "bloom_downsample",{ .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_downsample.frag" } },
                   { "bloom_upsample",  { .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_upsample.frag" } },
-                  { "bloom_composite", { .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_composite.frag" } } });
+                  { "bloom_composite",    { .vert = "assets/shaders/bloom.vert",  .frag = "assets/shaders/bloom_composite.frag"    } },
+                  { "post_crt",          { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_crt.frag"           } },
+                  { "post_vhs",          { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_vhs.frag"           } },
+                  { "post_color_grading",{ .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_color_grading.frag" } },
+                  { "post_posterize",    { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_posterize.frag"     } },
+                  { "post_sobel",        { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_sobel.frag"         } },
+                  { "post_edges",        { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_edges.frag"         } } });
     _defaultShaderCount = (uint32_t)shaders.size();
 }
 

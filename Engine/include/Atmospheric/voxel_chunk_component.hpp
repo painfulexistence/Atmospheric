@@ -25,12 +25,16 @@ public:
     bool    IsAir(int x, int y, int z) const;
     bool    IsInBounds(int x, int y, int z) const;
 
-    // dx, dz in {-1, 0, 1}
-    void SetNeighbor(int dx, int dz, VoxelChunkComponent* neighbor);
+    // dx, dy, dz in {-1, 0, 1}
+    void SetNeighbor(int dx, int dy, int dz, VoxelChunkComponent* neighbor);
 
     void RebuildMesh();
     std::vector<VoxelVertex> GenerateMeshData();
     void UploadMesh(const std::vector<VoxelVertex>& verts);
+
+    // Re-assign this slot to a new world chunk coordinate (used by chunk streaming).
+    // Clears voxels, detaches all neighbors, and uploads an empty mesh immediately.
+    void Relocate(glm::ivec3 newChunkPos);
 
     bool       IsDirty()    const { return _dirty; }
     void       MarkDirty()        { _dirty = true; }
@@ -53,7 +57,8 @@ private:
     uint8_t              _voxels[SIZE][SIZE][SIZE];
     bool                 _dirty = true;
     Mesh*                _mesh  = nullptr;
-    VoxelChunkComponent* _neighbors[3][3];
+    // _neighbors[dx+1][dy+1][dz+1], dx/dy/dz in {-1,0,1}
+    VoxelChunkComponent* _neighbors[3][3][3];
 
     uint8_t GetVoxelWithNeighbors(int x, int y, int z) const;
     void    BuildGreedyLayer(VoxelMeshBuilder& builder, int axis, int layer, int dir);

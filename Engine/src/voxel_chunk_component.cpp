@@ -29,6 +29,15 @@ VoxelChunkComponent::~VoxelChunkComponent() {
 void VoxelChunkComponent::OnAttach() {}
 void VoxelChunkComponent::OnDetach() {}
 
+void VoxelChunkComponent::Relocate(glm::ivec3 newChunkPos) {
+    std::memset(_neighbors, 0, sizeof(_neighbors));
+    _chunkPos = newChunkPos;
+    std::memset(_voxels, 0, sizeof(_voxels));
+    _dirty = true;
+    UploadMesh({});
+    if (gameObject) gameObject->SetPosition(GetWorldPos());
+}
+
 uint8_t VoxelChunkComponent::GetVoxel(int x, int y, int z) const {
     if (!IsInBounds(x, y, z)) return 0;
     return _voxels[x][y][z];
@@ -50,26 +59,27 @@ bool VoxelChunkComponent::IsInBounds(int x, int y, int z) const {
     return x >= 0 && x < SIZE && y >= 0 && y < SIZE && z >= 0 && z < SIZE;
 }
 
-void VoxelChunkComponent::SetNeighbor(int dx, int dz, VoxelChunkComponent* neighbor) {
-    _neighbors[dx + 1][dz + 1] = neighbor;
+void VoxelChunkComponent::SetNeighbor(int dx, int dy, int dz, VoxelChunkComponent* neighbor) {
+    _neighbors[dx + 1][dy + 1][dz + 1] = neighbor;
 }
 
 uint8_t VoxelChunkComponent::GetVoxelWithNeighbors(int x, int y, int z) const {
-    if (y < 0 || y >= SIZE) return 0;
-
-    int dx = 0, dz = 0;
-    int nx = x, nz = z;
+    int dx = 0, dy = 0, dz = 0;
+    int nx = x, ny = y, nz = z;
 
     if      (x <    0) { nx = x + SIZE; dx = -1; }
     else if (x >= SIZE) { nx = x - SIZE; dx =  1; }
 
+    if      (y <    0) { ny = y + SIZE; dy = -1; }
+    else if (y >= SIZE) { ny = y - SIZE; dy =  1; }
+
     if      (z <    0) { nz = z + SIZE; dz = -1; }
     else if (z >= SIZE) { nz = z - SIZE; dz =  1; }
 
-    if (dx == 0 && dz == 0) return _voxels[x][y][z];
+    if (dx == 0 && dy == 0 && dz == 0) return _voxels[x][y][z];
 
-    VoxelChunkComponent* nb = _neighbors[dx + 1][dz + 1];
-    return nb ? nb->GetVoxel(nx, y, nz) : 0;
+    VoxelChunkComponent* nb = _neighbors[dx + 1][dy + 1][dz + 1];
+    return nb ? nb->GetVoxel(nx, ny, nz) : 0;
 }
 
 glm::vec3 VoxelChunkComponent::GetBoundingSphereCenter() const {

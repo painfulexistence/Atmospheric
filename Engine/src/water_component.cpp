@@ -34,5 +34,8 @@ void WaterComponent::OnAttach() {
         .waveSpeed       = _props.waveSpeed,
         .waterFogColor   = _props.fogColor,
         .waterFogDensity = _props.fogDensity,
+        .deepColor       = _props.deepColor,
+        .shallowColor    = _props.shallowColor,
+        .beerCoef        = _props.beerCoef,
     };
 }

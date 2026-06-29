@@ -1414,10 +1414,22 @@ void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
     glClearColor(renderer.clearColor.x, renderer.clearColor.y, renderer.clearColor.z, renderer.clearColor.w);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    auto shader = ctx->GetShader("hdr");
+    const char* shaderName = "hdr";
+    switch (postEffect) {
+        case PostEffect::CRT:          shaderName = "post_crt";           break;
+        case PostEffect::VHS:          shaderName = "post_vhs";           break;
+        case PostEffect::ColorGrading: shaderName = "post_color_grading"; break;
+        case PostEffect::Posterize:    shaderName = "post_posterize";     break;
+        case PostEffect::Sobel:        shaderName = "post_sobel";         break;
+        case PostEffect::Edges:        shaderName = "post_edges";         break;
+        default: break;
+    }
+
+    auto shader = ctx->GetShader(shaderName);
     shader->Activate();
     shader->SetUniform(std::string("color_map_unit"), (int)0);
     shader->SetUniform(std::string("exposure"),       tonemapEnabled ? exposure : 1.0f);
+    shader->SetUniform(std::string("u_time"),         renderer.frameTime);
     shader->SetUniform(std::string("u_ca_enabled"),   (int)caEnabled);
     shader->SetUniform(std::string("u_ca_strength"),  caStrength);
 

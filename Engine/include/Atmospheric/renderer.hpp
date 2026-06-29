@@ -85,16 +85,20 @@ public:
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
+enum class PostEffect { None, CRT, VHS, ColorGrading, Posterize, Sobel, Edges };
+
 // Final composite blit: ACES tonemapping + optional chromatic aberration.
 class PostProcessPass : public RenderPass {
 public:
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
-    bool  tonemapEnabled = true;
-    float exposure       = 0.5f;
+    bool       tonemapEnabled = true;
+    float      exposure       = 0.5f;
 
-    bool  caEnabled  = false;
-    float caStrength = 0.005f;
+    bool       caEnabled  = false;
+    float      caStrength = 0.005f;
+
+    PostEffect postEffect = PostEffect::None;
 };
 
 // TODO: rename this

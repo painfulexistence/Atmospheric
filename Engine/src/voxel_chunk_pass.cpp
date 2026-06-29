@@ -268,6 +268,9 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
         shader->SetUniform("u_waveSpeed",    wd.waveSpeed);
         shader->SetUniform("u_fogColor",     wd.waterFogColor);
         shader->SetUniform("u_fogDensity",   wd.waterFogDensity);
+        shader->SetUniform("u_deepColor",    wd.deepColor);
+        shader->SetUniform("u_shallowColor", wd.shallowColor);
+        shader->SetUniform("u_beerCoef",     wd.beerCoef);
         shader->SetUniform("u_model",        cmd.transform);
 
         glBindVertexArray(mesh->vao);
