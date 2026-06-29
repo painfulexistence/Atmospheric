@@ -2,8 +2,17 @@
 #include "globals.hpp"
 #include <cstring>
 
-// GL_TIMESTAMP is available on desktop OpenGL ≥ 3.3.
-// Disabled on WebGL / GLES targets that lack the extension.
+// GL_TIMESTAMP / glQueryCounter require OpenGL ≥ 3.3 (GL_ARB_timer_query,
+// promoted to core in 3.3). Atmospheric targets GL 4.1+ on desktop so this
+// is always available there.
+//
+// Disabled on targets that lack support:
+//   - WebGL 1/2 (__EMSCRIPTEN__): no GL_TIMESTAMP; EXT_disjoint_timer_query
+//     exists but has unreliable disjoint semantics — not worth handling.
+//   - Android GLES (__ANDROID__): extension not guaranteed.
+//   - iOS GLES (TARGET_OS_IOS): same.
+// On these platforms all GpuTimer methods are inlined no-ops and GetMs()
+// always returns 0.
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && \
     !(defined(__APPLE__) && TARGET_OS_IOS)
 #define AE_GPU_TIMER_ENABLED 1
