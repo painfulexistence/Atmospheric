@@ -202,6 +202,7 @@ void PlayAudioStream(AudioStream stream);                       // Play audio st
 void PauseAudioStream(AudioStream stream);                      // Pause audio stream
 void ResumeAudioStream(AudioStream stream);                     // Resume audio stream
 bool IsAudioStreamPlaying(AudioStream stream);                  // Check if audio stream is playing
+unsigned int GetAudioStreamFramesPlayed(AudioStream stream);    // Get number of audio frames played by the stream
 void StopAudioStream(AudioStream stream);                       // Stop audio stream
 void SetAudioStreamVolume(AudioStream stream, float volume);    // Set volume for audio stream (1.0 is max level)
 void SetAudioStreamPitch(AudioStream stream, float pitch);      // Set pitch for audio stream (1.0 is base level)
