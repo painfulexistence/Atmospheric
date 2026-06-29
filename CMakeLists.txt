@@ -97,6 +97,13 @@ include(FetchContent)
 
 add_subdirectory(Engine)
 
+# Propagate AE_ASSETS_DIR to the consumer's scope when used as a submodule.
+# Engine/CMakeLists.txt sets it with PARENT_SCOPE (→ this scope); re-export it
+# one more level so that ae_copy_engine_assets() works in the caller's CMakeLists.
+if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(AE_ASSETS_DIR "${AE_ASSETS_DIR}" PARENT_SCOPE)
+endif()
+
 # Only build the bundled examples when Atmospheric is the top-level project
 # AND AE_BUILD_EXAMPLES is ON. When consumed via add_subdirectory() (e.g. as
 # a submodule), downstream projects pull in Engine alone and provide their
