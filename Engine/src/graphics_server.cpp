@@ -271,13 +271,13 @@ void GraphicsServer::DrawImGui(float dt) {
             ImGui::TreePop();
         }
         if (ImGui::TreeNode("Textures")) {
-            for (auto t : renderer->uniShadowMaps) {
+            for (auto t : renderer->gl.uniShadowMaps) {
                 if (ImGui::TreeNode(fmt::format("Directional shadow map #{}", t).c_str())) {
                     ImGui::Image((ImTextureID)(intptr_t)t, ImVec2(64, 64));
                     ImGui::TreePop();
                 }
             }
-            for (auto t : renderer->omniShadowMaps) {
+            for (auto t : renderer->gl.omniShadowMaps) {
                 // FIXME: cubemap textures are not supported yet
                 // if (ImGui::TreeNode(fmt:: format("Point shadow map #{}", t).c_str())) {
                 //     ImGui::Image((ImTextureID)(intptr_t)t, ImVec2(64, 64));
@@ -298,23 +298,23 @@ void GraphicsServer::DrawImGui(float dt) {
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Position RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gBuffer.positionRT, ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.positionRT, ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Normal RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gBuffer.normalRT, ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.normalRT, ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Albedo RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gBuffer.albedoRT, ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.albedoRT, ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Material RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gBuffer.materialRT, ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.materialRT, ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Depth RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gBuffer.depthRT, ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.depthRT, ImVec2(64, 64));
                 ImGui::TreePop();
             }
             ImGui::Separator();

@@ -15,9 +15,11 @@
 #include <algorithm>
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "gpu_canvas_pass.hpp"
+#include "gpu_pipeline.hpp"
 #include "gpu_render_target.hpp"
 #include "command_encoder.hpp"
 #include <webgpu/webgpu.h>
+#include "renderer_wgsl.hpp"
 #endif
 #if defined(__APPLE__) && TARGET_OS_IOS
 #include <SDL3/SDL.h>
@@ -117,9 +119,9 @@ void Renderer::Init(int width, int height) {
             -1.f,  1.f, 0.f, 1.f,
         };
         GLuint vbo;
-        glGenVertexArrays(1, &screenQuadVAO);
+        glGenVertexArrays(1, &gl.screenQuadVAO);
         glGenBuffers(1, &vbo);
-        glBindVertexArray(screenQuadVAO);
+        glBindVertexArray(gl.screenQuadVAO);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
         glEnableVertexAttribArray(0);
@@ -137,10 +139,10 @@ void Renderer::Init(int width, int height) {
             -1, -1, -1, -1, -1,  1,  1, -1,  1,  1, -1,  1,  1, -1, -1, -1, -1, -1,
             -1,  1, -1, -1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, -1, -1,  1, -1,
         };
-        glGenVertexArrays(1, &skyboxVAO);
-        glGenBuffers(1, &skyboxVBO);
-        glBindVertexArray(skyboxVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
+        glGenVertexArrays(1, &gl.skyboxVAO);
+        glGenBuffers(1, &gl.skyboxVBO);
+        glBindVertexArray(gl.skyboxVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, gl.skyboxVBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVerts), cubeVerts, GL_STATIC_DRAW);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
@@ -173,10 +175,10 @@ void Renderer::Cleanup() {
 
     // debug and screen are now std::unique_ptr<Buffer> that auto-destruct
     if (GfxFactory::GetBackend() != GfxBackend::WebGPU) {
-        glDeleteVertexArrays(1, &canvasVAO);
-        glDeleteBuffers(1, &canvasVBO);
-        glDeleteVertexArrays(1, &skyboxVAO);
-        glDeleteBuffers(1, &skyboxVBO);
+        glDeleteVertexArrays(1, &gl.canvasVAO);
+        glDeleteBuffers(1, &gl.canvasVBO);
+        glDeleteVertexArrays(1, &gl.skyboxVAO);
+        glDeleteBuffers(1, &gl.skyboxVBO);
     }
 }
 
@@ -302,7 +304,7 @@ void Renderer::RenderFrame(GraphicsServer* ctx, float dt) {
         SDL_Window* win = static_cast<SDL_Window*>(Window::Get()->GetNativeHandle());
         SDL_PropertiesID props = SDL_GetWindowProperties(win);
         Sint64 fb = SDL_GetNumberProperty(props, SDL_PROP_WINDOW_UIKIT_OPENGL_FRAMEBUFFER_NUMBER, 0);
-        finalFBO = static_cast<GLuint>(fb);
+        gl.finalFBO = static_cast<GLuint>(fb);
     }
     AE_GL_PROBE(*this, "RenderFrame: after query iOS FBO");
 #endif
@@ -401,14 +403,14 @@ void Renderer::CheckErrors(const std::string& prefix) {
 
 void Renderer::CreateFBOs() {
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
-    glGenFramebuffers(1, &shadowFBO);
-    glGenFramebuffers(1, &gBuffer.id);
+    glGenFramebuffers(1, &gl.shadowFBO);
+    glGenFramebuffers(1, &gl.gBuffer.id);
 }
 
 void Renderer::DestroyFBOs() {
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
-    glDeleteFramebuffers(1, &shadowFBO);
-    glDeleteFramebuffers(1, &gBuffer.id);
+    glDeleteFramebuffers(1, &gl.shadowFBO);
+    glDeleteFramebuffers(1, &gl.gBuffer.id);
 }
 
 void Renderer::CreateRTs(const RenderTargetProps& props) {
@@ -425,7 +427,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, SHADOW_W, SHADOW_H, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-        uniShadowMaps[i] = map;
+        gl.uniShadowMaps[i] = map;
     }
     for (int i = 0; i < MAX_OMNI_LIGHTS; ++i) {
         GLuint map;
@@ -449,22 +451,22 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
               NULL
             );
         }
-        omniShadowMaps[i] = map;
+        gl.omniShadowMaps[i] = map;
     }
 
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
-    glBindFramebuffer(GL_FRAMEBUFFER, shadowFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, gl.shadowFBO);
     GLenum drawBuffers[] = { GL_NONE };
     glDrawBuffers(1, drawBuffers);
 #else
-    glBindFramebuffer(GL_FRAMEBUFFER, shadowFBO);
-    for (int i = 0; i < (int)uniShadowMaps.size(); ++i) {
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, uniShadowMaps[i], 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, gl.shadowFBO);
+    for (int i = 0; i < (int)gl.uniShadowMaps.size(); ++i) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gl.uniShadowMaps[i], 0);
         glDrawBuffer(GL_NONE);
         glReadBuffer(GL_NONE);
     }
-    for (int i = 0; i < (int)omniShadowMaps.size(); ++i) {
-        glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, omniShadowMaps[i], 0);
+    for (int i = 0; i < (int)gl.omniShadowMaps.size(); ++i) {
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, gl.omniShadowMaps[i], 0);
         glDrawBuffer(GL_NONE);
         glReadBuffer(GL_NONE);
     }
@@ -486,8 +488,8 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
 
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     if (isGL && sceneRT && sceneRT->GetNumSamples() > 1) {
-        glGenTextures(1, &glesResolvedDepthTex);
-        glBindTexture(GL_TEXTURE_2D, glesResolvedDepthTex);
+        glGenTextures(1, &gl.glesResolvedDepthTex);
+        glBindTexture(GL_TEXTURE_2D, gl.glesResolvedDepthTex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, props.width, props.height, 0,
                      GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -495,18 +497,18 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        glGenFramebuffers(1, &glesResolvedDepthFBO);
-        glBindFramebuffer(GL_FRAMEBUFFER, glesResolvedDepthFBO);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, glesResolvedDepthTex, 0);
+        glGenFramebuffers(1, &gl.glesResolvedDepthFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, gl.glesResolvedDepthFBO);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gl.glesResolvedDepthTex, 0);
 
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
             Console::Get()->Error("Renderer: WebGL resolved depth FBO incomplete!");
         }
-        glBindFramebuffer(GL_FRAMEBUFFER, finalFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, gl.finalFBO);
 
-        glesResolvedDepthWidth = props.width;
-        glesResolvedDepthHeight = props.height;
+        gl.glesResolvedDepthWidth = props.width;
+        gl.glesResolvedDepthHeight = props.height;
     }
 #endif
 
@@ -523,50 +525,50 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
 
     // 4. Create and set geometry pass attachments
     if (isGL) {
-    glGenTextures(1, &gBuffer.positionRT);
-    glBindTexture(GL_TEXTURE_2D, gBuffer.positionRT);
+    glGenTextures(1, &gl.gBuffer.positionRT);
+    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.positionRT);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, props.width, props.height, 0, GL_RGBA, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glGenTextures(1, &gBuffer.normalRT);
-    glBindTexture(GL_TEXTURE_2D, gBuffer.normalRT);
+    glGenTextures(1, &gl.gBuffer.normalRT);
+    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.normalRT);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, props.width, props.height, 0, GL_RGBA, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glGenTextures(1, &gBuffer.albedoRT);
-    glBindTexture(GL_TEXTURE_2D, gBuffer.albedoRT);
+    glGenTextures(1, &gl.gBuffer.albedoRT);
+    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.albedoRT);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, props.width, props.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glGenTextures(1, &gBuffer.materialRT);
-    glBindTexture(GL_TEXTURE_2D, gBuffer.materialRT);
+    glGenTextures(1, &gl.gBuffer.materialRT);
+    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.materialRT);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, props.width, props.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glGenTextures(1, &gBuffer.depthRT);
-    glBindTexture(GL_TEXTURE_2D, gBuffer.depthRT);
+    glGenTextures(1, &gl.gBuffer.depthRT);
+    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.depthRT);
     glTexImage2D(
       GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, props.width, props.height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL
     );
 
-    glGenFramebuffers(1, &gBuffer.id);
-    glBindFramebuffer(GL_FRAMEBUFFER, gBuffer.id);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gBuffer.positionRT, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gBuffer.normalRT, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gBuffer.albedoRT, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, gBuffer.materialRT, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gBuffer.depthRT, 0);
+    glGenFramebuffers(1, &gl.gBuffer.id);
+    glBindFramebuffer(GL_FRAMEBUFFER, gl.gBuffer.id);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gl.gBuffer.positionRT, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gl.gBuffer.normalRT, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gl.gBuffer.albedoRT, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, gl.gBuffer.materialRT, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gl.gBuffer.depthRT, 0);
     std::array<GLuint, 4> attachments = {
         GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3
     };
     glDrawBuffers(attachments.size(), attachments.data());
     CheckFramebufferStatus("G-buffer incomplete");
 
-    glBindFramebuffer(GL_FRAMEBUFFER, finalFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, gl.finalFBO);
     CheckErrors("Create G-buffer RTs");
     } // isGL
 }
@@ -578,32 +580,32 @@ void Renderer::DestroyRTs() {
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
 
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
-    if (glesResolvedDepthFBO) {
-        glDeleteFramebuffers(1, &glesResolvedDepthFBO);
-        glesResolvedDepthFBO = 0;
+    if (gl.glesResolvedDepthFBO) {
+        glDeleteFramebuffers(1, &gl.glesResolvedDepthFBO);
+        gl.glesResolvedDepthFBO = 0;
     }
-    if (glesResolvedDepthTex) {
-        glDeleteTextures(1, &glesResolvedDepthTex);
-        glesResolvedDepthTex = 0;
+    if (gl.glesResolvedDepthTex) {
+        glDeleteTextures(1, &gl.glesResolvedDepthTex);
+        gl.glesResolvedDepthTex = 0;
     }
-    glesResolvedDepthWidth = 0;
-    glesResolvedDepthHeight = 0;
+    gl.glesResolvedDepthWidth = 0;
+    gl.glesResolvedDepthHeight = 0;
 #endif
 
-    glDeleteTextures(1, &gBuffer.positionRT);
-    glDeleteTextures(1, &gBuffer.normalRT);
-    glDeleteTextures(1, &gBuffer.albedoRT);
-    glDeleteTextures(1, &gBuffer.materialRT);
-    glDeleteTextures(1, &gBuffer.depthRT);
+    glDeleteTextures(1, &gl.gBuffer.positionRT);
+    glDeleteTextures(1, &gl.gBuffer.normalRT);
+    glDeleteTextures(1, &gl.gBuffer.albedoRT);
+    glDeleteTextures(1, &gl.gBuffer.materialRT);
+    glDeleteTextures(1, &gl.gBuffer.depthRT);
 }
 
 void Renderer::CreateCanvasVAO() {
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
-    glGenVertexArrays(1, &canvasVAO);
-    glGenBuffers(1, &canvasVBO);
+    glGenVertexArrays(1, &gl.canvasVAO);
+    glGenBuffers(1, &gl.canvasVBO);
 
-    glBindVertexArray(canvasVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, canvasVBO);
+    glBindVertexArray(gl.canvasVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, gl.canvasVBO);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)offsetof(CanvasVertex, texCoord));
     glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)offsetof(CanvasVertex, color));
@@ -658,11 +660,11 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
     }
 
     // 1. Render shadow map for directional light
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer.shadowFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.shadowFBO);
 
     auto mainLight = ctx->GetMainLight();
 
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, renderer.uniShadowMaps[0], 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, renderer.gl.uniShadowMaps[0], 0);
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     GLenum drawBuffers[] = { GL_NONE };
     glDrawBuffers(1, drawBuffers);
@@ -714,7 +716,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         glBindVertexArray(0);
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.finalFBO);
 
     // 2. Render shadow maps for point lights
     if (ctx->pointLights.size() == 0) {
@@ -731,7 +733,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
         for (int f = 0; f < 6; ++f) {
             GLenum face = GL_TEXTURE_CUBE_MAP_POSITIVE_X + f;
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, face, renderer.omniShadowMaps[i], 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, face, renderer.gl.omniShadowMaps[i], 0);
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
             GLenum drawBuffers[] = { GL_NONE };
             glDrawBuffers(1, drawBuffers);
@@ -785,81 +787,10 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         }
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.finalFBO);
 }
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-namespace {
-// WebGPU-spec-guaranteed-safe minUniformBufferOffsetAlignment.
-constexpr uint32_t FWD_DRAW_SLOT_STRIDE = 256;
-constexpr uint64_t FWD_FRAME_UNIFORM_SIZE = 128; // viewProj(64) + cameraPos(16) + lightDir(16) + lightColor(16) + ambient(16)
-constexpr uint64_t FWD_DRAW_UNIFORM_SIZE  = 128; // model(64) + diffuse(16) + specular(16) + materialAmbient(16) + shininess+pad(16)
-
-// Simplified port of default_assets/shaders/color.vert + color.frag: a single
-// directional light (no shadows, no point lights) and a base-color texture
-// only (no normal/AO/roughness/metallic maps) — see ForwardOpaquePass header
-// comment. Mirrors VOXEL_WGSL's frame/draw uniform split (voxel_chunk_pass.cpp).
-static const char* FORWARD_OPAQUE_WGSL = R"(
-struct FrameUniforms {
-    viewProj:   mat4x4<f32>,
-    cameraPos:  vec4<f32>,
-    lightDir:   vec4<f32>,
-    lightColor: vec4<f32>,
-    ambient:    vec4<f32>,
-};
-struct DrawUniforms {
-    model:           mat4x4<f32>,
-    diffuse:         vec4<f32>,
-    specular:        vec4<f32>,
-    materialAmbient: vec4<f32>,
-    shininess:       vec4<f32>,
-};
-@group(0) @binding(0) var<uniform> frame: FrameUniforms;
-@group(0) @binding(1) var<uniform> draw: DrawUniforms;
-@group(1) @binding(0) var base_map: texture_2d<f32>;
-@group(1) @binding(1) var samp: sampler;
-
-struct VSOut {
-    @builtin(position) position: vec4<f32>,
-    @location(0) worldPos: vec3<f32>,
-    @location(1) normal:   vec3<f32>,
-    @location(2) uv:       vec2<f32>,
-};
-
-@vertex
-fn vs(@location(0) aPos: vec3<f32>, @location(1) aUV: vec2<f32>, @location(2) aNormal: vec3<f32>) -> VSOut {
-    var out: VSOut;
-    let world = draw.model * vec4<f32>(aPos, 1.0);
-    out.worldPos = world.xyz;
-    let normalMat = mat3x3<f32>(draw.model[0].xyz, draw.model[1].xyz, draw.model[2].xyz);
-    out.normal = normalMat * aNormal;
-    out.uv = aUV;
-    out.position = frame.viewProj * world;
-    return out;
-}
-
-@fragment
-fn fs(in: VSOut) -> @location(0) vec4<f32> {
-    let norm     = normalize(in.normal);
-    let lightDir = normalize(frame.lightDir.xyz);
-    let viewDir  = normalize(frame.cameraPos.xyz - in.worldPos);
-    let halfDir  = normalize(lightDir + viewDir);
-
-    let diff = max(dot(norm, lightDir), 0.0);
-    let spec = pow(max(dot(norm, halfDir), 0.0), max(draw.shininess.x * 128.0, 1.0));
-
-    let texColor = textureSample(base_map, samp, in.uv);
-    let albedo   = texColor.rgb * draw.diffuse.rgb;
-
-    let ambient  = draw.materialAmbient.rgb + frame.ambient.rgb * albedo;
-    let diffuse  = diff * frame.lightColor.rgb * albedo;
-    let specular = spec * frame.lightColor.rgb * draw.specular.rgb;
-
-    return vec4<f32>(ambient + diffuse + specular, texColor.a);
-}
-)";
-} // namespace
-
 ForwardOpaquePass::~ForwardOpaquePass() {
     for (auto& [id, bg] : _texBGCache) wgpuBindGroupRelease(bg);
     if (_uniformBG)       wgpuBindGroupRelease(_uniformBG);
@@ -876,20 +807,12 @@ void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTexture
     _gpuDevice = device;
     _gpuQueue  = queue;
 
-    WGPUShaderSourceWGSL wgslDesc{};
-    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code        = { FORWARD_OPAQUE_WGSL, WGPU_STRLEN };
-    WGPUShaderModuleDescriptor shaderDesc{};
-    shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
-    WGPUShaderModule shader = wgpuDeviceCreateShaderModule(device, &shaderDesc);
-
     {
         WGPUBufferDescriptor d{};
         d.size  = FWD_FRAME_UNIFORM_SIZE;
         d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
         _frameUniformBuf = wgpuDeviceCreateBuffer(device, &d);
     }
-
     // Pass-owned 1x1 white fallback texture — AssetManager::GetDefaultTextures()
     // is GL-only, so meshes with no base map sample this instead.
     {
@@ -921,93 +844,25 @@ void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTexture
         _sampler = wgpuDeviceCreateSampler(device, &d);
     }
 
-    WGPUBindGroupLayoutEntry entries[2] = {};
-    entries[0].binding               = 0;
-    entries[0].visibility            = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
-    entries[0].buffer.type           = WGPUBufferBindingType_Uniform;
-    entries[0].buffer.minBindingSize = FWD_FRAME_UNIFORM_SIZE;
-    entries[1].binding                 = 1;
-    entries[1].visibility              = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
-    entries[1].buffer.type             = WGPUBufferBindingType_Uniform;
-    entries[1].buffer.hasDynamicOffset = true;
-    entries[1].buffer.minBindingSize   = FWD_DRAW_UNIFORM_SIZE;
-    WGPUBindGroupLayoutDescriptor bglDesc{};
-    bglDesc.entryCount = 2;
-    bglDesc.entries    = entries;
-    _uniformBGL = wgpuDeviceCreateBindGroupLayout(device, &bglDesc);
-
-    {
-        WGPUBindGroupLayoutEntry e[2]{};
-        e[0].binding               = 0;
-        e[0].visibility            = WGPUShaderStage_Fragment;
-        e[0].texture.sampleType    = WGPUTextureSampleType_Float;
-        e[0].texture.viewDimension = WGPUTextureViewDimension_2D;
-        e[0].texture.multisampled  = false;
-        e[1].binding               = 1;
-        e[1].visibility            = WGPUShaderStage_Fragment;
-        e[1].sampler.type          = WGPUSamplerBindingType_Filtering;
-        WGPUBindGroupLayoutDescriptor d{};
-        d.entryCount = 2;
-        d.entries    = e;
-        _texBGL = wgpuDeviceCreateBindGroupLayout(device, &d);
-    }
-
-    WGPUBindGroupLayout layouts[2] = { _uniformBGL, _texBGL };
-    WGPUPipelineLayoutDescriptor plDesc{};
-    plDesc.bindGroupLayoutCount = 2;
-    plDesc.bindGroupLayouts     = layouts;
-    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &plDesc);
-
     // Standard Vertex (vertex.hpp): pos(vec3)@0, uv(vec2)@12, normal(vec3)@20,
     // tangent(vec3)@32, bitangent(vec3)@44 — stride 56. Tangent/bitangent are
     // unused by this simplified (no normal-mapping) shader but stay in the
     // buffer layout since the underlying Buffer is shared with the GL path.
-    WGPUVertexAttribute attrs[3]{};
-    attrs[0].format = WGPUVertexFormat_Float32x3; attrs[0].offset =  0; attrs[0].shaderLocation = 0;
-    attrs[1].format = WGPUVertexFormat_Float32x2; attrs[1].offset = 12; attrs[1].shaderLocation = 1;
-    attrs[2].format = WGPUVertexFormat_Float32x3; attrs[2].offset = 20; attrs[2].shaderLocation = 2;
-    WGPUVertexBufferLayout vbl{};
-    vbl.arrayStride    = 56;
-    vbl.stepMode       = WGPUVertexStepMode_Vertex;
-    vbl.attributeCount = 3;
-    vbl.attributes     = attrs;
-
-    WGPUColorTargetState colorTarget{};
-    colorTarget.format    = colorFormat;
-    colorTarget.writeMask = WGPUColorWriteMask_All;
-
-    WGPUFragmentState frag{};
-    frag.module      = shader;
-    frag.entryPoint  = { "fs", WGPU_STRLEN };
-    frag.targetCount = 1;
-    frag.targets     = &colorTarget;
-
-    WGPUDepthStencilState depthStencil{};
-    depthStencil.format               = WGPUTextureFormat_Depth32Float;
-    depthStencil.depthWriteEnabled    = WGPUOptionalBool_True;
-    depthStencil.depthCompare         = WGPUCompareFunction_Less;
-    depthStencil.stencilFront.compare = WGPUCompareFunction_Always;
-    depthStencil.stencilBack.compare  = WGPUCompareFunction_Always;
-    depthStencil.stencilReadMask      = 0xFFFFFFFFu;
-    depthStencil.stencilWriteMask     = 0xFFFFFFFFu;
-
-    WGPURenderPipelineDescriptor pd{};
-    pd.layout              = pipelineLayout;
-    pd.vertex.module       = shader;
-    pd.vertex.entryPoint   = { "vs", WGPU_STRLEN };
-    pd.vertex.bufferCount  = 1;
-    pd.vertex.buffers      = &vbl;
-    pd.fragment            = &frag;
-    pd.depthStencil        = &depthStencil;
-    pd.primitive.topology  = WGPUPrimitiveTopology_TriangleList;
-    pd.primitive.frontFace = WGPUFrontFace_CCW;
-    pd.primitive.cullMode  = WGPUCullMode_Back;
-    pd.multisample.count   = 1;
-    pd.multisample.mask    = 0xFFFFFFFFu;
-    _pipeline = wgpuDeviceCreateRenderPipeline(device, &pd);
-
-    wgpuPipelineLayoutRelease(pipelineLayout);
-    wgpuShaderModuleRelease(shader);
+    auto p = GpuPipelineBuilder(device)
+        .wgsl(FORWARD_OPAQUE_WGSL)
+        .bgl({ gpuUniform(0, wgsl_stage::both, FWD_FRAME_UNIFORM_SIZE),
+               gpuDynUniform(1, wgsl_stage::both, FWD_DRAW_UNIFORM_SIZE) })
+        .bgl({ gpuTexture(0), gpuSampler(1) })
+        .vertex(56, { {WGPUVertexFormat_Float32x3,  0, 0},
+                      {WGPUVertexFormat_Float32x2, 12, 1},
+                      {WGPUVertexFormat_Float32x3, 20, 2} })
+        .colorFormat(colorFormat)
+        .depth(true, WGPUCompareFunction_Less)
+        .cull(WGPUCullMode_Back)
+        .build();
+    _pipeline   = p.pipeline;
+    _uniformBGL = p.bgl(0);
+    _texBGL     = p.bgl(1);
 }
 
 void ForwardOpaquePass::_ensureDrawCapacity(uint32_t drawCount) {
@@ -1168,11 +1023,11 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
     auto& assetManager = AssetManager::Get();
     for (int i = 0; i < MAX_UNI_LIGHTS; ++i) {
         glActiveTexture(GL_TEXTURE0 + i);
-        glBindTexture(GL_TEXTURE_2D, renderer.uniShadowMaps[i]);
+        glBindTexture(GL_TEXTURE_2D, renderer.gl.uniShadowMaps[i]);
     }
     for (int i = 0; i < MAX_OMNI_LIGHTS; ++i) {
         glActiveTexture(GL_TEXTURE0 + UNI_SHADOW_MAP_COUNT + i);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, renderer.omniShadowMaps[i]);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, renderer.gl.omniShadowMaps[i]);
     }
     AE_GL_PROBE(renderer, "Opaque pass: after bind shadow maps");
     // Global static binding removed; textures are now dynamically bound per draw call
@@ -1444,7 +1299,7 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
     auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer.gBuffer.id);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.gBuffer.id);
     std::array<GLuint, 4> attachments = {
         GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3
     };
@@ -1584,19 +1439,19 @@ void DeferredLightingPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
     lightingShader->Activate();
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, renderer.gBuffer.positionRT);
+    glBindTexture(GL_TEXTURE_2D, renderer.gl.gBuffer.positionRT);
     lightingShader->SetUniform("gPosition", 0);
 
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, renderer.gBuffer.normalRT);
+    glBindTexture(GL_TEXTURE_2D, renderer.gl.gBuffer.normalRT);
     lightingShader->SetUniform("gNormal", 1);
 
     glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, renderer.gBuffer.albedoRT);
+    glBindTexture(GL_TEXTURE_2D, renderer.gl.gBuffer.albedoRT);
     lightingShader->SetUniform("gAlbedo", 2);
 
     glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, renderer.gBuffer.materialRT);
+    glBindTexture(GL_TEXTURE_2D, renderer.gl.gBuffer.materialRT);
     lightingShader->SetUniform("gMaterial", 3);
 
     auto mainLight = ctx->GetMainLight();
@@ -1652,14 +1507,14 @@ void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
                       GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
-    if (renderer.glesResolvedDepthFBO != 0) {
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, renderer.glesResolvedDepthFBO);
+    if (renderer.gl.glesResolvedDepthFBO != 0) {
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, renderer.gl.glesResolvedDepthFBO);
         glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
                           GL_DEPTH_BUFFER_BIT, GL_NEAREST);
     }
 #endif
 
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.finalFBO);
 
     renderer.CheckErrors("MSAA resolve pass");
 }
@@ -1891,59 +1746,7 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
     glEnable(GL_CULL_FACE);
 }
 
-// Helper to reduce code duplication
-
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-namespace {
-// Fullscreen-triangle vertex shader + tonemap fragment shader, ported
-// byte-for-byte from default_assets/shaders/hdr.frag (double-gamma-wrapped
-// exposure tonemap, with the same optional per-channel chromatic-aberration
-// UV offset trick).
-static const char* POSTPROCESS_WGSL = R"(
-struct Uniforms {
-    exposure:   f32,
-    caEnabled:  f32,
-    caStrength: f32,
-    _pad:       f32,
-};
-@group(0) @binding(0) var<uniform> uni: Uniforms;
-@group(0) @binding(1) var tex:  texture_2d<f32>;
-@group(0) @binding(2) var samp: sampler;
-
-struct VOut {
-    @builtin(position) pos: vec4<f32>,
-    @location(0) uv: vec2<f32>,
-}
-
-@vertex fn vs(@builtin(vertex_index) vid: u32) -> VOut {
-    let x = f32((vid << 1u) & 2u);
-    let y = f32(vid & 2u);
-    var out: VOut;
-    out.pos = vec4<f32>(x * 2.0 - 1.0, 1.0 - y * 2.0, 0.0, 1.0);
-    out.uv  = vec2<f32>(x, y);
-    return out;
-}
-
-@fragment fn fs(in: VOut) -> @location(0) vec4<f32> {
-    var hdrColor: vec3<f32>;
-    if (uni.caEnabled > 0.5) {
-        let du = (in.uv.x - 0.5) * (in.uv.x - 0.5) * uni.caStrength;
-        let dv = (in.uv.y - 0.5) * (in.uv.y - 0.5) * uni.caStrength;
-        let r = textureSample(tex, samp, vec2<f32>(in.uv.x - 2.0 * du, in.uv.y + 4.0 * dv)).r;
-        let g = textureSample(tex, samp, vec2<f32>(in.uv.x + 1.0 * du, in.uv.y - 1.0 * dv)).g;
-        let b = textureSample(tex, samp, vec2<f32>(in.uv.x + 5.0 * du, in.uv.y - 3.0 * dv)).b;
-        hdrColor = vec3<f32>(r, g, b);
-    } else {
-        hdrColor = textureSample(tex, samp, in.uv).rgb;
-    }
-    hdrColor = pow(hdrColor, vec3<f32>(2.2));
-    let toneMapped = vec3<f32>(1.0) - exp(-hdrColor * uni.exposure);
-    let result = pow(toneMapped, vec3<f32>(1.0 / 2.2));
-    return vec4<f32>(result, 1.0);
-}
-)";
-} // namespace
-
 PostProcessPass::~PostProcessPass() {
     if (_texBG)      wgpuBindGroupRelease(_texBG);
     if (_uniformBG)  wgpuBindGroupRelease(_uniformBG);
@@ -1957,13 +1760,6 @@ PostProcessPass::~PostProcessPass() {
 void PostProcessPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat swapchainFormat) {
     _gpuDevice = device;
     _gpuQueue  = queue;
-
-    WGPUShaderSourceWGSL wgslDesc{};
-    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code        = { POSTPROCESS_WGSL, WGPU_STRLEN };
-    WGPUShaderModuleDescriptor shaderDesc{};
-    shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
-    WGPUShaderModule shader = wgpuDeviceCreateShaderModule(device, &shaderDesc);
 
     {
         WGPUBufferDescriptor d{};
@@ -1981,32 +1777,16 @@ void PostProcessPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFo
         _sampler = wgpuDeviceCreateSampler(device, &d);
     }
 
-    {
-        WGPUBindGroupLayoutEntry e{};
-        e.binding               = 0;
-        e.visibility            = WGPUShaderStage_Fragment;
-        e.buffer.type           = WGPUBufferBindingType_Uniform;
-        e.buffer.minBindingSize = 16;
-        WGPUBindGroupLayoutDescriptor d{};
-        d.entryCount = 1;
-        d.entries    = &e;
-        _uniformBGL = wgpuDeviceCreateBindGroupLayout(device, &d);
-    }
-    {
-        WGPUBindGroupLayoutEntry e[2]{};
-        e[0].binding               = 0;
-        e[0].visibility            = WGPUShaderStage_Fragment;
-        e[0].texture.sampleType    = WGPUTextureSampleType_Float;
-        e[0].texture.viewDimension = WGPUTextureViewDimension_2D;
-        e[0].texture.multisampled  = false;
-        e[1].binding               = 1;
-        e[1].visibility            = WGPUShaderStage_Fragment;
-        e[1].sampler.type          = WGPUSamplerBindingType_Filtering;
-        WGPUBindGroupLayoutDescriptor d{};
-        d.entryCount = 2;
-        d.entries    = e;
-        _texBGL = wgpuDeviceCreateBindGroupLayout(device, &d);
-    }
+    auto p = GpuPipelineBuilder(device)
+        .wgsl(POSTPROCESS_WGSL)
+        .bgl({ gpuUniform(0, wgsl_stage::frag, 16) })
+        .bgl({ gpuTexture(0), gpuSampler(1) })
+        .colorFormat(swapchainFormat)
+        .build();
+    _pipeline   = p.pipeline;
+    _uniformBGL = p.bgl(0);
+    _texBGL     = p.bgl(1);
+
     {
         WGPUBindGroupEntry e{};
         e.binding = 0;
@@ -2018,37 +1798,6 @@ void PostProcessPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFo
         d.entries    = &e;
         _uniformBG = wgpuDeviceCreateBindGroup(device, &d);
     }
-
-    WGPUBindGroupLayout layouts[2] = { _uniformBGL, _texBGL };
-    WGPUPipelineLayoutDescriptor plDesc{};
-    plDesc.bindGroupLayoutCount = 2;
-    plDesc.bindGroupLayouts     = layouts;
-    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &plDesc);
-
-    WGPUColorTargetState colorTarget{};
-    colorTarget.format    = swapchainFormat;
-    colorTarget.writeMask = WGPUColorWriteMask_All;
-
-    WGPUFragmentState frag{};
-    frag.module      = shader;
-    frag.entryPoint  = { "fs", WGPU_STRLEN };
-    frag.targetCount = 1;
-    frag.targets     = &colorTarget;
-
-    WGPURenderPipelineDescriptor pd{};
-    pd.layout              = pipelineLayout;
-    pd.vertex.module       = shader;
-    pd.vertex.entryPoint   = { "vs", WGPU_STRLEN };
-    pd.fragment            = &frag;
-    pd.primitive.topology  = WGPUPrimitiveTopology_TriangleList;
-    pd.primitive.frontFace = WGPUFrontFace_CCW;
-    pd.primitive.cullMode  = WGPUCullMode_None;
-    pd.multisample.count   = 1;
-    pd.multisample.mask    = 0xFFFFFFFFu;
-    _pipeline = wgpuDeviceCreateRenderPipeline(device, &pd);
-
-    wgpuPipelineLayoutRelease(pipelineLayout);
-    wgpuShaderModuleRelease(shader);
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
@@ -2123,7 +1872,7 @@ void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 
     auto size = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, size.width, size.height);
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.finalFBO);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, renderer.msaaResolveRT->GetTextureID());

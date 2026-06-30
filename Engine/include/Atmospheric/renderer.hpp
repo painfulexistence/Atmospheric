@@ -435,44 +435,39 @@ public:
     // Abstract render targets (backend-independent)
     std::unique_ptr<RenderTarget> sceneRT;
     std::unique_ptr<RenderTarget> msaaResolveRT;
-    GLuint finalFBO = 0;  // default framebuffer (always 0)
 
     // Abstract buffers (backend-independent)
     std::unique_ptr<Buffer> debugBuffer;
     std::unique_ptr<Buffer> screenBuffer;
 
-    // GL-specific: shadow maps
-    std::array<GLuint, MAX_UNI_LIGHTS>  uniShadowMaps;
-    std::array<GLuint, MAX_OMNI_LIGHTS> omniShadowMaps;
-    GLuint envMap, irradianceMap;
-
-    // GL-specific: GBuffer
-    struct GBuffer {
-        GLuint id;
-        GLuint positionRT;
-        GLuint normalRT;
-        GLuint albedoRT;
-        GLuint materialRT;
-        GLuint depthRT;
-    } gBuffer;
-
-    GLuint shadowFBO;
-    GLuint canvasVAO, canvasVBO;  // GL-specific: legacy canvas geometry
-
-    // Screen-quad VAO shared by post-process passes (bloom, composite, etc.)
-    GLuint screenQuadVAO = 0;
-    GLuint skyboxVAO     = 0;
-    GLuint skyboxVBO     = 0;
+    // All OpenGL-specific state grouped here; WebGPU paths never touch these fields.
+    struct GL {
+        GLuint finalFBO = 0;
+        std::array<GLuint, MAX_UNI_LIGHTS>  uniShadowMaps = {};
+        std::array<GLuint, MAX_OMNI_LIGHTS> omniShadowMaps = {};
+        GLuint envMap = 0, irradianceMap = 0;
+        struct GBuffer {
+            GLuint id = 0;
+            GLuint positionRT = 0;
+            GLuint normalRT = 0;
+            GLuint albedoRT = 0;
+            GLuint materialRT = 0;
+            GLuint depthRT = 0;
+        } gBuffer;
+        GLuint shadowFBO = 0;
+        GLuint canvasVAO = 0, canvasVBO = 0;
+        GLuint screenQuadVAO = 0;
+        GLuint skyboxVAO = 0, skyboxVBO = 0;
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
+        GLuint glesResolvedDepthTex = 0;
+        GLuint glesResolvedDepthFBO = 0;
+        int    glesResolvedDepthWidth = 0;
+        int    glesResolvedDepthHeight = 0;
+#endif
+    } gl;
 
     // Per-frame time (seconds) forwarded from RenderFrame for animated passes.
     float frameTime = 0.0f;
-
-#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
-    GLuint glesResolvedDepthTex = 0;
-    GLuint glesResolvedDepthFBO = 0;
-    int    glesResolvedDepthWidth = 0;
-    int    glesResolvedDepthHeight = 0;
-#endif
 
     // Returns the resolved (non-MSAA) depth texture for screen-space effects.
     GLuint GetResolvedDepthTexture() const {
@@ -482,7 +477,7 @@ public:
         // But if sceneRT is multi-sampled (MSAA enabled), sceneRT has no depth texture (returns 0),
         // so we must read from the glesResolvedDepthTex where we resolved the depth.
         if (sceneRT && sceneRT->GetNumSamples() > 1) {
-            return glesResolvedDepthTex;
+            return gl.glesResolvedDepthTex;
         }
         if (!sceneRT) return 0;
         return static_cast<GLuint>(sceneRT->GetDepthTextureID());

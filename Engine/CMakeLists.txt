@@ -245,6 +245,7 @@ else()
         list(APPEND SOURCES src/gpu_buffer.cpp)
         list(APPEND SOURCES src/gpu_render_target.cpp)
         list(APPEND SOURCES src/gpu_canvas_pass.cpp)
+        list(APPEND SOURCES src/gpu_pipeline.cpp)
     endif()
 endif()
 # FileSystem: platform-agnostic async I/O with in-process cache.
