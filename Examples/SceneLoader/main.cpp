@@ -1,4 +1,11 @@
 #include "Atmospheric.hpp"
+#include "Atmospheric/shape_renderer_component.hpp"
+#include <nlohmann/json.hpp>
+#include <fstream>
+#include <functional>
+#ifndef __EMSCRIPTEN__
+#include <SDL3/SDL_filesystem.h>
+#endif
 
 class CSBDemo : public Application {
     using Application::Application;
@@ -25,6 +32,108 @@ class CSBDemo : public Application {
         loadedScene = sceneLoader->Load("assets/scenes/Canvas.csb", glm::vec3(0.0f), CanvasLayer::LAYER_WORLD);
         if (loadedScene.success) {
             console.Info(fmt::format("CSB loaded successfully! {} nodes created", loadedScene.allNodes.size()));
+
+            // Export to Canvas.json!
+            try {
+                nlohmann::json jScene;
+                jScene["name"] = "CanvasScene";
+                jScene["textures"] = nlohmann::json::array();
+
+                for (const auto& tex : AssetManager::Get().GetTextures()) {
+                    std::string path = AssetManager::Get().GetTexturePath(tex);
+                    if (!path.empty()) {
+                        jScene["textures"].push_back(path);
+                    }
+                }
+
+                jScene["shaders"] = nlohmann::json::object();
+
+                std::function<nlohmann::json(GameObject*)> exportNode = [&](GameObject* go) -> nlohmann::json {
+                    nlohmann::json jNode;
+                    jNode["name"] = go->GetName();
+                    jNode["active"] = go->isActive;
+                    jNode["position"] = { go->GetPosition().x, go->GetPosition().y, go->GetPosition().z };
+                    jNode["rotation"] = { glm::degrees(go->GetRotation().x), glm::degrees(go->GetRotation().y), glm::degrees(go->GetRotation().z) };
+                    jNode["scale"] = { go->GetScale().x, go->GetScale().y, go->GetScale().z };
+
+                    nlohmann::json jComps = nlohmann::json::array();
+                    auto* sprite = go->GetComponent<SpriteComponent>();
+                    if (sprite) {
+                        nlohmann::json jSprite;
+                        jSprite["type"] = "SpriteComponent";
+                        jSprite["size"] = { sprite->GetSize().x, sprite->GetSize().y };
+                        jSprite["pivot"] = { sprite->GetPivot().x, sprite->GetPivot().y };
+                        jSprite["color"] = { sprite->GetColor().r, sprite->GetColor().g, sprite->GetColor().b, sprite->GetColor().a };
+
+                        std::string texPath = AssetManager::Get().GetTexturePath(sprite->GetTextureID());
+                        if (!texPath.empty()) {
+                            jSprite["texture"] = texPath;
+                        }
+
+                        std::string layerStr = "LAYER_WORLD";
+                        CanvasLayer layer = sprite->GetLayer();
+                        if (layer == CanvasLayer::LAYER_BACKGROUND) layerStr = "LAYER_BACKGROUND";
+                        else if (layer == CanvasLayer::LAYER_WORLD_BACK) layerStr = "LAYER_WORLD_BACK";
+                        else if (layer == CanvasLayer::LAYER_WORLD) layerStr = "LAYER_WORLD";
+                        else if (layer == CanvasLayer::LAYER_WORLD_FRONT) layerStr = "LAYER_WORLD_FRONT";
+                        else if (layer == CanvasLayer::LAYER_EFFECTS) layerStr = "LAYER_EFFECTS";
+                        else if (layer == CanvasLayer::LAYER_WORLD_2D) layerStr = "LAYER_WORLD_2D";
+                        else if (layer == CanvasLayer::LAYER_UI_BACK) layerStr = "LAYER_UI_BACK";
+                        else if (layer == CanvasLayer::LAYER_UI) layerStr = "LAYER_UI";
+                        else if (layer == CanvasLayer::LAYER_UI_FRONT) layerStr = "LAYER_UI_FRONT";
+                        else if (layer == CanvasLayer::LAYER_OVERLAY) layerStr = "LAYER_OVERLAY";
+
+                        jSprite["layer"] = layerStr;
+                        jSprite["flipX"] = sprite->GetFlipX();
+                        jSprite["flipY"] = sprite->GetFlipY();
+                        jSprite["zOrder"] = sprite->GetZOrder();
+                        jComps.push_back(jSprite);
+                    }
+
+                    if (!jComps.empty()) {
+                        jNode["components"] = jComps;
+                    }
+
+                    nlohmann::json jChildren = nlohmann::json::array();
+                    for (auto* child : GetEntities()) {
+                        if (child->parent == go) {
+                            jChildren.push_back(exportNode(child));
+                        }
+                    }
+                    if (!jChildren.empty()) {
+                        jNode["children"] = jChildren;
+                    }
+
+                    return jNode;
+                };
+
+                nlohmann::json jEntities = nlohmann::json::array();
+                if (loadedScene.root) {
+                    jEntities.push_back(exportNode(loadedScene.root));
+                } else {
+                    for (auto* child : GetEntities()) {
+                        if (!child->parent && child != GetDefaultGameObject()) {
+                            jEntities.push_back(exportNode(child));
+                        }
+                    }
+                }
+                jScene["entities"] = jEntities;
+
+#ifndef __EMSCRIPTEN__
+                std::string outPath = SDL_GetBasePath() + std::string("assets/scenes/Canvas.json");
+#else
+                std::string outPath = "assets/scenes/Canvas.json";
+#endif
+                std::ofstream outFile(outPath);
+                if (outFile.is_open()) {
+                    outFile << jScene.dump(2);
+                    console.Info("CSB successfully exported to assets/scenes/Canvas.json!");
+                } else {
+                    console.Warn("Failed to open output file for CSB export.");
+                }
+            } catch (const std::exception& e) {
+                console.Warn(fmt::format("CSB export error: {}", e.what()));
+            }
         } else {
             console.Warn(fmt::format("CSB load failed: {}", loadedScene.error));
             console.Info("Creating layout test sprites...");

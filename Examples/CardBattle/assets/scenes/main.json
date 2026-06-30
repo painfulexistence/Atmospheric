@@ -1,5 +1,39 @@
 {
   "name": "main",
   "textures": [],
-  "shaders": []
+  "shaders": {},
+  "entities": [
+    {
+      "name": "JSON_Test_Sprite",
+      "position": [10.0, 20.0, 30.0],
+      "rotation": [0.0, 0.0, 0.0],
+      "scale": [1.0, 1.0, 1.0],
+      "active": true,
+      "components": [
+        {
+          "type": "SpriteComponent",
+          "size": [50.0, 50.0],
+          "pivot": [0.5, 0.5],
+          "color": [1.0, 0.0, 1.0, 0.8],
+          "layer": "LAYER_WORLD",
+          "zOrder": 5
+        },
+        {
+          "type": "ActionManager",
+          "actions": [
+            {
+              "type": "RepeatForever",
+              "action": {
+                "type": "Sequence",
+                "actions": [
+                  { "type": "MoveTo", "duration": 1.5, "position": [20.0, 30.0, 40.0], "easing": "SineInOut" },
+                  { "type": "MoveTo", "duration": 1.5, "position": [10.0, 20.0, 30.0], "easing": "SineInOut" }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }
