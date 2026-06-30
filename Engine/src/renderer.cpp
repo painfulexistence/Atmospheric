@@ -1324,15 +1324,51 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
         ctx->FlushTextToQueue(); // convert text commands → BatchDrawCommands in queue
 
-        if (renderer.GetCanvasQueue().empty()) return;
+        // Collect 2D drawables (same layer filter as the GL path below)
+        std::vector<CanvasDrawable*> drawables2D;
+        for (auto* drawable : ctx->canvasDrawables) {
+            if (!drawable->gameObject->isActive) continue;
+            if (drawable->GetLayer() < CanvasLayer::LAYER_UI_BACK)
+                drawables2D.push_back(drawable);
+        }
+        std::sort(drawables2D.begin(), drawables2D.end(), [](CanvasDrawable* a, CanvasDrawable* b) {
+            if (a->GetLayer() != b->GetLayer()) return a->GetLayer() < b->GetLayer();
+            return a->GetZOrder() < b->GetZOrder();
+        });
 
-        auto [width, height] = Window::Get()->GetPhysicalSize();
-        const glm::mat4 viewProj = glm::ortho(0.0f, (float)width, (float)height, 0.0f, -1.0f, 1.0f);
+        if (drawables2D.empty() && renderer.GetCanvasQueue().empty()) return;
+
+        // Determine viewProj the same way as the GL path: prefer camera's orthographic
+        // matrix so that world-space sprite positions map correctly.
+        glm::mat4 viewProj;
+        CameraComponent* camera = ctx->GetMainCamera();
+        if (camera && camera->IsOrthographic()) {
+            viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+        } else {
+            auto [winW, winH] = Window::Get()->GetLogicalSize();
+            viewProj = glm::ortho(0.0f, (float)winW, (float)winH, 0.0f, -1.0f, 1.0f);
+        }
+
+        // Drain canvasDrawables through BatchRenderer2D's CPU path (no GL calls)
+        std::vector<BatchDrawCommand> allCommands;
+        if (!drawables2D.empty()) {
+            auto* br = renderer.GetBatchRenderer();
+            br->StartBatch();
+            for (auto* drawable : drawables2D)
+                drawable->Draw(br);
+            auto drained = br->DrainToCommands();
+            allCommands.insert(allCommands.end(),
+                               std::make_move_iterator(drained.begin()),
+                               std::make_move_iterator(drained.end()));
+        }
+        // Append direct canvas queue (text, Lua commands, etc.)
+        for (const auto& cmd : renderer.GetCanvasQueue())
+            allCommands.push_back(cmd);
 
         WGPUTextureView targetView = GfxFactory::GetCurrentSwapchainView();
         if (!targetView) return; // surface not ready (device still initializing)
 
-        gpuPass->Render(targetView, viewProj, renderer.GetCanvasQueue());
+        gpuPass->Render(targetView, viewProj, allCommands);
 
         wgpuTextureViewRelease(targetView);
         GfxFactory::PresentSwapchain();

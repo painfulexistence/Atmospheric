@@ -6,6 +6,7 @@
 #include <array>
 #include <fmt/format.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <unordered_map>
 
 struct BatchRenderer2D::Renderer2DData {
     static const uint32_t MaxQuads = 20000;
@@ -660,6 +661,72 @@ void BatchRenderer2D::DrawGeometry(
 
     m_Data->QuadIndexCount += (uint32_t)indices.size();
     m_Data->Stats.quadCount += (uint32_t)indices.size() / 6;// Approx
+}
+
+std::vector<BatchDrawCommand> BatchRenderer2D::DrainToCommands() {
+    std::vector<BatchDrawCommand> result;
+
+    uint32_t vertCount = (uint32_t)(m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase);
+    uint32_t idxCount  = (uint32_t)(m_Data->QuadIndexBufferPtr  - m_Data->QuadIndexBufferBase);
+
+    if (vertCount == 0 || idxCount == 0) {
+        StartBatch();
+        return result;
+    }
+
+    // Walk the index buffer in groups of 3 (one triangle), grouping consecutive triangles
+    // that share the same texture into a single BatchDrawCommand.
+    // texIndex slot 0 is always the white (solid-color) texture; GPUCanvasPass treats textureID=0
+    // as the solid-color sentinel, so we map slot 0 → textureID 0.
+    struct TexBatch {
+        std::vector<BatchVertex> verts;
+        std::vector<uint32_t>    idxs;
+        std::unordered_map<uint32_t, uint32_t> remap; // global index → local index
+    };
+    std::vector<uint32_t>                    texOrder; // insertion-ordered texture IDs
+    std::unordered_map<uint32_t, TexBatch>   batches;
+
+    for (uint32_t i = 0; i + 2 < idxCount; i += 3) {
+        uint32_t gi0     = m_Data->QuadIndexBufferBase[i];
+        uint32_t slotIdx = (uint32_t)m_Data->QuadVertexBufferBase[gi0].texIndex;
+        uint32_t texID   = (slotIdx == 0)
+                           ? 0u
+                           : ((slotIdx < m_Data->TextureSlotIndex) ? m_Data->TextureSlots[slotIdx] : 0u);
+
+        if (batches.find(texID) == batches.end()) {
+            texOrder.push_back(texID);
+            batches.emplace(texID, TexBatch{});
+        }
+        TexBatch& tb = batches[texID];
+
+        for (uint32_t k = 0; k < 3; ++k) {
+            uint32_t gi = m_Data->QuadIndexBufferBase[i + k];
+            auto it = tb.remap.find(gi);
+            if (it == tb.remap.end()) {
+                uint32_t newIdx     = (uint32_t)tb.verts.size();
+                tb.remap[gi]        = newIdx;
+                tb.verts.push_back(m_Data->QuadVertexBufferBase[gi]);
+                tb.idxs.push_back(newIdx);
+            } else {
+                tb.idxs.push_back(it->second);
+            }
+        }
+    }
+
+    result.reserve(texOrder.size());
+    for (uint32_t texID : texOrder) {
+        TexBatch& tb = batches[texID];
+        if (tb.verts.empty()) continue;
+        BatchDrawCommand cmd;
+        cmd.textureID = texID;
+        cmd.transform = glm::mat4(1.0f); // vertices are already in world/screen space
+        cmd.vertices  = std::move(tb.verts);
+        cmd.indices   = std::move(tb.idxs);
+        result.push_back(std::move(cmd));
+    }
+
+    StartBatch();
+    return result;
 }
 
 BatchStats BatchRenderer2D::GetStats() {
