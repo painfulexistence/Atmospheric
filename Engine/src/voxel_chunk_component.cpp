@@ -61,7 +61,14 @@ bool VoxelChunkComponent::IsInBounds(int x, int y, int z) const {
 }
 
 void VoxelChunkComponent::SetNeighbor(int dx, int dy, int dz, VoxelChunkComponent* neighbor) {
-    _neighbors[dx + 1][dy + 1][dz + 1] = neighbor;
+    VoxelChunkComponent*& slot = _neighbors[dx + 1][dy + 1][dz + 1];
+    if (slot == neighbor) return;
+    slot = neighbor;
+    // A newly-(un)linked neighbor changes what GetVoxelWithNeighbors() sees at this
+    // chunk's border, so an already-built mesh is now stale and must be rebuilt --
+    // otherwise a chunk meshed before its neighbor streamed in keeps a permanently
+    // exposed boundary face (or, on unload, a permanently missing one).
+    _dirty = true;
 }
 
 uint8_t VoxelChunkComponent::GetVoxelWithNeighbors(int x, int y, int z) const {
