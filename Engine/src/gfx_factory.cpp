@@ -228,6 +228,21 @@ WGPUTexture GfxFactory::GetWGPUTexture(uint32_t id) {
 }
 #endif
 
+void GfxFactory::ReleaseTexture(uint32_t id) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (_backend == GfxBackend::WebGPU) {
+        auto it = _gpuTextures.find(id);
+        if (it != _gpuTextures.end()) {
+            wgpuTextureRelease(it->second);
+            _gpuTextures.erase(it);
+        }
+        return;
+    }
+#endif
+    GLuint texID = (GLuint)id;
+    glDeleteTextures(1, &texID);
+}
+
 // ── Factory methods ──────────────────────────────────────────────────────────
 std::unique_ptr<Buffer> GfxFactory::CreateBuffer() {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)

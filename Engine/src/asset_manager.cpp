@@ -3,6 +3,7 @@
 #include <unordered_set>
 #include "console.hpp"
 #include "file_system.hpp"
+#include "gfx_factory.hpp"
 #include "job_system.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
@@ -584,6 +585,35 @@ TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>&
         return TextureHandle(fallbackTex);
     }
 
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        // GfxFactory::UploadTexture2D requires tightly-packed RGBA8; expand
+        // non-RGBA source images (the GL path instead picks a matching
+        // internal format per channel count) before handing off.
+        const uint8_t* rgba = image->byteArray.data();
+        std::vector<uint8_t> expanded;
+        if (image->channelCount != 4) {
+            expanded.resize((size_t)image->width * image->height * 4);
+            for (size_t px = 0; px < (size_t)image->width * image->height; ++px) {
+                uint8_t r = image->byteArray[px * image->channelCount + 0];
+                uint8_t g = (image->channelCount >= 3) ? image->byteArray[px * image->channelCount + 1] : r;
+                uint8_t b = (image->channelCount >= 3) ? image->byteArray[px * image->channelCount + 2] : r;
+                uint8_t a = (image->channelCount == 4) ? image->byteArray[px * image->channelCount + 3] : 255;
+                expanded[px * 4 + 0] = r;
+                expanded[px * 4 + 1] = g;
+                expanded[px * 4 + 2] = b;
+                expanded[px * 4 + 3] = a;
+            }
+            rgba = expanded.data();
+        }
+        uint32_t texID = GfxFactory::UploadTexture2D(rgba, image->width, image->height);
+        size_t bytes = (size_t)image->width * image->height * 4;
+        _textureCache["unnamed_" + std::to_string(_nextTextureID++)] = { texID, (uint32_t)image->width, (uint32_t)image->height, bytes };
+        textures.push_back(texID);
+        return TextureHandle(texID);
+    }
+#endif
+
     GLuint texID;
     glGenTextures(1, &texID);
     glBindTexture(GL_TEXTURE_2D, texID);
@@ -699,6 +729,34 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
     //   Desktop GL:   Prefer S3TC (ubiquitous on PC), fall back to ETC2.
     //
     bool hasAlpha = ktx2Dec.get_has_alpha();
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        // No compressed-texture WGPU device features are negotiated yet, so
+        // transcode to uncompressed RGBA32 (base level only — UploadTexture2D
+        // doesn't generate mips) instead of probing GL extensions.
+        if (!ktx2Dec.start_transcoding())
+            throw std::runtime_error(fmt::format("KTX2 start_transcoding failed: {}", path));
+
+        basist::ktx2_image_level_info info0;
+        if (!ktx2Dec.get_image_level_info(info0, 0, 0, 0))
+            throw std::runtime_error(fmt::format("KTX2 get_image_level_info failed (level 0): {}", path));
+
+        std::vector<uint8_t> buf((size_t)info0.m_orig_width * info0.m_orig_height * 4);
+        if (!ktx2Dec.transcode_image_level(
+              0, 0, 0, buf.data(), info0.m_orig_width * info0.m_orig_height,
+              basist::transcoder_texture_format::cTFRGBA32
+            ))
+            throw std::runtime_error(fmt::format("KTX2 transcode_image_level failed (level 0): {}", path));
+
+        uint32_t texID = GfxFactory::UploadTexture2D(buf.data(), (int)info0.m_orig_width, (int)info0.m_orig_height);
+        ENGINE_LOG(
+          "Loaded KTX2 texture '{}' ({}×{}, WebGPU RGBA32, no mips)", path, info0.m_orig_width, info0.m_orig_height
+        );
+        if (out) *out = { texID, info0.m_orig_width, info0.m_orig_height, buf.size() };
+        return texID;
+    }
+#endif
 
     // Unified format check: prefer S3TC (DXT) on both native and web, falling back to ETC2
     basist::transcoder_texture_format basisFmt;

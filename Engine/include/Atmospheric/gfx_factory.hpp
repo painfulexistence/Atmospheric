@@ -58,6 +58,11 @@ public:
     // pixels must be RGBA8 (4 bytes per pixel, w*h pixels).
     static uint32_t  UploadTexture2D(const uint8_t* pixels, int w, int h);
 
+    // Cross-backend texture release. id must have come from UploadTexture2D().
+    //   OpenGL path: glDeleteTextures.
+    //   WebGPU path: releases the WGPUTexture and erases it from the registry.
+    static void ReleaseTexture(uint32_t id);
+
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     // Returns the WGPUTexture previously registered via UploadTexture2D().
     // Returns nullptr if the ID is unknown.

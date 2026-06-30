@@ -1,6 +1,7 @@
 #include "renderer.hpp"
 #include "asset_manager.hpp"
 #include "camera_component.hpp"
+#include "gfx_factory.hpp"
 #include "graphics_server.hpp"
 #include "light_component.hpp"
 #include "sun_component.hpp"
@@ -22,6 +23,9 @@ static void DrawScreenQuadVAO(GLuint vao) {
 //  SunPass  (billboard quad at light direction, HDR gold for bloom glow)
 // ============================================================================
 void SunPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     if (renderer.skyboxVAO == 0) return; // skybox cube doubles as bounding check
 
     ShaderProgram* shader = AssetManager::Get().GetShader("sun");
@@ -111,6 +115,9 @@ void SunPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /
 //  SkyboxPass  (gradient sky, rendered at depth = 1)
 // ============================================================================
 void SkyboxPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     if (renderer.skyboxVAO == 0) return;
 
     ShaderProgram* shader = AssetManager::Get().GetShader("skybox");
@@ -152,6 +159,9 @@ void SkyboxPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 //  VoxelChunkPass
 // ============================================================================
 void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     const auto& queue = renderer.GetOpaqueQueue();
     if (queue.empty()) return;
 
@@ -209,6 +219,9 @@ void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEnc
 //  WaterPass
 // ============================================================================
 void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     const auto& queue = renderer.GetTransparentQueue();
     if (queue.empty()) return;
 
@@ -341,6 +354,9 @@ void BloomPass::InitMips(int w, int h) {
 }
 
 void BloomPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     if (!enabled)                     return;
     if (!renderer.msaaResolveRT)      return;
     if (renderer.screenQuadVAO == 0)  return;

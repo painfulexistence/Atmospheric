@@ -599,6 +599,9 @@ void Renderer::CreateDebugBuffer() {
 }
 
 void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     ZoneScopedN("ShadowPass");
     AE_GL_PROBE(renderer, "Shadow pass: entry");
     glViewport(0, 0, SHADOW_W, SHADOW_H);
@@ -752,6 +755,9 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 }
 
 void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     ZoneScopedN("ForwardOpaquePass");
     AE_GL_PROBE(renderer, "Opaque pass: entry");
     auto [width, height] = Window::Get()->GetPhysicalSize();
@@ -1220,6 +1226,9 @@ void DeferredLightingPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
 }
 
 void TransparentPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     ZoneScopedN("TransparentPass");
     auto& cam = *ctx->GetMainCamera();
     Atmospheric::CameraInfo camInfo = { .view = cam.GetViewMatrix(),
@@ -1229,8 +1238,11 @@ void TransparentPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 }
 
 void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     ZoneScopedN("MSAAResolvePass");
-    
+
     auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
  
@@ -1255,6 +1267,9 @@ void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 
 // WorldCanvasPass: World sprites with depth testing
 void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     ZoneScopedN("WorldCanvasPass");
 
     // Filter all world-space drawables (3D layers only, below LAYER_WORLD_2D)
@@ -1438,6 +1453,9 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
 
 void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     ZoneScopedN("PostProcessPass");
 
     auto size = Window::Get()->GetPhysicalSize();
@@ -1471,6 +1489,15 @@ void Renderer::SubmitCanvasCommand(const BatchDrawCommand& cmd) {
 }
 
 void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    // RenderBufferedText interleaves text glyphs with queued geometry inside
+    // the same GL BatchRenderer2D Begin/EndBatch pass (for correct z-order),
+    // so it can't be ported by simply swapping the draw calls — it would need
+    // glyphs and geometry merged into one ordered BatchDrawCommand list before
+    // handing off to GPUCanvasPass. No-op for now rather than risk an
+    // incorrectly-ordered or partially-working port.
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     ZoneScopedN("UIPass");
     auto* batchRenderer = renderer.GetBatchRenderer();
     auto& queue = renderer.GetUIQueue();
