@@ -15,6 +15,8 @@
 #include <algorithm>
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "gpu_canvas_pass.hpp"
+#include "gpu_render_target.hpp"
+#include "command_encoder.hpp"
 #include <webgpu/webgpu.h>
 #endif
 #if defined(__APPLE__) && TARGET_OS_IOS
@@ -104,7 +106,8 @@ void Renderer::Init(int width, int height) {
 #endif
 
     // Screen-space quad VAO for post-process passes (bloom, etc.)
-    {
+    // GL-only: no GL context exists when running the WebGPU backend.
+    if (GfxFactory::GetBackend() != GfxBackend::WebGPU) {
         static const float quadVerts[] = {
             -1.f, -1.f, 0.f, 0.f,
              1.f, -1.f, 1.f, 0.f,
@@ -124,10 +127,8 @@ void Renderer::Init(int width, int height) {
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
         glBindVertexArray(0);
-    }
 
-    // ── Skybox cube VAO ───────────────────────────────────────────────
-    {
+        // ── Skybox cube VAO ───────────────────────────────────────────
         static const float cubeVerts[] = {
             -1, -1, -1,  1, -1, -1,  1,  1, -1,  1,  1, -1, -1,  1, -1, -1, -1, -1,
             -1, -1,  1,  1, -1,  1,  1,  1,  1,  1,  1,  1, -1,  1,  1, -1, -1,  1,
@@ -171,10 +172,12 @@ void Renderer::Cleanup() {
     destroyReadbackPBOs();
 
     // debug and screen are now std::unique_ptr<Buffer> that auto-destruct
-    glDeleteVertexArrays(1, &canvasVAO);
-    glDeleteBuffers(1, &canvasVBO);
-    glDeleteVertexArrays(1, &skyboxVAO);
-    glDeleteBuffers(1, &skyboxVBO);
+    if (GfxFactory::GetBackend() != GfxBackend::WebGPU) {
+        glDeleteVertexArrays(1, &canvasVAO);
+        glDeleteBuffers(1, &canvasVBO);
+        glDeleteVertexArrays(1, &skyboxVAO);
+        glDeleteBuffers(1, &skyboxVBO);
+    }
 }
 
 void Renderer::Resize(int width, int height) {
@@ -305,7 +308,27 @@ void Renderer::RenderFrame(GraphicsServer* ctx, float dt) {
 #endif
     frameTime += dt;
     SortAndBucket(ctx->GetMainCamera()->GetEyePosition());
-    _renderGraph->Render(ctx, *this);
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        GPUCommandEncoder gpuEnc;
+        gpuEnc.encoder = wgpuDeviceCreateCommandEncoder(GfxFactory::GetWebGPUDevice(), nullptr);
+
+        sceneRT->Clear(clearColor);
+        _renderGraph->Render(ctx, *this, &gpuEnc);
+
+        WGPUCommandBufferDescriptor cmdDesc{};
+        WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(gpuEnc.encoder, &cmdDesc);
+        wgpuQueueSubmit(GfxFactory::GetWebGPUQueue(), 1, &cmdBuffer);
+        wgpuCommandBufferRelease(cmdBuffer);
+        wgpuCommandEncoderRelease(gpuEnc.encoder);
+
+        GfxFactory::PresentSwapchain();
+    } else
+#endif
+    {
+        _renderGraph->Render(ctx, *this);
+    }
 
     _hudQueue.clear();
     _canvasQueue.clear();
@@ -377,17 +400,22 @@ void Renderer::CheckErrors(const std::string& prefix) {
 }
 
 void Renderer::CreateFBOs() {
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
     glGenFramebuffers(1, &shadowFBO);
     glGenFramebuffers(1, &gBuffer.id);
 }
 
 void Renderer::DestroyFBOs() {
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
     glDeleteFramebuffers(1, &shadowFBO);
     glDeleteFramebuffers(1, &gBuffer.id);
 }
 
 void Renderer::CreateRTs(const RenderTargetProps& props) {
+    const bool isGL = GfxFactory::GetBackend() != GfxBackend::WebGPU;
+
     // 1. Create and set shadow pass attachments
+    if (isGL) {
     for (int i = 0; i < MAX_UNI_LIGHTS; ++i) {
         GLuint map;
         glGenTextures(1, &map);
@@ -442,6 +470,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
     }
 #endif
     CheckErrors("Create shadow RTs");
+    } // isGL
 
     // 2. Scene render target (MSAA on forward path; RBO-based on WebGL, texture-based on desktop)
     {
@@ -456,7 +485,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
     }
 
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
-    if (sceneRT && sceneRT->GetNumSamples() > 1) {
+    if (isGL && sceneRT && sceneRT->GetNumSamples() > 1) {
         glGenTextures(1, &glesResolvedDepthTex);
         glBindTexture(GL_TEXTURE_2D, glesResolvedDepthTex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, props.width, props.height, 0,
@@ -493,6 +522,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
     }
 
     // 4. Create and set geometry pass attachments
+    if (isGL) {
     glGenTextures(1, &gBuffer.positionRT);
     glBindTexture(GL_TEXTURE_2D, gBuffer.positionRT);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, props.width, props.height, 0, GL_RGBA, GL_FLOAT, NULL);
@@ -538,11 +568,14 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
 
     glBindFramebuffer(GL_FRAMEBUFFER, finalFBO);
     CheckErrors("Create G-buffer RTs");
+    } // isGL
 }
 
 void Renderer::DestroyRTs() {
     sceneRT.reset();
     msaaResolveRT.reset();
+
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
 
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     if (glesResolvedDepthFBO) {
@@ -565,6 +598,7 @@ void Renderer::DestroyRTs() {
 }
 
 void Renderer::CreateCanvasVAO() {
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
     glGenVertexArrays(1, &canvasVAO);
     glGenBuffers(1, &canvasVBO);
 
@@ -1380,13 +1414,15 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         for (const auto& cmd : renderer.GetCanvasQueue())
             allCommands.push_back(cmd);
 
-        WGPUTextureView targetView = GfxFactory::GetCurrentSwapchainView();
-        if (!targetView) return; // surface not ready (device still initializing)
+        if (allCommands.empty()) return;
+        if (!renderer.sceneRT) return;
 
-        gpuPass->Render(targetView, viewProj, allCommands);
-
-        wgpuTextureViewRelease(targetView);
-        GfxFactory::PresentSwapchain();
+        // Record into the shared per-frame encoder/render pass on sceneRT —
+        // PostProcessPass is the sole pass that later writes sceneRT to the
+        // swapchain, so we must not touch the swapchain or present here.
+        renderer.sceneRT->Begin(enc);
+        gpuPass->Render(enc, viewProj, allCommands);
+        renderer.sceneRT->End();
         return;
     }
 #endif
@@ -1451,10 +1487,231 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
 // Helper to reduce code duplication
 
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+namespace {
+// Fullscreen-triangle vertex shader + tonemap fragment shader, ported
+// byte-for-byte from default_assets/shaders/hdr.frag (double-gamma-wrapped
+// exposure tonemap, with the same optional per-channel chromatic-aberration
+// UV offset trick).
+static const char* POSTPROCESS_WGSL = R"(
+struct Uniforms {
+    exposure:   f32,
+    caEnabled:  f32,
+    caStrength: f32,
+    _pad:       f32,
+};
+@group(0) @binding(0) var<uniform> uni: Uniforms;
+@group(0) @binding(1) var tex:  texture_2d<f32>;
+@group(0) @binding(2) var samp: sampler;
+
+struct VOut {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+}
+
+@vertex fn vs(@builtin(vertex_index) vid: u32) -> VOut {
+    let x = f32((vid << 1u) & 2u);
+    let y = f32(vid & 2u);
+    var out: VOut;
+    out.pos = vec4<f32>(x * 2.0 - 1.0, 1.0 - y * 2.0, 0.0, 1.0);
+    out.uv  = vec2<f32>(x, y);
+    return out;
+}
+
+@fragment fn fs(in: VOut) -> @location(0) vec4<f32> {
+    var hdrColor: vec3<f32>;
+    if (uni.caEnabled > 0.5) {
+        let du = (in.uv.x - 0.5) * (in.uv.x - 0.5) * uni.caStrength;
+        let dv = (in.uv.y - 0.5) * (in.uv.y - 0.5) * uni.caStrength;
+        let r = textureSample(tex, samp, vec2<f32>(in.uv.x - 2.0 * du, in.uv.y + 4.0 * dv)).r;
+        let g = textureSample(tex, samp, vec2<f32>(in.uv.x + 1.0 * du, in.uv.y - 1.0 * dv)).g;
+        let b = textureSample(tex, samp, vec2<f32>(in.uv.x + 5.0 * du, in.uv.y - 3.0 * dv)).b;
+        hdrColor = vec3<f32>(r, g, b);
+    } else {
+        hdrColor = textureSample(tex, samp, in.uv).rgb;
+    }
+    hdrColor = pow(hdrColor, vec3<f32>(2.2));
+    let toneMapped = vec3<f32>(1.0) - exp(-hdrColor * uni.exposure);
+    let result = pow(toneMapped, vec3<f32>(1.0 / 2.2));
+    return vec4<f32>(result, 1.0);
+}
+)";
+} // namespace
+
+PostProcessPass::~PostProcessPass() {
+    if (_texBG)      wgpuBindGroupRelease(_texBG);
+    if (_uniformBG)  wgpuBindGroupRelease(_uniformBG);
+    if (_uniformBGL) wgpuBindGroupLayoutRelease(_uniformBGL);
+    if (_texBGL)     wgpuBindGroupLayoutRelease(_texBGL);
+    if (_pipeline)   wgpuRenderPipelineRelease(_pipeline);
+    if (_uniformBuf) wgpuBufferRelease(_uniformBuf);
+    if (_sampler)    wgpuSamplerRelease(_sampler);
+}
+
+void PostProcessPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat swapchainFormat) {
+    _gpuDevice = device;
+    _gpuQueue  = queue;
+
+    WGPUShaderSourceWGSL wgslDesc{};
+    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
+    wgslDesc.code        = { POSTPROCESS_WGSL, WGPU_STRLEN };
+    WGPUShaderModuleDescriptor shaderDesc{};
+    shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
+    WGPUShaderModule shader = wgpuDeviceCreateShaderModule(device, &shaderDesc);
+
+    {
+        WGPUBufferDescriptor d{};
+        d.size  = 16; // exposure, caEnabled, caStrength, pad
+        d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        _uniformBuf = wgpuDeviceCreateBuffer(device, &d);
+    }
+    {
+        WGPUSamplerDescriptor d{};
+        d.minFilter    = WGPUFilterMode_Linear;
+        d.magFilter    = WGPUFilterMode_Linear;
+        d.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+        d.addressModeU = WGPUAddressMode_ClampToEdge;
+        d.addressModeV = WGPUAddressMode_ClampToEdge;
+        _sampler = wgpuDeviceCreateSampler(device, &d);
+    }
+
+    {
+        WGPUBindGroupLayoutEntry e{};
+        e.binding               = 0;
+        e.visibility            = WGPUShaderStage_Fragment;
+        e.buffer.type           = WGPUBufferBindingType_Uniform;
+        e.buffer.minBindingSize = 16;
+        WGPUBindGroupLayoutDescriptor d{};
+        d.entryCount = 1;
+        d.entries    = &e;
+        _uniformBGL = wgpuDeviceCreateBindGroupLayout(device, &d);
+    }
+    {
+        WGPUBindGroupLayoutEntry e[2]{};
+        e[0].binding               = 0;
+        e[0].visibility            = WGPUShaderStage_Fragment;
+        e[0].texture.sampleType    = WGPUTextureSampleType_Float;
+        e[0].texture.viewDimension = WGPUTextureViewDimension_2D;
+        e[0].texture.multisampled  = false;
+        e[1].binding               = 1;
+        e[1].visibility            = WGPUShaderStage_Fragment;
+        e[1].sampler.type          = WGPUSamplerBindingType_Filtering;
+        WGPUBindGroupLayoutDescriptor d{};
+        d.entryCount = 2;
+        d.entries    = e;
+        _texBGL = wgpuDeviceCreateBindGroupLayout(device, &d);
+    }
+    {
+        WGPUBindGroupEntry e{};
+        e.binding = 0;
+        e.buffer  = _uniformBuf;
+        e.size    = 16;
+        WGPUBindGroupDescriptor d{};
+        d.layout     = _uniformBGL;
+        d.entryCount = 1;
+        d.entries    = &e;
+        _uniformBG = wgpuDeviceCreateBindGroup(device, &d);
+    }
+
+    WGPUBindGroupLayout layouts[2] = { _uniformBGL, _texBGL };
+    WGPUPipelineLayoutDescriptor plDesc{};
+    plDesc.bindGroupLayoutCount = 2;
+    plDesc.bindGroupLayouts     = layouts;
+    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &plDesc);
+
+    WGPUColorTargetState colorTarget{};
+    colorTarget.format    = swapchainFormat;
+    colorTarget.writeMask = WGPUColorWriteMask_All;
+
+    WGPUFragmentState frag{};
+    frag.module      = shader;
+    frag.entryPoint  = { "fs", WGPU_STRLEN };
+    frag.targetCount = 1;
+    frag.targets     = &colorTarget;
+
+    WGPURenderPipelineDescriptor pd{};
+    pd.layout              = pipelineLayout;
+    pd.vertex.module       = shader;
+    pd.vertex.entryPoint   = { "vs", WGPU_STRLEN };
+    pd.fragment            = &frag;
+    pd.primitive.topology  = WGPUPrimitiveTopology_TriangleList;
+    pd.primitive.frontFace = WGPUFrontFace_CCW;
+    pd.primitive.cullMode  = WGPUCullMode_None;
+    pd.multisample.count   = 1;
+    pd.multisample.mask    = 0xFFFFFFFFu;
+    _pipeline = wgpuDeviceCreateRenderPipeline(device, &pd);
+
+    wgpuPipelineLayoutRelease(pipelineLayout);
+    wgpuShaderModuleRelease(shader);
+}
+#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
 void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        if (!_pipeline) {
+            WGPUDevice dev = GfxFactory::GetWebGPUDevice();
+            WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
+            if (!dev) return;
+            _initGPU(dev, q, GfxFactory::GetSwapchainFormat());
+        }
+        if (!renderer.sceneRT) return;
+
+        auto* sceneRT = static_cast<GPURenderTarget*>(renderer.sceneRT.get());
+        WGPUTexture sceneTex = sceneRT->GetNativeTexture();
+        if (!sceneTex) return;
+
+        WGPUTextureView swapchainView = GfxFactory::GetCurrentSwapchainView();
+        if (!swapchainView) return; // surface not ready (device still initializing)
+
+        // Rebuild the texture bind group only when sceneRT's texture object
+        // changes (e.g. on resize) — cheap to check, avoids a per-frame alloc.
+        if (sceneTex != _texBGSource) {
+            if (_texBG) wgpuBindGroupRelease(_texBG);
+            WGPUTextureView sceneView = wgpuTextureCreateView(sceneTex, nullptr);
+            WGPUBindGroupEntry e[2]{};
+            e[0].binding     = 0;
+            e[0].textureView = sceneView;
+            e[1].binding     = 1;
+            e[1].sampler     = _sampler;
+            WGPUBindGroupDescriptor d{};
+            d.layout     = _texBGL;
+            d.entryCount = 2;
+            d.entries    = e;
+            _texBG = wgpuDeviceCreateBindGroup(_gpuDevice, &d);
+            wgpuTextureViewRelease(sceneView);
+            _texBGSource = sceneTex;
+        }
+
+        struct { float exposure, caEnabled, caStrength, pad; } u{
+            tonemapEnabled ? exposure : 1.0f,
+            caEnabled ? 1.0f : 0.0f,
+            caStrength,
+            0.0f
+        };
+        wgpuQueueWriteBuffer(_gpuQueue, _uniformBuf, 0, &u, sizeof(u));
+
+        auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+        WGPURenderPassColorAttachment ca{};
+        ca.view       = swapchainView;
+        ca.loadOp     = WGPULoadOp_Clear;
+        ca.storeOp    = WGPUStoreOp_Store;
+        ca.clearValue = { renderer.clearColor.x, renderer.clearColor.y, renderer.clearColor.z, renderer.clearColor.w };
+        WGPURenderPassDescriptor rpDesc{};
+        rpDesc.colorAttachmentCount = 1;
+        rpDesc.colorAttachments     = &ca;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &rpDesc);
+
+        wgpuRenderPassEncoderSetPipeline(pass, _pipeline);
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, _uniformBG, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(pass, 1, _texBG, 0, nullptr);
+        wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+
+        wgpuTextureViewRelease(swapchainView);
+        return;
+    }
 #endif
     ZoneScopedN("PostProcessPass");
 

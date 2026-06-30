@@ -1,6 +1,7 @@
 #pragma once
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "batch_renderer_2d.hpp"
+#include "command_encoder.hpp"
 #include <webgpu/webgpu.h>
 #include <glm/glm.hpp>
 #include <unordered_map>
@@ -19,10 +20,11 @@ public:
     GPUCanvasPass() = default;
     ~GPUCanvasPass();
 
-    // Render all commands to targetView with the given orthographic viewProj.
-    // Creates and submits its own WGPUCommandEncoder internally.
-    // targetView must be valid for the duration of this call; caller releases it.
-    void Render(WGPUTextureView targetView,
+    // Records draw calls into the WGPURenderPassEncoder already open on enc
+    // (caller must have called sceneRT->Begin(enc) first and will call End()
+    // afterward). Targets sceneRT's HDR format, not the swapchain directly —
+    // PostProcessPass is the pass that finally writes to the swapchain.
+    void Render(CommandEncoder* enc,
                 const glm::mat4& viewProj,
                 const std::vector<BatchDrawCommand>& commands);
 

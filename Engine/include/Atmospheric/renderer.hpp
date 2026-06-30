@@ -88,6 +88,9 @@ public:
 // Final composite blit: ACES tonemapping + optional chromatic aberration.
 class PostProcessPass : public RenderPass {
 public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~PostProcessPass() override;
+#endif
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
     bool  tonemapEnabled = true;
@@ -95,6 +98,23 @@ public:
 
     bool  caEnabled  = false;
     float caStrength = 0.005f;
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+private:
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat swapchainFormat);
+    WGPUDevice          _gpuDevice   = nullptr;
+    WGPUQueue           _gpuQueue    = nullptr;
+    WGPURenderPipeline  _pipeline    = nullptr;
+    WGPUBindGroupLayout _uniformBGL  = nullptr;
+    WGPUBindGroupLayout _texBGL      = nullptr;
+    WGPUBindGroup       _uniformBG   = nullptr;
+    WGPUBuffer          _uniformBuf  = nullptr;
+    WGPUSampler         _sampler     = nullptr;
+    // Texture bind group is recreated whenever sceneRT's texture changes
+    // (e.g. on resize); cached here to avoid rebuilding it every frame.
+    WGPUBindGroup       _texBG       = nullptr;
+    WGPUTexture         _texBGSource = nullptr;
+#endif
 };
 
 // TODO: rename this
@@ -106,22 +126,75 @@ public:
 // Flat billboard quad at the light source position — reads SunComponent for visual params.
 class SunPass : public RenderPass {
 public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~SunPass() override;
+#endif
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+private:
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat);
+    WGPUDevice          _gpuDevice  = nullptr;
+    WGPUQueue           _gpuQueue   = nullptr;
+    WGPURenderPipeline  _pipeline   = nullptr;
+    WGPUBindGroupLayout _uniformBGL = nullptr;
+    WGPUBindGroup       _uniformBG  = nullptr;
+    WGPUBuffer          _uniformBuf = nullptr;
+    WGPUBuffer          _vertexBuf  = nullptr;
+#endif
 };
 
 // Gradient sky rendered at depth=1 (behind everything).  Matches VX's Skybox.
 class SkyboxPass : public RenderPass {
 public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~SkyboxPass() override;
+#endif
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
     glm::vec3 skyColor     = glm::vec3(0.686f, 0.933f, 0.933f); // VX COLOR_MINT_GREEN
     glm::vec3 horizonColor = glm::vec3(1.000f, 0.980f, 0.804f); // VX COLOR_LEMON_CREAM
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+private:
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat);
+    WGPUDevice          _gpuDevice  = nullptr;
+    WGPUQueue           _gpuQueue   = nullptr;
+    WGPURenderPipeline  _pipeline   = nullptr;
+    WGPUBindGroupLayout _uniformBGL = nullptr;
+    WGPUBindGroup       _uniformBG  = nullptr;
+    WGPUBuffer          _uniformBuf = nullptr;
+    WGPUBuffer          _vertexBuf  = nullptr;
+#endif
 };
 
 // Renders MeshType::VOXEL meshes from the opaque queue using the voxel shader.
 class VoxelChunkPass : public RenderPass {
 public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~VoxelChunkPass() override;
+#endif
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+private:
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat);
+    // Grows _drawUniformBuf/_uniformBG to fit at least drawCount dynamic-offset slots.
+    void _ensureDrawCapacity(uint32_t drawCount);
+    WGPUDevice          _gpuDevice       = nullptr;
+    WGPUQueue           _gpuQueue        = nullptr;
+    WGPURenderPipeline  _pipeline        = nullptr;
+    WGPUBindGroupLayout _uniformBGL      = nullptr;
+    WGPUBindGroup       _uniformBG       = nullptr;
+    // Frame-constant data (viewProj, light, fog, camera) — one fixed-size binding.
+    WGPUBuffer          _frameUniformBuf = nullptr;
+    // Per-draw data (model, normalMat) — one slot per mesh, selected via dynamic offset.
+    // Sized lazily; all slots are written in a single call before any draw is
+    // recorded each frame, since wgpuQueueWriteBuffer ordering is relative to
+    // Queue::Submit, not to render-pass recording order.
+    WGPUBuffer          _drawUniformBuf  = nullptr;
+    uint32_t            _drawSlotCapacity = 0;
+#endif
 };
 
 // Renders MeshType::PRIM water meshes tagged via material renderQueue.

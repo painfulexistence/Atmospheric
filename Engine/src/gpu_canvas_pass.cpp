@@ -206,7 +206,7 @@ WGPUBindGroup GPUCanvasPass::_getOrCreateTexBG(uint32_t texID) {
     return bg;
 }
 
-void GPUCanvasPass::Render(WGPUTextureView targetView,
+void GPUCanvasPass::Render(CommandEncoder* enc,
                             const glm::mat4& viewProj,
                             const std::vector<BatchDrawCommand>& commands) {
     // Lazy init: wait until GfxFactory has a live device
@@ -214,7 +214,7 @@ void GPUCanvasPass::Render(WGPUTextureView targetView,
         WGPUDevice dev = GfxFactory::GetWebGPUDevice();
         WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
         if (!dev) return;
-        _init(dev, q, GfxFactory::GetSwapchainFormat());
+        _init(dev, q, WGPUTextureFormat_RGBA16Float); // sceneRT's HDR format
     }
 
     if (commands.empty()) return;
@@ -269,18 +269,12 @@ void GPUCanvasPass::Render(WGPUTextureView targetView,
     wgpuQueueWriteBuffer(_queue, _indexBuf, 0,
                          _indices.data(), _indices.size() * sizeof(uint32_t));
 
-    // ── Record and submit command buffer ──────────────────────────────────
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(_device, nullptr);
-
-    WGPURenderPassColorAttachment ca{};
-    ca.view       = targetView;
-    ca.loadOp     = WGPULoadOp_Clear;
-    ca.storeOp    = WGPUStoreOp_Store;
-    ca.clearValue = { 0.15, 0.183, 0.2, 1.0 };
-    WGPURenderPassDescriptor rpDesc{};
-    rpDesc.colorAttachmentCount = 1;
-    rpDesc.colorAttachments     = &ca;
-    WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &rpDesc);
+    // ── Record into the render pass already opened by the caller ──────────
+    // (caller must have called sceneRT->Begin(enc) before this and will call
+    // End() afterward — we do not own the pass or command-buffer lifecycle.)
+    auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+    WGPURenderPassEncoder pass = gpuEnc->pass;
+    if (!pass) return;
 
     wgpuRenderPassEncoderSetPipeline(pass, _pipeline);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, _uniformBG, 0, nullptr);
@@ -293,13 +287,5 @@ void GPUCanvasPass::Render(WGPUTextureView targetView,
         wgpuRenderPassEncoderSetBindGroup(pass, 1, texBG, 0, nullptr);
         wgpuRenderPassEncoderDrawIndexed(pass, batch.idxCount, 1, batch.idxOffset, 0, 0);
     }
-
-    wgpuRenderPassEncoderEnd(pass);
-    wgpuRenderPassEncoderRelease(pass);
-
-    WGPUCommandBuffer cmdBuf = wgpuCommandEncoderFinish(encoder, nullptr);
-    wgpuQueueSubmit(_queue, 1, &cmdBuf);
-    wgpuCommandBufferRelease(cmdBuf);
-    wgpuCommandEncoderRelease(encoder);
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__

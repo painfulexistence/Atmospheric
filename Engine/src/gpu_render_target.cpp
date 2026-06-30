@@ -55,7 +55,7 @@ void GPURenderTarget::Begin(CommandEncoder* enc) {
 
     WGPURenderPassColorAttachment colorAttach{};
     colorAttach.view       = _colorView;
-    colorAttach.loadOp     = WGPULoadOp_Clear;
+    colorAttach.loadOp     = _clearPending ? WGPULoadOp_Clear : WGPULoadOp_Load;
     colorAttach.storeOp    = WGPUStoreOp_Store;
     colorAttach.clearValue = { _clearColor.r, _clearColor.g, _clearColor.b, _clearColor.a };
 
@@ -67,11 +67,13 @@ void GPURenderTarget::Begin(CommandEncoder* enc) {
     if (_withDepth && _depthTexture) {
         _depthView = wgpuTextureCreateView(_depthTexture, nullptr);
         depthAttach.view            = _depthView;
-        depthAttach.depthLoadOp     = WGPULoadOp_Clear;
+        depthAttach.depthLoadOp     = _clearPending ? WGPULoadOp_Clear : WGPULoadOp_Load;
         depthAttach.depthStoreOp    = WGPUStoreOp_Store;
         depthAttach.depthClearValue = 1.0f;
         passDesc.depthStencilAttachment = &depthAttach;
     }
+
+    _clearPending = false;
 
     _activePass  = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &passDesc);
     gpuEnc->pass = _activePass;
@@ -88,7 +90,8 @@ void GPURenderTarget::End() {
 }
 
 void GPURenderTarget::Clear(const glm::vec4& color) {
-    _clearColor = color;
+    _clearColor   = color;
+    _clearPending = true;
 }
 
 uint32_t GPURenderTarget::GetTextureID() const {

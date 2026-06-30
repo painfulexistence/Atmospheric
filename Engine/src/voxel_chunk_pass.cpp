@@ -11,6 +11,12 @@
 #include "window.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <cstring>
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+#include "gpu_render_target.hpp"
+#include "command_encoder.hpp"
+#endif
 
 // ---- Helper: build/draw the full-screen quad ---------------------------------
 static void DrawScreenQuadVAO(GLuint vao) {
@@ -19,12 +25,374 @@ static void DrawScreenQuadVAO(GLuint vao) {
     glBindVertexArray(0);
 }
 
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+// ============================================================================
+//  WebGPU/WGSL resources shared by SkyboxPass and SunPass
+// ============================================================================
+namespace {
+
+// Mirrors default_assets/shaders/skybox.vert + skybox.frag.
+// The xyww trick (clip.z = clip.w) forces NDC depth = 1.0 (far plane) under
+// both OpenGL's [-1,1] and WebGPU's [0,1] NDC z-range conventions.
+static const char* SKYBOX_WGSL = R"(
+struct Uniforms {
+    viewProj: mat4x4<f32>,
+    skyColor: vec4<f32>,
+    horizonColor: vec4<f32>,
+};
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+struct VSOut {
+    @builtin(position) position: vec4<f32>,
+    @location(0) viewDir: vec3<f32>,
+};
+
+@vertex
+fn vs(@location(0) aPos: vec3<f32>) -> VSOut {
+    var out: VSOut;
+    out.viewDir = aPos;
+    let pos = uniforms.viewProj * vec4<f32>(aPos, 1.0);
+    out.position = vec4<f32>(pos.x, pos.y, pos.w, pos.w);
+    return out;
+}
+
+@fragment
+fn fs(in: VSOut) -> @location(0) vec4<f32> {
+    let dir = normalize(in.viewDir);
+    let t = clamp((dir.y + 1.0) * 0.5, 0.0, 1.0);
+    let col = mix(uniforms.horizonColor.rgb, uniforms.skyColor.rgb, t);
+    return vec4<f32>(col, 1.0);
+}
+)";
+
+// Mirrors default_assets/shaders/sun.vert + sun.frag. GL's fog hack
+// (gl_FragCoord.z/gl_FragCoord.w) is replaced with an explicit world-space
+// distance, computed from a cameraPos uniform — WGSL has no equivalent
+// builtin reconstruction of pre-divide clip.w from gl_FragCoord.
+static const char* SUN_WGSL = R"(
+struct Uniforms {
+    model: mat4x4<f32>,
+    viewProj: mat4x4<f32>,
+    color: vec4<f32>,
+    fogColor: vec4<f32>,
+    fogDensity: vec4<f32>,
+    cameraPos: vec4<f32>,
+};
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+struct VSOut {
+    @builtin(position) position: vec4<f32>,
+    @location(0) worldPos: vec3<f32>,
+};
+
+@vertex
+fn vs(@location(0) aPos: vec3<f32>) -> VSOut {
+    var out: VSOut;
+    let world = uniforms.model * vec4<f32>(aPos, 1.0);
+    out.worldPos = world.xyz;
+    out.position = uniforms.viewProj * world;
+    return out;
+}
+
+@fragment
+fn fs(in: VSOut) -> @location(0) vec4<f32> {
+    let dist = length(in.worldPos - uniforms.cameraPos.xyz);
+    let fogFactor = 1.0 - exp(-uniforms.fogDensity.x * dist * dist);
+    let col = mix(uniforms.color.rgb, uniforms.fogColor.rgb, fogFactor);
+    return vec4<f32>(col, 1.0);
+}
+)";
+
+// Same cube geometry as Renderer's GL-only skyboxVAO (renderer.cpp); duplicated
+// here since this pass owns its own WebGPU vertex buffer independent of the GL VAO.
+static const float SKYBOX_CUBE_VERTS[] = {
+    -1, -1, -1,  1, -1, -1,  1,  1, -1,  1,  1, -1, -1,  1, -1, -1, -1, -1,
+    -1, -1,  1,  1, -1,  1,  1,  1,  1,  1,  1,  1, -1,  1,  1, -1, -1,  1,
+    -1,  1,  1, -1,  1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  1, -1,  1,  1,
+     1,  1,  1,  1,  1, -1,  1, -1, -1,  1, -1, -1,  1, -1,  1,  1,  1,  1,
+    -1, -1, -1, -1, -1,  1,  1, -1,  1,  1, -1,  1,  1, -1, -1, -1, -1, -1,
+    -1,  1, -1, -1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, -1, -1,  1, -1,
+};
+
+// Same unit-quad geometry as SunPass::Execute's GL-only static sunVBO.
+static const float SUN_QUAD_VERTS[] = {
+    -1, -1, 0,   1, -1, 0,   1, 1, 0,   -1, -1, 0,   1, 1, 0,   -1, 1, 0,
+};
+
+// Mirrors default_assets/shaders/voxel.vert + voxel.frag. v_uv from the GL
+// vertex shader is dropped — voxel.frag never samples a texture, so it's
+// dead data in both the GL and WGSL versions.
+// FrameUniforms (binding 0) is written once per frame; DrawUniforms
+// (binding 1) is a dynamic-offset binding with one 256-byte-strided slot
+// per mesh, since wgpuQueueWriteBuffer ordering is relative to Queue::Submit
+// and this engine batches the whole frame into one command buffer — writing
+// a single shared uniform buffer per-draw inside a loop would make every
+// draw observe only the last write.
+static const char* VOXEL_WGSL = R"(
+struct FrameUniforms {
+    viewProj:    mat4x4<f32>,
+    cameraPos:   vec4<f32>,
+    lightDir:    vec4<f32>,
+    lightColor:  vec4<f32>,
+    ambient:     vec4<f32>,
+    fogColor:    vec4<f32>,
+    fogDensity:  vec4<f32>,
+};
+struct DrawUniforms {
+    model: mat4x4<f32>,
+};
+@group(0) @binding(0) var<uniform> frame: FrameUniforms;
+@group(0) @binding(1) var<uniform> draw: DrawUniforms;
+
+const FACE_NORMALS = array<vec3<f32>, 6>(
+    vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, -1.0, 0.0),
+    vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(-1.0, 0.0, 0.0),
+    vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(0.0, 0.0, -1.0),
+);
+
+struct VSOut {
+    @builtin(position) position: vec4<f32>,
+    @location(0) worldPos: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) @interpolate(flat) voxelId: u32,
+    @location(3) @interpolate(flat) faceId: u32,
+};
+
+@vertex
+fn vs(@location(0) aPos: vec4<u32>, @location(1) aFace: vec4<u32>) -> VSOut {
+    var out: VSOut;
+    let localPos = vec3<f32>(aPos.xyz);
+    let world = draw.model * vec4<f32>(localPos, 1.0);
+    out.worldPos = world.xyz;
+    let normalMat = mat3x3<f32>(draw.model[0].xyz, draw.model[1].xyz, draw.model[2].xyz);
+    out.normal = normalMat * FACE_NORMALS[aFace.x];
+    out.voxelId = aPos.w;
+    out.faceId = aFace.x;
+    out.position = frame.viewProj * world;
+    return out;
+}
+
+fn palette(t: f32) -> vec3<f32> {
+    let a = vec3<f32>(0.746, 0.815, 0.846);
+    let b = vec3<f32>(0.195, 0.283, 0.187);
+    let c = vec3<f32>(1.093, 1.417, 1.405);
+    let d = vec3<f32>(5.435, 2.400, 5.741);
+    return a + b * cos(6.28318 * (c * t + d));
+}
+
+@fragment
+fn fs(in: VSOut) -> @location(0) vec4<f32> {
+    let norm = normalize(in.normal);
+    let diff = max(dot(norm, normalize(frame.lightDir.xyz)), 0.0);
+    var baseColor = palette(f32(in.voxelId) / 50.0);
+    var faceShade = 0.9;
+    if (in.faceId == 0u) { faceShade = 1.0; } else if (in.faceId == 1u) { faceShade = 0.5; }
+    baseColor = baseColor * faceShade;
+    let ambient = frame.ambient.rgb * baseColor;
+    let diffuse = diff * frame.lightColor.rgb * baseColor;
+    var color = ambient + diffuse;
+    let dist = length(in.worldPos - frame.cameraPos.xyz);
+    let fogFactor = clamp(exp(-frame.fogDensity.x * dist), 0.0, 1.0);
+    color = mix(frame.fogColor.rgb, color, fogFactor);
+    return vec4<f32>(color, 1.0);
+}
+)";
+
+} // namespace
+#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+
 // ============================================================================
 //  SunPass  (billboard quad at light direction, HDR gold for bloom glow)
 // ============================================================================
-void SunPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+SunPass::~SunPass() {
+    if (_uniformBG)  wgpuBindGroupRelease(_uniformBG);
+    if (_uniformBGL) wgpuBindGroupLayoutRelease(_uniformBGL);
+    if (_pipeline)   wgpuRenderPipelineRelease(_pipeline);
+    if (_uniformBuf) wgpuBufferRelease(_uniformBuf);
+    if (_vertexBuf)  wgpuBufferRelease(_vertexBuf);
+}
+
+void SunPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat) {
+    _gpuDevice = device;
+    _gpuQueue  = queue;
+
+    WGPUShaderSourceWGSL wgslDesc{};
+    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
+    wgslDesc.code        = { SUN_WGSL, WGPU_STRLEN };
+    WGPUShaderModuleDescriptor shaderDesc{};
+    shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
+    WGPUShaderModule shader = wgpuDeviceCreateShaderModule(device, &shaderDesc);
+
+    {
+        WGPUBufferDescriptor d{};
+        d.size  = sizeof(SUN_QUAD_VERTS);
+        d.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+        _vertexBuf = wgpuDeviceCreateBuffer(device, &d);
+        wgpuQueueWriteBuffer(queue, _vertexBuf, 0, SUN_QUAD_VERTS, sizeof(SUN_QUAD_VERTS));
+    }
+    {
+        WGPUBufferDescriptor d{};
+        d.size  = 192; // model(64) + viewProj(64) + color(16) + fogColor(16) + fogDensity(16) + cameraPos(16)
+        d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        _uniformBuf = wgpuDeviceCreateBuffer(device, &d);
+    }
+
+    {
+        WGPUBindGroupLayoutEntry e{};
+        e.binding               = 0;
+        e.visibility            = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+        e.buffer.type           = WGPUBufferBindingType_Uniform;
+        e.buffer.minBindingSize = 192;
+        WGPUBindGroupLayoutDescriptor d{};
+        d.entryCount = 1;
+        d.entries    = &e;
+        _uniformBGL = wgpuDeviceCreateBindGroupLayout(device, &d);
+    }
+    {
+        WGPUBindGroupEntry e{};
+        e.binding = 0;
+        e.buffer  = _uniformBuf;
+        e.size    = 192;
+        WGPUBindGroupDescriptor d{};
+        d.layout     = _uniformBGL;
+        d.entryCount = 1;
+        d.entries    = &e;
+        _uniformBG = wgpuDeviceCreateBindGroup(device, &d);
+    }
+
+    WGPUPipelineLayoutDescriptor plDesc{};
+    plDesc.bindGroupLayoutCount = 1;
+    plDesc.bindGroupLayouts     = &_uniformBGL;
+    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &plDesc);
+
+    WGPUVertexAttribute attr{};
+    attr.format         = WGPUVertexFormat_Float32x3;
+    attr.offset         = 0;
+    attr.shaderLocation = 0;
+    WGPUVertexBufferLayout vbl{};
+    vbl.arrayStride    = 3 * sizeof(float);
+    vbl.stepMode       = WGPUVertexStepMode_Vertex;
+    vbl.attributeCount = 1;
+    vbl.attributes     = &attr;
+
+    WGPUColorTargetState colorTarget{};
+    colorTarget.format    = colorFormat;
+    colorTarget.writeMask = WGPUColorWriteMask_All;
+
+    WGPUFragmentState frag{};
+    frag.module      = shader;
+    frag.entryPoint  = { "fs", WGPU_STRLEN };
+    frag.targetCount = 1;
+    frag.targets     = &colorTarget;
+
+    WGPUDepthStencilState depthStencil{};
+    depthStencil.format               = WGPUTextureFormat_Depth32Float;
+    depthStencil.depthWriteEnabled    = WGPUOptionalBool_True;
+    depthStencil.depthCompare         = WGPUCompareFunction_Less;
+    depthStencil.stencilFront.compare = WGPUCompareFunction_Always;
+    depthStencil.stencilBack.compare  = WGPUCompareFunction_Always;
+    depthStencil.stencilReadMask      = 0xFFFFFFFFu;
+    depthStencil.stencilWriteMask     = 0xFFFFFFFFu;
+
+    WGPURenderPipelineDescriptor pd{};
+    pd.layout              = pipelineLayout;
+    pd.vertex.module       = shader;
+    pd.vertex.entryPoint   = { "vs", WGPU_STRLEN };
+    pd.vertex.bufferCount  = 1;
+    pd.vertex.buffers      = &vbl;
+    pd.fragment            = &frag;
+    pd.depthStencil        = &depthStencil;
+    pd.primitive.topology  = WGPUPrimitiveTopology_TriangleList;
+    pd.primitive.frontFace = WGPUFrontFace_CCW;
+    pd.primitive.cullMode  = WGPUCullMode_None;
+    pd.multisample.count   = 1;
+    pd.multisample.mask    = 0xFFFFFFFFu;
+    _pipeline = wgpuDeviceCreateRenderPipeline(device, &pd);
+
+    wgpuPipelineLayoutRelease(pipelineLayout);
+    wgpuShaderModuleRelease(shader);
+}
+#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+
+void SunPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        if (!_pipeline) {
+            WGPUDevice dev = GfxFactory::GetWebGPUDevice();
+            WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
+            if (!dev) return;
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float);
+        }
+        if (!renderer.sceneRT) return;
+
+        CameraComponent* camera = ctx->GetMainCamera();
+        if (!camera) return;
+        LightComponent* light = ctx->GetMainLight();
+        SunComponent*   sun   = ctx->GetMainSun();
+        if (!sun) return;
+
+        glm::vec3 lightDir = light ? glm::normalize(light->direction) : glm::normalize(glm::vec3(0.0f, -1.0f, 0.5f));
+        const float CHUNK_SIZE = 32.0f;
+        const float WORLD_W    = 25.0f;
+        const float WORLD_D    = 25.0f;
+        const float CENTER_X   = WORLD_W * CHUNK_SIZE * 0.5f;
+        const float CENTER_Z   = WORLD_D * CHUNK_SIZE * 0.5f;
+
+        glm::vec3 sunPos(CENTER_X, sun->height, CENTER_Z);
+        if (lightDir.z > 0.0f) {
+            float atan_xz = lightDir.x / lightDir.z;
+            sunPos.z = CENTER_Z - CHUNK_SIZE * WORLD_D;
+            sunPos.x = CENTER_X - CHUNK_SIZE * WORLD_D * atan_xz;
+        } else if (lightDir.z < 0.0f) {
+            float atan_xz = lightDir.x / lightDir.z;
+            sunPos.z = CENTER_Z + CHUNK_SIZE * WORLD_D;
+            sunPos.x = CENTER_X + CHUNK_SIZE * WORLD_D * atan_xz;
+        } else {
+            if (lightDir.x > 0.0f)      sunPos.x = CENTER_X - CHUNK_SIZE * WORLD_W;
+            else if (lightDir.x < 0.0f) sunPos.x = CENTER_X + CHUNK_SIZE * WORLD_W;
+            else                         sunPos.y = sun->height * 2.0f;
+        }
+
+        glm::vec3 camPos   = camera->GetEyePosition();
+        glm::vec3 toCamera = glm::normalize(camPos - sunPos);
+        glm::vec3 right    = glm::normalize(glm::cross(toCamera, glm::vec3(0, 1, 0)));
+        glm::vec3 up       = glm::cross(right, toCamera);
+
+        glm::mat4 model(1.0f);
+        model[0] = glm::vec4(right * sun->billboardRadius, 0);
+        model[1] = glm::vec4(up    * sun->billboardRadius, 0);
+        model[2] = glm::vec4(toCamera,                     0);
+        model[3] = glm::vec4(sunPos,                       1);
+
+        glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+
+        struct {
+            glm::mat4 model;
+            glm::mat4 viewProj;
+            glm::vec4 color;
+            glm::vec4 fogColor;
+            glm::vec4 fogDensity;
+            glm::vec4 cameraPos;
+        } u{
+            model, viewProj,
+            glm::vec4(sun->billboardColor, 1.0f),
+            glm::vec4(1.0f, 1.0f, 1.0f, 1.0f), // VX: COLOR_WHITE
+            glm::vec4(0.000003f, 0.0f, 0.0f, 0.0f),
+            glm::vec4(camPos, 1.0f),
+        };
+        wgpuQueueWriteBuffer(_gpuQueue, _uniformBuf, 0, &u, sizeof(u));
+
+        auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+        auto* rt     = static_cast<GPURenderTarget*>(renderer.sceneRT.get());
+        rt->Begin(enc);
+        wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _pipeline);
+        wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 0, _uniformBG, 0, nullptr);
+        wgpuRenderPassEncoderSetVertexBuffer(gpuEnc->pass, 0, _vertexBuf, 0, WGPU_WHOLE_SIZE);
+        wgpuRenderPassEncoderDraw(gpuEnc->pass, 6, 1, 0, 0);
+        rt->End();
+        return;
+    }
 #endif
     if (renderer.skyboxVAO == 0) return; // skybox cube doubles as bounding check
 
@@ -114,9 +482,154 @@ void SunPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /
 // ============================================================================
 //  SkyboxPass  (gradient sky, rendered at depth = 1)
 // ============================================================================
-void SkyboxPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+SkyboxPass::~SkyboxPass() {
+    if (_uniformBG)  wgpuBindGroupRelease(_uniformBG);
+    if (_uniformBGL) wgpuBindGroupLayoutRelease(_uniformBGL);
+    if (_pipeline)   wgpuRenderPipelineRelease(_pipeline);
+    if (_uniformBuf) wgpuBufferRelease(_uniformBuf);
+    if (_vertexBuf)  wgpuBufferRelease(_vertexBuf);
+}
+
+void SkyboxPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat) {
+    _gpuDevice = device;
+    _gpuQueue  = queue;
+
+    WGPUShaderSourceWGSL wgslDesc{};
+    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
+    wgslDesc.code        = { SKYBOX_WGSL, WGPU_STRLEN };
+    WGPUShaderModuleDescriptor shaderDesc{};
+    shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
+    WGPUShaderModule shader = wgpuDeviceCreateShaderModule(device, &shaderDesc);
+
+    {
+        WGPUBufferDescriptor d{};
+        d.size  = sizeof(SKYBOX_CUBE_VERTS);
+        d.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+        _vertexBuf = wgpuDeviceCreateBuffer(device, &d);
+        wgpuQueueWriteBuffer(queue, _vertexBuf, 0, SKYBOX_CUBE_VERTS, sizeof(SKYBOX_CUBE_VERTS));
+    }
+    {
+        WGPUBufferDescriptor d{};
+        d.size  = 96; // viewProj(64) + skyColor(16) + horizonColor(16)
+        d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        _uniformBuf = wgpuDeviceCreateBuffer(device, &d);
+    }
+
+    {
+        WGPUBindGroupLayoutEntry e{};
+        e.binding               = 0;
+        e.visibility            = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+        e.buffer.type           = WGPUBufferBindingType_Uniform;
+        e.buffer.minBindingSize = 96;
+        WGPUBindGroupLayoutDescriptor d{};
+        d.entryCount = 1;
+        d.entries    = &e;
+        _uniformBGL = wgpuDeviceCreateBindGroupLayout(device, &d);
+    }
+    {
+        WGPUBindGroupEntry e{};
+        e.binding = 0;
+        e.buffer  = _uniformBuf;
+        e.size    = 96;
+        WGPUBindGroupDescriptor d{};
+        d.layout     = _uniformBGL;
+        d.entryCount = 1;
+        d.entries    = &e;
+        _uniformBG = wgpuDeviceCreateBindGroup(device, &d);
+    }
+
+    WGPUPipelineLayoutDescriptor plDesc{};
+    plDesc.bindGroupLayoutCount = 1;
+    plDesc.bindGroupLayouts     = &_uniformBGL;
+    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &plDesc);
+
+    WGPUVertexAttribute attr{};
+    attr.format         = WGPUVertexFormat_Float32x3;
+    attr.offset         = 0;
+    attr.shaderLocation = 0;
+    WGPUVertexBufferLayout vbl{};
+    vbl.arrayStride    = 3 * sizeof(float);
+    vbl.stepMode       = WGPUVertexStepMode_Vertex;
+    vbl.attributeCount = 1;
+    vbl.attributes     = &attr;
+
+    WGPUColorTargetState colorTarget{};
+    colorTarget.format    = colorFormat;
+    colorTarget.writeMask = WGPUColorWriteMask_All;
+
+    WGPUFragmentState frag{};
+    frag.module      = shader;
+    frag.entryPoint  = { "fs", WGPU_STRLEN };
+    frag.targetCount = 1;
+    frag.targets     = &colorTarget;
+
+    // Sky is drawn after the clear with z = far (depth = 1). depthCompare =
+    // LessEqual + depthWriteEnabled = false lets it fill empty pixels while
+    // never overwriting opaque geometry drawn earlier in the frame.
+    WGPUDepthStencilState depthStencil{};
+    depthStencil.format               = WGPUTextureFormat_Depth32Float;
+    depthStencil.depthWriteEnabled    = WGPUOptionalBool_False;
+    depthStencil.depthCompare         = WGPUCompareFunction_LessEqual;
+    depthStencil.stencilFront.compare = WGPUCompareFunction_Always;
+    depthStencil.stencilBack.compare  = WGPUCompareFunction_Always;
+    depthStencil.stencilReadMask      = 0xFFFFFFFFu;
+    depthStencil.stencilWriteMask     = 0xFFFFFFFFu;
+
+    WGPURenderPipelineDescriptor pd{};
+    pd.layout              = pipelineLayout;
+    pd.vertex.module       = shader;
+    pd.vertex.entryPoint   = { "vs", WGPU_STRLEN };
+    pd.vertex.bufferCount  = 1;
+    pd.vertex.buffers      = &vbl;
+    pd.fragment            = &frag;
+    pd.depthStencil        = &depthStencil;
+    pd.primitive.topology  = WGPUPrimitiveTopology_TriangleList;
+    pd.primitive.frontFace = WGPUFrontFace_CCW;
+    pd.primitive.cullMode  = WGPUCullMode_None;
+    pd.multisample.count   = 1;
+    pd.multisample.mask    = 0xFFFFFFFFu;
+    _pipeline = wgpuDeviceCreateRenderPipeline(device, &pd);
+
+    wgpuPipelineLayoutRelease(pipelineLayout);
+    wgpuShaderModuleRelease(shader);
+}
+#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+
+void SkyboxPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        if (!_pipeline) {
+            WGPUDevice dev = GfxFactory::GetWebGPUDevice();
+            WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
+            if (!dev) return;
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float);
+        }
+        if (!renderer.sceneRT) return;
+
+        CameraComponent* camera = ctx->GetMainCamera();
+        if (!camera) return;
+
+        glm::mat4 viewNoTranslation = glm::mat4(glm::mat3(camera->GetViewMatrix()));
+        glm::mat4 viewProj = camera->GetProjectionMatrix() * viewNoTranslation;
+
+        struct {
+            glm::mat4 viewProj;
+            glm::vec4 skyColor;
+            glm::vec4 horizonColor;
+        } u{ viewProj, glm::vec4(skyColor, 1.0f), glm::vec4(horizonColor, 1.0f) };
+        wgpuQueueWriteBuffer(_gpuQueue, _uniformBuf, 0, &u, sizeof(u));
+
+        auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+        auto* rt     = static_cast<GPURenderTarget*>(renderer.sceneRT.get());
+        rt->Begin(enc);
+        wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _pipeline);
+        wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 0, _uniformBG, 0, nullptr);
+        wgpuRenderPassEncoderSetVertexBuffer(gpuEnc->pass, 0, _vertexBuf, 0, WGPU_WHOLE_SIZE);
+        wgpuRenderPassEncoderDraw(gpuEnc->pass, 36, 1, 0, 0);
+        rt->End();
+        return;
+    }
 #endif
     if (renderer.skyboxVAO == 0) return;
 
@@ -158,9 +671,220 @@ void SkyboxPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 // ============================================================================
 //  VoxelChunkPass
 // ============================================================================
-void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+namespace {
+// WebGPU-spec-guaranteed-safe minUniformBufferOffsetAlignment.
+constexpr uint32_t VOXEL_DRAW_SLOT_STRIDE = 256;
+constexpr uint64_t VOXEL_FRAME_UNIFORM_SIZE = 160; // viewProj(64) + 6 * vec4(16)
+constexpr uint64_t VOXEL_DRAW_UNIFORM_SIZE  = 64;  // model mat4x4
+}
+
+VoxelChunkPass::~VoxelChunkPass() {
+    if (_uniformBG)       wgpuBindGroupRelease(_uniformBG);
+    if (_uniformBGL)      wgpuBindGroupLayoutRelease(_uniformBGL);
+    if (_pipeline)        wgpuRenderPipelineRelease(_pipeline);
+    if (_frameUniformBuf) wgpuBufferRelease(_frameUniformBuf);
+    if (_drawUniformBuf)  wgpuBufferRelease(_drawUniformBuf);
+}
+
+void VoxelChunkPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat) {
+    _gpuDevice = device;
+    _gpuQueue  = queue;
+
+    WGPUShaderSourceWGSL wgslDesc{};
+    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
+    wgslDesc.code        = { VOXEL_WGSL, WGPU_STRLEN };
+    WGPUShaderModuleDescriptor shaderDesc{};
+    shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
+    WGPUShaderModule shader = wgpuDeviceCreateShaderModule(device, &shaderDesc);
+
+    {
+        WGPUBufferDescriptor d{};
+        d.size  = VOXEL_FRAME_UNIFORM_SIZE;
+        d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        _frameUniformBuf = wgpuDeviceCreateBuffer(device, &d);
+    }
+
+    WGPUBindGroupLayoutEntry entries[2] = {};
+    entries[0].binding               = 0;
+    entries[0].visibility            = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+    entries[0].buffer.type           = WGPUBufferBindingType_Uniform;
+    entries[0].buffer.minBindingSize = VOXEL_FRAME_UNIFORM_SIZE;
+    entries[1].binding                 = 1;
+    entries[1].visibility              = WGPUShaderStage_Vertex;
+    entries[1].buffer.type             = WGPUBufferBindingType_Uniform;
+    entries[1].buffer.hasDynamicOffset = true;
+    entries[1].buffer.minBindingSize   = VOXEL_DRAW_UNIFORM_SIZE;
+    WGPUBindGroupLayoutDescriptor bglDesc{};
+    bglDesc.entryCount = 2;
+    bglDesc.entries    = entries;
+    _uniformBGL = wgpuDeviceCreateBindGroupLayout(device, &bglDesc);
+
+    WGPUPipelineLayoutDescriptor plDesc{};
+    plDesc.bindGroupLayoutCount = 1;
+    plDesc.bindGroupLayouts     = &_uniformBGL;
+    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &plDesc);
+
+    // Matches VoxelVertex (vertex.hpp): x,y,z,voxel_id,face_id,pad[3] — two
+    // Uint8x4 attributes since WebGPU has no Uint8x3 / plain uint8 format.
+    WGPUVertexAttribute attrs[2] = {};
+    attrs[0].format         = WGPUVertexFormat_Uint8x4;
+    attrs[0].offset         = 0;
+    attrs[0].shaderLocation = 0;
+    attrs[1].format         = WGPUVertexFormat_Uint8x4;
+    attrs[1].offset         = 4;
+    attrs[1].shaderLocation = 1;
+    WGPUVertexBufferLayout vbl{};
+    vbl.arrayStride    = 8; // sizeof(VoxelVertex)
+    vbl.stepMode       = WGPUVertexStepMode_Vertex;
+    vbl.attributeCount = 2;
+    vbl.attributes     = attrs;
+
+    WGPUColorTargetState colorTarget{};
+    colorTarget.format    = colorFormat;
+    colorTarget.writeMask = WGPUColorWriteMask_All;
+
+    WGPUFragmentState frag{};
+    frag.module      = shader;
+    frag.entryPoint  = { "fs", WGPU_STRLEN };
+    frag.targetCount = 1;
+    frag.targets     = &colorTarget;
+
+    WGPUDepthStencilState depthStencil{};
+    depthStencil.format               = WGPUTextureFormat_Depth32Float;
+    depthStencil.depthWriteEnabled    = WGPUOptionalBool_True;
+    depthStencil.depthCompare         = WGPUCompareFunction_Less;
+    depthStencil.stencilFront.compare = WGPUCompareFunction_Always;
+    depthStencil.stencilBack.compare  = WGPUCompareFunction_Always;
+    depthStencil.stencilReadMask      = 0xFFFFFFFFu;
+    depthStencil.stencilWriteMask     = 0xFFFFFFFFu;
+
+    WGPURenderPipelineDescriptor pd{};
+    pd.layout              = pipelineLayout;
+    pd.vertex.module       = shader;
+    pd.vertex.entryPoint   = { "vs", WGPU_STRLEN };
+    pd.vertex.bufferCount  = 1;
+    pd.vertex.buffers      = &vbl;
+    pd.fragment            = &frag;
+    pd.depthStencil        = &depthStencil;
+    pd.primitive.topology  = WGPUPrimitiveTopology_TriangleList;
+    pd.primitive.frontFace = WGPUFrontFace_CCW;
+    pd.primitive.cullMode  = WGPUCullMode_Back;
+    pd.multisample.count   = 1;
+    pd.multisample.mask    = 0xFFFFFFFFu;
+    _pipeline = wgpuDeviceCreateRenderPipeline(device, &pd);
+
+    wgpuPipelineLayoutRelease(pipelineLayout);
+    wgpuShaderModuleRelease(shader);
+}
+
+void VoxelChunkPass::_ensureDrawCapacity(uint32_t drawCount) {
+    if (drawCount <= _drawSlotCapacity && _drawUniformBuf) return;
+
+    uint32_t newCapacity = std::max<uint32_t>(drawCount, std::max<uint32_t>(_drawSlotCapacity * 2, 16));
+
+    if (_drawUniformBuf) { wgpuBufferRelease(_drawUniformBuf); _drawUniformBuf = nullptr; }
+    if (_uniformBG)      { wgpuBindGroupRelease(_uniformBG);   _uniformBG      = nullptr; }
+
+    WGPUBufferDescriptor d{};
+    d.size  = static_cast<uint64_t>(newCapacity) * VOXEL_DRAW_SLOT_STRIDE;
+    d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+    _drawUniformBuf   = wgpuDeviceCreateBuffer(_gpuDevice, &d);
+    _drawSlotCapacity = newCapacity;
+
+    WGPUBindGroupEntry entries[2] = {};
+    entries[0].binding = 0;
+    entries[0].buffer  = _frameUniformBuf;
+    entries[0].size    = VOXEL_FRAME_UNIFORM_SIZE;
+    entries[1].binding = 1;
+    entries[1].buffer  = _drawUniformBuf;
+    entries[1].size    = VOXEL_DRAW_UNIFORM_SIZE;
+    WGPUBindGroupDescriptor bgDesc{};
+    bgDesc.layout     = _uniformBGL;
+    bgDesc.entryCount = 2;
+    bgDesc.entries    = entries;
+    _uniformBG = wgpuDeviceCreateBindGroup(_gpuDevice, &bgDesc);
+}
+#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+
+void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        const auto& gpuQueueCmds = renderer.GetOpaqueQueue();
+        if (gpuQueueCmds.empty()) return;
+        if (!renderer.sceneRT)    return;
+
+        CameraComponent* camera = ctx->GetMainCamera();
+        if (!camera) return;
+        LightComponent* light = ctx->GetMainLight();
+
+        if (!_pipeline) {
+            WGPUDevice dev = GfxFactory::GetWebGPUDevice();
+            WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
+            if (!dev) return;
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float);
+        }
+
+        struct DrawItem { Buffer* buf; glm::mat4 model; };
+        std::vector<DrawItem> draws;
+        draws.reserve(gpuQueueCmds.size());
+        for (const auto& sortable : gpuQueueCmds) {
+            const auto& cmd = sortable.cmd;
+            Mesh* mesh = cmd.mesh;
+            if (!mesh || mesh->type != MeshType::VOXEL) continue;
+            if (!mesh->UsesRenderMesh()) continue;
+            Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
+            if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
+            draws.push_back({ buf, cmd.transform });
+        }
+        if (draws.empty()) return;
+
+        _ensureDrawCapacity(static_cast<uint32_t>(draws.size()));
+
+        glm::vec3 lightDir   = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);
+        glm::vec3 lightColor = light ? light->diffuse  : glm::vec3(1.0f);
+        glm::vec3 ambient    = light ? light->ambient * 0.15f : glm::vec3(0.1f);
+        glm::mat4 viewProj   = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+
+        struct {
+            glm::mat4 viewProj;
+            glm::vec4 cameraPos;
+            glm::vec4 lightDir;
+            glm::vec4 lightColor;
+            glm::vec4 ambient;
+            glm::vec4 fogColor;
+            glm::vec4 fogDensity;
+        } frameUniforms{
+            viewProj,
+            glm::vec4(camera->GetEyePosition(), 1.0f),
+            glm::vec4(lightDir, 0.0f),
+            glm::vec4(lightColor, 0.0f),
+            glm::vec4(ambient, 0.0f),
+            glm::vec4(0.55f, 0.65f, 0.75f, 1.0f),
+            glm::vec4(0.003f, 0.0f, 0.0f, 0.0f),
+        };
+        wgpuQueueWriteBuffer(_gpuQueue, _frameUniformBuf, 0, &frameUniforms, sizeof(frameUniforms));
+
+        // Pack every draw's model matrix into its own dynamic-offset slot and
+        // upload in a single call (see the comment above VOXEL_WGSL).
+        std::vector<uint8_t> drawData(draws.size() * VOXEL_DRAW_SLOT_STRIDE, 0);
+        for (size_t i = 0; i < draws.size(); ++i) {
+            std::memcpy(drawData.data() + i * VOXEL_DRAW_SLOT_STRIDE, &draws[i].model, sizeof(glm::mat4));
+        }
+        wgpuQueueWriteBuffer(_gpuQueue, _drawUniformBuf, 0, drawData.data(), drawData.size());
+
+        auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+        auto* rt     = static_cast<GPURenderTarget*>(renderer.sceneRT.get());
+        rt->Begin(enc);
+        wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _pipeline);
+        for (size_t i = 0; i < draws.size(); ++i) {
+            uint32_t dynamicOffset = static_cast<uint32_t>(i * VOXEL_DRAW_SLOT_STRIDE);
+            wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 0, _uniformBG, 1, &dynamicOffset);
+            draws[i].buf->Draw(enc, PrimitiveTopology::Triangles);
+        }
+        rt->End();
+        return;
+    }
 #endif
     const auto& queue = renderer.GetOpaqueQueue();
     if (queue.empty()) return;
