@@ -240,14 +240,17 @@ void GraphicsServer::DrawImGui(float dt) {
 
 #ifdef AE_GPU_TIMER_ENABLED
         ImGui::Separator();
-        if (ImGui::TreeNode("GPU Pass Timings")) {
-            auto timings = renderer->GetTimings();
-            for (auto& [name, ms] : timings) {
-                bool isTotal = (name == "[Total]");
-                if (isTotal) ImGui::Separator();
-                ImGui::Text("%-26s %.3f ms", name.c_str(), ms);
+        ImGui::Checkbox("Perf GPU", &renderer->GpuProfilingEnabled());
+        if (renderer->GpuProfilingEnabled()) {
+            if (ImGui::TreeNode("GPU Pass Timings")) {
+                auto timings = renderer->GetTimings();
+                for (auto& [name, ms] : timings) {
+                    bool isTotal = (name == "[Total]");
+                    if (isTotal) ImGui::Separator();
+                    ImGui::Text("%-26s %.3f ms", name.c_str(), ms);
+                }
+                ImGui::TreePop();
             }
-            ImGui::TreePop();
         }
 #endif
         ImGui::Separator();

@@ -108,9 +108,13 @@ void RenderGraph::AddPass(std::unique_ptr<RenderPass> pass) {
 
 void RenderGraph::Render(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
     for (auto& e : _entries) {
-        e.timer.Begin();
+#ifdef AE_GPU_TIMER_ENABLED
+        if (gpuProfilingEnabled) e.timer.Begin();
+#endif
         e.pass->Execute(ctx, renderer, enc);
-        e.timer.End();
+#ifdef AE_GPU_TIMER_ENABLED
+        if (gpuProfilingEnabled) e.timer.End();
+#endif
     }
 }
 

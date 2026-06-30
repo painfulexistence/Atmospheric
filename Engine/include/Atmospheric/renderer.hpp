@@ -182,6 +182,11 @@ class RenderGraph {
     std::vector<PassEntry> _entries;
 
 public:
+    // Off by default — GL_TIMESTAMP queries add real overhead (driver ordering
+    // barriers around pass boundaries) even though readback is async.
+    // Enable only when the timing panel is in use.
+    bool gpuProfilingEnabled = false;
+
     ~RenderGraph();
 
     void AddPass(std::unique_ptr<RenderPass> pass);
@@ -231,6 +236,10 @@ public:
     std::vector<std::pair<std::string, float>> GetTimings() const {
         return _renderGraph ? _renderGraph->GetTimings() : std::vector<std::pair<std::string, float>>{};
     }
+
+#ifdef AE_GPU_TIMER_ENABLED
+    bool& GpuProfilingEnabled() { return _renderGraph->gpuProfilingEnabled; }
+#endif
 
     void SetCapability(const GLenum& cap, bool enable = true) {
         if (enable) {
