@@ -532,7 +532,7 @@ if(EMSCRIPTEN)
             "${_AE_WASM_SRC}/index.d.ts"  "${_AE_WASM_OUT}/index.d.ts"
         COMMAND ${CMAKE_COMMAND} -Dsrc="$<TARGET_FILE_DIR:atmospheric>/atmos.worker.js"
             -Ddst="${_AE_WASM_OUT}/atmos.worker.js"
-            -P "${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/copy_if_exists.cmake"
         COMMENT "Assembling @atmospheric/engine package → ${_AE_WASM_OUT}"
     )
 endif()
