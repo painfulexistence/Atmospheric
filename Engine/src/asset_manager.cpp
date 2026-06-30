@@ -732,9 +732,6 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
-        // No compressed-texture WGPU device features are negotiated yet, so
-        // transcode to uncompressed RGBA32 (base level only — UploadTexture2D
-        // doesn't generate mips) instead of probing GL extensions.
         if (!ktx2Dec.start_transcoding())
             throw std::runtime_error(fmt::format("KTX2 start_transcoding failed: {}", path));
 
@@ -742,6 +739,49 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         if (!ktx2Dec.get_image_level_info(info0, 0, 0, 0))
             throw std::runtime_error(fmt::format("KTX2 get_image_level_info failed (level 0): {}", path));
 
+        TextureCompressionFormat wgpuCompression = GfxFactory::GetSupportedCompressionFormat();
+
+        if (wgpuCompression != TextureCompressionFormat::None) {
+            // Transcode to whichever compressed format the WebGPU adapter/device
+            // actually negotiated at Init() time (base level only —
+            // UploadCompressedTexture2D doesn't generate mips).
+            basist::transcoder_texture_format basisFmt;
+            const char* fmtName;
+            switch (wgpuCompression) {
+            case TextureCompressionFormat::BC7:
+                basisFmt = basist::transcoder_texture_format::cTFBC7_RGBA;
+                fmtName  = "BC7";
+                break;
+            case TextureCompressionFormat::ETC2:
+                basisFmt = basist::transcoder_texture_format::cTFETC2_RGBA;
+                fmtName  = "ETC2";
+                break;
+            default: // ASTC4x4
+                basisFmt = basist::transcoder_texture_format::cTFASTC_4x4_RGBA;
+                fmtName  = "ASTC4x4";
+                break;
+            }
+
+            // Compressed transcode targets size the output buffer in blocks,
+            // not pixels (unlike cTFRGBA32) — m_width/m_height are the
+            // block-aligned physical dimensions, m_total_blocks the block count.
+            std::vector<uint8_t> buf((size_t)info0.m_total_blocks * 16);
+            if (!ktx2Dec.transcode_image_level(0, 0, 0, buf.data(), info0.m_total_blocks, basisFmt))
+                throw std::runtime_error(fmt::format("KTX2 transcode_image_level failed (level 0): {}", path));
+
+            uint32_t texID = GfxFactory::UploadCompressedTexture2D(
+              wgpuCompression, buf.data(), buf.size(), (int)info0.m_width, (int)info0.m_height
+            );
+            ENGINE_LOG(
+              "Loaded KTX2 texture '{}' ({}×{}, WebGPU {}, no mips)", path, info0.m_width, info0.m_height, fmtName
+            );
+            if (out) *out = { texID, info0.m_width, info0.m_height, buf.size() };
+            return texID;
+        }
+
+        // No compressed-texture feature negotiated by the device (or running
+        // on a backend without WGPUFeatureName_TextureCompression* support) —
+        // fall back to uncompressed RGBA32.
         std::vector<uint8_t> buf((size_t)info0.m_orig_width * info0.m_orig_height * 4);
         if (!ktx2Dec.transcode_image_level(
               0, 0, 0, buf.data(), info0.m_orig_width * info0.m_orig_height,
@@ -751,7 +791,8 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
 
         uint32_t texID = GfxFactory::UploadTexture2D(buf.data(), (int)info0.m_orig_width, (int)info0.m_orig_height);
         ENGINE_LOG(
-          "Loaded KTX2 texture '{}' ({}×{}, WebGPU RGBA32, no mips)", path, info0.m_orig_width, info0.m_orig_height
+          "Loaded KTX2 texture '{}' ({}×{}, WebGPU RGBA32 fallback, no mips)", path, info0.m_orig_width,
+          info0.m_orig_height
         );
         if (out) *out = { texID, info0.m_orig_width, info0.m_orig_height, buf.size() };
         return texID;

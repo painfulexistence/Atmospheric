@@ -26,6 +26,16 @@ enum class GfxBackend {
     OpenGL,  // Fallback: OpenGL 4.1 (native) / WebGL 2.0 (Emscripten)
 };
 
+// Negotiated block-compressed texture support on the active WebGPU device.
+// Reflects the WGPUFeatureName_TextureCompression* features actually granted
+// by the adapter/device (queried via wgpuAdapterHasFeature), not just requested.
+enum class TextureCompressionFormat {
+    None,    // No compressed-texture feature negotiated; upload uncompressed RGBA32.
+    BC7,     // Desktop browsers (Chrome/Firefox on Windows/Mac/Linux)
+    ETC2,    // Mobile / some integrated GPUs
+    ASTC4x4, // Mobile (newer Android GPUs)
+};
+
 enum class KeyState { PRESSED, RELEASED, HELD, UNKNOWN };
 
 enum class Key {
