@@ -7,7 +7,6 @@
 #include "frustum.hpp"
 #include "light_component.hpp"
 #include "sun_component.hpp"
-#include "water_component.hpp"
 
 #include "FastNoiseLite.h"
 
@@ -58,70 +57,56 @@ void VoxelWorld::Init(Application* app, int seed) {
         .castShadow = false,
     }));
     sunGO->AddComponent(new SunComponent());
-
-    // Water plane — large enough to cover the full view range plus fog horizon.
-    const float waterExt = ((2 * VIEW_X + 1) * VoxelChunkComponent::SIZE) * 2.0f;
-    _waterGO = app->CreateGameObject(glm::vec3(0.0f, WATER_LINE + 0.05f, 0.0f));
-    _waterGO->SetName("VoxelWater");
-    _waterGO->AddComponent<WaterComponent>(WaterProps{
-        .width        = waterExt,
-        .depth        = waterExt,
-        .subdivisions = 64,
-    });
 }
 
 void VoxelWorld::Update(float /*dt*/, const glm::vec3& cameraPos) {
     glm::ivec3 camChunk{WorldToChunkCoord(cameraPos.x), 0,
                          WorldToChunkCoord(cameraPos.z)};
 
-    // Slide the water plane with the camera so it always covers the visible area.
-    if (_waterGO) {
-        _waterGO->SetPosition(glm::vec3(cameraPos.x, WATER_LINE + 0.05f, cameraPos.z));
-    }
+    if (infiniteMode) {
+        // Unload chunks that have drifted outside the view + margin.
+        if (camChunk.x != _lastCamChunk.x || camChunk.z != _lastCamChunk.z) {
+            _lastCamChunk = camChunk;
 
-    // Unload chunks that have drifted outside the view + margin.
-    if (camChunk.x != _lastCamChunk.x || camChunk.z != _lastCamChunk.z) {
-        _lastCamChunk = camChunk;
-
-        std::vector<glm::ivec3> toUnload;
-        toUnload.reserve(64);
-        for (auto& [pos, chunk] : _chunkMap) {
-            if (std::abs(pos.x - camChunk.x) > VIEW_X + UNLOAD_MARGIN ||
-                std::abs(pos.z - camChunk.z) > VIEW_Z + UNLOAD_MARGIN) {
-                toUnload.push_back(pos);
+            std::vector<glm::ivec3> toUnload;
+            toUnload.reserve(64);
+            for (auto& [pos, chunk] : _chunkMap) {
+                if (std::abs(pos.x - camChunk.x) > VIEW_X + UNLOAD_MARGIN ||
+                    std::abs(pos.z - camChunk.z) > VIEW_Z + UNLOAD_MARGIN) {
+                    toUnload.push_back(pos);
+                }
             }
+            for (auto& pos : toUnload) UnloadChunk(pos);
         }
-        for (auto& pos : toUnload) UnloadChunk(pos);
-    }
 
-    // Load up to LOAD_PER_FRAME new chunks per Update(), closest first.
-    // Collect all missing positions before sorting to get closest-first ordering.
-    std::vector<glm::ivec3> needed;
-    for (int dx = -VIEW_X; dx <= VIEW_X; ++dx) {
-        for (int cy = 0; cy < WORLD_Y; ++cy) {
-            for (int dz = -VIEW_Z; dz <= VIEW_Z; ++dz) {
-                glm::ivec3 pos{camChunk.x + dx, cy, camChunk.z + dz};
-                if (_chunkMap.find(pos) == _chunkMap.end()) {
-                    needed.push_back(pos);
+        // Load up to LOAD_PER_FRAME new chunks per Update(), closest first.
+        std::vector<glm::ivec3> needed;
+        for (int dx = -VIEW_X; dx <= VIEW_X; ++dx) {
+            for (int cy = 0; cy < WORLD_Y; ++cy) {
+                for (int dz = -VIEW_Z; dz <= VIEW_Z; ++dz) {
+                    glm::ivec3 pos{camChunk.x + dx, cy, camChunk.z + dz};
+                    if (_chunkMap.find(pos) == _chunkMap.end()) {
+                        needed.push_back(pos);
+                    }
                 }
             }
         }
-    }
 
-    if (!needed.empty()) {
-        std::sort(needed.begin(), needed.end(), [&](const glm::ivec3& a, const glm::ivec3& b) {
-            int da = std::abs(a.x - camChunk.x) + std::abs(a.z - camChunk.z);
-            int db = std::abs(b.x - camChunk.x) + std::abs(b.z - camChunk.z);
-            return da < db;
-        });
+        if (!needed.empty()) {
+            std::sort(needed.begin(), needed.end(), [&](const glm::ivec3& a, const glm::ivec3& b) {
+                int da = std::abs(a.x - camChunk.x) + std::abs(a.z - camChunk.z);
+                int db = std::abs(b.x - camChunk.x) + std::abs(b.z - camChunk.z);
+                return da < db;
+            });
 
-        int loaded = 0;
-        for (auto& pos : needed) {
-            if (loaded >= LOAD_PER_FRAME) break;
-            LoadChunk(pos);
-            ++loaded;
+            int loaded = 0;
+            for (auto& pos : needed) {
+                if (loaded >= LOAD_PER_FRAME) break;
+                LoadChunk(pos);
+                ++loaded;
+            }
+            LinkNeighbors();
         }
-        LinkNeighbors();
     }
 
     RebuildDirtyChunks();

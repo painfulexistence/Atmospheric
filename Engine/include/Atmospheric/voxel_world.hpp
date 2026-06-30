@@ -23,7 +23,6 @@ class VoxelWorld {
 public:
     // Y extent is bounded (no underground streaming needed).
     static constexpr int   WORLD_Y    = 3;
-    static constexpr float WATER_LINE = 32.0f;
     // View radius in chunks for X and Z — chunks within this range are kept loaded.
     static constexpr int   VIEW_X     = 10;
     static constexpr int   VIEW_Z     = 10;
@@ -33,6 +32,10 @@ public:
 
     void Init(Application* app, int seed = 42);
     void Update(float dt, const glm::vec3& cameraPos);
+
+    // When true (default), chunks stream in/out as the camera moves.
+    // When false, only the initial view volume loaded in Init() is kept.
+    bool infiniteMode = true;
 
     void SubmitRenderCommands(Renderer* renderer, const glm::mat4& viewProj,
                               const glm::vec3& cameraPos);
@@ -54,7 +57,6 @@ private:
     GraphicsServer*                   _gfx       = nullptr;
     int                               _seed      = 42;
     glm::ivec3                        _lastCamChunk{INT_MIN, 0, INT_MIN};
-    GameObject*                       _waterGO   = nullptr;
 
     VoxelChunkComponent* GetChunk(int cx, int cy, int cz) const;
     VoxelChunkComponent* AcquireSlot(glm::ivec3 pos);
