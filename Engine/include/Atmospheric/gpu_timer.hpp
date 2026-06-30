@@ -5,17 +5,21 @@
 
 // GL_TIMESTAMP / glQueryCounter require OpenGL ≥ 3.3 (GL_ARB_timer_query,
 // promoted to core in 3.3). Atmospheric targets GL 4.1+ on desktop so this
-// is always available there.
+// is always available there -- except Apple's OpenGL driver, which is the
+// odd one out: it advertises GL_ARB_timer_query and GL_QUERY_RESULT_AVAILABLE
+// flips true almost immediately, but the timestamp itself is never actually
+// written (observed in practice: both start and end queries read back as 0
+// on macOS). Apple deprecated OpenGL entirely in 10.14 and this extension
+// never got a real backing implementation on either macOS or iOS GLES.
 //
 // Disabled on targets that lack support:
 //   - WebGL 1/2 (__EMSCRIPTEN__): no GL_TIMESTAMP; EXT_disjoint_timer_query
 //     exists but has unreliable disjoint semantics — not worth handling.
 //   - Android GLES (__ANDROID__): extension not guaranteed.
-//   - iOS GLES (TARGET_OS_IOS): same.
+//   - All Apple targets (__APPLE__, macOS + iOS): present but non-functional.
 // On these platforms all GpuTimer methods are inlined no-ops and GetMs()
 // always returns 0.
-#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && \
-    !(defined(__APPLE__) && TARGET_OS_IOS)
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !defined(__APPLE__)
 #define AE_GPU_TIMER_ENABLED 1
 #endif
 
