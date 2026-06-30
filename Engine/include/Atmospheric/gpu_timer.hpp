@@ -102,6 +102,17 @@ struct GpuTimer {
                 glGetQueryObjectui64v(endQ[read],   GL_QUERY_RESULT, &t1);
                 ms = static_cast<float>(t1 - t0) / 1e6f;
                 pendingFrames = 0;
+
+                // Ground-truth proof the pipeline is actually producing readings,
+                // so a stuck-at-zero panel can be told apart from "never logged".
+                static bool loggedFirstResult = false;
+                if (!loggedFirstResult) {
+                    loggedFirstResult = true;
+                    ENGINE_LOG(
+                        "GpuTimer: first result -- t0={} t1={} delta={}ns ({:.3f}ms)",
+                        t0, t1, t1 - t0, ms
+                    );
+                }
             } else if (++pendingFrames == 120) {
                 // ~2s at 60fps with nothing ever becoming available — the driver is
                 // probably not actually completing GL_TIMESTAMP queries.
