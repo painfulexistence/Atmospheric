@@ -1,4 +1,5 @@
 #include "voxel_chunk_component.hpp"
+#include "game_object.hpp"
 #include "graphics_server.hpp"
 #include "material.hpp"
 #include <algorithm>
