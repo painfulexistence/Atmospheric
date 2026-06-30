@@ -9,6 +9,7 @@ GPUCanvasPass::~GPUCanvasPass() {
     if (_uniformBGL) wgpuBindGroupLayoutRelease(_uniformBGL);
     if (_texBGL)     wgpuBindGroupLayoutRelease(_texBGL);
     if (_pipeline)   wgpuRenderPipelineRelease(_pipeline);
+    if (_pipelineDepthTest) wgpuRenderPipelineRelease(_pipelineDepthTest);
     if (_uniformBuf) wgpuBufferRelease(_uniformBuf);
     if (_vertexBuf)  wgpuBufferRelease(_vertexBuf);
     if (_indexBuf)   wgpuBufferRelease(_indexBuf);
@@ -174,6 +175,20 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     pd.multisample.mask   = 0xFFFFFFFFu;
     _pipeline = wgpuDeviceCreateRenderPipeline(device, &pd);
 
+    // Depth-tested variant for WorldCanvasPass: read-only depth test against
+    // sceneRT's depth buffer (matches GL's glDepthMask(GL_FALSE) — sprites
+    // are occluded by 3D geometry but never occlude each other via depth).
+    WGPUDepthStencilState depthStencil{};
+    depthStencil.format               = WGPUTextureFormat_Depth32Float;
+    depthStencil.depthWriteEnabled    = WGPUOptionalBool_False;
+    depthStencil.depthCompare         = WGPUCompareFunction_LessEqual;
+    depthStencil.stencilFront.compare = WGPUCompareFunction_Always;
+    depthStencil.stencilBack.compare  = WGPUCompareFunction_Always;
+    depthStencil.stencilReadMask      = 0xFFFFFFFFu;
+    depthStencil.stencilWriteMask     = 0xFFFFFFFFu;
+    pd.depthStencil = &depthStencil;
+    _pipelineDepthTest = wgpuDeviceCreateRenderPipeline(device, &pd);
+
     wgpuPipelineLayoutRelease(pipelineLayout);
     wgpuShaderModuleRelease(shader);
 
@@ -208,7 +223,8 @@ WGPUBindGroup GPUCanvasPass::_getOrCreateTexBG(uint32_t texID) {
 
 void GPUCanvasPass::Render(CommandEncoder* enc,
                             const glm::mat4& viewProj,
-                            const std::vector<BatchDrawCommand>& commands) {
+                            const std::vector<BatchDrawCommand>& commands,
+                            bool depthTest) {
     // Lazy init: wait until GfxFactory has a live device
     if (!_pipeline) {
         WGPUDevice dev = GfxFactory::GetWebGPUDevice();
@@ -276,7 +292,7 @@ void GPUCanvasPass::Render(CommandEncoder* enc,
     WGPURenderPassEncoder pass = gpuEnc->pass;
     if (!pass) return;
 
-    wgpuRenderPassEncoderSetPipeline(pass, _pipeline);
+    wgpuRenderPassEncoderSetPipeline(pass, depthTest ? _pipelineDepthTest : _pipeline);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, _uniformBG, 0, nullptr);
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, _vertexBuf, 0, WGPU_WHOLE_SIZE);
     wgpuRenderPassEncoderSetIndexBuffer(pass, _indexBuf, WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);

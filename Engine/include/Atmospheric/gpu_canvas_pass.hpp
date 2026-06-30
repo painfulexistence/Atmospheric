@@ -24,9 +24,16 @@ public:
     // (caller must have called sceneRT->Begin(enc) first and will call End()
     // afterward). Targets sceneRT's HDR format, not the swapchain directly —
     // PostProcessPass is the pass that finally writes to the swapchain.
+    //
+    // depthTest selects the pipeline variant used by WorldCanvasPass: depth
+    // is tested (read-only, no write) against sceneRT's depth buffer so
+    // world-space sprites are occluded by 3D geometry, matching the GL path's
+    // glDepthMask(GL_FALSE) behaviour. CanvasPass (screen-space UI) passes
+    // false, the default, for the no-depth pipeline.
     void Render(CommandEncoder* enc,
                 const glm::mat4& viewProj,
-                const std::vector<BatchDrawCommand>& commands);
+                const std::vector<BatchDrawCommand>& commands,
+                bool depthTest = false);
 
     bool IsReady() const { return _pipeline != nullptr; }
 
@@ -72,6 +79,11 @@ struct VOut {
     WGPUQueue   _queue   = nullptr;
 
     WGPURenderPipeline  _pipeline   = nullptr;
+    // Depth-tested variant (read-only, no write) used by WorldCanvasPass so
+    // world-space sprites are occluded by 3D geometry already in sceneRT's
+    // depth buffer. Shares every other piece of state (buffers, bind groups,
+    // texture cache) with the no-depth pipeline above.
+    WGPURenderPipeline  _pipelineDepthTest = nullptr;
     WGPUBindGroupLayout _uniformBGL = nullptr;
     WGPUBindGroupLayout _texBGL     = nullptr;
     WGPUBuffer          _vertexBuf  = nullptr;

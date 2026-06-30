@@ -16,7 +16,10 @@ GPURenderTarget::~GPURenderTarget() {
 
 void GPURenderTarget::Create() {
     WGPUTextureDescriptor colorDesc{};
-    colorDesc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+    // CopySrc: BloomPass snapshots sceneRT's color texture into a separate
+    // texture before compositing bloom back in, since a texture cannot be
+    // bound as both a render attachment and a sampled texture in the same pass.
+    colorDesc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopySrc;
     colorDesc.dimension     = WGPUTextureDimension_2D;
     colorDesc.size          = { (uint32_t)_width, (uint32_t)_height, 1 };
     colorDesc.format        = _hdr ? WGPUTextureFormat_RGBA16Float : WGPUTextureFormat_RGBA8Unorm;

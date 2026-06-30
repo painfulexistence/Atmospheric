@@ -11,6 +11,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 struct GpuImageData {
@@ -49,9 +50,40 @@ public:
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
+// Renders MeshType::PRIM meshes from the opaque queue. TERRAIN (tessellation,
+// GL-only) and VOXEL (handled by VoxelChunkPass) are skipped under WebGPU.
 class ForwardOpaquePass : public RenderPass {
 public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~ForwardOpaquePass() override;
+#endif
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+private:
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat);
+    void _ensureDrawCapacity(uint32_t drawCount);
+    WGPUBindGroup _getOrCreateTexBG(uint32_t texID);
+
+    WGPUDevice          _gpuDevice       = nullptr;
+    WGPUQueue           _gpuQueue        = nullptr;
+    WGPURenderPipeline  _pipeline        = nullptr;
+    WGPUBindGroupLayout _uniformBGL      = nullptr;
+    WGPUBindGroupLayout _texBGL          = nullptr;
+    WGPUBindGroup       _uniformBG       = nullptr;
+    // Frame-constant data (viewProj, camera, light) — one fixed-size binding.
+    WGPUBuffer          _frameUniformBuf = nullptr;
+    // Per-draw data (model, surface params) — dynamic-offset slot per mesh,
+    // mirrors VoxelChunkPass's pattern (see voxel_chunk_pass.cpp).
+    WGPUBuffer          _drawUniformBuf  = nullptr;
+    uint32_t            _drawSlotCapacity = 0;
+
+    // AssetManager::GetDefaultTextures() is GL-only; this pass owns its own
+    // fallback texture/sampler for meshes with no base map under WebGPU.
+    WGPUTexture _whiteTex = nullptr;
+    WGPUSampler _sampler  = nullptr;
+    std::unordered_map<uint32_t, WGPUBindGroup> _texBGCache;
+#endif
 };
 
 class DeferredGeometryPass : public RenderPass {
@@ -200,9 +232,30 @@ private:
 // Renders MeshType::PRIM water meshes tagged via material renderQueue.
 class WaterPass : public RenderPass {
 public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~WaterPass() override;
+#endif
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
     float time = 0.0f;
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+private:
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat);
+    void _ensureDrawCapacity(uint32_t drawCount);
+
+    WGPUDevice          _gpuDevice       = nullptr;
+    WGPUQueue           _gpuQueue        = nullptr;
+    WGPURenderPipeline  _pipeline        = nullptr;
+    WGPUBindGroupLayout _uniformBGL      = nullptr;
+    WGPUBindGroup       _uniformBG       = nullptr;
+    // Frame-constant data (viewProj, camera, light, time) — one fixed-size binding.
+    WGPUBuffer          _frameUniformBuf = nullptr;
+    // Per-draw data (model, water shading params) — dynamic-offset slot per
+    // mesh, mirrors ForwardOpaquePass/VoxelChunkPass's pattern.
+    WGPUBuffer          _drawUniformBuf  = nullptr;
+    uint32_t            _drawSlotCapacity = 0;
+#endif
 };
 
 // Pyramid bloom: threshold → downsample → upsample → composite.
@@ -233,6 +286,51 @@ private:
 
     void InitMips(int w, int h);
     void DrawScreenQuad(GLuint screenVAO);
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    // Simplified WebGPU bloom: single half-res threshold + separable
+    // horizontal/vertical Gaussian blur (ping-ponging _brightA/_brightB) +
+    // additive composite — a deliberate simplification of GL's 5-level mip
+    // pyramid (see header comment). Avoids reading sceneRT's own texture
+    // while it's bound as the composite pass's render attachment by first
+    // copying it into _snapshotTex (requires CopySrc on sceneRT's texture,
+    // see gpu_render_target.cpp).
+    void _initGPU(WGPUDevice device, WGPUQueue queue);
+    void _resizeGPU(int width, int height);
+
+    WGPUDevice  _gpuDevice = nullptr;
+    WGPUQueue   _gpuQueue  = nullptr;
+    WGPUSampler _sampler   = nullptr;
+
+    WGPURenderPipeline _threshPipeline = nullptr;
+    WGPURenderPipeline _blurPipeline   = nullptr;
+    WGPURenderPipeline _compPipeline   = nullptr;
+
+    WGPUBindGroupLayout _threshBGL = nullptr;
+    WGPUBindGroupLayout _blurBGL   = nullptr;
+    WGPUBindGroupLayout _compBGL   = nullptr;
+
+    WGPUBuffer _threshUniformBuf = nullptr;
+    WGPUBuffer _blurHUniformBuf  = nullptr; // direction+texelSize, fixed per resize
+    WGPUBuffer _blurVUniformBuf  = nullptr;
+    WGPUBuffer _compUniformBuf   = nullptr;
+
+    // Half-resolution ping-pong textures for the blur chain.
+    WGPUTexture     _brightA = nullptr, _brightB = nullptr;
+    WGPUTextureView _brightAView = nullptr, _brightBView = nullptr;
+    // Full-resolution copy of sceneRT, refreshed each frame before composite.
+    WGPUTexture     _snapshotTex  = nullptr;
+    WGPUTextureView _snapshotView = nullptr;
+
+    WGPUBindGroup _threshBG = nullptr;
+    WGPUBindGroup _blurHBG  = nullptr; // reads _brightA, writes _brightB
+    WGPUBindGroup _blurVBG  = nullptr; // reads _brightB, writes _brightA
+    WGPUBindGroup _compBG   = nullptr; // reads _snapshotTex + _brightB(final)
+
+    int _gpuWidth = 0, _gpuHeight = 0, _gpuHalfW = 0, _gpuHalfH = 0;
+
+    void _destroyGPUTextures();
+#endif
 };
 
 class RenderGraph {

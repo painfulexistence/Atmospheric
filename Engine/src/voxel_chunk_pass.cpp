@@ -942,9 +942,302 @@ void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEnc
 // ============================================================================
 //  WaterPass
 // ============================================================================
-void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+namespace {
+constexpr uint32_t WATER_DRAW_SLOT_STRIDE  = 256;
+constexpr uint64_t WATER_FRAME_UNIFORM_SIZE = 128; // viewProj(64) + cameraPos(16) + lightDir(16) + lightColor(16) + time(16)
+constexpr uint64_t WATER_DRAW_UNIFORM_SIZE  = 96;  // model(64) + params0(16) + fogColor(16)
+
+// Simplified port of default_assets/shaders/water.vert + water.frag: vertex
+// wave displacement plus fresnel/diffuse/specular shading and distance fog.
+// Drops the screen-space depth-texture Beer-Lambert thickness blend (no
+// access to a bound depth texture in this pass) — a documented simplification.
+static const char* WATER_WGSL = R"(
+struct FrameUniforms {
+    viewProj:   mat4x4<f32>,
+    cameraPos:  vec4<f32>,
+    lightDir:   vec4<f32>,
+    lightColor: vec4<f32>,
+    time:       vec4<f32>,
+};
+struct DrawUniforms {
+    model:    mat4x4<f32>,
+    params0:  vec4<f32>, // waterLine, waveStrength, waveSpeed, fogDensity
+    fogColor: vec4<f32>,
+};
+@group(0) @binding(0) var<uniform> frame: FrameUniforms;
+@group(0) @binding(1) var<uniform> draw: DrawUniforms;
+
+struct VSOut {
+    @builtin(position) position: vec4<f32>,
+    @location(0) worldPos: vec3<f32>,
+    @location(1) normal:   vec3<f32>,
+};
+
+@vertex
+fn vs(@location(0) aPos: vec3<f32>, @location(1) aUV: vec2<f32>, @location(2) aNormal: vec3<f32>) -> VSOut {
+    var out: VSOut;
+    let waveStrength = draw.params0.y;
+    let waveSpeed    = draw.params0.z;
+    var pos = aPos;
+    let wave = sin(frame.time.x * waveSpeed + aPos.x * 0.5)
+             * cos(frame.time.x * waveSpeed + aPos.z * 0.5)
+             * waveStrength;
+    pos.y += wave;
+
+    let world = draw.model * vec4<f32>(pos, 1.0);
+    out.worldPos = world.xyz;
+    let normalMat = mat3x3<f32>(draw.model[0].xyz, draw.model[1].xyz, draw.model[2].xyz);
+    out.normal = normalize(normalMat * aNormal);
+    out.position = frame.viewProj * world;
+    return out;
+}
+
+const DEEP_COLOR:    vec3<f32> = vec3<f32>(0.04, 0.11, 0.35);
+const SHALLOW_COLOR: vec3<f32> = vec3<f32>(0.686, 0.933, 0.933);
+
+@fragment
+fn fs(in: VSOut) -> @location(0) vec4<f32> {
+    let waterLine  = draw.params0.x;
+    let fogDensity = draw.params0.w;
+    let fogColor   = draw.fogColor.rgb;
+
+    let norm     = normalize(in.normal);
+    let viewDir  = normalize(frame.cameraPos.xyz - in.worldPos);
+    let lightDir = normalize(frame.lightDir.xyz);
+    let halfDir  = normalize(lightDir + viewDir);
+
+    if (frame.cameraPos.y < waterLine) {
+        let sub = smoothstep(2.0, 32.0, waterLine - frame.cameraPos.y);
+        return vec4<f32>(mix(SHALLOW_COLOR, DEEP_COLOR, sub), 0.9);
+    }
+
+    let fresnel = pow(1.0 - max(dot(norm, viewDir), 0.0), 5.0);
+    var col = mix(SHALLOW_COLOR, DEEP_COLOR, fresnel);
+
+    let diff = max(dot(norm, lightDir), 0.0);
+    let spec = pow(max(dot(norm, halfDir), 0.0), 128.0);
+    col = mix(col, col * diff * frame.lightColor.rgb + vec3<f32>(1.0) * spec * frame.lightColor.rgb, 0.2);
+    col = mix(col, vec3<f32>(1.0), fresnel * 0.5);
+
+    let dist = length(in.worldPos - frame.cameraPos.xyz);
+    col = mix(fogColor, col, clamp(exp(-fogDensity * dist * dist), 0.0, 1.0));
+
+    return vec4<f32>(col, smoothstep(0.1, 0.9, fresnel + 0.3));
+}
+)";
+} // namespace
+
+WaterPass::~WaterPass() {
+    if (_uniformBG)       wgpuBindGroupRelease(_uniformBG);
+    if (_uniformBGL)      wgpuBindGroupLayoutRelease(_uniformBGL);
+    if (_pipeline)        wgpuRenderPipelineRelease(_pipeline);
+    if (_frameUniformBuf) wgpuBufferRelease(_frameUniformBuf);
+    if (_drawUniformBuf)  wgpuBufferRelease(_drawUniformBuf);
+}
+
+void WaterPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat) {
+    _gpuDevice = device;
+    _gpuQueue  = queue;
+
+    WGPUShaderSourceWGSL wgslDesc{};
+    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
+    wgslDesc.code        = { WATER_WGSL, WGPU_STRLEN };
+    WGPUShaderModuleDescriptor shaderDesc{};
+    shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
+    WGPUShaderModule shader = wgpuDeviceCreateShaderModule(device, &shaderDesc);
+
+    {
+        WGPUBufferDescriptor d{};
+        d.size  = WATER_FRAME_UNIFORM_SIZE;
+        d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        _frameUniformBuf = wgpuDeviceCreateBuffer(device, &d);
+    }
+
+    WGPUBindGroupLayoutEntry entries[2] = {};
+    entries[0].binding               = 0;
+    entries[0].visibility            = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+    entries[0].buffer.type           = WGPUBufferBindingType_Uniform;
+    entries[0].buffer.minBindingSize = WATER_FRAME_UNIFORM_SIZE;
+    entries[1].binding                 = 1;
+    entries[1].visibility              = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+    entries[1].buffer.type             = WGPUBufferBindingType_Uniform;
+    entries[1].buffer.hasDynamicOffset = true;
+    entries[1].buffer.minBindingSize   = WATER_DRAW_UNIFORM_SIZE;
+    WGPUBindGroupLayoutDescriptor bglDesc{};
+    bglDesc.entryCount = 2;
+    bglDesc.entries    = entries;
+    _uniformBGL = wgpuDeviceCreateBindGroupLayout(device, &bglDesc);
+
+    WGPUPipelineLayoutDescriptor plDesc{};
+    plDesc.bindGroupLayoutCount = 1;
+    plDesc.bindGroupLayouts     = &_uniformBGL;
+    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &plDesc);
+
+    // Standard Vertex layout (vertex.hpp), same as ForwardOpaquePass: pos/uv/normal only.
+    WGPUVertexAttribute attrs[3]{};
+    attrs[0].format = WGPUVertexFormat_Float32x3; attrs[0].offset =  0; attrs[0].shaderLocation = 0;
+    attrs[1].format = WGPUVertexFormat_Float32x2; attrs[1].offset = 12; attrs[1].shaderLocation = 1;
+    attrs[2].format = WGPUVertexFormat_Float32x3; attrs[2].offset = 20; attrs[2].shaderLocation = 2;
+    WGPUVertexBufferLayout vbl{};
+    vbl.arrayStride    = 56;
+    vbl.stepMode       = WGPUVertexStepMode_Vertex;
+    vbl.attributeCount = 3;
+    vbl.attributes     = attrs;
+
+    // Standard src-alpha / one-minus-src-alpha blend (mirrors GPUCanvasPass).
+    WGPUBlendComponent blendColor{ WGPUBlendOperation_Add, WGPUBlendFactor_SrcAlpha, WGPUBlendFactor_OneMinusSrcAlpha };
+    WGPUBlendComponent blendAlpha{ WGPUBlendOperation_Add, WGPUBlendFactor_One,      WGPUBlendFactor_OneMinusSrcAlpha };
+    WGPUBlendState blend{ blendColor, blendAlpha };
+    WGPUColorTargetState colorTarget{};
+    colorTarget.format    = colorFormat;
+    colorTarget.blend     = &blend;
+    colorTarget.writeMask = WGPUColorWriteMask_All;
+
+    WGPUFragmentState frag{};
+    frag.module      = shader;
+    frag.entryPoint  = { "fs", WGPU_STRLEN };
+    frag.targetCount = 1;
+    frag.targets     = &colorTarget;
+
+    // Depth-tested, no depth write — mirrors GL's glDepthMask(GL_FALSE): water
+    // is occluded by opaque geometry already in sceneRT's depth buffer but
+    // never occludes itself/other transparents via depth.
+    WGPUDepthStencilState depthStencil{};
+    depthStencil.format               = WGPUTextureFormat_Depth32Float;
+    depthStencil.depthWriteEnabled    = WGPUOptionalBool_False;
+    depthStencil.depthCompare         = WGPUCompareFunction_LessEqual;
+    depthStencil.stencilFront.compare = WGPUCompareFunction_Always;
+    depthStencil.stencilBack.compare  = WGPUCompareFunction_Always;
+    depthStencil.stencilReadMask      = 0xFFFFFFFFu;
+    depthStencil.stencilWriteMask     = 0xFFFFFFFFu;
+
+    WGPURenderPipelineDescriptor pd{};
+    pd.layout              = pipelineLayout;
+    pd.vertex.module       = shader;
+    pd.vertex.entryPoint   = { "vs", WGPU_STRLEN };
+    pd.vertex.bufferCount  = 1;
+    pd.vertex.buffers      = &vbl;
+    pd.fragment            = &frag;
+    pd.depthStencil        = &depthStencil;
+    pd.primitive.topology  = WGPUPrimitiveTopology_TriangleList;
+    pd.primitive.frontFace = WGPUFrontFace_CCW;
+    pd.primitive.cullMode  = WGPUCullMode_None;
+    pd.multisample.count   = 1;
+    pd.multisample.mask    = 0xFFFFFFFFu;
+    _pipeline = wgpuDeviceCreateRenderPipeline(device, &pd);
+
+    wgpuPipelineLayoutRelease(pipelineLayout);
+    wgpuShaderModuleRelease(shader);
+}
+
+void WaterPass::_ensureDrawCapacity(uint32_t drawCount) {
+    if (drawCount <= _drawSlotCapacity && _drawUniformBuf) return;
+
+    uint32_t newCapacity = std::max<uint32_t>(drawCount, std::max<uint32_t>(_drawSlotCapacity * 2, 16));
+
+    if (_drawUniformBuf) { wgpuBufferRelease(_drawUniformBuf); _drawUniformBuf = nullptr; }
+    if (_uniformBG)      { wgpuBindGroupRelease(_uniformBG);   _uniformBG      = nullptr; }
+
+    WGPUBufferDescriptor d{};
+    d.size  = static_cast<uint64_t>(newCapacity) * WATER_DRAW_SLOT_STRIDE;
+    d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+    _drawUniformBuf   = wgpuDeviceCreateBuffer(_gpuDevice, &d);
+    _drawSlotCapacity = newCapacity;
+
+    WGPUBindGroupEntry entries[2] = {};
+    entries[0].binding = 0;
+    entries[0].buffer  = _frameUniformBuf;
+    entries[0].size    = WATER_FRAME_UNIFORM_SIZE;
+    entries[1].binding = 1;
+    entries[1].buffer  = _drawUniformBuf;
+    entries[1].size    = WATER_DRAW_UNIFORM_SIZE;
+    WGPUBindGroupDescriptor bgDesc{};
+    bgDesc.layout     = _uniformBGL;
+    bgDesc.entryCount = 2;
+    bgDesc.entries    = entries;
+    _uniformBG = wgpuDeviceCreateBindGroup(_gpuDevice, &bgDesc);
+}
+#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+
+void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        const auto& queue = renderer.GetTransparentQueue();
+        if (queue.empty())     return;
+        if (!renderer.sceneRT) return;
+
+        CameraComponent* camera = ctx->GetMainCamera();
+        if (!camera) return;
+        LightComponent* light = ctx->GetMainLight();
+
+        if (!_pipeline) {
+            WGPUDevice dev = GfxFactory::GetWebGPUDevice();
+            WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
+            if (!dev) return;
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float);
+        }
+
+        struct DrawItem { Buffer* buf; glm::mat4 model; WaterShaderData wd; };
+        std::vector<DrawItem> draws;
+        draws.reserve(queue.size());
+        for (const auto& sortable : queue) {
+            const auto& cmd = sortable.cmd;
+            Mesh* mesh = cmd.mesh;
+            if (!mesh || mesh->type != MeshType::PRIM) continue;
+            Material* mat = mesh->GetMaterial();
+            if (!mat || mat->renderQueue != RenderQueue::Transparent) continue;
+            if (!mesh->UsesRenderMesh()) continue;
+            Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
+            if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
+            draws.push_back({ buf, cmd.transform, mesh->waterData.value_or(WaterShaderData{}) });
+        }
+        if (draws.empty()) return;
+
+        _ensureDrawCapacity(static_cast<uint32_t>(draws.size()));
+
+        glm::vec3 lightDir   = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);
+        glm::vec3 lightColor = light ? light->diffuse : glm::vec3(1.0f);
+        glm::mat4 viewProj   = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+
+        struct {
+            glm::mat4 viewProj;
+            glm::vec4 cameraPos;
+            glm::vec4 lightDir;
+            glm::vec4 lightColor;
+            glm::vec4 time;
+        } frameUniforms{
+            viewProj,
+            glm::vec4(camera->GetEyePosition(), 1.0f),
+            glm::vec4(lightDir, 0.0f),
+            glm::vec4(lightColor, 0.0f),
+            glm::vec4(renderer.frameTime, 0.0f, 0.0f, 0.0f),
+        };
+        wgpuQueueWriteBuffer(_gpuQueue, _frameUniformBuf, 0, &frameUniforms, sizeof(frameUniforms));
+
+        std::vector<uint8_t> drawData(draws.size() * WATER_DRAW_SLOT_STRIDE, 0);
+        for (size_t i = 0; i < draws.size(); ++i) {
+            const auto& wd = draws[i].wd;
+            uint8_t* slot = drawData.data() + i * WATER_DRAW_SLOT_STRIDE;
+            std::memcpy(slot, &draws[i].model, sizeof(glm::mat4));
+            glm::vec4 params0(wd.waterLine, wd.waveStrength, wd.waveSpeed, wd.waterFogDensity);
+            glm::vec4 fogColor(wd.waterFogColor, 0.0f);
+            std::memcpy(slot + 64, &params0,  sizeof(glm::vec4));
+            std::memcpy(slot + 80, &fogColor, sizeof(glm::vec4));
+        }
+        wgpuQueueWriteBuffer(_gpuQueue, _drawUniformBuf, 0, drawData.data(), drawData.size());
+
+        auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+        renderer.sceneRT->Begin(enc);
+        wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _pipeline);
+        for (size_t i = 0; i < draws.size(); ++i) {
+            uint32_t dynamicOffset = static_cast<uint32_t>(i * WATER_DRAW_SLOT_STRIDE);
+            wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 0, _uniformBG, 1, &dynamicOffset);
+            draws[i].buf->Draw(enc, PrimitiveTopology::Triangles);
+        }
+        renderer.sceneRT->End();
+        return;
+    }
 #endif
     const auto& queue = renderer.GetTransparentQueue();
     if (queue.empty()) return;
@@ -1022,6 +1315,279 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
 // ============================================================================
 //  BloomPass  (pyramid downsample + upsample + ACES composite)
 // ============================================================================
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+namespace {
+// Shared fullscreen-triangle vertex stage (see PostProcessPass's POSTPROCESS_WGSL).
+static const char* BLOOM_VS_WGSL = R"(
+struct VOut {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+}
+@vertex fn vs(@builtin(vertex_index) vid: u32) -> VOut {
+    let x = f32((vid << 1u) & 2u);
+    let y = f32(vid & 2u);
+    var out: VOut;
+    out.pos = vec4<f32>(x * 2.0 - 1.0, 1.0 - y * 2.0, 0.0, 1.0);
+    out.uv  = vec2<f32>(x, y);
+    return out;
+}
+)";
+
+// Soft-knee threshold: zeroes pixels at/below threshold, keeps only the
+// brightness "excess" above it. Simplified stand-in for GL's bloom_threshold.frag.
+static const std::string BLOOM_THRESH_WGSL = std::string(BLOOM_VS_WGSL) + R"(
+struct ThreshUniforms { threshold: f32, _pad0: f32, _pad1: f32, _pad2: f32 };
+@group(0) @binding(0) var<uniform> u: ThreshUniforms;
+@group(0) @binding(1) var srcTex: texture_2d<f32>;
+@group(0) @binding(2) var samp: sampler;
+
+@fragment fn fs(in: VOut) -> @location(0) vec4<f32> {
+    let c = textureSample(srcTex, samp, in.uv);
+    let brightness = max(c.r, max(c.g, c.b));
+    let over = max(brightness - u.threshold, 0.0);
+    let factor = over / max(brightness, 0.0001);
+    return vec4<f32>(c.rgb * factor, 1.0);
+}
+)";
+
+// 5-tap separable Gaussian blur; direction is (1,0) or (0,1) scaled by
+// texelSize so the same pipeline serves both the horizontal and vertical pass.
+static const std::string BLOOM_BLUR_WGSL = std::string(BLOOM_VS_WGSL) + R"(
+struct BlurUniforms { direction: vec2<f32>, texelSize: vec2<f32> };
+@group(0) @binding(0) var<uniform> u: BlurUniforms;
+@group(0) @binding(1) var srcTex: texture_2d<f32>;
+@group(0) @binding(2) var samp: sampler;
+
+@fragment fn fs(in: VOut) -> @location(0) vec4<f32> {
+    let weights = array<f32, 5>(0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
+    var result = textureSample(srcTex, samp, in.uv).rgb * weights[0];
+    for (var i: i32 = 1; i < 5; i = i + 1) {
+        let offset = u.direction * u.texelSize * f32(i);
+        result += textureSample(srcTex, samp, in.uv + offset).rgb * weights[i];
+        result += textureSample(srcTex, samp, in.uv - offset).rgb * weights[i];
+    }
+    return vec4<f32>(result, 1.0);
+}
+)";
+
+// Additive composite: original scene (snapshotted before this pass, since
+// sceneRT cannot be bound as both a render attachment and a sampled texture
+// in the same pass) plus the blurred bright-pass result.
+static const std::string BLOOM_COMP_WGSL = std::string(BLOOM_VS_WGSL) + R"(
+struct CompUniforms { bloomStrength: f32, _pad0: f32, _pad1: f32, _pad2: f32 };
+@group(0) @binding(0) var<uniform> u: CompUniforms;
+@group(0) @binding(1) var sceneTex: texture_2d<f32>;
+@group(0) @binding(2) var bloomTex: texture_2d<f32>;
+@group(0) @binding(3) var samp: sampler;
+
+@fragment fn fs(in: VOut) -> @location(0) vec4<f32> {
+    let scene = textureSample(sceneTex, samp, in.uv).rgb;
+    let bloom = textureSample(bloomTex, samp, in.uv).rgb;
+    return vec4<f32>(scene + bloom * u.bloomStrength, 1.0);
+}
+)";
+} // namespace
+
+void BloomPass::_destroyGPUTextures() {
+    if (_blurHBG)     { wgpuBindGroupRelease(_blurHBG);      _blurHBG     = nullptr; }
+    if (_blurVBG)     { wgpuBindGroupRelease(_blurVBG);      _blurVBG     = nullptr; }
+    if (_compBG)      { wgpuBindGroupRelease(_compBG);       _compBG      = nullptr; }
+    if (_brightAView) { wgpuTextureViewRelease(_brightAView); _brightAView = nullptr; }
+    if (_brightBView) { wgpuTextureViewRelease(_brightBView); _brightBView = nullptr; }
+    if (_snapshotView){ wgpuTextureViewRelease(_snapshotView);_snapshotView= nullptr; }
+    if (_brightA)     { wgpuTextureRelease(_brightA);        _brightA     = nullptr; }
+    if (_brightB)     { wgpuTextureRelease(_brightB);        _brightB     = nullptr; }
+    if (_snapshotTex) { wgpuTextureRelease(_snapshotTex);    _snapshotTex = nullptr; }
+}
+
+void BloomPass::_initGPU(WGPUDevice device, WGPUQueue queue) {
+    _gpuDevice = device;
+    _gpuQueue  = queue;
+
+    auto makeShader = [device](const std::string& src) {
+        WGPUShaderSourceWGSL wgslDesc{};
+        wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
+        wgslDesc.code        = { src.c_str(), WGPU_STRLEN };
+        WGPUShaderModuleDescriptor desc{};
+        desc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
+        return wgpuDeviceCreateShaderModule(device, &desc);
+    };
+    WGPUShaderModule threshShader = makeShader(BLOOM_THRESH_WGSL);
+    WGPUShaderModule blurShader   = makeShader(BLOOM_BLUR_WGSL);
+    WGPUShaderModule compShader   = makeShader(BLOOM_COMP_WGSL);
+
+    {
+        WGPUSamplerDescriptor d{};
+        d.minFilter    = WGPUFilterMode_Linear;
+        d.magFilter    = WGPUFilterMode_Linear;
+        d.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+        d.addressModeU = WGPUAddressMode_ClampToEdge;
+        d.addressModeV = WGPUAddressMode_ClampToEdge;
+        _sampler = wgpuDeviceCreateSampler(device, &d);
+    }
+
+    auto makeUniformBuf = [device](uint64_t size) {
+        WGPUBufferDescriptor d{};
+        d.size  = size;
+        d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        return wgpuDeviceCreateBuffer(device, &d);
+    };
+    _threshUniformBuf = makeUniformBuf(16);
+    _blurHUniformBuf  = makeUniformBuf(16);
+    _blurVUniformBuf  = makeUniformBuf(16);
+    _compUniformBuf   = makeUniformBuf(16);
+
+    // Shared shape: 1 uniform + 1 texture + 1 sampler — used by both the
+    // threshold and blur stages (each gets its own layout object, but the
+    // entry layout is identical).
+    auto makeSingleTexBGL = [device]() {
+        WGPUBindGroupLayoutEntry e[3]{};
+        e[0].binding               = 0;
+        e[0].visibility            = WGPUShaderStage_Fragment;
+        e[0].buffer.type           = WGPUBufferBindingType_Uniform;
+        e[0].buffer.minBindingSize = 16;
+        e[1].binding               = 1;
+        e[1].visibility            = WGPUShaderStage_Fragment;
+        e[1].texture.sampleType    = WGPUTextureSampleType_Float;
+        e[1].texture.viewDimension = WGPUTextureViewDimension_2D;
+        e[2].binding               = 2;
+        e[2].visibility            = WGPUShaderStage_Fragment;
+        e[2].sampler.type          = WGPUSamplerBindingType_Filtering;
+        WGPUBindGroupLayoutDescriptor d{};
+        d.entryCount = 3;
+        d.entries    = e;
+        return wgpuDeviceCreateBindGroupLayout(device, &d);
+    };
+    _threshBGL = makeSingleTexBGL();
+    _blurBGL   = makeSingleTexBGL();
+
+    {
+        WGPUBindGroupLayoutEntry e[4]{};
+        e[0].binding               = 0;
+        e[0].visibility            = WGPUShaderStage_Fragment;
+        e[0].buffer.type           = WGPUBufferBindingType_Uniform;
+        e[0].buffer.minBindingSize = 16;
+        e[1].binding               = 1;
+        e[1].visibility            = WGPUShaderStage_Fragment;
+        e[1].texture.sampleType    = WGPUTextureSampleType_Float;
+        e[1].texture.viewDimension = WGPUTextureViewDimension_2D;
+        e[2].binding               = 2;
+        e[2].visibility            = WGPUShaderStage_Fragment;
+        e[2].texture.sampleType    = WGPUTextureSampleType_Float;
+        e[2].texture.viewDimension = WGPUTextureViewDimension_2D;
+        e[3].binding               = 3;
+        e[3].visibility            = WGPUShaderStage_Fragment;
+        e[3].sampler.type          = WGPUSamplerBindingType_Filtering;
+        WGPUBindGroupLayoutDescriptor d{};
+        d.entryCount = 4;
+        d.entries    = e;
+        _compBGL = wgpuDeviceCreateBindGroupLayout(device, &d);
+    }
+
+    auto makePipeline = [device](WGPUShaderModule shader, WGPUBindGroupLayout bgl) {
+        WGPUPipelineLayoutDescriptor plDesc{};
+        plDesc.bindGroupLayoutCount = 1;
+        plDesc.bindGroupLayouts    = &bgl;
+        WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &plDesc);
+
+        WGPUColorTargetState colorTarget{};
+        colorTarget.format    = WGPUTextureFormat_RGBA16Float;
+        colorTarget.writeMask = WGPUColorWriteMask_All;
+
+        WGPUFragmentState frag{};
+        frag.module      = shader;
+        frag.entryPoint  = { "fs", WGPU_STRLEN };
+        frag.targetCount = 1;
+        frag.targets     = &colorTarget;
+
+        WGPURenderPipelineDescriptor pd{};
+        pd.layout              = pl;
+        pd.vertex.module       = shader;
+        pd.vertex.entryPoint   = { "vs", WGPU_STRLEN };
+        pd.fragment            = &frag;
+        pd.primitive.topology  = WGPUPrimitiveTopology_TriangleList;
+        pd.primitive.frontFace = WGPUFrontFace_CCW;
+        pd.primitive.cullMode  = WGPUCullMode_None;
+        pd.multisample.count   = 1;
+        pd.multisample.mask    = 0xFFFFFFFFu;
+        WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device, &pd);
+        wgpuPipelineLayoutRelease(pl);
+        return pipeline;
+    };
+    _threshPipeline = makePipeline(threshShader, _threshBGL);
+    _blurPipeline   = makePipeline(blurShader,   _blurBGL);
+    _compPipeline   = makePipeline(compShader,   _compBGL);
+
+    wgpuShaderModuleRelease(threshShader);
+    wgpuShaderModuleRelease(blurShader);
+    wgpuShaderModuleRelease(compShader);
+}
+
+void BloomPass::_resizeGPU(int width, int height) {
+    if (width == _gpuWidth && height == _gpuHeight && _brightA) return;
+
+    _destroyGPUTextures();
+
+    _gpuWidth  = width;
+    _gpuHeight = height;
+    _gpuHalfW  = std::max(1, width / 2);
+    _gpuHalfH  = std::max(1, height / 2);
+
+    auto makeTex = [this](int w, int h, WGPUTextureUsage usage) {
+        WGPUTextureDescriptor d{};
+        d.usage         = usage;
+        d.dimension     = WGPUTextureDimension_2D;
+        d.size          = { (uint32_t)w, (uint32_t)h, 1 };
+        d.format        = WGPUTextureFormat_RGBA16Float;
+        d.mipLevelCount = 1;
+        d.sampleCount   = 1;
+        return wgpuDeviceCreateTexture(_gpuDevice, &d);
+    };
+    _brightA     = makeTex(_gpuHalfW, _gpuHalfH, WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding);
+    _brightB     = makeTex(_gpuHalfW, _gpuHalfH, WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding);
+    _snapshotTex = makeTex(_gpuWidth, _gpuHeight, WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst);
+
+    _brightAView  = wgpuTextureCreateView(_brightA, nullptr);
+    _brightBView  = wgpuTextureCreateView(_brightB, nullptr);
+    _snapshotView = wgpuTextureCreateView(_snapshotTex, nullptr);
+
+    // Direction+texelSize are fixed for this resolution — written once here,
+    // not every frame (see header comment).
+    struct BlurUniforms { float dx, dy, tx, ty; };
+    BlurUniforms hU{ 1.0f, 0.0f, 1.0f / (float)_gpuHalfW, 1.0f / (float)_gpuHalfH };
+    BlurUniforms vU{ 0.0f, 1.0f, 1.0f / (float)_gpuHalfW, 1.0f / (float)_gpuHalfH };
+    wgpuQueueWriteBuffer(_gpuQueue, _blurHUniformBuf, 0, &hU, sizeof(hU));
+    wgpuQueueWriteBuffer(_gpuQueue, _blurVUniformBuf, 0, &vU, sizeof(vU));
+
+    auto makeSingleTexBG = [this](WGPUBindGroupLayout bgl, WGPUBuffer uniformBuf, WGPUTextureView view) {
+        WGPUBindGroupEntry e[3]{};
+        e[0].binding = 0; e[0].buffer = uniformBuf; e[0].size = 16;
+        e[1].binding = 1; e[1].textureView = view;
+        e[2].binding = 2; e[2].sampler = _sampler;
+        WGPUBindGroupDescriptor d{};
+        d.layout     = bgl;
+        d.entryCount = 3;
+        d.entries    = e;
+        return wgpuDeviceCreateBindGroup(_gpuDevice, &d);
+    };
+    _blurHBG = makeSingleTexBG(_blurBGL, _blurHUniformBuf, _brightAView); // thresholded -> blurred-H
+    _blurVBG = makeSingleTexBG(_blurBGL, _blurVUniformBuf, _brightBView); // blurred-H   -> blurred-HV (final, lands in _brightA)
+
+    {
+        WGPUBindGroupEntry e[4]{};
+        e[0].binding = 0; e[0].buffer = _compUniformBuf; e[0].size = 16;
+        e[1].binding = 1; e[1].textureView = _snapshotView;
+        e[2].binding = 2; e[2].textureView = _brightAView; // final blurred bloom (H then V both land here)
+        e[3].binding = 3; e[3].sampler = _sampler;
+        WGPUBindGroupDescriptor d{};
+        d.layout     = _compBGL;
+        d.entryCount = 4;
+        d.entries    = e;
+        _compBG = wgpuDeviceCreateBindGroup(_gpuDevice, &d);
+    }
+}
+#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+
 BloomPass::~BloomPass() {
     for (int i = 0; i < MIP_LEVELS; ++i) {
         if (_mips[i].tex) glDeleteTextures(1, &_mips[i].tex);
@@ -1029,6 +1595,21 @@ BloomPass::~BloomPass() {
     }
     if (_tempTex) glDeleteTextures(1, &_tempTex);
     if (_tempFBO) glDeleteFramebuffers(1, &_tempFBO);
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    _destroyGPUTextures();
+    if (_threshUniformBuf) wgpuBufferRelease(_threshUniformBuf);
+    if (_blurHUniformBuf)  wgpuBufferRelease(_blurHUniformBuf);
+    if (_blurVUniformBuf)  wgpuBufferRelease(_blurVUniformBuf);
+    if (_compUniformBuf)   wgpuBufferRelease(_compUniformBuf);
+    if (_threshPipeline)   wgpuRenderPipelineRelease(_threshPipeline);
+    if (_blurPipeline)     wgpuRenderPipelineRelease(_blurPipeline);
+    if (_compPipeline)     wgpuRenderPipelineRelease(_compPipeline);
+    if (_threshBGL)        wgpuBindGroupLayoutRelease(_threshBGL);
+    if (_blurBGL)          wgpuBindGroupLayoutRelease(_blurBGL);
+    if (_compBGL)          wgpuBindGroupLayoutRelease(_compBGL);
+    if (_sampler)          wgpuSamplerRelease(_sampler);
+#endif
 }
 
 void BloomPass::InitMips(int w, int h) {
@@ -1077,9 +1658,92 @@ void BloomPass::InitMips(int w, int h) {
     _initialized = true;
 }
 
-void BloomPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
+void BloomPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        if (!enabled) return;
+        if (!renderer.sceneRT) return;
+
+        if (!_threshPipeline) {
+            WGPUDevice dev = GfxFactory::GetWebGPUDevice();
+            WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
+            if (!dev) return;
+            _initGPU(dev, q);
+        }
+
+        auto [w, h] = Window::Get()->GetPhysicalSize();
+        _resizeGPU(w, h);
+
+        auto* sceneRT = static_cast<GPURenderTarget*>(renderer.sceneRT.get());
+        WGPUTexture sceneTex = sceneRT->GetNativeTexture();
+        if (!sceneTex) return;
+
+        auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+
+        // Snapshot sceneRT's current color contents before we start writing
+        // into it again via the composite pass below (a texture cannot be
+        // both a render attachment and a sampled binding in the same pass).
+        WGPUTexelCopyTextureInfo copySrc{};
+        copySrc.texture = sceneTex;
+        copySrc.aspect  = WGPUTextureAspect_All;
+        WGPUTexelCopyTextureInfo copyDst{};
+        copyDst.texture = _snapshotTex;
+        copyDst.aspect  = WGPUTextureAspect_All;
+        WGPUExtent3D copyExtent{ (uint32_t)_gpuWidth, (uint32_t)_gpuHeight, 1 };
+        wgpuCommandEncoderCopyTextureToTexture(gpuEnc->encoder, &copySrc, &copyDst, &copyExtent);
+
+        struct { float threshold, pad0, pad1, pad2; } threshU{ threshold, 0.0f, 0.0f, 0.0f };
+        wgpuQueueWriteBuffer(_gpuQueue, _threshUniformBuf, 0, &threshU, sizeof(threshU));
+        struct { float bloomStrength, pad0, pad1, pad2; } compU{ bloomStrength, 0.0f, 0.0f, 0.0f };
+        wgpuQueueWriteBuffer(_gpuQueue, _compUniformBuf, 0, &compU, sizeof(compU));
+
+        // Threshold pass's source bind group reads sceneRT's live texture, so
+        // it is rebuilt fresh each frame (uncached) rather than stored as a
+        // class member.
+        WGPUTextureView sceneView = wgpuTextureCreateView(sceneTex, nullptr);
+        WGPUBindGroupEntry threshEntries[3]{};
+        threshEntries[0].binding = 0; threshEntries[0].buffer = _threshUniformBuf; threshEntries[0].size = 16;
+        threshEntries[1].binding = 1; threshEntries[1].textureView = sceneView;
+        threshEntries[2].binding = 2; threshEntries[2].sampler = _sampler;
+        WGPUBindGroupDescriptor threshBGDesc{};
+        threshBGDesc.layout     = _threshBGL;
+        threshBGDesc.entryCount = 3;
+        threshBGDesc.entries    = threshEntries;
+        WGPUBindGroup threshBG = wgpuDeviceCreateBindGroup(_gpuDevice, &threshBGDesc);
+
+        auto runFullscreenPass = [&](WGPUTextureView target, WGPURenderPipeline pipeline, WGPUBindGroup bg) {
+            WGPURenderPassColorAttachment ca{};
+            ca.view       = target;
+            ca.loadOp     = WGPULoadOp_Clear;
+            ca.storeOp    = WGPUStoreOp_Store;
+            ca.clearValue = { 0.0, 0.0, 0.0, 1.0 };
+            WGPURenderPassDescriptor rpDesc{};
+            rpDesc.colorAttachmentCount = 1;
+            rpDesc.colorAttachments     = &ca;
+            WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &rpDesc);
+            wgpuRenderPassEncoderSetPipeline(pass, pipeline);
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, bg, 0, nullptr);
+            wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+            wgpuRenderPassEncoderEnd(pass);
+            wgpuRenderPassEncoderRelease(pass);
+        };
+
+        runFullscreenPass(_brightAView, _threshPipeline, threshBG); // threshold -> _brightA
+        runFullscreenPass(_brightBView, _blurPipeline,   _blurHBG); // blur H: _brightA -> _brightB
+        runFullscreenPass(_brightAView, _blurPipeline,   _blurVBG); // blur V: _brightB -> _brightA (final)
+
+        // Composite: snapshot + final blurred bloom -> sceneRT (loadOp=Load,
+        // since earlier passes this frame have already drawn into sceneRT).
+        renderer.sceneRT->Begin(enc);
+        wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _compPipeline);
+        wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 0, _compBG, 0, nullptr);
+        wgpuRenderPassEncoderDraw(gpuEnc->pass, 3, 1, 0, 0);
+        renderer.sceneRT->End();
+
+        wgpuBindGroupRelease(threshBG);
+        wgpuTextureViewRelease(sceneView);
+        return;
+    }
 #endif
     if (!enabled)                     return;
     if (!renderer.msaaResolveRT)      return;

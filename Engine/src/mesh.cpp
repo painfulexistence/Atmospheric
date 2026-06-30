@@ -1,6 +1,7 @@
 #include "mesh.hpp"
 #include "asset_manager.hpp"
 #include "config.hpp"
+#include "gfx_factory.hpp"
 #include "graphics_server.hpp"
 
 void PrintVertex(const Vertex& v) {
@@ -111,6 +112,20 @@ void Mesh::Initialize(const std::vector<Vertex>& verts, const std::vector<uint16
     glBindVertexArray(0);
 
     this->initialized = true;
+
+    // The raw vbo/ebo/vao above are OpenGL-only. WebGPU has no GL context to
+    // bind, so route the same vertex/index data through the abstract Buffer
+    // system too (mirrors Mesh::Update(VoxelVertex) below) — this is what
+    // ForwardOpaquePass/WaterPass draw from under the WebGPU backend.
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        if (!_renderMeshHandle.IsValid()) {
+            _renderMeshHandle = GraphicsServer::Get()->AllocateRenderMesh(VertexFormat::Standard, BufferUsage::Static);
+        }
+        Buffer* renderMesh = GraphicsServer::Get()->GetRenderMesh(_renderMeshHandle);
+        if (renderMesh) {
+            renderMesh->Upload(verts.data(), verts.size(), sizeof(Vertex), tris.data(), tris.size());
+        }
+    }
 }
 
 void Mesh::SetShapeLocalScaling(glm::vec3 localScaling) {
