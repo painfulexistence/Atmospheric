@@ -311,8 +311,7 @@ void AssetManager::LoadDefaultShaders() {
                   { "post_posterize",    { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_posterize.frag"     } },
                   { "post_sobel",        { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_sobel.frag"         } },
                   { "post_edges",        { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_edges.frag"         } },
-                  { "post_vignette",     { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_vignette.frag"      } },
-                  { "post_chromatic",    { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_chromatic.frag"     } } });
+                  { "post_vignette",     { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_vignette.frag"      } } });
     _defaultShaderCount = (uint32_t)shaders.size();
 }
 

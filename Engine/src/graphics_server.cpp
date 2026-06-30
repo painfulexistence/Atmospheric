@@ -231,13 +231,14 @@ void GraphicsServer::DrawImGui(float dt) {
         if (auto* pp = renderer->GetPass<PostProcessPass>()) {
             ImGui::Checkbox("Tonemap", &pp->tonemapEnabled);
             ImGui::Checkbox("Chromatic Aberration", &pp->caEnabled);
-            const char* effectNames[] = { "None", "CRT", "VHS", "Color Grading", "Posterize", "Sobel", "Edges", "Vignette", "Chromatic" };
+            const char* effectNames[] = { "None", "CRT", "VHS", "Color Grading", "Posterize", "Sobel", "Edges", "Vignette" };
             int effectIdx = (int)pp->postEffect;
-            if (ImGui::Combo("Post Effect", &effectIdx, effectNames, 9))
+            if (ImGui::Combo("Post Effect", &effectIdx, effectNames, 8))
                 pp->postEffect = (PostEffect)effectIdx;
         }
         ImGui::Text("Opaque Queue Size: %d", (int)renderer->GetOpaqueQueue().size());
 
+#ifdef AE_GPU_TIMER_ENABLED
         ImGui::Separator();
         if (ImGui::TreeNode("GPU Pass Timings")) {
             auto timings = renderer->GetTimings();
@@ -248,6 +249,7 @@ void GraphicsServer::DrawImGui(float dt) {
             }
             ImGui::TreePop();
         }
+#endif
         ImGui::Separator();
 
         if (ImGui::TreeNode("Cameras")) {

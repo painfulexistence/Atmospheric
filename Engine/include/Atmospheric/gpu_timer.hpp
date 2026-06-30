@@ -1,4 +1,5 @@
 #pragma once
+#include "console.hpp"
 #include "globals.hpp"
 #include <cstring>
 
@@ -33,6 +34,7 @@ struct GpuTimer {
     GLuint endQ[2]   = {0, 0};
     int    write     = 0;
     bool   valid     = false;
+    int    pendingFrames = 0;  // consecutive End() calls where last frame's result wasn't available yet
 
     // Move-only: GL handles must not be shared.
     GpuTimer() = default;
@@ -48,6 +50,7 @@ struct GpuTimer {
         std::memset(o.endQ,   0, sizeof(o.endQ));
         write = o.write;  o.write = 0;
         valid = o.valid;  o.valid = false;
+        pendingFrames = o.pendingFrames; o.pendingFrames = 0;
         ms    = o.ms;     o.ms   = 0.0f;
         return *this;
     }
@@ -57,8 +60,24 @@ struct GpuTimer {
 
     void Init() {
 #ifdef AE_GPU_TIMER_ENABLED
+        glGetError();  // clear any stale error so the check below is meaningful
         glGenQueries(2, startQ);
         glGenQueries(2, endQ);
+        GLenum err = glGetError();
+
+        static bool loggedOnce = false;
+        if (!loggedOnce) {
+            loggedOnce = true;
+            if (err != GL_NO_ERROR || startQ[0] == 0 || endQ[0] == 0) {
+                ENGINE_LOG(
+                    "GpuTimer: glGenQueries failed (GL error 0x{:x}) on '{}' / GL {} -- "
+                    "per-pass GPU timings will read 0.",
+                    static_cast<unsigned>(err),
+                    reinterpret_cast<const char*>(glGetString(GL_RENDERER)),
+                    reinterpret_cast<const char*>(glGetString(GL_VERSION))
+                );
+            }
+        }
 #endif
     }
 
@@ -82,6 +101,21 @@ struct GpuTimer {
                 glGetQueryObjectui64v(startQ[read], GL_QUERY_RESULT, &t0);
                 glGetQueryObjectui64v(endQ[read],   GL_QUERY_RESULT, &t1);
                 ms = static_cast<float>(t1 - t0) / 1e6f;
+                pendingFrames = 0;
+            } else if (++pendingFrames == 120) {
+                // ~2s at 60fps with nothing ever becoming available — the driver is
+                // probably not actually completing GL_TIMESTAMP queries.
+                static bool loggedStall = false;
+                if (!loggedStall) {
+                    loggedStall = true;
+                    ENGINE_LOG(
+                        "GpuTimer: GL_QUERY_RESULT_AVAILABLE never became true after {} frames on '{}' / GL {} -- "
+                        "driver may not support GL_TIMESTAMP queries despite reporting GL_ARB_timer_query.",
+                        pendingFrames,
+                        reinterpret_cast<const char*>(glGetString(GL_RENDERER)),
+                        reinterpret_cast<const char*>(glGetString(GL_VERSION))
+                    );
+                }
             }
         }
         valid = true;
