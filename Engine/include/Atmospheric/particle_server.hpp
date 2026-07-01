@@ -1,9 +1,9 @@
 #pragma once
 
+#include "globals.hpp"
 #include <glm/glm.hpp>
 #include <vector>
 
-// Forward declarations
 // Forward declarations
 class GraphicsServer;
 class Renderer;
@@ -52,7 +52,7 @@ namespace Atmospheric {
         ShaderProgram* simulation_shader = nullptr;
         ShaderProgram* drawing_shader = nullptr;
 
-        Mesh* quad_mesh = nullptr;
+        MeshHandle quad_mesh;
 
         void CreatePipelines();
         void CreateSharedResources();

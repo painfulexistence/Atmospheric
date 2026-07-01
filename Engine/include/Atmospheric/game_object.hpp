@@ -66,7 +66,7 @@ public:
     GameObject* AddLight(const LightProps&);
     GameObject* AddCamera(const CameraProps&);
     GameObject* AddMesh(const std::string& meshName);
-    GameObject* AddMesh(Mesh* mesh);
+    GameObject* AddMesh(MeshHandle mesh);
     GameObject* AddSprite(const SpriteProps& props);
     GameObject* AddRigidbody(const RigidbodyProps& props);
     // GameObject* AddRigidbody(const std::string& meshName, float mass = 0.0f, glm::vec3 linearFactor =

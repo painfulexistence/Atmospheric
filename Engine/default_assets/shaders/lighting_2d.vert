@@ -1,10 +1,9 @@
+#version 410
+
 // GL 4.1 vertex shader for LightingSystem2D fullscreen post-process.
 // Companion fragment shader: lighting_2d.frag
-// For WebGL2 / Emscripten compatibility change the first line to:
-//   #version 300 es
-//   precision highp float;
-
-#version 410
+// WebGL2 / Emscripten builds auto-translate this to "#version 300 es" —
+// see PreprocessShaderForWebGL() in shader.cpp.
 
 layout(location = 0) in vec2 a_pos;
 layout(location = 1) in vec2 a_uv;

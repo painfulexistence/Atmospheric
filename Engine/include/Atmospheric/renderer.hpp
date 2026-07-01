@@ -1,5 +1,6 @@
 #pragma once
 #include "asset_manager.hpp"
+#include "gpu_timer.hpp"
 #include "batch_renderer_2d.hpp"
 #include "buffer.hpp"
 #include "config.hpp"
@@ -11,7 +12,9 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 struct GpuImageData {
@@ -30,7 +33,7 @@ class ShaderProgram;
 class Renderer;
 
 struct RenderCommand {
-    Mesh* mesh;
+    MeshHandle mesh;
     // Material* material; // TODO: currently material is coupled with mesh
     glm::mat4 transform;
 };
@@ -117,6 +120,10 @@ public:
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
+// Chromatic aberration is not in here -- it composites with tonemap via the
+// caEnabled/caStrength uniforms on PostProcessPass instead of its own shader.
+enum class PostEffect { None, CRT, VHS, ColorGrading, Posterize, Sobel, Edges, Vignette };
+
 // Final composite blit: ACES tonemapping + optional chromatic aberration.
 class PostProcessPass : public RenderPass {
 public:
@@ -125,11 +132,13 @@ public:
 #endif
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
-    bool  tonemapEnabled = true;
-    float exposure       = 0.5f;
+    bool       tonemapEnabled = true;
+    float      exposure       = 0.5f;
 
     bool  caEnabled  = false;
     float caStrength = 0.005f;
+
+    PostEffect postEffect = PostEffect::None;
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
@@ -207,6 +216,8 @@ public:
     ~VoxelChunkPass() override;
 #endif
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+    int paletteIndex = 4;  // 0-5; 4 = VX Palette 5 (soft cool blue-grey)
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
@@ -334,16 +345,31 @@ private:
 };
 
 class RenderGraph {
-    std::vector<std::unique_ptr<RenderPass>> _passes;
+    struct PassEntry {
+        std::unique_ptr<RenderPass> pass;
+        GpuTimer                    timer;
+        std::string                 name;
+    };
+    std::vector<PassEntry> _entries;
 
 public:
+    // Off by default — GL_TIMESTAMP queries add real overhead (driver ordering
+    // barriers around pass boundaries) even though readback is async.
+    // Enable only when the timing panel is in use.
+    bool gpuProfilingEnabled = false;
+
+    ~RenderGraph();
+
     void AddPass(std::unique_ptr<RenderPass> pass);
     void Render(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr);
 
+    // Returns {passName, gpuMs} for every pass (one frame behind, stall-free).
+    std::vector<std::pair<std::string, float>> GetTimings() const;
+
     template<typename T>
     T* GetPass() {
-        for (auto& p : _passes) {
-            if (auto* t = dynamic_cast<T*>(p.get())) return t;
+        for (auto& e : _entries) {
+            if (auto* t = dynamic_cast<T*>(e.pass.get())) return t;
         }
         return nullptr;
     }
@@ -377,6 +403,14 @@ public:
 
     template<typename T>
     T* GetPass() { return _renderGraph ? _renderGraph->GetPass<T>() : nullptr; }
+
+    std::vector<std::pair<std::string, float>> GetTimings() const {
+        return _renderGraph ? _renderGraph->GetTimings() : std::vector<std::pair<std::string, float>>{};
+    }
+
+#ifdef AE_GPU_TIMER_ENABLED
+    bool& GpuProfilingEnabled() { return _renderGraph->gpuProfilingEnabled; }
+#endif
 
     void SetCapability(const GLenum& cap, bool enable = true) {
         if (enable) {

@@ -450,7 +450,7 @@ void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEnc
         draws.reserve(gpuQueueCmds.size());
         for (const auto& sortable : gpuQueueCmds) {
             const auto& cmd = sortable.cmd;
-            Mesh* mesh = cmd.mesh;
+            Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
             if (!mesh || mesh->type != MeshType::VOXEL) continue;
             if (!mesh->UsesRenderMesh()) continue;
             Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
@@ -534,8 +534,9 @@ void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEnc
     shader->SetUniform("u_lightDir",    lightDir);
     shader->SetUniform("u_lightColor",  lightColor);
     shader->SetUniform("u_ambientColor",ambient);
-    shader->SetUniform("u_fogColor",    glm::vec3(0.55f, 0.65f, 0.75f));
-    shader->SetUniform("u_fogDensity",  0.003f);
+    shader->SetUniform("u_fogColor",     glm::vec3(0.55f, 0.65f, 0.75f));
+    shader->SetUniform("u_fogDensity",   0.003f);
+    shader->SetUniform("u_paletteIndex", paletteIndex);
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
@@ -543,7 +544,7 @@ void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEnc
 
     for (const auto& sortable : queue) {
         const auto& cmd = sortable.cmd;
-        Mesh* mesh = cmd.mesh;
+        Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
 
         if (!mesh || mesh->type != MeshType::VOXEL) continue;
         if (!mesh->UsesRenderMesh()) continue;
@@ -641,19 +642,23 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
             _initGPU(dev, q, WGPUTextureFormat_RGBA16Float);
         }
 
-        struct DrawItem { Buffer* buf; glm::mat4 model; WaterShaderData wd; };
+        // Water params now live on WaterMaterial (mesh/material decoupling);
+        // fall back to WaterMaterial's own defaults when the mesh carries a
+        // plain Material, mirroring the GL path's `wm ? ... : default` chain.
+        struct DrawItem { Buffer* buf; glm::mat4 model; WaterMaterial wd; };
         std::vector<DrawItem> draws;
         draws.reserve(queue.size());
         for (const auto& sortable : queue) {
             const auto& cmd = sortable.cmd;
-            Mesh* mesh = cmd.mesh;
+            Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
             if (!mesh || mesh->type != MeshType::PRIM) continue;
             Material* mat = mesh->GetMaterial();
             if (!mat || mat->renderQueue != RenderQueue::Transparent) continue;
             if (!mesh->UsesRenderMesh()) continue;
             Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
             if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
-            draws.push_back({ buf, cmd.transform, mesh->waterData.value_or(WaterShaderData{}) });
+            auto* wm = dynamic_cast<WaterMaterial*>(mat);
+            draws.push_back({ buf, cmd.transform, wm ? *wm : WaterMaterial{} });
         }
         if (draws.empty()) return;
 
@@ -749,18 +754,21 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
 
     for (const auto& s : queue) {
         const auto& cmd = s.cmd;
-        Mesh* mesh = cmd.mesh;
+        Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
         if (!mesh) continue;
 
         Material* mat = mesh->GetMaterial();
         if (!mat || mat->renderQueue != RenderQueue::Transparent) continue;
 
-        const auto& wd = mesh->waterData.value_or(WaterShaderData{});
-        shader->SetUniform("u_waterLine",    wd.waterLine);
-        shader->SetUniform("u_waveStrength", wd.waveStrength);
-        shader->SetUniform("u_waveSpeed",    wd.waveSpeed);
-        shader->SetUniform("u_fogColor",     wd.waterFogColor);
-        shader->SetUniform("u_fogDensity",   wd.waterFogDensity);
+        auto* wm = dynamic_cast<WaterMaterial*>(mesh->GetMaterial());
+        shader->SetUniform("u_waterLine",    wm ? wm->waterLine       : 32.0f);
+        shader->SetUniform("u_waveStrength", wm ? wm->waveStrength    :  0.1f);
+        shader->SetUniform("u_waveSpeed",    wm ? wm->waveSpeed       :  1.0f);
+        shader->SetUniform("u_fogColor",     wm ? wm->waterFogColor   : glm::vec3{0.55f, 0.65f, 0.75f});
+        shader->SetUniform("u_fogDensity",   wm ? wm->waterFogDensity :  0.003f);
+        shader->SetUniform("u_deepColor",    wm ? wm->deepColor       : glm::vec3{0.04f, 0.11f, 0.35f});
+        shader->SetUniform("u_shallowColor", wm ? wm->shallowColor    : glm::vec3{0.686f, 0.933f, 0.933f});
+        shader->SetUniform("u_beerCoef",     wm ? wm->beerCoef        :  0.095f);
         shader->SetUniform("u_model",        cmd.transform);
 
         glBindVertexArray(mesh->vao);

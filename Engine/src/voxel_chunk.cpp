@@ -11,8 +11,6 @@ VoxelChunk::VoxelChunk(glm::ivec3 chunkPos)
 }
 
 VoxelChunk::~VoxelChunk() {
-    // _mesh lifetime is managed externally (passed to AssetManager / deleted by VoxelWorld)
-    delete _mesh;
 }
 
 uint8_t VoxelChunk::GetVoxel(int x, int y, int z) const {
@@ -83,7 +81,7 @@ void VoxelChunk::RebuildMesh(GraphicsServer* gfx) {
     const auto& verts = builder.Build();
 
     if (!_mesh) {
-        _mesh = new Mesh(MeshType::VOXEL);
+        _mesh = std::make_unique<Mesh>(MeshType::VOXEL);
     }
     if (!verts.empty()) {
         _mesh->Update(verts);
