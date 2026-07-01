@@ -6,12 +6,18 @@
 #   project(MyGame LANGUAGES CXX)
 #   add_subdirectory(Atmospheric)
 
-# Expose cmake/helpers/ so downstream games can include(AssetPipeline) etc.
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/helpers")
-
 # Custom triplets (Android, iOS, Emscripten, etc.) override vcpkg community triplets.
 # Must be set before vcpkg.cmake is included/chainloaded.
 list(APPEND VCPKG_OVERLAY_TRIPLETS "${CMAKE_CURRENT_LIST_DIR}/../triplets")
+
+# Defaults to the engine's own manifest (everything Atmospheric itself needs
+# to build). Downstream projects that require additional packages should
+# set(VCPKG_MANIFEST_DIR ...) to their own vcpkg.json BEFORE including this
+# file — vcpkg only resolves one manifest per configure, so that manifest
+# must then also list these same packages.
+if(NOT DEFINED VCPKG_MANIFEST_DIR)
+    set(VCPKG_MANIFEST_DIR "${CMAKE_CURRENT_LIST_DIR}/.." CACHE STRING "vcpkg manifest directory")
+endif()
 
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_LIST_DIR}/../vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "vcpkg toolchain file")
