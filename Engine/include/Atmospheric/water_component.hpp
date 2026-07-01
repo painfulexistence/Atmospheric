@@ -30,6 +30,8 @@ public:
     std::string GetName() const override { return "Water"; }
     void OnAttach() override;
     void OnDetach() override {}
+    void OnTick(float dt) override;
+    void DrawImGui() override;
 
     Material* GetMaterial() const { return _material; }
 

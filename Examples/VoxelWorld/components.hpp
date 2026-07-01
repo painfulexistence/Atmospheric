@@ -43,7 +43,7 @@ class VoxelWorldComponent : public Component {
     CameraComponent* _camera  = nullptr;
     GameObject*    _waterGO   = nullptr;
 public:
-    static constexpr float WATER_LINE = 32.0f;
+    float waterLine = 32.0f;
 
     explicit VoxelWorldComponent(GameObject* go, int seed = 42)
         : _seed(seed) { gameObject = go; }
@@ -57,7 +57,7 @@ public:
         // this GameObject's own Y position, making the position below the only
         // place the water height is set.
         const float waterExt = ((2 * VoxelWorld::VIEW_X + 1) * VoxelChunkComponent::SIZE) * 2.0f;
-        _waterGO = gameObject->GetApp()->CreateGameObject(glm::vec3(0.0f, WATER_LINE + 0.05f, 0.0f));
+        _waterGO = gameObject->GetApp()->CreateGameObject(glm::vec3(0.0f, waterLine + 0.05f, 0.0f));
         _waterGO->SetName("VoxelWater");
         _waterGO->parent = gameObject;
         _waterGO->AddComponent<WaterComponent>(WaterProps{
@@ -77,10 +77,11 @@ public:
 
         // Slide the water plane with the camera so it always covers the visible area.
         if (_waterGO) {
-            _waterGO->SetPosition(glm::vec3(pos.x, WATER_LINE + 0.05f, pos.z));
+            _waterGO->SetPosition(glm::vec3(pos.x, waterLine + 0.05f, pos.z));
         }
     }
     void DrawImGui() override {
         ImGui::Checkbox("Infinite Streaming", &_world.infiniteMode);
+        ImGui::DragFloat("Water Line", &waterLine, 0.5f);
     }
 };
