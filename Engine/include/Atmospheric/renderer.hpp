@@ -32,7 +32,7 @@ class ShaderProgram;
 class Renderer;
 
 struct RenderCommand {
-    Mesh* mesh;
+    MeshHandle mesh;
     // Material* material; // TODO: currently material is coupled with mesh
     glm::mat4 transform;
 };

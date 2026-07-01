@@ -16,29 +16,27 @@ WaterComponent::WaterComponent(GameObject* owner, const WaterProps& props)
         props.width, props.depth, props.subdivisions
     );
 
-    _material = am.CreateMaterial(MaterialProps{});
-    _material->renderQueue    = RenderQueue::Transparent;
-    _material->cullFaceEnabled = false;
-    _mesh->SetMaterial(_material);
+    _material = am.CreateWaterMaterial();
+    if (Mesh* meshPtr = am.GetMeshPtr(_mesh)) meshPtr->SetMaterial(_material);
 
     owner->AddComponent<MeshComponent>(_mesh);
 }
 
 void WaterComponent::OnTick(float /*dt*/) {
-    if (_mesh && _mesh->waterData)
-        _mesh->waterData->waterLine = gameObject->GetPosition().y;
+    if (auto* wm = dynamic_cast<WaterMaterial*>(_material))
+        wm->waterLine = gameObject->GetPosition().y;
 }
 
 void WaterComponent::DrawImGui() {
-    if (!_mesh || !_mesh->waterData) return;
-    auto& wd = *_mesh->waterData;
-    ImGui::DragFloat("Wave Strength",  &wd.waveStrength,    0.001f, 0.0f,  2.0f);
-    ImGui::DragFloat("Wave Speed",     &wd.waveSpeed,       0.01f,  0.0f, 10.0f);
-    ImGui::DragFloat("Fog Density",    &wd.waterFogDensity, 0.0001f, 0.0f, 0.05f);
-    ImGui::DragFloat("Beer Coef",      &wd.beerCoef,        0.001f, 0.0f,  1.0f);
-    ImGui::ColorEdit3("Fog Color",     &wd.waterFogColor.x);
-    ImGui::ColorEdit3("Deep Color",    &wd.deepColor.x);
-    ImGui::ColorEdit3("Shallow Color", &wd.shallowColor.x);
+    auto* wm = dynamic_cast<WaterMaterial*>(_material);
+    if (!wm) return;
+    ImGui::DragFloat("Wave Strength",  &wm->waveStrength,    0.001f, 0.0f,  2.0f);
+    ImGui::DragFloat("Wave Speed",     &wm->waveSpeed,       0.01f,  0.0f, 10.0f);
+    ImGui::DragFloat("Fog Density",    &wm->waterFogDensity, 0.0001f, 0.0f, 0.05f);
+    ImGui::DragFloat("Beer Coef",      &wm->beerCoef,        0.001f, 0.0f,  1.0f);
+    ImGui::ColorEdit3("Fog Color",     &wm->waterFogColor.x);
+    ImGui::ColorEdit3("Deep Color",    &wm->deepColor.x);
+    ImGui::ColorEdit3("Shallow Color", &wm->shallowColor.x);
 }
 
 void WaterComponent::OnAttach() {
@@ -46,14 +44,14 @@ void WaterComponent::OnAttach() {
         ? _props.waterLine
         : gameObject->GetPosition().y;
 
-    _mesh->waterData = WaterShaderData{
-        .waterLine       = line,
-        .waveStrength    = _props.waveStrength,
-        .waveSpeed       = _props.waveSpeed,
-        .waterFogColor   = _props.fogColor,
-        .waterFogDensity = _props.fogDensity,
-        .deepColor       = _props.deepColor,
-        .shallowColor    = _props.shallowColor,
-        .beerCoef        = _props.beerCoef,
-    };
+    if (auto* wm = dynamic_cast<WaterMaterial*>(_material)) {
+        wm->waterLine       = line;
+        wm->waveStrength    = _props.waveStrength;
+        wm->waveSpeed       = _props.waveSpeed;
+        wm->waterFogColor   = _props.fogColor;
+        wm->waterFogDensity = _props.fogDensity;
+        wm->deepColor       = _props.deepColor;
+        wm->shallowColor    = _props.shallowColor;
+        wm->beerCoef        = _props.beerCoef;
+    }
 }

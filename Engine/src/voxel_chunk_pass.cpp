@@ -190,7 +190,7 @@ void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEnc
 
     for (const auto& sortable : queue) {
         const auto& cmd = sortable.cmd;
-        Mesh* mesh = cmd.mesh;
+        Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
 
         if (!mesh || mesh->type != MeshType::VOXEL) continue;
         if (!mesh->UsesRenderMesh()) continue;
@@ -257,21 +257,21 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
 
     for (const auto& s : queue) {
         const auto& cmd = s.cmd;
-        Mesh* mesh = cmd.mesh;
+        Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
         if (!mesh) continue;
 
         Material* mat = mesh->GetMaterial();
         if (!mat || mat->renderQueue != RenderQueue::Transparent) continue;
 
-        const auto& wd = mesh->waterData.value_or(WaterShaderData{});
-        shader->SetUniform("u_waterLine",    wd.waterLine);
-        shader->SetUniform("u_waveStrength", wd.waveStrength);
-        shader->SetUniform("u_waveSpeed",    wd.waveSpeed);
-        shader->SetUniform("u_fogColor",     wd.waterFogColor);
-        shader->SetUniform("u_fogDensity",   wd.waterFogDensity);
-        shader->SetUniform("u_deepColor",    wd.deepColor);
-        shader->SetUniform("u_shallowColor", wd.shallowColor);
-        shader->SetUniform("u_beerCoef",     wd.beerCoef);
+        auto* wm = dynamic_cast<WaterMaterial*>(mesh->GetMaterial());
+        shader->SetUniform("u_waterLine",    wm ? wm->waterLine       : 32.0f);
+        shader->SetUniform("u_waveStrength", wm ? wm->waveStrength    :  0.1f);
+        shader->SetUniform("u_waveSpeed",    wm ? wm->waveSpeed       :  1.0f);
+        shader->SetUniform("u_fogColor",     wm ? wm->waterFogColor   : glm::vec3{0.55f, 0.65f, 0.75f});
+        shader->SetUniform("u_fogDensity",   wm ? wm->waterFogDensity :  0.003f);
+        shader->SetUniform("u_deepColor",    wm ? wm->deepColor       : glm::vec3{0.04f, 0.11f, 0.35f});
+        shader->SetUniform("u_shallowColor", wm ? wm->shallowColor    : glm::vec3{0.686f, 0.933f, 0.933f});
+        shader->SetUniform("u_beerCoef",     wm ? wm->beerCoef        :  0.095f);
         shader->SetUniform("u_model",        cmd.transform);
 
         glBindVertexArray(mesh->vao);

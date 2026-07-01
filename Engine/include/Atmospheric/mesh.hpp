@@ -12,22 +12,6 @@
 #include <optional>
 #include <vector>
 
-struct TerrainShaderData {
-    float heightScale        = 32.0f;
-    float tessellationFactor = 16.0f;
-};
-
-struct WaterShaderData {
-    float     waterLine       = 32.0f;
-    float     waveStrength    =  0.1f;
-    float     waveSpeed       =  1.0f;
-    glm::vec3 waterFogColor   = {0.55f, 0.65f, 0.75f};
-    float     waterFogDensity =  0.003f;
-    glm::vec3 deepColor       = {0.04f, 0.11f, 0.35f};
-    glm::vec3 shallowColor    = {0.686f, 0.933f, 0.933f};
-    float     beerCoef        =  0.095f;
-};
-
 enum class MeshType {
     PRIM    = 0,
     TERRAIN = 1,
@@ -87,11 +71,6 @@ public:
     void SetBoundingBox(const std::array<glm::vec3, 8> bounds) {
         _bounds = bounds;
     }
-
-    // Shader-specific data populated by the owning component.
-    // Only meaningful for the matching MeshType.
-    std::optional<TerrainShaderData> terrainData;
-    std::optional<WaterShaderData>   waterData;
 
     Material* GetMaterial() const {
         return _material;

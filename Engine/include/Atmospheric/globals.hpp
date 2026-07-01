@@ -131,6 +131,27 @@ struct FontHandle {
     operator bool() const noexcept { return IsValid(); }
 };
 
+struct MeshHandle {
+    static constexpr uint32_t INVALID = 0;
+    uint32_t id = INVALID;
+
+    MeshHandle() = default;
+    MeshHandle(uint32_t val) : id(val) {}
+    MeshHandle(int val) : id(val == -1 ? INVALID : static_cast<uint32_t>(val)) {}
+
+    bool IsValid() const { return id != INVALID; }
+    bool operator==(const MeshHandle& other) const { return id == other.id; }
+    bool operator!=(const MeshHandle& other) const { return id != other.id; }
+    bool operator==(uint32_t val) const { return id == val; }
+    bool operator!=(uint32_t val) const { return id != val; }
+    bool operator==(int val) const { return (val == -1 ? id == INVALID : id == static_cast<uint32_t>(val)); }
+    bool operator!=(int val) const { return !(*this == val); }
+
+    operator uint32_t() const { return id; }
+    operator int() const { return static_cast<int>(id); }
+    operator bool() const noexcept { return IsValid(); }
+};
+
 enum Axis { UP, DOWN, BACK, FRONT, RIGHT, LEFT };
 
 // Canvas layer constants for z-ordering
@@ -216,5 +237,8 @@ namespace std {
     };
     template<> struct hash<FontHandle> {
         size_t operator()(const FontHandle& h) const noexcept { return hash<uint32_t>{}(h.id); }
+    };
+    template<> struct hash<MeshHandle> {
+        size_t operator()(const MeshHandle& h) const noexcept { return hash<uint32_t>{}(h.id); }
     };
 }

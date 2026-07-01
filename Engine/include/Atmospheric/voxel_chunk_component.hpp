@@ -5,6 +5,7 @@
 #include "globals.hpp"
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <glm/vec3.hpp>
 
 class GraphicsServer;
@@ -38,7 +39,8 @@ public:
 
     bool       IsDirty()    const { return _dirty; }
     void       MarkDirty()        { _dirty = true; }
-    Mesh*      GetMesh()    const { return _mesh; }
+    Mesh*      GetMesh()    const { return _mesh.get(); }
+    MeshHandle GetMeshHandle() const { return _meshHandle; }
     glm::ivec3 GetChunkPos() const { return _chunkPos; }
     glm::vec3  GetWorldPos()  const {
         return glm::vec3(_chunkPos) * static_cast<float>(SIZE);
@@ -56,7 +58,8 @@ private:
     glm::ivec3           _chunkPos;
     uint8_t              _voxels[SIZE][SIZE][SIZE];
     bool                 _dirty = true;
-    Mesh*                _mesh  = nullptr;
+    std::unique_ptr<Mesh> _mesh;
+    MeshHandle           _meshHandle;
     // _neighbors[dx+1][dy+1][dz+1], dx/dy/dz in {-1,0,1}
     VoxelChunkComponent* _neighbors[3][3][3];
 

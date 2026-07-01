@@ -130,7 +130,7 @@ void VoxelWorld::SubmitRenderCommands(Renderer* renderer,
         glm::vec3 wp = chunk->GetWorldPos();
         glm::mat4 model = glm::translate(glm::mat4(1.0f), wp);
 
-        RenderCommand cmd{ .mesh = mesh, .transform = model };
+        RenderCommand cmd{ .mesh = chunk->GetMeshHandle(), .transform = model };
         renderer->SubmitCommand(cmd);
     }
 }

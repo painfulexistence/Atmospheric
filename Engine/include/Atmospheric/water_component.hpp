@@ -1,5 +1,6 @@
 #pragma once
 #include "component.hpp"
+#include "globals.hpp"
 #include <glm/vec3.hpp>
 
 class Material;
@@ -36,7 +37,7 @@ public:
     Material* GetMaterial() const { return _material; }
 
 private:
-    Mesh*      _mesh     = nullptr;
+    MeshHandle _mesh;
     Material*  _material = nullptr;
     WaterProps _props;
 };

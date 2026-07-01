@@ -10,7 +10,7 @@ class Material;
 
 class MeshComponent : public Component {
 public:
-    MeshComponent(GameObject* gameObject, Mesh* mesh);
+    MeshComponent(GameObject* gameObject, MeshHandle mesh);
 
     ~MeshComponent();
 
@@ -20,15 +20,15 @@ public:
     void OnDetach() override;
     void DrawImGui() override;
 
-    Mesh* GetMesh() const;
+    MeshHandle GetMesh() const;
 
-    void SetMesh(Mesh* mesh);
+    void SetMesh(MeshHandle mesh);
 
     Material* GetMaterial() const;
 
     void SetMaterial(Material* material);
 
 private:
-    Mesh* _mesh = nullptr;
+    MeshHandle _mesh;
     Material* _material = nullptr;
 };
