@@ -112,7 +112,7 @@ public:
 
     // Resolves a relative virtual path to an absolute/normalized platform path.
     // Returns std::nullopt if the path does not exist in the cache or on disk.
-    std::optional<std::string> ResolvePath(const std::string& path) const;
+    [[nodiscard]] std::optional<std::string> ResolvePath(const std::string& path) const;
 
     // Release a cached entry to reclaim memory (after ConsumeSync is preferred).
     void EvictCache(const std::string& path);

@@ -151,10 +151,10 @@ Window::Window(WindowProps props) {
     glfwWindowHint(GLFW_FLOATING, props.floating ? GLFW_TRUE : GLFW_FALSE);
 
     if (props.fullscreen) {
-        this->_internal = glfwCreateWindow(props.width, props.height, props.title.c_str(), glfwGetPrimaryMonitor(), NULL);
+        this->_internal = glfwCreateWindow(props.width, props.height, props.title.c_str(), glfwGetPrimaryMonitor(), nullptr);
         _isFullscreen = true;
     } else {
-        this->_internal = glfwCreateWindow(props.width, props.height, props.title.c_str(), NULL, NULL);
+        this->_internal = glfwCreateWindow(props.width, props.height, props.title.c_str(), nullptr, nullptr);
         _isFullscreen = false;
     }
     if (this->_internal == nullptr)
