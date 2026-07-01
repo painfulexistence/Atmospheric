@@ -22,18 +22,25 @@ public:
 
     // Records draw calls into the WGPURenderPassEncoder already open on enc
     // (caller must have called sceneRT->Begin(enc) first and will call End()
-    // afterward). Targets sceneRT's HDR format, not the swapchain directly —
-    // PostProcessPass is the pass that finally writes to the swapchain.
+    // afterward, or opened a render pass on the swapchain view directly —
+    // see toSwapchain below).
     //
     // depthTest selects the pipeline variant used by WorldCanvasPass: depth
     // is tested (read-only, no write) against sceneRT's depth buffer so
     // world-space sprites are occluded by 3D geometry, matching the GL path's
     // glDepthMask(GL_FALSE) behaviour. CanvasPass (screen-space UI) passes
     // false, the default, for the no-depth pipeline.
+    //
+    // toSwapchain selects the swapchain-format pipeline variant, used by
+    // UIPass: it runs after PostProcessPass has already resolved sceneRT
+    // (RGBA16Float) to the swapchain (BGRA8Unorm typically), so it must
+    // record into a render pass opened on the swapchain view directly rather
+    // than sceneRT. Mutually exclusive with depthTest.
     void Render(CommandEncoder* enc,
                 const glm::mat4& viewProj,
                 const std::vector<BatchDrawCommand>& commands,
-                bool depthTest = false);
+                bool depthTest = false,
+                bool toSwapchain = false);
 
     bool IsReady() const { return _pipeline != nullptr; }
 
@@ -84,6 +91,9 @@ struct VOut {
     // depth buffer. Shares every other piece of state (buffers, bind groups,
     // texture cache) with the no-depth pipeline above.
     WGPURenderPipeline  _pipelineDepthTest = nullptr;
+    // Swapchain-format variant used by UIPass (see Render() doc above).
+    // Shares BGLs/buffers/bind groups with the other two pipelines.
+    WGPURenderPipeline  _pipelineSwapchain = nullptr;
     WGPUBindGroupLayout _uniformBGL = nullptr;
     WGPUBindGroupLayout _texBGL     = nullptr;
     WGPUBuffer          _vertexBuf  = nullptr;

@@ -1902,13 +1902,61 @@ void Renderer::SubmitCanvasCommand(const BatchDrawCommand& cmd) {
 
 void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    // RenderBufferedText interleaves text glyphs with queued geometry inside
-    // the same GL BatchRenderer2D Begin/EndBatch pass (for correct z-order),
-    // so it can't be ported by simply swapping the draw calls — it would need
-    // glyphs and geometry merged into one ordered BatchDrawCommand list before
-    // handing off to GPUCanvasPass. No-op for now rather than risk an
-    // incorrectly-ordered or partially-working port.
-    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        // Text2DComponent text is already drained into the canvas queue by
+        // CanvasPass::FlushTextToQueue() earlier in the render graph, so the
+        // only thing left to handle here is RmlUi's queued geometry.
+        auto& uiQueue = renderer.GetUIQueue();
+        if (uiQueue.empty()) return;
+
+        GPUCanvasPass* gpuPass = renderer.GetGPUCanvasPass();
+        if (!gpuPass) return;
+
+        WGPUTextureView swapchainView = GfxFactory::GetCurrentSwapchainView();
+        if (!swapchainView) return; // surface not ready (device still initializing)
+
+        // GPUCanvasPass::Render ignores BatchDrawCommand::transform — every
+        // other producer bakes translation into vertex positions before
+        // queuing. RmlUiRenderer::RenderGeometry doesn't (it reuses one
+        // compiled geometry across many translated draws), so bake it here
+        // via BatchRenderer2D's CPU path, matching what the GL path below
+        // does by calling DrawGeometry() with cmd.transform directly.
+        auto* br = renderer.GetBatchRenderer();
+        br->StartBatch();
+        for (const auto& cmd : uiQueue)
+            br->DrawGeometry(cmd.vertices, cmd.indices, cmd.textureID, cmd.transform);
+        auto allCommands = br->DrainToCommands();
+        if (allCommands.empty()) {
+            wgpuTextureViewRelease(swapchainView);
+            return;
+        }
+
+        auto logicalSize = Window::Get()->GetLogicalSize();
+        glm::mat4 projection = glm::ortho(
+            0.0f, (float)logicalSize.width, (float)logicalSize.height, 0.0f, -1.0f, 1.0f);
+
+        // UIPass runs after PostProcessPass, which has already resolved
+        // sceneRT to the swapchain — record onto the swapchain view directly
+        // (Load, not Clear, so the resolved frame underneath is preserved).
+        auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+        WGPURenderPassColorAttachment ca{};
+        ca.view    = swapchainView;
+        ca.loadOp  = WGPULoadOp_Load;
+        ca.storeOp = WGPUStoreOp_Store;
+        WGPURenderPassDescriptor rpDesc{};
+        rpDesc.colorAttachmentCount = 1;
+        rpDesc.colorAttachments     = &ca;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &rpDesc);
+        gpuEnc->pass = pass;
+
+        gpuPass->Render(enc, projection, allCommands, /*depthTest=*/false, /*toSwapchain=*/true);
+
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+        gpuEnc->pass = nullptr;
+        wgpuTextureViewRelease(swapchainView);
+        return;
+    }
 #endif
     ZoneScopedN("UIPass");
     auto* batchRenderer = renderer.GetBatchRenderer();

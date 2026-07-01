@@ -58,6 +58,18 @@ public:
     // pixels must be RGBA8 (4 bytes per pixel, w*h pixels).
     static uint32_t  UploadTexture2D(const uint8_t* pixels, int w, int h);
 
+    // Cross-backend update of an existing texture's pixel contents. id must
+    // have come from UploadTexture2D(). pixels must be RGBA8 (4 bytes per
+    // pixel, w*h pixels). If w/h differ from the size the texture was
+    // created with, storage is reallocated under the same id (the WebGPU
+    // texture object is immutable, so this releases and recreates it
+    // internally; callers don't need to know or care).
+    //   OpenGL  path: glTexImage2D (always reallocates; simplest way to
+    //                 handle same-size updates and resizes uniformly).
+    //   WebGPU  path: wgpuQueueWriteTexture, recreating the WGPUTexture
+    //                 first if the size changed.
+    static void      UpdateTexture2D(uint32_t id, const uint8_t* pixels, int w, int h);
+
     // Cross-backend texture release. id must have come from UploadTexture2D()
     // or UploadCompressedTexture2D().
     //   OpenGL path: glDeleteTextures.

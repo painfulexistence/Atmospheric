@@ -11,6 +11,7 @@ GPUCanvasPass::~GPUCanvasPass() {
     if (_texBGL)     wgpuBindGroupLayoutRelease(_texBGL);
     if (_pipeline)   wgpuRenderPipelineRelease(_pipeline);
     if (_pipelineDepthTest) wgpuRenderPipelineRelease(_pipelineDepthTest);
+    if (_pipelineSwapchain) wgpuRenderPipelineRelease(_pipelineSwapchain);
     if (_uniformBuf) wgpuBufferRelease(_uniformBuf);
     if (_vertexBuf)  wgpuBufferRelease(_vertexBuf);
     if (_indexBuf)   wgpuBufferRelease(_indexBuf);
@@ -173,6 +174,69 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
         wgpuShaderModuleRelease(sh);
     }
 
+    // ── Swapchain-format variant (UIPass): no depth, blend on, but targets ──
+    // GfxFactory::GetSwapchainFormat() instead of sceneRT's HDR format, since
+    // UIPass runs after PostProcessPass has already resolved sceneRT to the
+    // swapchain. Must reuse the same BGLs so bind groups created above stay
+    // compatible.
+    {
+        WGPUShaderSourceWGSL wgslDesc{};
+        wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
+        wgslDesc.code        = { QUAD_WGSL, WGPU_STRLEN };
+        WGPUShaderModuleDescriptor shDesc{};
+        shDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
+        WGPUShaderModule sh = wgpuDeviceCreateShaderModule(device, &shDesc);
+
+        WGPUBindGroupLayout bgls[2] = { _uniformBGL, _texBGL };
+        WGPUPipelineLayoutDescriptor plDesc{};
+        plDesc.bindGroupLayoutCount = 2;
+        plDesc.bindGroupLayouts     = bgls;
+        WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &plDesc);
+
+        WGPUVertexAttribute attrs[4]{};
+        attrs[0].format = WGPUVertexFormat_Float32x2; attrs[0].offset =  0; attrs[0].shaderLocation = 0;
+        attrs[1].format = WGPUVertexFormat_Float32x2; attrs[1].offset =  8; attrs[1].shaderLocation = 1;
+        attrs[2].format = WGPUVertexFormat_Float32x4; attrs[2].offset = 16; attrs[2].shaderLocation = 2;
+        attrs[3].format = WGPUVertexFormat_Float32x2; attrs[3].offset = 32; attrs[3].shaderLocation = 3;
+        WGPUVertexBufferLayout vbl{};
+        vbl.arrayStride    = (uint64_t)FLOATS_PER_VERT * sizeof(float);
+        vbl.stepMode       = WGPUVertexStepMode_Vertex;
+        vbl.attributeCount = 4;
+        vbl.attributes     = attrs;
+
+        WGPUBlendComponent bc{ WGPUBlendOperation_Add, WGPUBlendFactor_SrcAlpha,
+                               WGPUBlendFactor_OneMinusSrcAlpha };
+        WGPUBlendComponent ba{ WGPUBlendOperation_Add, WGPUBlendFactor_One,
+                               WGPUBlendFactor_OneMinusSrcAlpha };
+        WGPUBlendState blend{ bc, ba };
+        WGPUColorTargetState ct{};
+        ct.format    = GfxFactory::GetSwapchainFormat();
+        ct.blend     = &blend;
+        ct.writeMask = WGPUColorWriteMask_All;
+
+        WGPUFragmentState frag{};
+        frag.module      = sh;
+        frag.entryPoint  = { "fs", WGPU_STRLEN };
+        frag.targetCount = 1;
+        frag.targets     = &ct;
+
+        WGPURenderPipelineDescriptor pd{};
+        pd.layout              = pl;
+        pd.vertex.module       = sh;
+        pd.vertex.entryPoint   = { "vs", WGPU_STRLEN };
+        pd.vertex.bufferCount  = 1;
+        pd.vertex.buffers      = &vbl;
+        pd.fragment            = &frag;
+        pd.primitive.topology  = WGPUPrimitiveTopology_TriangleList;
+        pd.primitive.frontFace = WGPUFrontFace_CCW;
+        pd.primitive.cullMode  = WGPUCullMode_None;
+        pd.multisample.count   = 1;
+        pd.multisample.mask    = 0xFFFFFFFFu;
+        _pipelineSwapchain = wgpuDeviceCreateRenderPipeline(device, &pd);
+        wgpuPipelineLayoutRelease(pl);
+        wgpuShaderModuleRelease(sh);
+    }
+
     _verts.reserve((size_t)MAX_VERTS * FLOATS_PER_VERT);
     _indices.reserve((size_t)MAX_INDICES);
 }
@@ -205,7 +269,8 @@ WGPUBindGroup GPUCanvasPass::_getOrCreateTexBG(uint32_t texID) {
 void GPUCanvasPass::Render(CommandEncoder* enc,
                             const glm::mat4& viewProj,
                             const std::vector<BatchDrawCommand>& commands,
-                            bool depthTest) {
+                            bool depthTest,
+                            bool toSwapchain) {
     // Lazy init: wait until GfxFactory has a live device
     if (!_pipeline) {
         WGPUDevice dev = GfxFactory::GetWebGPUDevice();
@@ -273,7 +338,9 @@ void GPUCanvasPass::Render(CommandEncoder* enc,
     WGPURenderPassEncoder pass = gpuEnc->pass;
     if (!pass) return;
 
-    wgpuRenderPassEncoderSetPipeline(pass, depthTest ? _pipelineDepthTest : _pipeline);
+    wgpuRenderPassEncoderSetPipeline(pass, toSwapchain ? _pipelineSwapchain
+                                          : depthTest   ? _pipelineDepthTest
+                                                        : _pipeline);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, _uniformBG, 0, nullptr);
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, _vertexBuf, 0, WGPU_WHOLE_SIZE);
     wgpuRenderPassEncoderSetIndexBuffer(pass, _indexBuf, WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);

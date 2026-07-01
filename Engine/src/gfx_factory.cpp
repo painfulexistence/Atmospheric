@@ -255,6 +255,49 @@ uint32_t GfxFactory::UploadTexture2D(const uint8_t* pixels, int w, int h) {
     return static_cast<uint32_t>(texID);
 }
 
+void GfxFactory::UpdateTexture2D(uint32_t id, const uint8_t* pixels, int w, int h) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (_backend == GfxBackend::WebGPU && _wgpuDevice) {
+        auto it = _gpuTextures.find(id);
+        if (it == _gpuTextures.end()) return;
+
+        WGPUTexture tex = it->second;
+        if (wgpuTextureGetWidth(tex) != static_cast<uint32_t>(w) ||
+            wgpuTextureGetHeight(tex) != static_cast<uint32_t>(h)) {
+            // WGPUTexture storage is immutable — release and recreate under
+            // the same synthetic id so callers don't need to track resizes.
+            wgpuTextureRelease(tex);
+
+            WGPUTextureDescriptor td{};
+            td.size          = { static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+            td.format        = WGPUTextureFormat_RGBA8Unorm;
+            td.usage         = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+            td.dimension     = WGPUTextureDimension_2D;
+            td.mipLevelCount = 1;
+            td.sampleCount   = 1;
+            tex = wgpuDeviceCreateTexture(_wgpuDevice, &td);
+            it->second = tex;
+        }
+
+        WGPUTexelCopyTextureInfo dst{};
+        dst.texture = tex;
+        dst.aspect  = WGPUTextureAspect_All;
+        WGPUTexelCopyBufferLayout layout{};
+        layout.bytesPerRow  = static_cast<uint32_t>(w) * 4;
+        layout.rowsPerImage = static_cast<uint32_t>(h);
+        WGPUExtent3D extent{ static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+        wgpuQueueWriteTexture(_wgpuQueue, &dst, pixels,
+                               static_cast<size_t>(w) * h * 4, &layout, &extent);
+        return;
+    }
+#endif
+    // OpenGL / WebGL path
+    GLuint texID = (GLuint)id;
+    glBindTexture(GL_TEXTURE_2D, texID);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 WGPUTexture GfxFactory::GetWGPUTexture(uint32_t id) {
     auto it = _gpuTextures.find(id);
