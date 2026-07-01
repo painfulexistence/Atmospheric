@@ -17,6 +17,16 @@
     "tracy",
     "rmlui",
     "box2d",
-    "flatbuffers"
+    "flatbuffers",
+    {
+      "name": "curl",
+      "features": ["http2", "openssl"],
+      "platform": "!emscripten"
+    },
+    {
+      "name": "libwebsockets",
+      "features": ["openssl"],
+      "platform": "!emscripten"
+    }
   ]
 }

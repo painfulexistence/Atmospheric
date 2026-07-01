@@ -351,6 +351,25 @@ endif()
 
 
 
+# ── Networking (HttpClient + WebSocketClient + NetworkSubsystem) ──────────────
+# Native  : libcurl (HTTP/2, OpenSSL) + libwebsockets (OpenSSL)
+# Web     : emscripten_fetch (already linked via -sFETCH=1) + Emscripten WebSocket
+option(AE_USE_NETWORKING "Enable HTTP and WebSocket networking" OFF)
+if(AE_USE_NETWORKING)
+    list(APPEND SOURCES
+        src/http_client.cpp
+        src/websocket_client.cpp
+        src/network_subsystem.cpp
+    )
+    if(NOT EMSCRIPTEN)
+        find_package(CURL REQUIRED)
+        find_package(libwebsockets CONFIG REQUIRED)
+        message(STATUS "Networking enabled (libcurl + libwebsockets, OpenSSL, HTTP/2)")
+    else()
+        message(STATUS "Networking enabled (emscripten_fetch + Emscripten WebSocket)")
+    endif()
+endif()
+
 add_library(AtmosphericEngine STATIC ${SOURCES} ${SOURCES_EXT})
 
 target_include_directories(AtmosphericEngine
@@ -379,6 +398,16 @@ endif()
 if(AE_USE_BASIS_UNIVERSAL)
     target_link_libraries(AtmosphericEngine PUBLIC basisu_transcoder)
     target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_BASIS_UNIVERSAL)
+endif()
+if(AE_USE_NETWORKING)
+    target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_NETWORKING)
+    if(NOT EMSCRIPTEN)
+        target_link_libraries(AtmosphericEngine PUBLIC CURL::libcurl websockets)
+    else()
+        # -sWEBSOCKET=1 exposes emscripten/websocket.h and the JS WebSocket glue.
+        target_compile_options(AtmosphericEngine PUBLIC -sWEBSOCKET=1)
+        target_link_options(AtmosphericEngine INTERFACE -sWEBSOCKET=1)
+    endif()
 endif()
 if(AE_USE_FFMPEG AND NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
     # Use the system FFmpeg located via pkg-config rather than building the
