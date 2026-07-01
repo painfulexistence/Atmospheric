@@ -75,7 +75,19 @@ public:
     GpuPipelineBuilder& wgsl(const std::string& src)  { _src = src; return *this; }
 
     GpuPipelineBuilder& bgl(std::vector<GpuBGLEntry> entries) {
-        _bglEntries.push_back(std::move(entries));
+        _bglGroups.push_back({ std::move(entries), nullptr });
+        return *this;
+    }
+
+    // Reuse an existing bind-group layout instead of creating a new one —
+    // needed when building a pipeline variant whose bind groups must stay
+    // compatible with a previously built pipeline (e.g. GPUCanvasPass's
+    // depth-tested and swapchain-format variants). The borrowed BGL still
+    // appears in GpuPipeline::bgls at its group index so indexing stays
+    // uniform, but ownership remains with the original creator — do not
+    // release it a second time through the returned GpuPipeline.
+    GpuPipelineBuilder& bgl(WGPUBindGroupLayout existing) {
+        _bglGroups.push_back({ {}, existing });
         return *this;
     }
 
@@ -104,9 +116,16 @@ public:
     GpuPipeline build();
 
 private:
+    // One bind group slot: either a list of entries to create a fresh BGL
+    // from, or a borrowed pre-existing BGL (entries empty, existing set).
+    struct BGLGroup {
+        std::vector<GpuBGLEntry> entries;
+        WGPUBindGroupLayout      existing = nullptr;
+    };
+
     WGPUDevice _device = nullptr;
     std::string _src;
-    std::vector<std::vector<GpuBGLEntry>> _bglEntries;
+    std::vector<BGLGroup> _bglGroups;
     uint64_t _stride = 0;
     std::vector<GpuVertexAttr> _vertexAttrs;
     WGPUTextureFormat   _colorFmt     = WGPUTextureFormat_RGBA16Float;

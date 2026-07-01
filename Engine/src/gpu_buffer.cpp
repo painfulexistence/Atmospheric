@@ -45,8 +45,11 @@ void GPUBuffer::Upload(const void* vertexData, size_t vertexCount, size_t vertex
     _indexBuffer  = AllocAndUpload(indexData, indexCount * sizeof(uint16_t), WGPUBufferUsage_Index);
 }
 
+// topology is ignored: in WebGPU, primitive topology is baked into the render
+// pipeline (see GpuPipelineBuilder), not chosen per draw like glDrawArrays.
 void GPUBuffer::Draw(CommandEncoder* enc, PrimitiveTopology /*topology*/) const {
     auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+    if (!gpuEnc || !gpuEnc->pass || !_vertexBuffer) return;
     WGPURenderPassEncoder pass = gpuEnc->pass;
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, _vertexBuffer, 0, WGPU_WHOLE_SIZE);
     if (_hasIndices) {

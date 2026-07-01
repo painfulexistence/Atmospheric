@@ -10,13 +10,22 @@ GpuPipeline GpuPipelineBuilder::build() {
     shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
     WGPUShaderModule shader = wgpuDeviceCreateShaderModule(_device, &shaderDesc);
 
-    // Build each BGL
+    // Build (or borrow) each BGL
     GpuPipeline result;
-    result.bgls.reserve(_bglEntries.size());
+    result.bgls.reserve(_bglGroups.size());
     std::vector<WGPUBindGroupLayout> layouts;
-    layouts.reserve(_bglEntries.size());
+    layouts.reserve(_bglGroups.size());
 
-    for (const auto& entries : _bglEntries) {
+    for (const auto& group : _bglGroups) {
+        if (group.existing) {
+            // Borrowed BGL: reference it in the pipeline layout and expose it
+            // via result.bgls for uniform indexing, but ownership stays with
+            // the original creator (see the bgl(WGPUBindGroupLayout) doc).
+            result.bgls.push_back(group.existing);
+            layouts.push_back(group.existing);
+            continue;
+        }
+        const auto& entries = group.entries;
         std::vector<WGPUBindGroupLayoutEntry> wgpuEntries;
         wgpuEntries.reserve(entries.size());
         for (const auto& e : entries) {

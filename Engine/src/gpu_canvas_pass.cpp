@@ -105,137 +105,33 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     }
 
     // ── Depth-tested variant (WorldCanvasPass): read-only LessEqual ────────
-    // Must reuse the same BGLs so bind groups created above stay compatible.
-    {
-        WGPUShaderSourceWGSL wgslDesc{};
-        wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-        wgslDesc.code        = { QUAD_WGSL, WGPU_STRLEN };
-        WGPUShaderModuleDescriptor shDesc{};
-        shDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
-        WGPUShaderModule sh = wgpuDeviceCreateShaderModule(device, &shDesc);
-
-        WGPUBindGroupLayout bgls[2] = { _uniformBGL, _texBGL };
-        WGPUPipelineLayoutDescriptor plDesc{};
-        plDesc.bindGroupLayoutCount = 2;
-        plDesc.bindGroupLayouts     = bgls;
-        WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &plDesc);
-
-        WGPUVertexAttribute attrs[4]{};
-        attrs[0].format = WGPUVertexFormat_Float32x2; attrs[0].offset =  0; attrs[0].shaderLocation = 0;
-        attrs[1].format = WGPUVertexFormat_Float32x2; attrs[1].offset =  8; attrs[1].shaderLocation = 1;
-        attrs[2].format = WGPUVertexFormat_Float32x4; attrs[2].offset = 16; attrs[2].shaderLocation = 2;
-        attrs[3].format = WGPUVertexFormat_Float32x2; attrs[3].offset = 32; attrs[3].shaderLocation = 3;
-        WGPUVertexBufferLayout vbl{};
-        vbl.arrayStride    = (uint64_t)FLOATS_PER_VERT * sizeof(float);
-        vbl.stepMode       = WGPUVertexStepMode_Vertex;
-        vbl.attributeCount = 4;
-        vbl.attributes     = attrs;
-
-        WGPUBlendComponent bc{ WGPUBlendOperation_Add, WGPUBlendFactor_SrcAlpha,
-                               WGPUBlendFactor_OneMinusSrcAlpha };
-        WGPUBlendComponent ba{ WGPUBlendOperation_Add, WGPUBlendFactor_One,
-                               WGPUBlendFactor_OneMinusSrcAlpha };
-        WGPUBlendState blend{ bc, ba };
-        WGPUColorTargetState ct{};
-        ct.format    = format;
-        ct.blend     = &blend;
-        ct.writeMask = WGPUColorWriteMask_All;
-
-        WGPUFragmentState frag{};
-        frag.module      = sh;
-        frag.entryPoint  = { "fs", WGPU_STRLEN };
-        frag.targetCount = 1;
-        frag.targets     = &ct;
-
-        WGPUDepthStencilState ds{};
-        ds.format               = WGPUTextureFormat_Depth32Float;
-        ds.depthWriteEnabled    = WGPUOptionalBool_False;
-        ds.depthCompare         = WGPUCompareFunction_LessEqual;
-        ds.stencilFront.compare = WGPUCompareFunction_Always;
-        ds.stencilBack.compare  = WGPUCompareFunction_Always;
-        ds.stencilReadMask      = 0xFFFFFFFFu;
-        ds.stencilWriteMask     = 0xFFFFFFFFu;
-
-        WGPURenderPipelineDescriptor pd{};
-        pd.layout              = pl;
-        pd.vertex.module       = sh;
-        pd.vertex.entryPoint   = { "vs", WGPU_STRLEN };
-        pd.vertex.bufferCount  = 1;
-        pd.vertex.buffers      = &vbl;
-        pd.fragment            = &frag;
-        pd.depthStencil        = &ds;
-        pd.primitive.topology  = WGPUPrimitiveTopology_TriangleList;
-        pd.primitive.frontFace = WGPUFrontFace_CCW;
-        pd.primitive.cullMode  = WGPUCullMode_None;
-        pd.multisample.count   = 1;
-        pd.multisample.mask    = 0xFFFFFFFFu;
-        _pipelineDepthTest = wgpuDeviceCreateRenderPipeline(device, &pd);
-        wgpuPipelineLayoutRelease(pl);
-        wgpuShaderModuleRelease(sh);
-    }
+    // Borrows the BGLs created above so bind groups stay compatible.
+    const std::vector<GpuVertexAttr> quadAttrs = {
+        {WGPUVertexFormat_Float32x2,  0, 0},
+        {WGPUVertexFormat_Float32x2,  8, 1},
+        {WGPUVertexFormat_Float32x4, 16, 2},
+        {WGPUVertexFormat_Float32x2, 32, 3},
+    };
+    _pipelineDepthTest = GpuPipelineBuilder(device)
+        .wgsl(QUAD_WGSL)
+        .bgl(_uniformBGL)
+        .bgl(_texBGL)
+        .vertex((uint64_t)FLOATS_PER_VERT * sizeof(float), quadAttrs)
+        .colorFormat(format).blend()
+        .depth(false, WGPUCompareFunction_LessEqual)
+        .build().pipeline;
 
     // ── Swapchain-format variant (UIPass): no depth, blend on, but targets ──
     // GfxFactory::GetSwapchainFormat() instead of sceneRT's HDR format, since
     // UIPass runs after PostProcessPass has already resolved sceneRT to the
-    // swapchain. Must reuse the same BGLs so bind groups created above stay
-    // compatible.
-    {
-        WGPUShaderSourceWGSL wgslDesc{};
-        wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-        wgslDesc.code        = { QUAD_WGSL, WGPU_STRLEN };
-        WGPUShaderModuleDescriptor shDesc{};
-        shDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
-        WGPUShaderModule sh = wgpuDeviceCreateShaderModule(device, &shDesc);
-
-        WGPUBindGroupLayout bgls[2] = { _uniformBGL, _texBGL };
-        WGPUPipelineLayoutDescriptor plDesc{};
-        plDesc.bindGroupLayoutCount = 2;
-        plDesc.bindGroupLayouts     = bgls;
-        WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &plDesc);
-
-        WGPUVertexAttribute attrs[4]{};
-        attrs[0].format = WGPUVertexFormat_Float32x2; attrs[0].offset =  0; attrs[0].shaderLocation = 0;
-        attrs[1].format = WGPUVertexFormat_Float32x2; attrs[1].offset =  8; attrs[1].shaderLocation = 1;
-        attrs[2].format = WGPUVertexFormat_Float32x4; attrs[2].offset = 16; attrs[2].shaderLocation = 2;
-        attrs[3].format = WGPUVertexFormat_Float32x2; attrs[3].offset = 32; attrs[3].shaderLocation = 3;
-        WGPUVertexBufferLayout vbl{};
-        vbl.arrayStride    = (uint64_t)FLOATS_PER_VERT * sizeof(float);
-        vbl.stepMode       = WGPUVertexStepMode_Vertex;
-        vbl.attributeCount = 4;
-        vbl.attributes     = attrs;
-
-        WGPUBlendComponent bc{ WGPUBlendOperation_Add, WGPUBlendFactor_SrcAlpha,
-                               WGPUBlendFactor_OneMinusSrcAlpha };
-        WGPUBlendComponent ba{ WGPUBlendOperation_Add, WGPUBlendFactor_One,
-                               WGPUBlendFactor_OneMinusSrcAlpha };
-        WGPUBlendState blend{ bc, ba };
-        WGPUColorTargetState ct{};
-        ct.format    = GfxFactory::GetSwapchainFormat();
-        ct.blend     = &blend;
-        ct.writeMask = WGPUColorWriteMask_All;
-
-        WGPUFragmentState frag{};
-        frag.module      = sh;
-        frag.entryPoint  = { "fs", WGPU_STRLEN };
-        frag.targetCount = 1;
-        frag.targets     = &ct;
-
-        WGPURenderPipelineDescriptor pd{};
-        pd.layout              = pl;
-        pd.vertex.module       = sh;
-        pd.vertex.entryPoint   = { "vs", WGPU_STRLEN };
-        pd.vertex.bufferCount  = 1;
-        pd.vertex.buffers      = &vbl;
-        pd.fragment            = &frag;
-        pd.primitive.topology  = WGPUPrimitiveTopology_TriangleList;
-        pd.primitive.frontFace = WGPUFrontFace_CCW;
-        pd.primitive.cullMode  = WGPUCullMode_None;
-        pd.multisample.count   = 1;
-        pd.multisample.mask    = 0xFFFFFFFFu;
-        _pipelineSwapchain = wgpuDeviceCreateRenderPipeline(device, &pd);
-        wgpuPipelineLayoutRelease(pl);
-        wgpuShaderModuleRelease(sh);
-    }
+    // swapchain. Borrows the same BGLs for bind-group compatibility.
+    _pipelineSwapchain = GpuPipelineBuilder(device)
+        .wgsl(QUAD_WGSL)
+        .bgl(_uniformBGL)
+        .bgl(_texBGL)
+        .vertex((uint64_t)FLOATS_PER_VERT * sizeof(float), quadAttrs)
+        .colorFormat(GfxFactory::GetSwapchainFormat()).blend()
+        .build().pipeline;
 
     _verts.reserve((size_t)MAX_VERTS * FLOATS_PER_VERT);
     _indices.reserve((size_t)MAX_INDICES);

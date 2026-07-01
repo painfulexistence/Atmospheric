@@ -50,6 +50,10 @@ private:
     WGPUTextureView       _colorView    = nullptr;
     WGPUTextureView       _depthView    = nullptr;
     WGPURenderPassEncoder _activePass   = nullptr;
+    // Encoder whose ->pass we set in Begin(); kept so End() can null it out
+    // again. Without this, enc->pass dangles after End() releases the pass
+    // encoder, and the `if (!pass)` guards downstream can't catch it.
+    GPUCommandEncoder*    _activeEnc    = nullptr;
 
     int  _width     = 0;
     int  _height    = 0;

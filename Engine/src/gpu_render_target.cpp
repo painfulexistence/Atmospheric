@@ -45,6 +45,10 @@ void GPURenderTarget::Destroy() {
         wgpuRenderPassEncoderRelease(_activePass);
         _activePass = nullptr;
     }
+    if (_activeEnc) {
+        _activeEnc->pass = nullptr;
+        _activeEnc = nullptr;
+    }
     if (_colorView)   { wgpuTextureViewRelease(_colorView);   _colorView   = nullptr; }
     if (_depthView)   { wgpuTextureViewRelease(_depthView);   _depthView   = nullptr; }
     if (_colorTexture){ wgpuTextureRelease(_colorTexture);    _colorTexture = nullptr; }
@@ -80,6 +84,7 @@ void GPURenderTarget::Begin(CommandEncoder* enc) {
 
     _activePass  = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &passDesc);
     gpuEnc->pass = _activePass;
+    _activeEnc   = gpuEnc;
 }
 
 void GPURenderTarget::End() {
@@ -87,6 +92,10 @@ void GPURenderTarget::End() {
         wgpuRenderPassEncoderEnd(_activePass);
         wgpuRenderPassEncoderRelease(_activePass);
         _activePass = nullptr;
+    }
+    if (_activeEnc) {
+        _activeEnc->pass = nullptr;
+        _activeEnc = nullptr;
     }
     if (_colorView) { wgpuTextureViewRelease(_colorView); _colorView = nullptr; }
     if (_depthView) { wgpuTextureViewRelease(_depthView); _depthView = nullptr; }
