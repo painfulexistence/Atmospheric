@@ -1,4 +1,5 @@
 #include "voxel_chunk_component.hpp"
+#include "asset_manager.hpp"
 #include "graphics_server.hpp"
 #include "material.hpp"
 #include <algorithm>
@@ -23,7 +24,7 @@ VoxelChunkComponent::VoxelChunkComponent(GameObject* owner, GraphicsServer* gfx,
 }
 
 VoxelChunkComponent::~VoxelChunkComponent() {
-    delete _mesh;
+    AssetManager::Get().UnregisterMesh(_meshHandle);
 }
 
 void VoxelChunkComponent::OnAttach() {}
@@ -99,8 +100,9 @@ std::vector<VoxelVertex> VoxelChunkComponent::GenerateMeshData() {
 
 void VoxelChunkComponent::UploadMesh(const std::vector<VoxelVertex>& verts) {
     if (!_mesh) {
-        _mesh = new Mesh(MeshType::VOXEL);
+        _mesh = std::make_unique<Mesh>(MeshType::VOXEL);
         _mesh->SetMaterial(GetVoxelMaterial());
+        _meshHandle = AssetManager::Get().RegisterMesh(_mesh.get());
     }
     if (!verts.empty()) {
         _mesh->Update(verts);

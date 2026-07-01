@@ -45,20 +45,20 @@ static GLenum GetGLPrimitiveType(PrimitiveTopology topology) {
 }
 
 struct RenderBatch {
-    Mesh* mesh = nullptr;
+    MeshHandle mesh;
     std::vector<InstanceData> instances;
 };
 
 static std::vector<RenderBatch> BuildBatches(const std::vector<Renderer::SortableCommand>& queue) {
     std::vector<RenderBatch> batches;
     RenderBatch currentBatch;
-    currentBatch.mesh = queue[0].cmd.mesh;// TODO: maybe check if queue is empty
+    currentBatch.mesh = queue[0].cmd.mesh;
 
     for (const auto& sortable : queue) {
         const auto& cmd = sortable.cmd;
 
         if (currentBatch.mesh != cmd.mesh) {
-            if (currentBatch.mesh != nullptr) {
+            if (currentBatch.mesh.IsValid()) {
                 batches.push_back(std::move(currentBatch));
             }
             currentBatch.instances.clear();
@@ -225,7 +225,8 @@ void Renderer::SortAndBucket(const glm::vec3& cameraPos) {
 }
 
 uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& cameraPos) {
-    Material* mat = cmd.mesh->GetMaterial();
+    Mesh* meshPtr = AssetManager::Get().GetMeshPtr(cmd.mesh);
+    Material* mat = meshPtr ? meshPtr->GetMaterial() : nullptr;
     if (!mat) return 0;
 
     // Calculate depth (distance from camera)
@@ -236,9 +237,8 @@ uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& c
     int renderQueue = mat->GetFinalRenderQueue();
 
     // Get material and mesh IDs for batching
-    // TODO: Add proper ID system to Material and Mesh
     uint32_t materialID = reinterpret_cast<uintptr_t>(mat) & 0xFFFF;
-    uint32_t meshID = reinterpret_cast<uintptr_t>(cmd.mesh) & 0xFFFF;
+    uint32_t meshID = cmd.mesh.id & 0xFFFF;
 
     // Generate 64-bit sort key
     // [16 bits: render queue] [16 bits: depth] [16 bits: material] [16 bits: mesh]
@@ -269,7 +269,8 @@ void Renderer::SortTransparent() {
 
 void Renderer::BucketCommands(const glm::vec3& cameraPos) {
     for (const auto& cmd : _commandList) {
-        Material* mat = cmd.mesh->GetMaterial();
+        Mesh* meshPtr = AssetManager::Get().GetMeshPtr(cmd.mesh);
+        Material* mat = meshPtr ? meshPtr->GetMaterial() : nullptr;
         if (!mat) continue;
 
         int queue = mat->GetFinalRenderQueue();
@@ -638,11 +639,11 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
     );
 
     for (const auto& batch : batches) {
-        Mesh* mesh = batch.mesh;
+        Mesh* mesh = AssetManager::Get().GetMeshPtr(batch.mesh);
         const auto& instances = batch.instances;// NOTES: no need to check for empty instances here, as we only add
                                                 // batches with instances (and OpenGL will handle 0 instances whatever)
 
-        if (!mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
+        if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
@@ -706,10 +707,10 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
             );
 
             for (const auto& batch : batches) {
-                Mesh* mesh = batch.mesh;
+                Mesh* mesh = AssetManager::Get().GetMeshPtr(batch.mesh);
                 const auto& instances = batch.instances;
 
-                if (!mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
+                if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
                 glEnable(GL_DEPTH_TEST);
                 glDepthFunc(GL_LESS);
@@ -791,10 +792,10 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
     // 2. Drawing Phase
     for (const auto& batch : batches) {
-        Mesh* mesh = batch.mesh;
+        Mesh* mesh = AssetManager::Get().GetMeshPtr(batch.mesh);
         const auto& instances = batch.instances;
 
-        if (!mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
+        if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
         AE_GL_PROBE(renderer, fmt::format("Opaque pass: batch entry (type={})", (int)mesh->type));
 
@@ -831,9 +832,9 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             terrainShader->SetUniform(std::string("surf_params.ambient"), mesh->GetMaterial()->ambient);
             terrainShader->SetUniform(std::string("surf_params.shininess"), mesh->GetMaterial()->shininess);
 
-            const auto& td = mesh->terrainData.value_or(TerrainShaderData{});
-            terrainShader->SetUniform(std::string("tessellation_factor"), td.tessellationFactor);
-            terrainShader->SetUniform(std::string("height_scale"),         td.heightScale);
+            auto* tm = dynamic_cast<TerrainMaterial*>(mesh->GetMaterial());
+            terrainShader->SetUniform(std::string("tessellation_factor"), tm ? tm->tessellationFactor : 16.0f);
+            terrainShader->SetUniform(std::string("height_scale"),         tm ? tm->heightScale        : 32.0f);
             glActiveTexture(GL_TEXTURE7);
             TextureHandle heightMap = mesh->GetMaterial()->heightMap;
             if (heightMap.IsValid() && (uint32_t)heightMap != 0) {
@@ -1059,10 +1060,10 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
         batches = BuildBatches(renderer.GetOpaqueQueue());
     }
     for (const auto& batch : batches) {
-        Mesh* mesh = batch.mesh;
+        Mesh* mesh = AssetManager::Get().GetMeshPtr(batch.mesh);
         const auto& instances = batch.instances;
 
-        if (!mesh->initialized) throw std::runtime_error("Mesh uninitialized!");
+        if (!mesh || !mesh->initialized) throw std::runtime_error("Mesh uninitialized!");
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);

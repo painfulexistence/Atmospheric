@@ -1,5 +1,6 @@
 #pragma once
 #include "component.hpp"
+#include "globals.hpp"
 #include <memory>
 
 class GraphicsServer;
@@ -32,8 +33,8 @@ public:
     void OnAttach() override {}
     void OnDetach() override {}
 
-    Mesh* GetMesh() const { return _mesh; }
+    MeshHandle GetMesh() const { return _mesh; }
 
 private:
-    Mesh* _mesh = nullptr;
+    MeshHandle _mesh;
 };
