@@ -83,6 +83,9 @@ public:
     float     waveSpeed       =  1.0f;
     glm::vec3 waterFogColor   = {0.55f, 0.65f, 0.75f};
     float     waterFogDensity =  0.003f;
+    glm::vec3 deepColor       = {0.04f, 0.11f, 0.35f};
+    glm::vec3 shallowColor    = {0.686f, 0.933f, 0.933f};
+    float     beerCoef        =  0.095f;
 
     WaterMaterial() : Material(MaterialProps{}) {
         renderQueue     = RenderQueue::Transparent;

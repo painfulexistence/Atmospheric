@@ -13,6 +13,7 @@ public:
     std::string GetName() const override { return "Sun"; }
     void OnAttach() override;
     void OnDetach() override;
+    void DrawImGui() override;
 
     glm::vec3 billboardColor  = glm::vec3(1.0f, 0.4f, 0.0f) * 50.0f;
     float     billboardRadius = 20.0f;

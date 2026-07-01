@@ -1,5 +1,8 @@
 #include "renderer.hpp"
+#include <cctype>
 #include <cstring>
+#include <string>
+#include <utility>
 #include "asset_manager.hpp"
 #include "batch_renderer_2d.hpp"
 #include "canvas_drawable.hpp"
@@ -78,15 +81,53 @@ static std::vector<RenderBatch> BuildBatches(const std::vector<Renderer::Sortabl
 
 static constexpr int MAX_CANVAS_TEXTURES = 32;
 
+// Strips the leading digit-length prefix (GCC mangled names) and
+// "class "/"struct " prefix (MSVC) from a typeid name string.
+static std::string CleanTypeName(const char* raw) {
+    while (*raw && std::isdigit(static_cast<unsigned char>(*raw))) ++raw;
+    for (const char* prefix : {"class ", "struct "}) {
+        if (std::strncmp(raw, prefix, std::strlen(prefix)) == 0) {
+            raw += std::strlen(prefix);
+            break;
+        }
+    }
+    return raw;
+}
+
+RenderGraph::~RenderGraph() {
+    for (auto& e : _entries) e.timer.Destroy();
+}
+
 void RenderGraph::AddPass(std::unique_ptr<RenderPass> pass) {
-    _passes.push_back(std::move(pass));
+    PassEntry e;
+    e.name = CleanTypeName(typeid(*pass).name());
+    e.timer.Init();
+    e.pass = std::move(pass);
+    _entries.push_back(std::move(e));
 }
 
 void RenderGraph::Render(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
-    // Execute all passes in order (sorting, batching, drawing)
-    for (auto& pass : _passes) {
-        pass->Execute(ctx, renderer, enc);
+    for (auto& e : _entries) {
+#ifdef AE_GPU_TIMER_ENABLED
+        if (gpuProfilingEnabled) e.timer.Begin();
+#endif
+        e.pass->Execute(ctx, renderer, enc);
+#ifdef AE_GPU_TIMER_ENABLED
+        if (gpuProfilingEnabled) e.timer.End();
+#endif
     }
+}
+
+std::vector<std::pair<std::string, float>> RenderGraph::GetTimings() const {
+    std::vector<std::pair<std::string, float>> out;
+    out.reserve(_entries.size() + 1);
+    float total = 0.0f;
+    for (auto& e : _entries) {
+        out.push_back({e.name, e.timer.GetMs()});
+        total += e.timer.GetMs();
+    }
+    out.push_back({"[Total]", total});
+    return out;
 }
 
 void Renderer::Init(int width, int height) {
@@ -1415,10 +1456,23 @@ void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
     glClearColor(renderer.clearColor.x, renderer.clearColor.y, renderer.clearColor.z, renderer.clearColor.w);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    auto shader = ctx->GetShader("hdr");
+    const char* shaderName = "hdr";
+    switch (postEffect) {
+        case PostEffect::CRT:          shaderName = "post_crt";           break;
+        case PostEffect::VHS:          shaderName = "post_vhs";           break;
+        case PostEffect::ColorGrading: shaderName = "post_color_grading"; break;
+        case PostEffect::Posterize:    shaderName = "post_posterize";     break;
+        case PostEffect::Sobel:        shaderName = "post_sobel";         break;
+        case PostEffect::Edges:        shaderName = "post_edges";         break;
+        case PostEffect::Vignette:     shaderName = "post_vignette";      break;
+        default: break;
+    }
+
+    auto shader = ctx->GetShader(shaderName);
     shader->Activate();
     shader->SetUniform(std::string("color_map_unit"), (int)0);
     shader->SetUniform(std::string("exposure"),       tonemapEnabled ? exposure : 1.0f);
+    shader->SetUniform(std::string("u_time"),         renderer.frameTime);
     shader->SetUniform(std::string("u_ca_enabled"),   (int)caEnabled);
     shader->SetUniform(std::string("u_ca_strength"),  caStrength);
 

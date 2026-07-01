@@ -9,6 +9,21 @@ static std::string PreprocessShaderForWebGL(std::string src, ShaderType type) {
     std::regex versionRegex(R"(#version\s+[0-9]+(?:\s+core)?)");
     src = std::regex_replace(src, versionRegex, "#version 300 es");
 
+    // GLSL requires #version to be the literal first line. Desktop compilers
+    // tolerate leading comments/blank lines before it, but ANGLE (WebGL) rejects
+    // it outright and silently falls back to GLSL ES 1.00 defaults -- which then
+    // cascades into unrelated-looking errors like "'in' supported in GLSL ES 3.00
+    // only". If a source has header comments above #version, hoist the directive
+    // to line 1.
+    size_t versionPos = src.find("#version 300 es");
+    if (versionPos != std::string::npos && versionPos != 0) {
+        size_t lineEnd = src.find('\n', versionPos);
+        size_t lineLen = (lineEnd == std::string::npos ? src.size() : lineEnd + 1) - versionPos;
+        std::string versionLine = src.substr(versionPos, lineLen);
+        src.erase(versionPos, lineLen);
+        src = versionLine + src;
+    }
+
     // Insert precision qualifiers for fragment shaders if not present
     if (type == ShaderType::Fragment) {
         // Strip layout(location = ...) from fragment shader inputs (in)

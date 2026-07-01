@@ -220,15 +220,41 @@ void GraphicsServer::DrawImGui(float dt) {
           "Average frame rate: %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate
         );
         ImGui::ColorEdit3("Clear color", (float*)&renderer->clearColor);
+        if (auto* vcp = renderer->GetPass<VoxelChunkPass>()) {
+            const char* paletteNames[] = {
+                "1 - Warm Pink/Gold", "2 - Cool Blue/Purple", "3 - Earthy Green",
+                "4 - Forest",         "5 - Soft Cool (default)", "6 - Vivid Mint/Coral"
+            };
+            ImGui::Combo("Voxel Palette", &vcp->paletteIndex, paletteNames, 6);
+        }
         if (auto* bloom = renderer->GetPass<BloomPass>()) {
             ImGui::Checkbox("Bloom", &bloom->enabled);
         }
         if (auto* pp = renderer->GetPass<PostProcessPass>()) {
             ImGui::Checkbox("Tonemap", &pp->tonemapEnabled);
             ImGui::Checkbox("Chromatic Aberration", &pp->caEnabled);
+            const char* effectNames[] = { "None", "CRT", "VHS", "Color Grading", "Posterize", "Sobel", "Edges", "Vignette" };
+            int effectIdx = (int)pp->postEffect;
+            if (ImGui::Combo("Post Effect", &effectIdx, effectNames, 8))
+                pp->postEffect = (PostEffect)effectIdx;
         }
         ImGui::Text("Opaque Queue Size: %d", (int)renderer->GetOpaqueQueue().size());
 
+#ifdef AE_GPU_TIMER_ENABLED
+        ImGui::Separator();
+        ImGui::Checkbox("Perf GPU", &renderer->GpuProfilingEnabled());
+        if (renderer->GpuProfilingEnabled()) {
+            if (ImGui::TreeNode("GPU Pass Timings")) {
+                auto timings = renderer->GetTimings();
+                for (auto& [name, ms] : timings) {
+                    bool isTotal = (name == "[Total]");
+                    if (isTotal) ImGui::Separator();
+                    ImGui::Text("%-26s %.3f ms", name.c_str(), ms);
+                }
+                ImGui::TreePop();
+            }
+        }
+#endif
         ImGui::Separator();
 
         if (ImGui::TreeNode("Cameras")) {
