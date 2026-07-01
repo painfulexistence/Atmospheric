@@ -17,16 +17,22 @@
     "tracy",
     "rmlui",
     "box2d",
-    "flatbuffers",
-    {
-      "name": "curl",
-      "features": ["http2", "openssl"],
-      "platform": "!emscripten"
-    },
-    {
-      "name": "libwebsockets",
-      "features": ["openssl"],
-      "platform": "!emscripten"
+    "flatbuffers"
+  ],
+  "features": {
+    "networking": {
+      "description": "HTTP/2 and WebSocket networking (libcurl + libwebsockets, OpenSSL)",
+      "dependencies": [
+        {
+          "name": "curl",
+          "features": ["http2", "openssl"],
+          "platform": "!emscripten"
+        },
+        {
+          "name": "libwebsockets",
+          "platform": "!emscripten"
+        }
+      ]
     }
-  ]
+  }
 }
