@@ -4,6 +4,10 @@
 [![Web](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-web.yml/badge.svg)](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-web.yml)
 <br />
 
+> ⚠️ **On AI-Assisted Development**
+>
+> This codebase is currently heavily AI-assisted — I won't pretend otherwise. I find AI slop just as grating as you do: generated code that compiles but doesn't reflect intent, architecture that looks plausible but collapses under real requirements. That said, I'm genuinely experimenting with agentic workflows, on my own terms. My honest take: coding AI can meaningfully accelerate development when you have a clear picture of what you're building — and I do. The plan is to deslop the codebase incrementally; I'm still engineering the pipeline to do that with the rigor it deserves. Consider this an honest snapshot of that work in progress.
+
 **Atmospheric** is a cross-platform 3D game engine developed in C++.
 The project is a labor of love, acting as my stepping stone to gain a deeper understanding of graphics programming concepts and practices.
 
