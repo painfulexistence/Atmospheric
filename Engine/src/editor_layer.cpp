@@ -125,13 +125,17 @@ void EditorLayer::DrawAppView() {
     ImGui::Begin("Application");
     {
         ImGui::BeginChild("Scene", ImVec2(200, 400), true);
-        ImGui::Text("Scene (%d entities)", (uint32_t)_app->GetEntities().size());
+        const auto& entities = _app->GetEntities();
+        int rootCount = 0;
+        for (auto* e : entities) if (!e->parent) ++rootCount;
+        ImGui::Text("Scene (%d / %d)", rootCount, (int)entities.size());
         if (ImGui::Button("Reload Scene")) {
             _app->ReloadScene();
         }
         ImGui::Separator();
         ImGui::BeginGroup();
-        for (auto& entity : _app->GetEntities()) {
+        for (auto* entity : entities) {
+            if (entity->parent) continue;
             bool selected = entity == _selectedEntity;
             if (ImGui::Selectable(entity->GetName().c_str(), selected)) {
                 _selectedEntity = entity;

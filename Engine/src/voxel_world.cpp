@@ -21,10 +21,11 @@ static int WorldToChunkCoord(float w) {
 
 // ── public ───────────────────────────────────────────────────────────────────
 
-void VoxelWorld::Init(Application* app, int seed) {
+void VoxelWorld::Init(Application* app, int seed, GameObject* root) {
     _app  = app;
     _gfx  = app->GetGraphicsServer();
     _seed = seed;
+    _root = root;
 
     // Warm up chunk pool: pre-allocate the full view volume so initial load
     // doesn't hit any system allocator pressure.
@@ -47,6 +48,7 @@ void VoxelWorld::Init(Application* app, int seed) {
     // Sun
     GameObject* sunGO = app->CreateGameObject(glm::vec3(0));
     sunGO->SetName("Sun");
+    sunGO->parent = _root;
     sunGO->AddComponent(new LightComponent(sunGO, LightProps{
         .type      = LightType::Directional,
         .ambient   = glm::vec3(1.0f),
@@ -174,6 +176,7 @@ VoxelChunkComponent* VoxelWorld::AcquireSlot(glm::ivec3 pos) {
     GameObject* go = _app->CreateGameObject(worldPos);
     go->SetName("VoxelChunk_" + std::to_string(pos.x) + "_" +
                 std::to_string(pos.y) + "_" + std::to_string(pos.z));
+    go->parent = _root;
     auto* comp = new VoxelChunkComponent(go, _gfx, pos);
     go->AddComponent(comp);
     return comp;

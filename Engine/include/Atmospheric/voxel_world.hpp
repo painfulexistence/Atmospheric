@@ -30,7 +30,9 @@ public:
     VoxelWorld() = default;
     ~VoxelWorld() = default;
 
-    void Init(Application* app, int seed = 42);
+    // root: all game objects created by VoxelWorld (chunks, sun) are parented
+    // here so they don't pollute the top-level entity list.
+    void Init(Application* app, int seed = 42, GameObject* root = nullptr);
     void Update(float dt, const glm::vec3& cameraPos);
 
     // When true (default), chunks stream in/out as the camera moves.
@@ -57,6 +59,7 @@ private:
     GraphicsServer*                   _gfx       = nullptr;
     int                               _seed      = 42;
     glm::ivec3                        _lastCamChunk{INT_MIN, 0, INT_MIN};
+    GameObject*                       _root      = nullptr;
 
     VoxelChunkComponent* GetChunk(int cx, int cy, int cz) const;
     VoxelChunkComponent* AcquireSlot(glm::ivec3 pos);

@@ -49,7 +49,7 @@ public:
         : _seed(seed) { gameObject = go; }
     std::string GetName() const override { return "VoxelWorld"; }
     void OnAttach() override {
-        _world.Init(gameObject->GetApp(), _seed);
+        _world.Init(gameObject->GetApp(), _seed, gameObject);
         _camera = gameObject->GetApp()->GetMainCamera();
 
         // Water plane — large enough to cover the full view range plus fog horizon.
@@ -59,6 +59,7 @@ public:
         const float waterExt = ((2 * VoxelWorld::VIEW_X + 1) * VoxelChunkComponent::SIZE) * 2.0f;
         _waterGO = gameObject->GetApp()->CreateGameObject(glm::vec3(0.0f, WATER_LINE + 0.05f, 0.0f));
         _waterGO->SetName("VoxelWater");
+        _waterGO->parent = gameObject;
         _waterGO->AddComponent<WaterComponent>(WaterProps{
             .width        = waterExt,
             .depth        = waterExt,
