@@ -1,5 +1,9 @@
 option(BUILD_SHARED_LIBS OFF)
 
+# Self-sufficient regardless of how this directory is added (Atmospheric's own
+# top-level CMakeLists.txt, or a downstream project that bypasses it and calls
+# add_subdirectory(Atmospheric/Engine) directly, e.g. platforms/ios).
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/helpers")
 include(AssetPipeline)
 
 
@@ -532,7 +536,7 @@ if(EMSCRIPTEN)
             "${_AE_WASM_SRC}/index.d.ts"  "${_AE_WASM_OUT}/index.d.ts"
         COMMAND ${CMAKE_COMMAND} -Dsrc="$<TARGET_FILE_DIR:atmospheric>/atmos.worker.js"
             -Ddst="${_AE_WASM_OUT}/atmos.worker.js"
-            -P "${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/copy_if_exists.cmake"
         COMMENT "Assembling @atmospheric/engine package → ${_AE_WASM_OUT}"
     )
 endif()

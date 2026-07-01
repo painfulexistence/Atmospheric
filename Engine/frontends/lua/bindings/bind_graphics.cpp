@@ -166,18 +166,24 @@ void BindGraphicsAPI(sol::state& lua, GraphicsServer* graphics) {
     sol::table assets = atmos.create("assets");
 
     assets["createCubeMesh"] = [](const std::string& name, float size) -> Mesh* {
-        return AssetManager::Get().CreateCubeMesh(name, size);
+        auto& am = AssetManager::Get();
+        return am.GetMeshPtr(am.CreateCubeMesh(name, size));
     };
 
     assets["createSphereMesh"] = [](const std::string& name, float radius, int segments) -> Mesh* {
-        return AssetManager::Get().CreateSphereMesh(name, radius, segments);
+        auto& am = AssetManager::Get();
+        return am.GetMeshPtr(am.CreateSphereMesh(name, radius, segments));
     };
 
     assets["createPlaneMesh"] = [](const std::string& name, float width, float height) -> Mesh* {
-        return AssetManager::Get().CreatePlaneMesh(name, width, height);
+        auto& am = AssetManager::Get();
+        return am.GetMeshPtr(am.CreatePlaneMesh(name, width, height));
     };
 
-    assets["getMesh"] = [](const std::string& name) -> Mesh* { return AssetManager::Get().GetMesh(name); };
+    assets["getMesh"] = [](const std::string& name) -> Mesh* {
+        auto& am = AssetManager::Get();
+        return am.GetMeshPtr(am.GetMesh(name));
+    };
 
     assets["loadTexture"] = [](const std::string& path) { AssetManager::Get().LoadTextures({ path }); };
 

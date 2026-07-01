@@ -103,11 +103,11 @@ namespace Atmospheric {
 
     void ParticleServer::CreateSharedResources() {
         // The quad mesh for drawing particles
-        quad_mesh = AssetManager::Get().GetMesh("quad");
-        if (!quad_mesh) {
+        auto& am = AssetManager::Get();
+        quad_mesh = am.GetMesh("quad");
+        if (!quad_mesh.IsValid()) {
             auto quad = CreateQuadMesh();
-            AssetManager::Get().CreateMesh("quad", quad);
-            quad_mesh = AssetManager::Get().GetMesh("quad");
+            quad_mesh = am.CreateMesh("quad", quad);
         }
     }
 
@@ -207,7 +207,9 @@ namespace Atmospheric {
         glDepthMask(GL_FALSE);// Don't write to depth buffer
 
         // Bind the quad mesh once for all emitters
-        glBindVertexArray(quad_mesh->vao);
+        Mesh* quadMeshPtr = AssetManager::Get().GetMeshPtr(quad_mesh);
+        if (!quadMeshPtr) return;
+        glBindVertexArray(quadMeshPtr->vao);
 
         for (auto* emitter : emitters) {
             // Bind the buffer with the latest particle data as a storage buffer
@@ -231,7 +233,7 @@ namespace Atmospheric {
             glVertexAttribDivisor(4, 1);
 
             glDrawElementsInstanced(
-              GL_TRIANGLES, quad_mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, emitter->GetMaxParticles()
+              GL_TRIANGLES, quadMeshPtr->triCount * 3, GL_UNSIGNED_SHORT, 0, emitter->GetMaxParticles()
             );
 
             // Reset divisors
