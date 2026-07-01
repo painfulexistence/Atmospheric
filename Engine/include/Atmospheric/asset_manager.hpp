@@ -9,6 +9,8 @@
 
 class Mesh;
 class Material;
+class WaterMaterial;
+class TerrainMaterial;
 class ShaderProgram;
 struct ShaderProgramProps;
 struct MaterialProps;
@@ -47,6 +49,8 @@ public:
 
     Material* CreateMaterial(const std::string& name, const MaterialProps& props);
     Material* CreateMaterial(const MaterialProps& props);
+    WaterMaterial* CreateWaterMaterial();
+    TerrainMaterial* CreateTerrainMaterial();
     Material* GetMaterial(const std::string& name) const;
     Material* GetMaterialByID(uint32_t id) const;
     void LoadMaterials(const std::vector<MaterialProps>& materialDefs);

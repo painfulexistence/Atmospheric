@@ -2,6 +2,7 @@
 #include "globals.hpp"
 #include "buffer.hpp"
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
 enum class PolygonMode {
     Fill,
@@ -56,6 +57,8 @@ public:
         return static_cast<int>(renderQueue) + renderQueueOffset;
     }
 
+    virtual ~Material() = default;
+
     Material(const MaterialProps& props) {
         baseMap = props.baseMap;
         normalMap = props.normalMap;
@@ -71,4 +74,27 @@ public:
         primitiveType = props.primitiveType;
         polygonMode = props.polygonMode;
     }
+};
+
+class WaterMaterial : public Material {
+public:
+    float     waterLine       = 32.0f;
+    float     waveStrength    =  0.1f;
+    float     waveSpeed       =  1.0f;
+    glm::vec3 waterFogColor   = {0.55f, 0.65f, 0.75f};
+    float     waterFogDensity =  0.003f;
+
+    WaterMaterial() : Material(MaterialProps{}) {
+        renderQueue     = RenderQueue::Transparent;
+        cullFaceEnabled = false;
+    }
+};
+
+class TerrainMaterial : public Material {
+public:
+    float heightScale        = 32.0f;
+    float tessellationFactor = 16.0f;
+
+    TerrainMaterial() : Material(MaterialProps{}) {}
+    explicit TerrainMaterial(const MaterialProps& props) : Material(props) {}
 };

@@ -396,6 +396,20 @@ Material* AssetManager::CreateMaterial(const MaterialProps& props) {
     return material;
 }
 
+WaterMaterial* AssetManager::CreateWaterMaterial() {
+    auto* mat = new WaterMaterial();
+    materials.push_back(mat);
+    _materialCache["water_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return mat;
+}
+
+TerrainMaterial* AssetManager::CreateTerrainMaterial() {
+    auto* mat = new TerrainMaterial();
+    materials.push_back(mat);
+    _materialCache["terrain_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return mat;
+}
+
 Material* AssetManager::GetMaterial(const std::string& name) const {
     auto it = _materialCache.find(name);
     if (it != _materialCache.end()) {
