@@ -391,17 +391,19 @@ Material* AssetManager::CreateMaterial(const MaterialProps& props) {
 }
 
 WaterMaterial* AssetManager::CreateWaterMaterial() {
-    auto* mat = new WaterMaterial();
-    materials.push_back(mat);
+    auto material = std::make_unique<WaterMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
     _materialCache["water_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
-    return mat;
+    return ptr;
 }
 
 TerrainMaterial* AssetManager::CreateTerrainMaterial() {
-    auto* mat = new TerrainMaterial();
-    materials.push_back(mat);
+    auto material = std::make_unique<TerrainMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
     _materialCache["terrain_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
-    return mat;
+    return ptr;
 }
 
 Material* AssetManager::GetMaterial(const std::string& name) const {
