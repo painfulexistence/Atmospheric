@@ -360,6 +360,7 @@ if(AE_USE_NETWORKING)
         src/http_client.cpp
         src/websocket_client.cpp
         src/network_subsystem.cpp
+        src/udp_relay_server.cpp
     )
     if(NOT EMSCRIPTEN)
         find_package(CURL REQUIRED)

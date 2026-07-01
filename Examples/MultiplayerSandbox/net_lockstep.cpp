@@ -146,7 +146,54 @@ void LockstepNet::Shutdown() {
         CloseSocket(sock);
         sock = kInvalidSocket;
     }
-    state = State::Idle;
+    state      = State::Idle;
+    havePeer   = false;
+    peerAddr   = 0;
+    peerPort   = 0;
+    useRelay   = false;
+    relayRoomId = 0;
+}
+
+bool LockstepNet::StartRelayHost(const std::string& relayIp, uint16_t relayPort,
+                                   uint32_t roomId, uint32_t s, int delay) {
+    if (!OpenSocket(0)) { state = State::Failed; return false; }
+    in_addr a{};
+    if (inet_pton(AF_INET, relayIp.c_str(), &a) != 1) {
+        error = "invalid relay address: " + relayIp;
+        state = State::Failed;
+        return false;
+    }
+    mode        = Mode::Host;
+    state       = State::Connecting;
+    seed        = s;
+    inputDelay  = delay;
+    localPlayer = 0;
+    peerAddr    = a.s_addr;
+    peerPort    = htons(relayPort);
+    havePeer    = true; // always send to relay from the start
+    useRelay    = true;
+    relayRoomId = roomId;
+    return true;
+}
+
+bool LockstepNet::StartRelayClient(const std::string& relayIp, uint16_t relayPort,
+                                    uint32_t roomId) {
+    if (!OpenSocket(0)) { state = State::Failed; return false; }
+    in_addr a{};
+    if (inet_pton(AF_INET, relayIp.c_str(), &a) != 1) {
+        error = "invalid relay address: " + relayIp;
+        state = State::Failed;
+        return false;
+    }
+    mode        = Mode::Client;
+    state       = State::Connecting;
+    localPlayer = 1;
+    peerAddr    = a.s_addr;
+    peerPort    = htons(relayPort);
+    havePeer    = true;
+    useRelay    = true;
+    relayRoomId = roomId;
+    return true;
 }
 
 void LockstepNet::SendRaw(const uint8_t* data, int len) {
@@ -155,7 +202,18 @@ void LockstepNet::SendRaw(const uint8_t* data, int len) {
     to.sin_family = AF_INET;
     to.sin_addr.s_addr = peerAddr;
     to.sin_port = peerPort;
-    ::sendto(sock, reinterpret_cast<const char*>(data), len, 0, reinterpret_cast<sockaddr*>(&to), sizeof(to));
+    if (useRelay) {
+        // Prepend [roomId: uint32_t LE] so the relay can route the packet.
+        uint8_t relayBuf[4 + 1500];
+        if (len > 1500) return;
+        PutU32(relayBuf, relayRoomId);
+        std::memcpy(relayBuf + 4, data, len);
+        ::sendto(sock, reinterpret_cast<const char*>(relayBuf), 4 + len, 0,
+                 reinterpret_cast<sockaddr*>(&to), sizeof(to));
+    } else {
+        ::sendto(sock, reinterpret_cast<const char*>(data), len, 0,
+                 reinterpret_cast<sockaddr*>(&to), sizeof(to));
+    }
 }
 
 void LockstepNet::SendHello(uint32_t nowMs) {
@@ -219,7 +277,13 @@ void LockstepNet::HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, 
 
     switch (type) {
     case PKT_HELLO:
-        if (mode == Mode::Host) SendWelcome();// client missed our reply
+        if (mode == Mode::Host) {
+            // In relay mode the host pre-registers the relay as its peer and
+            // stays Connecting until the first forwarded HELLO arrives.
+            if (useRelay && state == State::Connecting)
+                state = State::Running;
+            SendWelcome();
+        }
         break;
     case PKT_WELCOME:
         if (mode == Mode::Client && state == State::Connecting) {
@@ -288,7 +352,10 @@ void LockstepNet::Pump(uint32_t nowMs) {
         HandlePacket(buf, n, from.sin_addr.s_addr, from.sin_port, nowMs);
     }
 
-    if (mode == Mode::Client && state == State::Connecting) {
+    // Client always sends HELLOs while connecting.
+    // Host in relay mode also sends HELLOs so the relay can register its address
+    // and start forwarding the client's HELLOs back to it.
+    if (state == State::Connecting && (mode == Mode::Client || useRelay)) {
         SendHello(nowMs);
     }
     if (state == State::Running) {
@@ -306,33 +373,29 @@ void LockstepNet::Pump(uint32_t nowMs) {
 
 #else// __EMSCRIPTEN__: no UDP sockets in the browser; solo mode only
 
-bool LockstepNet::OpenSocket(uint16_t) {
-    return false;
-}
-bool LockstepNet::StartHost(uint16_t, uint32_t s, int) {
-    StartSolo(s);
-    return true;
-}
+bool LockstepNet::OpenSocket(uint16_t) { return false; }
+bool LockstepNet::StartHost(uint16_t, uint32_t s, int) { StartSolo(s); return true; }
 bool LockstepNet::StartClient(const std::string&, uint16_t) {
     error = "networking is not available in web builds";
     state = State::Failed;
     return false;
 }
-void LockstepNet::Shutdown() {
-    state = State::Idle;
+bool LockstepNet::StartRelayHost(const std::string&, uint16_t, uint32_t, uint32_t s, int) {
+    StartSolo(s);
+    return true;
 }
-void LockstepNet::SendRaw(const uint8_t*, int) {
+bool LockstepNet::StartRelayClient(const std::string&, uint16_t, uint32_t) {
+    error = "networking is not available in web builds";
+    state = State::Failed;
+    return false;
 }
-void LockstepNet::SendHello(uint32_t) {
-}
-void LockstepNet::SendWelcome() {
-}
-void LockstepNet::SendInputs() {
-}
-void LockstepNet::HandlePacket(const uint8_t*, int, uint32_t, uint16_t, uint32_t) {
-}
-void LockstepNet::Pump(uint32_t) {
-}
+void LockstepNet::Shutdown()                                        { state = State::Idle; }
+void LockstepNet::SendRaw(const uint8_t*, int)                      {}
+void LockstepNet::SendHello(uint32_t)                               {}
+void LockstepNet::SendWelcome()                                     {}
+void LockstepNet::SendInputs()                                      {}
+void LockstepNet::HandlePacket(const uint8_t*, int, uint32_t, uint16_t, uint32_t) {}
+void LockstepNet::Pump(uint32_t)                                    {}
 
 #endif
 
