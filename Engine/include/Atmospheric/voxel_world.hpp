@@ -35,9 +35,9 @@ public:
     void Init(Application* app, int seed = 42, GameObject* root = nullptr);
     void Update(float dt, const glm::vec3& cameraPos);
 
-    // When true (default), chunks stream in/out as the camera moves.
-    // When false, only the initial view volume loaded in Init() is kept.
-    bool infiniteMode = true;
+    // When true, chunks stream in/out as the camera moves.
+    // When false (default), only the initial view volume loaded in Init() is kept.
+    bool infiniteMode = false;
 
     void SubmitRenderCommands(Renderer* renderer, const glm::mat4& viewProj,
                               const glm::vec3& cameraPos);
