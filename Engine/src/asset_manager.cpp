@@ -25,6 +25,11 @@ TextureHandle::TextureHandle(const std::string& path) {
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+#define TINYGLTF_NO_INCLUDE_STB_IMAGE
+#define TINYGLTF_NO_INCLUDE_STB_IMAGE_WRITE
+#define TINYGLTF_IMPLEMENTATION
+#include <tiny_gltf.h>
+
 // #define TINYOBJLOADER_IMPLEMENTATION
 // #include "tiny_obj_loader.h"
 
@@ -898,34 +903,258 @@ std::shared_ptr<Mesh> AssetManager::LoadOBJ(const std::string& path) {
     std::vector<Vertex> vertices;
     std::vector<uint16_t> indices;
 
-    // tinyobj::attrib_t attrib;
-    // std::vector<tinyobj::shape_t> shapes;
-    // std::vector<tinyobj::material_t> materials;
-    // std::string err;
-
-    // if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &err, path.c_str())) {
-    //     throw std::runtime_error(fmt::format("Failed to load model: {}", err));
-    // }
-
-    // for (const auto& shape : shapes) {
-    //     for (const auto& index : shape.mesh.indices) {
-    //         Vertex vert = {};
-    //         vert.position = { attrib.vertices[3 * index.vertex_index + 0],
-    //                           attrib.vertices[3 * index.vertex_index + 1],
-    //                           attrib.vertices[3 * index.vertex_index + 2] };
-    //         vert.normal = { attrib.normals[3 * index.normal_index + 0],
-    //                         attrib.normals[3 * index.normal_index + 1],
-    //                         attrib.normals[3 * index.normal_index + 2] };
-    //         vert.uv = { attrib.texcoords[2 * index.texcoord_index + 0],
-    //                     1.0 - attrib.texcoords[2 * index.texcoord_index + 1] };
-    //         vertices.push_back(vert);
-    //         indices.push_back(indices.size());
-    //     }
-    // }
-
     auto mesh = std::make_shared<Mesh>(MeshType::PRIM);
     mesh->Initialize(vertices, indices);
 
+    return mesh;
+}
+
+std::shared_ptr<Mesh> AssetManager::LoadGLTF(const std::string& path) {
+    tinygltf::Model model;
+    tinygltf::TinyGLTF loader;
+    std::string err, warn;
+
+    // Custom image loader: decode embedded image bytes with explicit flip for OpenGL UV origin.
+    // This runs during LoadASCIIFromFile / LoadBinaryFromFile before we get control back.
+    loader.SetImageLoader(
+        [](tinygltf::Image* img, const int /*imageIdx*/,
+           std::string* /*err*/, std::string* /*warn*/,
+           int /*reqWidth*/, int /*reqHeight*/,
+           const unsigned char* bytes, int size, void* /*userdata*/) -> bool {
+            int w, h, c;
+            stbi_set_flip_vertically_on_load(true);
+            unsigned char* data = stbi_load_from_memory(bytes, size, &w, &h, &c, 4);
+            stbi_set_flip_vertically_on_load(false);
+            if (!data) return false;
+            img->width     = w;
+            img->height    = h;
+            img->component = 4;
+            img->image.assign(data, data + w * h * 4);
+            stbi_image_free(data);
+            return true;
+        },
+        nullptr
+    );
+
+    bool result;
+    if (path.size() >= 4 && path.compare(path.size() - 4, 4, ".glb") == 0) {
+        result = loader.LoadBinaryFromFile(&model, &err, &warn, path);
+    } else {
+        result = loader.LoadASCIIFromFile(&model, &err, &warn, path);
+    }
+
+    if (!warn.empty()) Console::Get()->Warn(fmt::format("LoadGLTF '{}': {}", path, warn));
+    if (!err.empty())  Console::Get()->Warn(fmt::format("LoadGLTF '{}' error: {}", path, err));
+    if (!result || model.meshes.empty()) return nullptr;
+
+    // Upload each referenced image to GPU immediately; CPU copy is discarded afterwards.
+    // texHandles[i] corresponds to model.textures[i].
+    std::vector<TextureHandle> texHandles;
+    texHandles.reserve(model.textures.size());
+    for (const auto& tex : model.textures) {
+        if (tex.source < 0 || tex.source >= static_cast<int>(model.images.size())) {
+            texHandles.emplace_back();
+            continue;
+        }
+        const auto& img = model.images[tex.source];
+        if (!img.image.empty()) {
+            auto cpuImg = std::make_shared<Image>(
+                img.width, img.height, img.component,
+                const_cast<unsigned char*>(img.image.data())
+            );
+            texHandles.push_back(CreateTextureFromImage(cpuImg));
+        } else if (!img.uri.empty()) {
+            texHandles.push_back(CreateTexture(img.uri));
+        } else {
+            texHandles.emplace_back();
+        }
+    }
+
+    // Build a Material from a GLTF material index. Only the first material
+    // encountered is assigned to the returned Mesh; multi-material support
+    // requires a Scene-level concept (future work).
+    auto buildMaterial = [&](int matIdx) -> Material* {
+        if (matIdx < 0 || matIdx >= static_cast<int>(model.materials.size())) return nullptr;
+        const auto& mat = model.materials[matIdx];
+        auto texAt = [&](int texIdx) -> TextureHandle {
+            return (texIdx >= 0 && texIdx < static_cast<int>(texHandles.size()))
+                       ? texHandles[texIdx]
+                       : TextureHandle{};
+        };
+        MaterialProps props;
+        props.baseMap      = texAt(mat.pbrMetallicRoughness.baseColorTexture.index);
+        props.normalMap    = texAt(mat.normalTexture.index);
+        props.aoMap        = texAt(mat.occlusionTexture.index);
+        props.roughnessMap = texAt(mat.pbrMetallicRoughness.metallicRoughnessTexture.index);
+        props.metallicMap  = texAt(mat.pbrMetallicRoughness.metallicRoughnessTexture.index);
+        const std::string matName = mat.name.empty() ? "gltf_mat" : mat.name;
+        return CreateMaterial(matName, props);
+    };
+
+    // ── Accessor helpers with correct byteStride support ─────────────────────
+    // GLTF allows interleaved vertex buffers: multiple attributes share one
+    // bufferView with byteStride = total vertex size. A stride of 0 means
+    // tightly packed (stride == component size * component count).
+
+    auto readFloat3 = [&](const tinygltf::Accessor& acc) {
+        const auto& bv  = model.bufferViews[acc.bufferView];
+        const auto& buf = model.buffers[bv.buffer];
+        const size_t stride = bv.byteStride ? bv.byteStride : sizeof(float) * 3;
+        const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
+        std::vector<glm::vec3> out(acc.count);
+        for (size_t i = 0; i < acc.count; ++i) {
+            const auto* v = reinterpret_cast<const float*>(base + i * stride);
+            out[i] = { v[0], v[1], v[2] };
+        }
+        return out;
+    };
+
+    auto readFloat4 = [&](const tinygltf::Accessor& acc) {
+        const auto& bv  = model.bufferViews[acc.bufferView];
+        const auto& buf = model.buffers[bv.buffer];
+        const size_t stride = bv.byteStride ? bv.byteStride : sizeof(float) * 4;
+        const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
+        std::vector<glm::vec4> out(acc.count);
+        for (size_t i = 0; i < acc.count; ++i) {
+            const auto* v = reinterpret_cast<const float*>(base + i * stride);
+            out[i] = { v[0], v[1], v[2], v[3] };
+        }
+        return out;
+    };
+
+    // TEXCOORD may be FLOAT, UNSIGNED_BYTE normalized, or UNSIGNED_SHORT normalized per GLTF spec.
+    auto readTexcoord = [&](const tinygltf::Accessor& acc) {
+        const auto& bv  = model.bufferViews[acc.bufferView];
+        const auto& buf = model.buffers[bv.buffer];
+        const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
+        std::vector<glm::vec2> out(acc.count);
+        switch (acc.componentType) {
+        case TINYGLTF_COMPONENT_TYPE_FLOAT: {
+            const size_t stride = bv.byteStride ? bv.byteStride : sizeof(float) * 2;
+            for (size_t i = 0; i < acc.count; ++i) {
+                const auto* v = reinterpret_cast<const float*>(base + i * stride);
+                out[i] = { v[0], v[1] };
+            }
+            break;
+        }
+        case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE: {
+            const size_t stride = bv.byteStride ? bv.byteStride : 2u;
+            for (size_t i = 0; i < acc.count; ++i) {
+                const uint8_t* v = base + i * stride;
+                out[i] = { v[0] / 255.0f, v[1] / 255.0f };
+            }
+            break;
+        }
+        case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: {
+            const size_t stride = bv.byteStride ? bv.byteStride : sizeof(uint16_t) * 2;
+            for (size_t i = 0; i < acc.count; ++i) {
+                const auto* v = reinterpret_cast<const uint16_t*>(base + i * stride);
+                out[i] = { v[0] / 65535.0f, v[1] / 65535.0f };
+            }
+            break;
+        }
+        default:
+            Console::Get()->Warn(fmt::format("LoadGLTF: unsupported TEXCOORD component type {}", acc.componentType));
+            break;
+        }
+        return out;
+    };
+
+    // ── Concatenate all primitives from all meshes into a single Mesh ─────────
+    // This flattening approach means one GPU buffer upload and no per-primitive
+    // draw call overhead. Multi-material rendering is a Scene-level concern.
+    std::vector<Vertex>   allVerts;
+    std::vector<uint16_t> allIndices;
+    Material* material = nullptr;
+
+    for (const auto& srcMesh : model.meshes) {
+        for (const auto& prim : srcMesh.primitives) {
+            if (!prim.attributes.count("POSITION")) continue;
+
+            const size_t vertBase  = allVerts.size();
+            const auto&  posAcc    = model.accessors[prim.attributes.at("POSITION")];
+            const size_t vertCount = posAcc.count;
+
+            if (vertBase + vertCount > 65535) {
+                Console::Get()->Warn(fmt::format(
+                    "LoadGLTF '{}': vertex count exceeds uint16_t limit, primitive skipped. "
+                    "Consider splitting the mesh or upgrading to 32-bit indices.",
+                    path
+                ));
+                continue;
+            }
+
+            auto positions = readFloat3(posAcc);
+
+            std::vector<glm::vec3> normals(vertCount, glm::vec3(0.f, 1.f, 0.f));
+            if (prim.attributes.count("NORMAL"))
+                normals = readFloat3(model.accessors[prim.attributes.at("NORMAL")]);
+
+            std::vector<glm::vec2> uvs(vertCount, glm::vec2(0.f));
+            if (prim.attributes.count("TEXCOORD_0"))
+                uvs = readTexcoord(model.accessors[prim.attributes.at("TEXCOORD_0")]);
+
+            // GLTF TANGENT is vec4: xyz = tangent direction, w = bitangent handedness.
+            std::vector<glm::vec4> tangents4(vertCount, glm::vec4(1.f, 0.f, 0.f, 1.f));
+            if (prim.attributes.count("TANGENT"))
+                tangents4 = readFloat4(model.accessors[prim.attributes.at("TANGENT")]);
+
+            for (size_t i = 0; i < vertCount; ++i) {
+                const glm::vec3 t = glm::vec3(tangents4[i]);
+                const glm::vec3 b = glm::cross(normals[i], t) * tangents4[i].w;
+                allVerts.push_back({ positions[i], uvs[i], normals[i], t, b });
+            }
+
+            // Index buffer: GLTF scalar accessors are always tightly packed (byteStride == 0).
+            if (prim.indices >= 0) {
+                const auto&    idxAcc = model.accessors[prim.indices];
+                const auto&    bv     = model.bufferViews[idxAcc.bufferView];
+                const auto&    buf    = model.buffers[bv.buffer];
+                const uint8_t* base   = buf.data.data() + bv.byteOffset + idxAcc.byteOffset;
+
+                switch (idxAcc.componentType) {
+                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
+                    for (size_t i = 0; i < idxAcc.count; ++i) {
+                        uint32_t idx;
+                        std::memcpy(&idx, base + i * sizeof(uint32_t), sizeof(uint32_t));
+                        allIndices.push_back(static_cast<uint16_t>(vertBase + idx));
+                    }
+                    break;
+                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+                    for (size_t i = 0; i < idxAcc.count; ++i) {
+                        uint16_t idx;
+                        std::memcpy(&idx, base + i * sizeof(uint16_t), sizeof(uint16_t));
+                        allIndices.push_back(static_cast<uint16_t>(vertBase + idx));
+                    }
+                    break;
+                case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+                    for (size_t i = 0; i < idxAcc.count; ++i)
+                        allIndices.push_back(static_cast<uint16_t>(vertBase + base[i]));
+                    break;
+                default:
+                    Console::Get()->Warn(fmt::format("LoadGLTF: unsupported index component type {}", idxAcc.componentType));
+                    break;
+                }
+            } else {
+                for (size_t i = 0; i < vertCount; ++i)
+                    allIndices.push_back(static_cast<uint16_t>(vertBase + i));
+            }
+
+            if (!material && prim.material >= 0)
+                material = buildMaterial(prim.material);
+        }
+    }
+
+    if (allVerts.empty()) {
+        Console::Get()->Warn(fmt::format("LoadGLTF: no geometry found in '{}'", path));
+        return nullptr;
+    }
+
+    auto mesh = std::make_shared<Mesh>(MeshType::PRIM);
+    mesh->Initialize(allVerts, allIndices);
+    if (material) mesh->SetMaterial(material);
+
+    ENGINE_LOG("LoadGLTF '{}': {} verts, {} indices", path, allVerts.size(), allIndices.size());
     return mesh;
 }
 
