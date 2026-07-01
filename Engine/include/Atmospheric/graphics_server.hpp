@@ -70,8 +70,8 @@ public:
     int _debugLineCount  = 0;
     int _canvasQuadCount = 0;
 
-    Mesh* debugLineMesh = nullptr;
-    Mesh* canvasMesh    = nullptr;
+    std::unique_ptr<Mesh> debugLineMesh;
+    std::unique_ptr<Mesh> canvasMesh;
     ShaderProgram* debugShader  = nullptr;
     ShaderProgram* canvasShader = nullptr;
 
@@ -104,7 +104,7 @@ public:
 
     ShaderProgram* GetShader(const std::string& name) const;
     ShaderProgram* GetShaderByID(uint32_t id) const;
-    Mesh* GetMesh(const std::string& name) const;
+    MeshHandle GetMesh(const std::string& name) const;
 
     MeshComponent*   RegisterMesh(MeshComponent* mesh);
     CameraComponent* RegisterCamera(CameraComponent* camera);

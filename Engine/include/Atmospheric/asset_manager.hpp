@@ -65,20 +65,21 @@ public:
     std::string GetTexturePath(GLuint id) const;
     void LoadDefaultTextures();
     void LoadTextures(const std::vector<std::string>& paths);
-    Mesh* CreateMesh(Mesh* mesh = nullptr);
-    Mesh* CreateMesh(const std::string& name, Mesh* mesh = nullptr);
-    Mesh* CreateCubeMesh(const std::string& name, float size = 1.0f);
-    Mesh* CreatePlaneMesh(const std::string& name, float width, float height);
-    Mesh* CreatePlaneMeshSubdivided(const std::string& name, float width, float height, int subdivisions);
-    Mesh* CreateSphereMesh(const std::string& name, float radius = 0.5f, int division = 18);
-    Mesh* CreateCapsuleMesh(const std::string& name, float radius = 0.5f, float height = 3.0f);
-    Mesh* CreateTerrainMesh(const std::string& name, float worldSize = 1024.f, int resolution = 10);
-    Mesh* GetMesh(const std::string& name) const;
+    MeshHandle CreateMesh(Mesh* mesh = nullptr);
+    MeshHandle CreateMesh(const std::string& name, Mesh* mesh = nullptr);
+    MeshHandle CreateCubeMesh(const std::string& name, float size = 1.0f);
+    MeshHandle CreatePlaneMesh(const std::string& name, float width, float height);
+    MeshHandle CreatePlaneMeshSubdivided(const std::string& name, float width, float height, int subdivisions);
+    MeshHandle CreateSphereMesh(const std::string& name, float radius = 0.5f, int division = 18);
+    MeshHandle CreateCapsuleMesh(const std::string& name, float radius = 0.5f, float height = 3.0f);
+    MeshHandle CreateTerrainMesh(const std::string& name, float worldSize = 1024.f, int resolution = 10);
+    MeshHandle GetMesh(const std::string& name) const;
+    Mesh* GetMeshPtr(MeshHandle handle) const;
     // Upload a normalized [0,1] float grid as a GL_R8 grayscale texture.
     // Returns the scene-texture index usable as Material::heightMap.
     TextureHandle CreateHeightmapTexture(const std::string& name, const std::vector<float>& grid, int width, int height);
     std::shared_ptr<Mesh> LoadOBJ(const std::string& path);
-    std::shared_ptr<Mesh> LoadGLTF(const std::string& path);
+    MeshHandle LoadGLTF(const std::string& path);
 
     // ========== Resource Access ==========
     const std::vector<GLuint>& GetTextures() const {
@@ -124,9 +125,9 @@ private:
     uint32_t _nextTextureID = 0;
 
     // Meshes
-    std::vector<Mesh*> meshes;
-    std::unordered_map<std::string, Mesh*> _meshCache;
-    uint32_t _nextMeshID = 0;
+    std::unordered_map<uint32_t, Mesh*> _meshByID;
+    std::unordered_map<std::string, uint32_t> _meshCache;
+    uint32_t _nextMeshID = 1;
 
 #ifdef AE_USE_BASIS_UNIVERSAL
     // KTX2 / Basis Universal GPU-compressed texture loader.

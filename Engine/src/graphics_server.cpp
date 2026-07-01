@@ -121,10 +121,10 @@ void GraphicsServer::Init(Application* app) {
         renderer->Resize(newWidth, newHeight);
     });
 
-    debugLineMesh = new Mesh(MeshType::DEBUG);
+    debugLineMesh = std::make_unique<Mesh>(MeshType::DEBUG);
     debugLineMesh->updateFreq = UpdateFrequency::Dynamic;
 
-    canvasMesh = new Mesh(MeshType::CANVAS);
+    canvasMesh = std::make_unique<Mesh>(MeshType::CANVAS);
     canvasMesh->updateFreq = UpdateFrequency::Dynamic;
 
     try { debugShader = AssetManager::Get().GetShader("debug_line"); } catch (...) { debugShader = nullptr; }
@@ -161,7 +161,9 @@ void GraphicsServer::Render(CameraComponent* camera, float dt) {
         totalCount++;
         if (!r->gameObject->isActive) continue;
 
-        Mesh* mesh = r->GetMesh();
+        MeshHandle meshHandle = r->GetMesh();
+        if (!meshHandle.IsValid()) continue;
+        Mesh* mesh = AssetManager::Get().GetMeshPtr(meshHandle);
         if (!mesh) continue;
 
         // Frustum Culling
@@ -184,7 +186,7 @@ void GraphicsServer::Render(CameraComponent* camera, float dt) {
             }
         }
 
-        RenderCommand cmd{ .mesh = mesh, .transform = transform };
+        RenderCommand cmd{ .mesh = meshHandle, .transform = transform };
         renderer->SubmitCommand(cmd);
     }
 
@@ -374,7 +376,7 @@ ShaderProgram* GraphicsServer::GetShaderByID(uint32_t id) const {
     return AssetManager::Get().GetShaderByID(id);
 }
 
-Mesh* GraphicsServer::GetMesh(const std::string& name) const {
+MeshHandle GraphicsServer::GetMesh(const std::string& name) const {
     return AssetManager::Get().GetMesh(name);
 }
 

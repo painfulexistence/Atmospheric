@@ -23,7 +23,6 @@ VoxelChunkComponent::VoxelChunkComponent(GameObject* owner, GraphicsServer* gfx,
 }
 
 VoxelChunkComponent::~VoxelChunkComponent() {
-    delete _mesh;
 }
 
 void VoxelChunkComponent::OnAttach() {}
@@ -99,7 +98,7 @@ std::vector<VoxelVertex> VoxelChunkComponent::GenerateMeshData() {
 
 void VoxelChunkComponent::UploadMesh(const std::vector<VoxelVertex>& verts) {
     if (!_mesh) {
-        _mesh = new Mesh(MeshType::VOXEL);
+        _mesh = std::make_unique<Mesh>(MeshType::VOXEL);
         _mesh->SetMaterial(GetVoxelMaterial());
     }
     if (!verts.empty()) {

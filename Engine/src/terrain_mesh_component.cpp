@@ -16,15 +16,18 @@ TerrainMeshComponent::TerrainMeshComponent(
 
     auto& am = AssetManager::Get();
     _mesh = am.CreateTerrainMesh("Terrain_" + owner->GetName(), props.worldSize, props.resolution);
+    Mesh* meshPtr = am.GetMeshPtr(_mesh);
 
     Material* mat = props.material;
     if (!mat)
         mat = am.CreateMaterial(MaterialProps{});
 
-    _mesh->terrainData = TerrainShaderData{
-        .heightScale        = props.heightScale,
-        .tessellationFactor = props.tessellationFactor,
-    };
+    if (meshPtr) {
+        meshPtr->terrainData = TerrainShaderData{
+            .heightScale        = props.heightScale,
+            .tessellationFactor = props.tessellationFactor,
+        };
+    }
 
     // Always bake the height grid to a GPU texture so callers don't need to
     // manually wire up mat->heightMap via LoadScene.
@@ -38,6 +41,6 @@ TerrainMeshComponent::TerrainMeshComponent(
         mat->heightMap = hmap;
     }
 
-    _mesh->SetMaterial(mat);
+    if (meshPtr) meshPtr->SetMaterial(mat);
     owner->AddComponent<MeshComponent>(_mesh);
 }

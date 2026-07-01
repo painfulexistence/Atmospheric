@@ -151,11 +151,12 @@ void AssetManager::Clear() {
     _nextShaderID = 0;
 
     // Clean up meshes
-    for (auto* mesh : meshes) {
+    for (auto& [id, mesh] : _meshByID) {
         delete mesh;
     }
-    meshes.clear();
+    _meshByID.clear();
     _meshCache.clear();
+    _nextMeshID = 1;
 
     // Clean up materials
     for (auto* material : materials) {
@@ -199,9 +200,10 @@ void AssetManager::ClearSceneAssets() {
     _materialCache.clear();
     _nextMaterialID = 0;
 
-    for (auto* m : meshes) delete m;
-    meshes.clear();
+    for (auto& [id, m] : _meshByID) delete m;
+    _meshByID.clear();
     _meshCache.clear();
+    _nextMeshID = 1;
 
     _imageCache.clear();
 }
@@ -796,35 +798,34 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
 // GPU Mesh Management
 // ============================================================================
 
-Mesh* AssetManager::CreateMesh(Mesh* mesh) {
-    return CreateMesh("unnamed_" + std::to_string(_nextMeshID++), mesh);
+MeshHandle AssetManager::CreateMesh(Mesh* mesh) {
+    return CreateMesh("unnamed_" + std::to_string(_nextMeshID), mesh);
 }
 
-Mesh* AssetManager::CreateMesh(const std::string& name, Mesh* mesh) {
+MeshHandle AssetManager::CreateMesh(const std::string& name, Mesh* mesh) {
     if (!mesh) {
         mesh = new Mesh();
     }
-    meshes.push_back(mesh);
-    _meshCache[name] = mesh;
-    return mesh;
+    uint32_t id = _nextMeshID++;
+    _meshByID[id] = mesh;
+    _meshCache[name] = id;
+    return MeshHandle(id);
 }
 
-Mesh* AssetManager::CreateCubeMesh(const std::string& name, float size) {
+MeshHandle AssetManager::CreateCubeMesh(const std::string& name, float size) {
     auto mesh = MeshBuilder::CreateCube(size);
     if (_materialCache.find("Default") != _materialCache.end()) {
         mesh->SetMaterial(GetMaterial("Default"));
     }
-    _meshCache[name] = mesh;
-    return mesh;
+    return CreateMesh(name, mesh);
 }
 
-Mesh* AssetManager::CreatePlaneMesh(const std::string& name, float width, float height) {
+MeshHandle AssetManager::CreatePlaneMesh(const std::string& name, float width, float height) {
     auto mesh = MeshBuilder::CreatePlane(width, height);
     if (_materialCache.find("Default") != _materialCache.end()) {
         mesh->SetMaterial(GetMaterial("Default"));
     }
-    _meshCache[name] = mesh;
-    return mesh;
+    return CreateMesh(name, mesh);
 }
 
 Mesh* AssetManager::CreatePlaneMeshSubdivided(const std::string& name,
@@ -858,45 +859,47 @@ Mesh* AssetManager::CreatePlaneMeshSubdivided(const std::string& name,
 
     auto mesh = new Mesh(MeshType::PRIM);
     mesh->Initialize(verts, tris);
-    _meshCache[name] = mesh;
-    return mesh;
+    return CreateMesh(name, mesh);
 }
 
-Mesh* AssetManager::CreateSphereMesh(const std::string& name, float radius, int division) {
+MeshHandle AssetManager::CreateSphereMesh(const std::string& name, float radius, int division) {
     auto mesh = MeshBuilder::CreateSphere(radius, division);
     if (_materialCache.find("Default") != _materialCache.end()) {
         mesh->SetMaterial(GetMaterial("Default"));
     }
-    _meshCache[name] = mesh;
-    return mesh;
+    return CreateMesh(name, mesh);
 }
 
-Mesh* AssetManager::CreateCapsuleMesh(const std::string& name, float radius, float height) {
+MeshHandle AssetManager::CreateCapsuleMesh(const std::string& name, float radius, float height) {
     // TODO: Implement capsule mesh generation
     ENGINE_LOG("Capsule mesh '{}' created (generation not yet implemented)", name);
     auto mesh = new Mesh();
     if (_materialCache.find("Default") != _materialCache.end()) {
         mesh->SetMaterial(GetMaterial("Default"));
     }
-    _meshCache[name] = mesh;
-    return mesh;
+    return CreateMesh(name, mesh);
 }
 
-Mesh* AssetManager::CreateTerrainMesh(const std::string& name, float worldSize, int resolution) {
+MeshHandle AssetManager::CreateTerrainMesh(const std::string& name, float worldSize, int resolution) {
     auto mesh = MeshBuilder::CreateTerrain(worldSize, resolution);
     if (_materialCache.find("Default") != _materialCache.end()) {
         mesh->SetMaterial(GetMaterial("Default"));
     }
-    _meshCache[name] = mesh;
-    return mesh;
+    return CreateMesh(name, mesh);
 }
 
-Mesh* AssetManager::GetMesh(const std::string& name) const {
+MeshHandle AssetManager::GetMesh(const std::string& name) const {
     auto it = _meshCache.find(name);
     if (it != _meshCache.end()) {
-        return it->second;
+        return MeshHandle(it->second);
     }
     throw std::runtime_error(fmt::format("Mesh '{}' not found", name));
+}
+
+Mesh* AssetManager::GetMeshPtr(MeshHandle handle) const {
+    if (!handle.IsValid()) return nullptr;
+    auto it = _meshByID.find(handle.id);
+    return it != _meshByID.end() ? it->second : nullptr;
 }
 
 std::shared_ptr<Mesh> AssetManager::LoadOBJ(const std::string& path) {
@@ -906,10 +909,10 @@ std::shared_ptr<Mesh> AssetManager::LoadOBJ(const std::string& path) {
     auto mesh = std::make_shared<Mesh>(MeshType::PRIM);
     mesh->Initialize(vertices, indices);
 
-    return mesh;
+    return mesh;  // LoadOBJ is unimplemented; returns unregistered mesh
 }
 
-std::shared_ptr<Mesh> AssetManager::LoadGLTF(const std::string& path) {
+MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
     std::string err, warn;
@@ -945,7 +948,7 @@ std::shared_ptr<Mesh> AssetManager::LoadGLTF(const std::string& path) {
 
     if (!warn.empty()) Console::Get()->Warn(fmt::format("LoadGLTF '{}': {}", path, warn));
     if (!err.empty())  Console::Get()->Warn(fmt::format("LoadGLTF '{}' error: {}", path, err));
-    if (!result || model.meshes.empty()) return nullptr;
+    if (!result || model.meshes.empty()) return MeshHandle{};
 
     // Upload each referenced image to GPU immediately; CPU copy is discarded afterwards.
     // texHandles[i] corresponds to model.textures[i].
@@ -1147,15 +1150,15 @@ std::shared_ptr<Mesh> AssetManager::LoadGLTF(const std::string& path) {
 
     if (allVerts.empty()) {
         Console::Get()->Warn(fmt::format("LoadGLTF: no geometry found in '{}'", path));
-        return nullptr;
+        return MeshHandle{};
     }
 
-    auto mesh = std::make_shared<Mesh>(MeshType::PRIM);
+    auto* mesh = new Mesh(MeshType::PRIM);
     mesh->Initialize(allVerts, allIndices);
     if (material) mesh->SetMaterial(material);
 
     ENGINE_LOG("LoadGLTF '{}': {} verts, {} indices", path, allVerts.size(), allIndices.size());
-    return mesh;
+    return CreateMesh(path, mesh);
 }
 
 TextureHandle AssetManager::CreateHeightmapTexture(

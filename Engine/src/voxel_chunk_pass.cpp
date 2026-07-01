@@ -189,7 +189,7 @@ void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEnc
 
     for (const auto& sortable : queue) {
         const auto& cmd = sortable.cmd;
-        Mesh* mesh = cmd.mesh;
+        Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
 
         if (!mesh || mesh->type != MeshType::VOXEL) continue;
         if (!mesh->UsesRenderMesh()) continue;
@@ -256,7 +256,7 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
 
     for (const auto& s : queue) {
         const auto& cmd = s.cmd;
-        Mesh* mesh = cmd.mesh;
+        Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
         if (!mesh) continue;
 
         Material* mat = mesh->GetMaterial();

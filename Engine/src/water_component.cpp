@@ -18,7 +18,7 @@ WaterComponent::WaterComponent(GameObject* owner, const WaterProps& props)
     _material = am.CreateMaterial(MaterialProps{});
     _material->renderQueue    = RenderQueue::Transparent;
     _material->cullFaceEnabled = false;
-    _mesh->SetMaterial(_material);
+    if (Mesh* meshPtr = am.GetMeshPtr(_mesh)) meshPtr->SetMaterial(_material);
 
     owner->AddComponent<MeshComponent>(_mesh);
 }
@@ -28,11 +28,13 @@ void WaterComponent::OnAttach() {
         ? _props.waterLine
         : gameObject->GetPosition().y;
 
-    _mesh->waterData = WaterShaderData{
-        .waterLine       = line,
-        .waveStrength    = _props.waveStrength,
-        .waveSpeed       = _props.waveSpeed,
-        .waterFogColor   = _props.fogColor,
-        .waterFogDensity = _props.fogDensity,
-    };
+    if (Mesh* meshPtr = AssetManager::Get().GetMeshPtr(_mesh)) {
+        meshPtr->waterData = WaterShaderData{
+            .waterLine       = line,
+            .waveStrength    = _props.waveStrength,
+            .waveSpeed       = _props.waveSpeed,
+            .waterFogColor   = _props.fogColor,
+            .waterFogDensity = _props.fogDensity,
+        };
+    }
 }
