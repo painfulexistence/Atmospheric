@@ -30,6 +30,12 @@ TextureHandle::TextureHandle(const std::string& path) {
 #define TINYGLTF_IMPLEMENTATION
 #include <tiny_gltf.h>
 
+// tiny_gltf pulls in <windows.h> on Windows builds, which #defines LoadImage
+// to LoadImageA/W — undo it so AssetManager::LoadImage below isn't mangled.
+#ifdef _WIN32
+#undef LoadImage
+#endif
+
 // #define TINYOBJLOADER_IMPLEMENTATION
 // #include "tiny_obj_loader.h"
 
