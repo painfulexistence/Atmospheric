@@ -1,9 +1,6 @@
 #version 410
 
-/* License CC BY-NC-SA 4.0 Deed */
-/* https://creativecommons.org/licenses/by-nc-sa/4.0/ */
-/* Fork of Ryk's VCR distortion shader */
-/* https://www.shadertoy.com/view/ldjGzV */
+// Attribution/license: see ATTRIBUTION.txt in this directory.
 
 uniform sampler2D color_map_unit;
 uniform float     exposure;
