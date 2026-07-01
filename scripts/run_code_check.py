@@ -24,7 +24,10 @@ SEARCH_DIRS = [
 
 
 def find_source_files(root_dir):
-    extensions = ('*.cpp', '*.hpp', '*.c', '*.h', '*.mm', '*.m')
+    # .mm/.m (Objective-C++/Objective-C) are excluded: .clang-format has no
+    # Language: ObjectiveC mode, and these files follow Xcode conventions
+    # rather than this repo's C++ style.
+    extensions = ('*.cpp', '*.hpp', '*.c', '*.h')
     files = []
     for search_dir in SEARCH_DIRS:
         dir_path = os.path.join(root_dir, search_dir)
@@ -32,7 +35,8 @@ def find_source_files(root_dir):
             continue
         for ext in extensions:
             files.extend(glob.glob(os.path.join(dir_path, '**', ext), recursive=True))
-    return files
+    # Swift bridging headers are Objective-C despite the .h extension.
+    return [f for f in files if not f.endswith('-Bridging-Header.h')]
 
 
 def run_clang_tidy(project_root, source_files):
