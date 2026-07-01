@@ -26,7 +26,7 @@ TextureHandle::TextureHandle(const std::string& path) {
 #include "stb_image.h"
 
 #define TINYGLTF_NO_INCLUDE_STB_IMAGE
-#define TINYGLTF_NO_INCLUDE_STB_IMAGE_WRITE
+#define TINYGLTF_NO_STB_IMAGE_WRITE
 #define TINYGLTF_IMPLEMENTATION
 #include <tiny_gltf.h>
 
@@ -828,8 +828,8 @@ MeshHandle AssetManager::CreatePlaneMesh(const std::string& name, float width, f
     return CreateMesh(name, mesh);
 }
 
-Mesh* AssetManager::CreatePlaneMeshSubdivided(const std::string& name,
-                                               float width, float height, int subdivisions) {
+MeshHandle AssetManager::CreatePlaneMeshSubdivided(const std::string& name,
+                                                    float width, float height, int subdivisions) {
     int n = std::max(1, subdivisions);
     float hw = width * 0.5f, hh = height * 0.5f;
 
