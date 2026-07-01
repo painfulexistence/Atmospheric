@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 class Mesh;
@@ -75,6 +76,12 @@ public:
     MeshHandle CreateTerrainMesh(const std::string& name, float worldSize = 1024.f, int resolution = 10);
     MeshHandle GetMesh(const std::string& name) const;
     Mesh* GetMeshPtr(MeshHandle handle) const;
+    // Registers an externally-owned mesh (e.g. a unique_ptr<Mesh> held by a
+    // voxel chunk) so it gets a handle usable in RenderCommand/queue sorting.
+    // AssetManager does NOT take ownership; call UnregisterMesh before the
+    // owner destroys the mesh.
+    MeshHandle RegisterMesh(Mesh* mesh);
+    void UnregisterMesh(MeshHandle handle);
     // Upload a normalized [0,1] float grid as a GL_R8 grayscale texture.
     // Returns the scene-texture index usable as Material::heightMap.
     TextureHandle CreateHeightmapTexture(const std::string& name, const std::vector<float>& grid, int width, int height);
@@ -127,6 +134,7 @@ private:
     // Meshes
     std::unordered_map<uint32_t, Mesh*> _meshByID;
     std::unordered_map<std::string, uint32_t> _meshCache;
+    std::unordered_set<uint32_t> _ownedMeshIDs;  // IDs AssetManager must delete; excludes RegisterMesh entries
     uint32_t _nextMeshID = 1;
 
 #ifdef AE_USE_BASIS_UNIVERSAL

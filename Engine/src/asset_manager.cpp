@@ -150,12 +150,13 @@ void AssetManager::Clear() {
     _shaderCache.clear();
     _nextShaderID = 0;
 
-    // Clean up meshes
-    for (auto& [id, mesh] : _meshByID) {
-        delete mesh;
+    // Clean up meshes (skip entries registered via RegisterMesh — not owned by AssetManager)
+    for (uint32_t id : _ownedMeshIDs) {
+        delete _meshByID[id];
     }
     _meshByID.clear();
     _meshCache.clear();
+    _ownedMeshIDs.clear();
     _nextMeshID = 1;
 
     // Clean up materials
@@ -200,9 +201,10 @@ void AssetManager::ClearSceneAssets() {
     _materialCache.clear();
     _nextMaterialID = 0;
 
-    for (auto& [id, m] : _meshByID) delete m;
+    for (uint32_t id : _ownedMeshIDs) delete _meshByID[id];
     _meshByID.clear();
     _meshCache.clear();
+    _ownedMeshIDs.clear();
     _nextMeshID = 1;
 
     _imageCache.clear();
@@ -809,7 +811,21 @@ MeshHandle AssetManager::CreateMesh(const std::string& name, Mesh* mesh) {
     uint32_t id = _nextMeshID++;
     _meshByID[id] = mesh;
     _meshCache[name] = id;
+    _ownedMeshIDs.insert(id);
     return MeshHandle(id);
+}
+
+MeshHandle AssetManager::RegisterMesh(Mesh* mesh) {
+    if (!mesh) return MeshHandle{};
+    uint32_t id = _nextMeshID++;
+    _meshByID[id] = mesh;
+    return MeshHandle(id);
+}
+
+void AssetManager::UnregisterMesh(MeshHandle handle) {
+    if (!handle.IsValid()) return;
+    _meshByID.erase(handle.id);
+    _ownedMeshIDs.erase(handle.id);
 }
 
 MeshHandle AssetManager::CreateCubeMesh(const std::string& name, float size) {
