@@ -304,28 +304,43 @@ cd Atmospheric-Starter</code></pre>
 
     <!-- TARGET: Native Desktop -->
     <div class="pane-content active" data-target="desktop">
-      <p>Configure and build using the bundled CMake presets — the same commands work on macOS, Windows, and Linux.</p>
+      <p>Configure and build using the bundled CMake presets. The first configure bootstraps vcpkg and builds all dependencies from source, so it takes a while — subsequent builds are fast.</p>
 
-      <div class="code-container">
-        <pre><code>cmake --preset desktop
-cmake --build --preset debug   # or --preset release</code></pre>
-        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-      </div>
-
-      <p>The first configure bootstraps vcpkg and builds all dependencies from source, so it takes a while — subsequent builds are fast.</p>
-
-      <div class="host-os-pane active" data-host-os="macos linux">
+      <!-- macOS Native build -->
+      <div class="host-os-pane active" data-host-os="macos">
         <div class="code-container">
-          <pre><code># Run the example binary
+          <pre><code># Configure and build on macOS
+cmake --preset desktop
+cmake --build --preset debug   # or --preset release
+
+# Run the example binary
 ./build/GradientQuad/Debug/GradientQuad</code></pre>
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
         </div>
       </div>
 
+      <!-- Windows Native build -->
       <div class="host-os-pane" data-host-os="windows">
         <div class="code-container">
-          <pre><code># Run the example binary
+          <pre><code># Configure and build on Windows (MSVC)
+cmake --preset desktop
+cmake --build --preset debug   # or --preset release
+
+# Run the example binary
 .\build\GradientQuad\Debug\GradientQuad.exe</code></pre>
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+        </div>
+      </div>
+
+      <!-- Linux Native build -->
+      <div class="host-os-pane" data-host-os="linux">
+        <div class="code-container">
+          <pre><code># Configure and build on Linux
+cmake --preset desktop
+cmake --build --preset debug   # or --preset release
+
+# Run the example binary
+./build/GradientQuad/Debug/GradientQuad</code></pre>
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
         </div>
       </div>
