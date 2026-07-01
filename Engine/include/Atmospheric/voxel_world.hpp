@@ -24,8 +24,9 @@ public:
     // Y extent is bounded (no underground streaming needed).
     static constexpr int   WORLD_Y    = 3;
     // View radius in chunks for X and Z — chunks within this range are kept loaded.
-    static constexpr int   VIEW_X     = 10;
-    static constexpr int   VIEW_Z     = 10;
+    // 12 gives a 25x25 total footprint (2*12+1), matching VX's WORLD_WIDTH/WORLD_DEPTH.
+    static constexpr int   VIEW_X     = 12;
+    static constexpr int   VIEW_Z     = 12;
 
     VoxelWorld() = default;
     ~VoxelWorld() = default;
