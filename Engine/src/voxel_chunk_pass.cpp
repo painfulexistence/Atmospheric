@@ -63,17 +63,7 @@ void SunPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat col
         .colorFormat(colorFormat).depth(true, WGPUCompareFunction_Less).build();
     _pipeline   = p.pipeline;
     _uniformBGL = p.bgl(0);
-    {
-        WGPUBindGroupEntry e{};
-        e.binding = 0;
-        e.buffer  = _uniformBuf;
-        e.size    = 192;
-        WGPUBindGroupDescriptor d{};
-        d.layout     = _uniformBGL;
-        d.entryCount = 1;
-        d.entries    = &e;
-        _uniformBG = wgpuDeviceCreateBindGroup(device, &d);
-    }
+    _uniformBG  = GpuBindGroupBuilder(device, _uniformBGL).buffer(0, _uniformBuf, 192).build();
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
@@ -278,17 +268,7 @@ void SkyboxPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
         .colorFormat(colorFormat).depth(false, WGPUCompareFunction_LessEqual).build();
     _pipeline   = p.pipeline;
     _uniformBGL = p.bgl(0);
-    {
-        WGPUBindGroupEntry e{};
-        e.binding = 0;
-        e.buffer  = _uniformBuf;
-        e.size    = 96;
-        WGPUBindGroupDescriptor d{};
-        d.layout     = _uniformBGL;
-        d.entryCount = 1;
-        d.entries    = &e;
-        _uniformBG = wgpuDeviceCreateBindGroup(device, &d);
-    }
+    _uniformBG  = GpuBindGroupBuilder(device, _uniformBGL).buffer(0, _uniformBuf, 96).build();
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
@@ -412,18 +392,10 @@ void VoxelChunkPass::_ensureDrawCapacity(uint32_t drawCount) {
     _drawUniformBuf   = wgpuDeviceCreateBuffer(_gpuDevice, &d);
     _drawSlotCapacity = newCapacity;
 
-    WGPUBindGroupEntry entries[2] = {};
-    entries[0].binding = 0;
-    entries[0].buffer  = _frameUniformBuf;
-    entries[0].size    = VOXEL_FRAME_UNIFORM_SIZE;
-    entries[1].binding = 1;
-    entries[1].buffer  = _drawUniformBuf;
-    entries[1].size    = VOXEL_DRAW_UNIFORM_SIZE;
-    WGPUBindGroupDescriptor bgDesc{};
-    bgDesc.layout     = _uniformBGL;
-    bgDesc.entryCount = 2;
-    bgDesc.entries    = entries;
-    _uniformBG = wgpuDeviceCreateBindGroup(_gpuDevice, &bgDesc);
+    _uniformBG = GpuBindGroupBuilder(_gpuDevice, _uniformBGL)
+        .buffer(0, _frameUniformBuf, VOXEL_FRAME_UNIFORM_SIZE)
+        .buffer(1, _drawUniformBuf,  VOXEL_DRAW_UNIFORM_SIZE)
+        .build();
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
@@ -609,18 +581,10 @@ void WaterPass::_ensureDrawCapacity(uint32_t drawCount) {
     _drawUniformBuf   = wgpuDeviceCreateBuffer(_gpuDevice, &d);
     _drawSlotCapacity = newCapacity;
 
-    WGPUBindGroupEntry entries[2] = {};
-    entries[0].binding = 0;
-    entries[0].buffer  = _frameUniformBuf;
-    entries[0].size    = WATER_FRAME_UNIFORM_SIZE;
-    entries[1].binding = 1;
-    entries[1].buffer  = _drawUniformBuf;
-    entries[1].size    = WATER_DRAW_UNIFORM_SIZE;
-    WGPUBindGroupDescriptor bgDesc{};
-    bgDesc.layout     = _uniformBGL;
-    bgDesc.entryCount = 2;
-    bgDesc.entries    = entries;
-    _uniformBG = wgpuDeviceCreateBindGroup(_gpuDevice, &bgDesc);
+    _uniformBG = GpuBindGroupBuilder(_gpuDevice, _uniformBGL)
+        .buffer(0, _frameUniformBuf, WATER_FRAME_UNIFORM_SIZE)
+        .buffer(1, _drawUniformBuf,  WATER_DRAW_UNIFORM_SIZE)
+        .build();
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
@@ -885,31 +849,21 @@ void BloomPass::_resizeGPU(int width, int height) {
     wgpuQueueWriteBuffer(_gpuQueue, _blurVUniformBuf, 0, &vU, sizeof(vU));
 
     auto makeSingleTexBG = [this](WGPUBindGroupLayout bgl, WGPUBuffer uniformBuf, WGPUTextureView view) {
-        WGPUBindGroupEntry e[3]{};
-        e[0].binding = 0; e[0].buffer = uniformBuf; e[0].size = 16;
-        e[1].binding = 1; e[1].textureView = view;
-        e[2].binding = 2; e[2].sampler = _sampler;
-        WGPUBindGroupDescriptor d{};
-        d.layout     = bgl;
-        d.entryCount = 3;
-        d.entries    = e;
-        return wgpuDeviceCreateBindGroup(_gpuDevice, &d);
+        return GpuBindGroupBuilder(_gpuDevice, bgl)
+            .buffer(0, uniformBuf, 16)
+            .textureView(1, view)
+            .sampler(2, _sampler)
+            .build();
     };
     _blurHBG = makeSingleTexBG(_blurBGL, _blurHUniformBuf, _brightAView); // thresholded -> blurred-H
     _blurVBG = makeSingleTexBG(_blurBGL, _blurVUniformBuf, _brightBView); // blurred-H   -> blurred-HV (final, lands in _brightA)
 
-    {
-        WGPUBindGroupEntry e[4]{};
-        e[0].binding = 0; e[0].buffer = _compUniformBuf; e[0].size = 16;
-        e[1].binding = 1; e[1].textureView = _snapshotView;
-        e[2].binding = 2; e[2].textureView = _brightAView; // final blurred bloom (H then V both land here)
-        e[3].binding = 3; e[3].sampler = _sampler;
-        WGPUBindGroupDescriptor d{};
-        d.layout     = _compBGL;
-        d.entryCount = 4;
-        d.entries    = e;
-        _compBG = wgpuDeviceCreateBindGroup(_gpuDevice, &d);
-    }
+    _compBG = GpuBindGroupBuilder(_gpuDevice, _compBGL)
+        .buffer(0, _compUniformBuf, 16)
+        .textureView(1, _snapshotView)
+        .textureView(2, _brightAView) // final blurred bloom (H then V both land here)
+        .sampler(3, _sampler)
+        .build();
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
@@ -1025,16 +979,11 @@ void BloomPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
         // Threshold pass's source bind group reads sceneRT's live texture, so
         // it is rebuilt fresh each frame (uncached) rather than stored as a
         // class member.
-        WGPUTextureView sceneView = wgpuTextureCreateView(sceneTex, nullptr);
-        WGPUBindGroupEntry threshEntries[3]{};
-        threshEntries[0].binding = 0; threshEntries[0].buffer = _threshUniformBuf; threshEntries[0].size = 16;
-        threshEntries[1].binding = 1; threshEntries[1].textureView = sceneView;
-        threshEntries[2].binding = 2; threshEntries[2].sampler = _sampler;
-        WGPUBindGroupDescriptor threshBGDesc{};
-        threshBGDesc.layout     = _threshBGL;
-        threshBGDesc.entryCount = 3;
-        threshBGDesc.entries    = threshEntries;
-        WGPUBindGroup threshBG = wgpuDeviceCreateBindGroup(_gpuDevice, &threshBGDesc);
+        WGPUBindGroup threshBG = GpuBindGroupBuilder(_gpuDevice, _threshBGL)
+            .buffer(0, _threshUniformBuf, 16)
+            .texture(1, sceneTex)
+            .sampler(2, _sampler)
+            .build();
 
         auto runFullscreenPass = [&](WGPUTextureView target, WGPURenderPipeline pipeline, WGPUBindGroup bg) {
             WGPURenderPassColorAttachment ca{};
@@ -1066,7 +1015,6 @@ void BloomPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
         renderer.sceneRT->End();
 
         wgpuBindGroupRelease(threshBG);
-        wgpuTextureViewRelease(sceneView);
         return;
     }
 #endif

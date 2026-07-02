@@ -676,9 +676,156 @@ void Renderer::CreateDebugBuffer() {
     debugBuffer->Initialize(VertexFormat::Debug, BufferUsage::Stream);
 }
 
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+ShadowPass::~ShadowPass() {
+    if (_uniformBG)      wgpuBindGroupRelease(_uniformBG);
+    if (_uniformBGL)     wgpuBindGroupLayoutRelease(_uniformBGL);
+    if (_pipeline)       wgpuRenderPipelineRelease(_pipeline);
+    if (_frameUniformBuf) wgpuBufferRelease(_frameUniformBuf);
+    if (_drawUniformBuf) wgpuBufferRelease(_drawUniformBuf);
+    if (_shadowView)     wgpuTextureViewRelease(_shadowView);
+    if (_shadowTex)      wgpuTextureRelease(_shadowTex);
+}
+
+void ShadowPass::_initGPU(WGPUDevice device, WGPUQueue queue) {
+    _gpuDevice = device;
+    _gpuQueue  = queue;
+
+    {
+        WGPUBufferDescriptor d{};
+        d.size  = SHADOW_FRAME_UNIFORM_SIZE;
+        d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        _frameUniformBuf = wgpuDeviceCreateBuffer(device, &d);
+    }
+    {
+        WGPUTextureDescriptor d{};
+        d.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+        d.dimension     = WGPUTextureDimension_2D;
+        d.size          = { SHADOW_W, SHADOW_H, 1 };
+        d.format        = WGPUTextureFormat_Depth32Float;
+        d.mipLevelCount = 1;
+        d.sampleCount   = 1;
+        _shadowTex  = wgpuDeviceCreateTexture(device, &d);
+        _shadowView = wgpuTextureCreateView(_shadowTex, nullptr);
+    }
+
+    // Vertex layout: only position (offset 0) from the 56-byte Standard format.
+    auto p = GpuPipelineBuilder(device)
+        .wgsl(SHADOW_WGSL)
+        .bgl({ gpuUniform(0, wgsl_stage::vert, SHADOW_FRAME_UNIFORM_SIZE),
+               gpuDynUniform(1, wgsl_stage::vert, SHADOW_DRAW_UNIFORM_SIZE) })
+        .vertex(56, { {WGPUVertexFormat_Float32x3, 0, 0} })
+        .depth(true, WGPUCompareFunction_Less)
+        .depthOnly()
+        // Front-face culling like classic shadow mapping would change peter-
+        // panning behaviour vs the GL path (which draws per-material culling);
+        // keep None to match GL output most closely.
+        .build();
+    _pipeline   = p.pipeline;
+    _uniformBGL = p.bgl(0);
+}
+
+void ShadowPass::_ensureDrawCapacity(uint32_t drawCount) {
+    if (drawCount <= _drawSlotCapacity && _drawUniformBuf) return;
+
+    uint32_t newCapacity = std::max<uint32_t>(drawCount, std::max<uint32_t>(_drawSlotCapacity * 2, 16));
+
+    if (_drawUniformBuf) { wgpuBufferRelease(_drawUniformBuf); _drawUniformBuf = nullptr; }
+    if (_uniformBG)      { wgpuBindGroupRelease(_uniformBG);   _uniformBG      = nullptr; }
+
+    WGPUBufferDescriptor d{};
+    d.size  = static_cast<uint64_t>(newCapacity) * SHADOW_DRAW_SLOT_STRIDE;
+    d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+    _drawUniformBuf   = wgpuDeviceCreateBuffer(_gpuDevice, &d);
+    _drawSlotCapacity = newCapacity;
+
+    _uniformBG = GpuBindGroupBuilder(_gpuDevice, _uniformBGL)
+        .buffer(0, _frameUniformBuf, SHADOW_FRAME_UNIFORM_SIZE)
+        .buffer(1, _drawUniformBuf,  SHADOW_DRAW_UNIFORM_SIZE)
+        .build();
+}
+#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+
 void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        WGPUDevice dev = GfxFactory::GetWebGPUDevice();
+        if (!dev) return;
+        if (!_pipeline) _initGPU(dev, GfxFactory::GetWebGPUQueue());
+
+        // Collect casters: PRIM meshes from both queues, same as the GL path.
+        struct DrawItem { Buffer* buf; glm::mat4 model; };
+        std::vector<DrawItem> draws;
+        auto collect = [&](const std::vector<Renderer::SortableCommand>& queue) {
+            for (const auto& sortable : queue) {
+                const auto& cmd = sortable.cmd;
+                Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
+                if (!mesh || mesh->type != MeshType::PRIM) continue;
+                if (!mesh->UsesRenderMesh()) continue;
+                Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
+                if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
+                draws.push_back({ buf, cmd.transform });
+            }
+        };
+        collect(renderer.GetOpaqueQueue());
+        collect(renderer.GetTransparentQueue());
+
+        // Light-space VP with the GL [-1,1] → WebGPU [0,1] NDC-z fixup baked
+        // in; without it the ortho projection would clip half the depth range.
+        auto* light = ctx->GetMainLight();
+        glm::mat4 lightVP;
+        if (light) {
+            const glm::mat4 z01 = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.5f))
+                                * glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 0.5f));
+            lightVP = z01 * light->GetProjectionMatrix(0) * light->GetViewMatrix();
+        } else {
+            // No light: push everything past far so the WGSL guard reads
+            // "outside the frustum" → fully lit.
+            lightVP = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 3.0f))
+                    * glm::scale(glm::mat4(1.0f), glm::vec3(0.0f));
+        }
+        renderer.wgpuShadowLightVP = lightVP;
+        renderer.wgpuShadowMapView = _shadowView;
+
+        if (!draws.empty()) {
+            _ensureDrawCapacity(static_cast<uint32_t>(draws.size()));
+            wgpuQueueWriteBuffer(_gpuQueue, _frameUniformBuf, 0, &lightVP, sizeof(lightVP));
+            std::vector<uint8_t> drawData(draws.size() * SHADOW_DRAW_SLOT_STRIDE, 0);
+            for (size_t i = 0; i < draws.size(); ++i)
+                std::memcpy(drawData.data() + i * SHADOW_DRAW_SLOT_STRIDE,
+                            &draws[i].model, sizeof(glm::mat4));
+            wgpuQueueWriteBuffer(_gpuQueue, _drawUniformBuf, 0, drawData.data(), drawData.size());
+        }
+
+        // Depth-only render pass; always runs (even with zero casters) so the
+        // map is cleared to 1.0 = "no occluders" and ForwardOpaquePass can
+        // sample it unconditionally.
+        auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+        WGPURenderPassDepthStencilAttachment depthAttach{};
+        depthAttach.view            = _shadowView;
+        depthAttach.depthLoadOp     = WGPULoadOp_Clear;
+        depthAttach.depthStoreOp    = WGPUStoreOp_Store;
+        depthAttach.depthClearValue = 1.0f;
+        WGPURenderPassDescriptor passDesc{};
+        passDesc.colorAttachmentCount   = 0;
+        passDesc.depthStencilAttachment = &depthAttach;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &passDesc);
+
+        if (!draws.empty()) {
+            wgpuRenderPassEncoderSetPipeline(pass, _pipeline);
+            GPUCommandEncoder shadowEnc;
+            shadowEnc.encoder = gpuEnc->encoder;
+            shadowEnc.pass    = pass;
+            for (size_t i = 0; i < draws.size(); ++i) {
+                uint32_t dynamicOffset = static_cast<uint32_t>(i * SHADOW_DRAW_SLOT_STRIDE);
+                wgpuRenderPassEncoderSetBindGroup(pass, 0, _uniformBG, 1, &dynamicOffset);
+                draws[i].buf->Draw(&shadowEnc, PrimitiveTopology::Triangles);
+            }
+        }
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+        return;
+    }
 #endif
     ZoneScopedN("ShadowPass");
     AE_GL_PROBE(renderer, "Shadow pass: entry");
@@ -843,6 +990,9 @@ ForwardOpaquePass::~ForwardOpaquePass() {
     if (_drawUniformBuf)  wgpuBufferRelease(_drawUniformBuf);
     if (_whiteTex)        wgpuTextureRelease(_whiteTex);
     if (_sampler)         wgpuSamplerRelease(_sampler);
+    if (_shadowBG)        wgpuBindGroupRelease(_shadowBG);
+    if (_shadowBGL)       wgpuBindGroupLayoutRelease(_shadowBGL);
+    if (_shadowSampler)   wgpuSamplerRelease(_shadowSampler);
 }
 
 void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat) {
@@ -885,6 +1035,16 @@ void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTexture
         d.addressModeV = WGPUAddressMode_Repeat;
         _sampler = wgpuDeviceCreateSampler(device, &d);
     }
+    {
+        WGPUSamplerDescriptor d{};
+        d.minFilter    = WGPUFilterMode_Linear;
+        d.magFilter    = WGPUFilterMode_Linear;
+        d.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+        d.addressModeU = WGPUAddressMode_ClampToEdge;
+        d.addressModeV = WGPUAddressMode_ClampToEdge;
+        d.compare      = WGPUCompareFunction_Less; // hardware PCF compare
+        _shadowSampler = wgpuDeviceCreateSampler(device, &d);
+    }
 
     // Standard Vertex (vertex.hpp): pos(vec3)@0, uv(vec2)@12, normal(vec3)@20,
     // tangent(vec3)@32, bitangent(vec3)@44 — stride 56. Tangent/bitangent are
@@ -895,6 +1055,7 @@ void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTexture
         .bgl({ gpuUniform(0, wgsl_stage::both, FWD_FRAME_UNIFORM_SIZE),
                gpuDynUniform(1, wgsl_stage::both, FWD_DRAW_UNIFORM_SIZE) })
         .bgl({ gpuTexture(0), gpuSampler(1) })
+        .bgl({ gpuDepthTexture(0), gpuCompareSampler(1) })
         .vertex(56, { {WGPUVertexFormat_Float32x3,  0, 0},
                       {WGPUVertexFormat_Float32x2, 12, 1},
                       {WGPUVertexFormat_Float32x3, 20, 2} })
@@ -905,6 +1066,7 @@ void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTexture
     _pipeline   = p.pipeline;
     _uniformBGL = p.bgl(0);
     _texBGL     = p.bgl(1);
+    _shadowBGL  = p.bgl(2);
 }
 
 void ForwardOpaquePass::_ensureDrawCapacity(uint32_t drawCount) {
@@ -921,18 +1083,10 @@ void ForwardOpaquePass::_ensureDrawCapacity(uint32_t drawCount) {
     _drawUniformBuf   = wgpuDeviceCreateBuffer(_gpuDevice, &d);
     _drawSlotCapacity = newCapacity;
 
-    WGPUBindGroupEntry entries[2] = {};
-    entries[0].binding = 0;
-    entries[0].buffer  = _frameUniformBuf;
-    entries[0].size    = FWD_FRAME_UNIFORM_SIZE;
-    entries[1].binding = 1;
-    entries[1].buffer  = _drawUniformBuf;
-    entries[1].size    = FWD_DRAW_UNIFORM_SIZE;
-    WGPUBindGroupDescriptor bgDesc{};
-    bgDesc.layout     = _uniformBGL;
-    bgDesc.entryCount = 2;
-    bgDesc.entries    = entries;
-    _uniformBG = wgpuDeviceCreateBindGroup(_gpuDevice, &bgDesc);
+    _uniformBG = GpuBindGroupBuilder(_gpuDevice, _uniformBGL)
+        .buffer(0, _frameUniformBuf, FWD_FRAME_UNIFORM_SIZE)
+        .buffer(1, _drawUniformBuf,  FWD_DRAW_UNIFORM_SIZE)
+        .build();
 }
 
 WGPUBindGroup ForwardOpaquePass::_getOrCreateTexBG(uint32_t texID) {
@@ -942,20 +1096,10 @@ WGPUBindGroup ForwardOpaquePass::_getOrCreateTexBG(uint32_t texID) {
     WGPUTexture rawTex = (texID == 0) ? _whiteTex : GfxFactory::GetWGPUTexture(texID);
     if (!rawTex) rawTex = _whiteTex;
 
-    WGPUTextureView view = wgpuTextureCreateView(rawTex, nullptr);
-
-    WGPUBindGroupEntry e[2]{};
-    e[0].binding     = 0;
-    e[0].textureView = view;
-    e[1].binding     = 1;
-    e[1].sampler     = _sampler;
-    WGPUBindGroupDescriptor d{};
-    d.layout     = _texBGL;
-    d.entryCount = 2;
-    d.entries    = e;
-    WGPUBindGroup bg = wgpuDeviceCreateBindGroup(_gpuDevice, &d);
-
-    wgpuTextureViewRelease(view);
+    WGPUBindGroup bg = GpuBindGroupBuilder(_gpuDevice, _texBGL)
+        .texture(0, rawTex)
+        .sampler(1, _sampler)
+        .build();
     _texBGCache[texID] = bg;
     return bg;
 }
@@ -1004,18 +1148,32 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
         struct {
             glm::mat4 viewProj;
+            glm::mat4 lightVP;
             glm::vec4 cameraPos;
             glm::vec4 lightDir;
             glm::vec4 lightColor;
             glm::vec4 ambient;
         } frameUniforms{
             viewProj,
+            renderer.wgpuShadowLightVP, // published by ShadowPass earlier this frame
             glm::vec4(camera->GetEyePosition(), 1.0f),
             glm::vec4(lightDir, 0.0f),
             glm::vec4(lightColor, 0.0f),
             glm::vec4(ambient, 0.0f),
         };
         wgpuQueueWriteBuffer(_gpuQueue, _frameUniformBuf, 0, &frameUniforms, sizeof(frameUniforms));
+
+        // Shadow map bind group — rebuilt only when ShadowPass publishes a
+        // different view (first frame or shadow-map recreation).
+        if (!renderer.wgpuShadowMapView) return; // ShadowPass hasn't run yet
+        if (renderer.wgpuShadowMapView != _shadowBGSource) {
+            if (_shadowBG) wgpuBindGroupRelease(_shadowBG);
+            _shadowBG = GpuBindGroupBuilder(_gpuDevice, _shadowBGL)
+                .textureView(0, renderer.wgpuShadowMapView)
+                .sampler(1, _shadowSampler)
+                .build();
+            _shadowBGSource = renderer.wgpuShadowMapView;
+        }
 
         // Pack every draw's per-instance data into its own dynamic-offset slot
         // and upload in a single call (see VOXEL_WGSL's comment).
@@ -1048,6 +1206,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             uint32_t dynamicOffset = static_cast<uint32_t>(i * FWD_DRAW_SLOT_STRIDE);
             wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 0, _uniformBG, 1, &dynamicOffset);
             wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 1, texBG, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 2, _shadowBG, 0, nullptr);
             draws[i].buf->Draw(enc, PrimitiveTopology::Triangles);
         }
         renderer.sceneRT->End();
@@ -1805,7 +1964,7 @@ void PostProcessPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFo
 
     {
         WGPUBufferDescriptor d{};
-        d.size  = 16; // exposure, caEnabled, caStrength, pad
+        d.size  = POST_UNIFORM_SIZE;
         d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
         _uniformBuf = wgpuDeviceCreateBuffer(device, &d);
     }
@@ -1821,7 +1980,7 @@ void PostProcessPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFo
 
     auto p = GpuPipelineBuilder(device)
         .wgsl(POSTPROCESS_WGSL)
-        .bgl({ gpuUniform(0, wgsl_stage::frag, 16) })
+        .bgl({ gpuUniform(0, wgsl_stage::frag, POST_UNIFORM_SIZE) })
         .bgl({ gpuTexture(0), gpuSampler(1) })
         .colorFormat(swapchainFormat)
         .build();
@@ -1829,17 +1988,9 @@ void PostProcessPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFo
     _uniformBGL = p.bgl(0);
     _texBGL     = p.bgl(1);
 
-    {
-        WGPUBindGroupEntry e{};
-        e.binding = 0;
-        e.buffer  = _uniformBuf;
-        e.size    = 16;
-        WGPUBindGroupDescriptor d{};
-        d.layout     = _uniformBGL;
-        d.entryCount = 1;
-        d.entries    = &e;
-        _uniformBG = wgpuDeviceCreateBindGroup(device, &d);
-    }
+    _uniformBG = GpuBindGroupBuilder(device, _uniformBGL)
+        .buffer(0, _uniformBuf, POST_UNIFORM_SIZE)
+        .build();
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
@@ -1865,26 +2016,20 @@ void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
         // changes (e.g. on resize) — cheap to check, avoids a per-frame alloc.
         if (sceneTex != _texBGSource) {
             if (_texBG) wgpuBindGroupRelease(_texBG);
-            WGPUTextureView sceneView = wgpuTextureCreateView(sceneTex, nullptr);
-            WGPUBindGroupEntry e[2]{};
-            e[0].binding     = 0;
-            e[0].textureView = sceneView;
-            e[1].binding     = 1;
-            e[1].sampler     = _sampler;
-            WGPUBindGroupDescriptor d{};
-            d.layout     = _texBGL;
-            d.entryCount = 2;
-            d.entries    = e;
-            _texBG = wgpuDeviceCreateBindGroup(_gpuDevice, &d);
-            wgpuTextureViewRelease(sceneView);
+            _texBG = GpuBindGroupBuilder(_gpuDevice, _texBGL)
+                .texture(0, sceneTex)
+                .sampler(1, _sampler)
+                .build();
             _texBGSource = sceneTex;
         }
 
-        struct { float exposure, caEnabled, caStrength, pad; } u{
+        struct { float exposure, caEnabled, caStrength, effect, time, pad0, pad1, pad2; } u{
             tonemapEnabled ? exposure : 1.0f,
             caEnabled ? 1.0f : 0.0f,
             caStrength,
-            0.0f
+            static_cast<float>(postEffect),
+            renderer.frameTime,
+            0.0f, 0.0f, 0.0f
         };
         wgpuQueueWriteBuffer(_gpuQueue, _uniformBuf, 0, &u, sizeof(u));
 

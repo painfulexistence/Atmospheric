@@ -50,7 +50,28 @@ public:
 
 class ShadowPass : public RenderPass {
 public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~ShadowPass() override;
+#endif
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+private:
+    void _initGPU(WGPUDevice device, WGPUQueue queue);
+    void _ensureDrawCapacity(uint32_t drawCount);
+    WGPUDevice          _gpuDevice       = nullptr;
+    WGPUQueue           _gpuQueue        = nullptr;
+    WGPURenderPipeline  _pipeline        = nullptr;
+    WGPUBindGroupLayout _uniformBGL      = nullptr;
+    WGPUBindGroup       _uniformBG       = nullptr;
+    WGPUBuffer          _frameUniformBuf = nullptr; // light-space viewProj
+    WGPUBuffer          _drawUniformBuf  = nullptr; // per-draw model, dynamic offset
+    uint32_t            _drawSlotCapacity = 0;
+    // Directional shadow map. The view is published to Renderer each frame
+    // for ForwardOpaquePass to sample; this pass owns both handles.
+    WGPUTexture         _shadowTex  = nullptr;
+    WGPUTextureView     _shadowView = nullptr;
+#endif
 };
 
 // Renders MeshType::PRIM meshes from the opaque queue. TERRAIN (tessellation,
@@ -86,6 +107,13 @@ private:
     WGPUTexture _whiteTex = nullptr;
     WGPUSampler _sampler  = nullptr;
     std::unordered_map<uint32_t, WGPUBindGroup> _texBGCache;
+
+    // Shadow-map bind group (group 2): rebuilt only when the view published
+    // by ShadowPass on the Renderer changes.
+    WGPUBindGroupLayout _shadowBGL      = nullptr;
+    WGPUSampler         _shadowSampler  = nullptr;
+    WGPUBindGroup       _shadowBG       = nullptr;
+    WGPUTextureView     _shadowBGSource = nullptr;
 #endif
 };
 
@@ -577,5 +605,12 @@ public:
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     GPUCanvasPass* GetGPUCanvasPass() const { return m_GPUCanvasPass.get(); }
+
+    // Shadow-map handoff: written by ShadowPass each frame (non-owning view —
+    // ShadowPass owns the texture), consumed by ForwardOpaquePass. The light
+    // VP already includes the GL→WebGPU [-1,1]→[0,1] depth-range fixup, so
+    // consumers use it as-is for textureSampleCompare.
+    WGPUTextureView wgpuShadowMapView = nullptr;
+    glm::mat4       wgpuShadowLightVP = glm::mat4(1.0f);
 #endif
 };

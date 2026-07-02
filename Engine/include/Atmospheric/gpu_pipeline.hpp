@@ -16,7 +16,11 @@ namespace wgsl_stage {
 struct GpuBGLEntry {
     uint32_t binding = 0;
     WGPUShaderStage visibility = WGPUShaderStage_Fragment;
-    enum class Kind { Uniform, DynamicUniform, Texture, Sampler } kind = Kind::Uniform;
+    enum class Kind {
+        Uniform, DynamicUniform, Texture, Sampler,
+        DepthTexture,      // texture_depth_2d (e.g. shadow map)
+        ComparisonSampler, // sampler_comparison (for textureSampleCompare)
+    } kind = Kind::Uniform;
     uint64_t minBindingSize = 0;
 };
 
@@ -31,6 +35,12 @@ inline GpuBGLEntry gpuTexture(uint32_t b, WGPUShaderStage v = WGPUShaderStage_Fr
 }
 inline GpuBGLEntry gpuSampler(uint32_t b, WGPUShaderStage v = WGPUShaderStage_Fragment) {
     return { b, v, GpuBGLEntry::Kind::Sampler, 0 };
+}
+inline GpuBGLEntry gpuDepthTexture(uint32_t b, WGPUShaderStage v = WGPUShaderStage_Fragment) {
+    return { b, v, GpuBGLEntry::Kind::DepthTexture, 0 };
+}
+inline GpuBGLEntry gpuCompareSampler(uint32_t b, WGPUShaderStage v = WGPUShaderStage_Fragment) {
+    return { b, v, GpuBGLEntry::Kind::ComparisonSampler, 0 };
 }
 
 // ── Pipeline result ───────────────────────────────────────────────────────────
@@ -47,6 +57,83 @@ struct GpuVertexAttr {
     WGPUVertexFormat format;
     uint64_t offset;
     uint32_t shaderLocation;
+};
+
+// ── Bind group builder ────────────────────────────────────────────────────────
+// Companion to GpuPipelineBuilder for the other half of the boilerplate:
+// creating the WGPUBindGroup that matches a BGL. Caller owns the result.
+//
+//   _uniformBG = GpuBindGroupBuilder(device, _uniformBGL)
+//       .buffer(0, _frameUniformBuf, FRAME_UNIFORM_SIZE)
+//       .buffer(1, _drawUniformBuf,  DRAW_UNIFORM_SIZE)   // dyn-offset: size = one slot
+//       .build();
+//
+//   texBG = GpuBindGroupBuilder(device, _texBGL)
+//       .texture(0, rawTex)      // transient view created + released internally
+//       .sampler(1, _sampler)
+//       .build();
+class GpuBindGroupBuilder {
+public:
+    GpuBindGroupBuilder(WGPUDevice device, WGPUBindGroupLayout layout)
+        : _device(device), _layout(layout) {}
+
+    GpuBindGroupBuilder& buffer(uint32_t binding, WGPUBuffer buf, uint64_t size,
+                                uint64_t offset = 0) {
+        WGPUBindGroupEntry e{};
+        e.binding = binding;
+        e.buffer  = buf;
+        e.size    = size;
+        e.offset  = offset;
+        _entries.push_back(e);
+        return *this;
+    }
+
+    // Binds the texture's default full view; the transient WGPUTextureView is
+    // created here and released in build().
+    GpuBindGroupBuilder& texture(uint32_t binding, WGPUTexture tex) {
+        WGPUTextureView view = wgpuTextureCreateView(tex, nullptr);
+        WGPUBindGroupEntry e{};
+        e.binding     = binding;
+        e.textureView = view;
+        _entries.push_back(e);
+        _transientViews.push_back(view);
+        return *this;
+    }
+
+    // Binds a caller-owned view (e.g. a persistent shadow-map view); the
+    // caller keeps ownership and must outlive the bind group.
+    GpuBindGroupBuilder& textureView(uint32_t binding, WGPUTextureView view) {
+        WGPUBindGroupEntry e{};
+        e.binding     = binding;
+        e.textureView = view;
+        _entries.push_back(e);
+        return *this;
+    }
+
+    GpuBindGroupBuilder& sampler(uint32_t binding, WGPUSampler s) {
+        WGPUBindGroupEntry e{};
+        e.binding = binding;
+        e.sampler = s;
+        _entries.push_back(e);
+        return *this;
+    }
+
+    WGPUBindGroup build() {
+        WGPUBindGroupDescriptor d{};
+        d.layout     = _layout;
+        d.entryCount = (uint32_t)_entries.size();
+        d.entries    = _entries.data();
+        WGPUBindGroup bg = wgpuDeviceCreateBindGroup(_device, &d);
+        for (WGPUTextureView v : _transientViews) wgpuTextureViewRelease(v);
+        _transientViews.clear();
+        return bg;
+    }
+
+private:
+    WGPUDevice          _device = nullptr;
+    WGPUBindGroupLayout _layout = nullptr;
+    std::vector<WGPUBindGroupEntry> _entries;
+    std::vector<WGPUTextureView>    _transientViews;
 };
 
 // ── Pipeline builder ──────────────────────────────────────────────────────────
@@ -113,6 +200,10 @@ public:
 
     GpuPipelineBuilder& cull(WGPUCullMode mode) { _cullMode = mode; return *this; }
 
+    // Depth-only pipeline (shadow maps): no fragment stage, no color target.
+    // The WGSL only needs a vs entry point. Must be combined with depth().
+    GpuPipelineBuilder& depthOnly() { _depthOnlyPipeline = true; return *this; }
+
     GpuPipeline build();
 
 private:
@@ -134,6 +225,7 @@ private:
     bool                _depthWrite   = false;
     WGPUCompareFunction _depthCompare = WGPUCompareFunction_Less;
     WGPUCullMode        _cullMode     = WGPUCullMode_None;
+    bool                _depthOnlyPipeline = false;
 };
 
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__

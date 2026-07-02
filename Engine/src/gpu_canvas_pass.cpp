@@ -92,17 +92,7 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     _texBGL     = p.bgl(1);
 
     // ── Uniform bind group (must come after build so _uniformBGL is valid) ──
-    {
-        WGPUBindGroupEntry e{};
-        e.binding = 0;
-        e.buffer  = _uniformBuf;
-        e.size    = 64;
-        WGPUBindGroupDescriptor d{};
-        d.layout     = _uniformBGL;
-        d.entryCount = 1;
-        d.entries    = &e;
-        _uniformBG = wgpuDeviceCreateBindGroup(device, &d);
-    }
+    _uniformBG = GpuBindGroupBuilder(device, _uniformBGL).buffer(0, _uniformBuf, 64).build();
 
     // ── Depth-tested variant (WorldCanvasPass): read-only LessEqual ────────
     // Borrows the BGLs created above so bind groups stay compatible.
@@ -144,20 +134,10 @@ WGPUBindGroup GPUCanvasPass::_getOrCreateTexBG(uint32_t texID) {
     WGPUTexture rawTex = (texID == 0) ? _whiteTex : GfxFactory::GetWGPUTexture(texID);
     if (!rawTex) rawTex = _whiteTex;
 
-    WGPUTextureView view = wgpuTextureCreateView(rawTex, nullptr);
-
-    WGPUBindGroupEntry e[2]{};
-    e[0].binding     = 0;
-    e[0].textureView = view;
-    e[1].binding     = 1;
-    e[1].sampler     = _sampler;
-    WGPUBindGroupDescriptor d{};
-    d.layout     = _texBGL;
-    d.entryCount = 2;
-    d.entries    = e;
-    WGPUBindGroup bg = wgpuDeviceCreateBindGroup(_device, &d);
-
-    wgpuTextureViewRelease(view);
+    WGPUBindGroup bg = GpuBindGroupBuilder(_device, _texBGL)
+        .texture(0, rawTex)
+        .sampler(1, _sampler)
+        .build();
     _texBGCache[texID] = bg;
     return bg;
 }

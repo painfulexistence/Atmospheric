@@ -50,6 +50,14 @@ GpuPipeline GpuPipelineBuilder::build() {
                 case GpuBGLEntry::Kind::Sampler:
                     we.sampler.type = WGPUSamplerBindingType_Filtering;
                     break;
+                case GpuBGLEntry::Kind::DepthTexture:
+                    we.texture.sampleType    = WGPUTextureSampleType_Depth;
+                    we.texture.viewDimension = WGPUTextureViewDimension_2D;
+                    we.texture.multisampled  = false;
+                    break;
+                case GpuBGLEntry::Kind::ComparisonSampler:
+                    we.sampler.type = WGPUSamplerBindingType_Comparison;
+                    break;
             }
             wgpuEntries.push_back(we);
         }
@@ -122,7 +130,7 @@ GpuPipeline GpuPipelineBuilder::build() {
     pd.vertex.entryPoint   = { "vs", WGPU_STRLEN };
     pd.vertex.bufferCount  = _vertexAttrs.empty() ? 0u : 1u;
     pd.vertex.buffers      = _vertexAttrs.empty() ? nullptr : &vbl;
-    pd.fragment            = &frag;
+    pd.fragment            = _depthOnlyPipeline ? nullptr : &frag;
     pd.depthStencil        = _depthEnabled ? &depthStencil : nullptr;
     pd.primitive.topology  = WGPUPrimitiveTopology_TriangleList;
     pd.primitive.frontFace = WGPUFrontFace_CCW;
