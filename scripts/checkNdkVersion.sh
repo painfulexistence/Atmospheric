@@ -3,8 +3,8 @@
 # matches the version the vcpkg Android triplets are chainloaded against
 # (triplets/arm64-android.cmake, triplets/x64-android.cmake).
 # Usage:
-#   ./scripts/check-ndk-version.sh
-#   ./scripts/check-ndk-version.sh --print-primary-version
+#   ./scripts/checkNdkVersion.sh
+#   ./scripts/checkNdkVersion.sh --print-primary-version
 
 set -euo pipefail
 
