@@ -95,25 +95,22 @@ void GraphicsServer::Init(Application* app) {
       .intensity = 1.0f,
       .castShadow = false }));
 
-#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
-    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
-        // WebGPU path: GPUCanvasPass handles all rendering; no GL objects needed.
-        return;
-    }
-#endif
-
-    // ── OpenGL / WebGL 2 path ─────────────────────────────────────────────────
-    AssetManager::Get().LoadDefaultShaders();
+    // GLSL shader compilation and raw GL state setup are GL-only; everything
+    // below this block (Renderer, meshes) is backend-agnostic — Renderer::Init
+    // and Mesh guard their own GL usage internally.
+    if (GfxFactory::GetBackend() != GfxBackend::WebGPU) {
+        AssetManager::Get().LoadDefaultShaders();
 
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
-    glPrimitiveRestartIndex(0xFFFF);
-    glPatchParameteri(GL_PATCH_VERTICES, 4);
+        glPrimitiveRestartIndex(0xFFFF);
+        glPatchParameteri(GL_PATCH_VERTICES, 4);
 #endif
-    glLineWidth(2.0f);
-    glCullFace(GL_BACK);
+        glLineWidth(2.0f);
+        glCullFace(GL_BACK);
 #if MSAA_ON && !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
-    glEnable(GL_MULTISAMPLE);
+        glEnable(GL_MULTISAMPLE);
 #endif
+    }
 
     renderer = new Renderer();
     renderer->Init(width, height);
@@ -127,8 +124,14 @@ void GraphicsServer::Init(Application* app) {
     canvasMesh = std::make_unique<Mesh>(MeshType::CANVAS);
     canvasMesh->updateFreq = UpdateFrequency::Dynamic;
 
-    try { debugShader = AssetManager::Get().GetShader("debug_line"); } catch (...) { debugShader = nullptr; }
-    try { canvasShader = AssetManager::Get().GetShader("canvas"); }     catch (...) { canvasShader = nullptr; }
+    // GLSL programs only exist on the GL backend (LoadDefaultShaders is
+    // skipped above). Don't even look them up under WebGPU: a C++ exception
+    // thrown here can escape the try/catch when Init resumes from an
+    // ASYNCIFY rewind (observed in the browser as an uncaught runtime_error).
+    if (GfxFactory::GetBackend() != GfxBackend::WebGPU) {
+        try { debugShader = AssetManager::Get().GetShader("debug_line"); } catch (...) { debugShader = nullptr; }
+        try { canvasShader = AssetManager::Get().GetShader("canvas"); }     catch (...) { canvasShader = nullptr; }
+    }
 }
 
 void GraphicsServer::Process(float dt) {
@@ -139,13 +142,10 @@ void GraphicsServer::Process(float dt) {
 void GraphicsServer::Render(CameraComponent* camera, float dt) {
     ZoneScopedN("GraphicsServer::Render");
 
-#if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
-    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
-        // WebGPU: canvas draw list is consumed by GPUCanvasPass in the render loop.
-        // No GL renderer to drive here.
-        return;
-    }
-#endif
+    // NOTE: this function is backend-agnostic — command submission is a CPU
+    // queue push, and RenderFrame() itself branches to the WebGPU encoder
+    // flow. (An early-return stub for WebGPU used to live here from before
+    // RenderFrame had a WebGPU path; it silently skipped all rendering.)
 
     if (!camera) {
         camera = defaultCamera;
@@ -299,13 +299,13 @@ void GraphicsServer::DrawImGui(float dt) {
             ImGui::TreePop();
         }
         if (ImGui::TreeNode("Textures")) {
-            for (auto t : renderer->uniShadowMaps) {
+            for (auto t : renderer->gl.uniShadowMaps) {
                 if (ImGui::TreeNode(fmt::format("Directional shadow map #{}", t).c_str())) {
                     ImGui::Image((ImTextureID)(intptr_t)t, ImVec2(64, 64));
                     ImGui::TreePop();
                 }
             }
-            for (auto t : renderer->omniShadowMaps) {
+            for (auto t : renderer->gl.omniShadowMaps) {
                 // FIXME: cubemap textures are not supported yet
                 // if (ImGui::TreeNode(fmt:: format("Point shadow map #{}", t).c_str())) {
                 //     ImGui::Image((ImTextureID)(intptr_t)t, ImVec2(64, 64));
@@ -326,23 +326,23 @@ void GraphicsServer::DrawImGui(float dt) {
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Position RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gBuffer.positionRT, ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.positionRT, ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Normal RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gBuffer.normalRT, ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.normalRT, ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Albedo RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gBuffer.albedoRT, ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.albedoRT, ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Material RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gBuffer.materialRT, ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.materialRT, ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Depth RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gBuffer.depthRT, ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.depthRT, ImVec2(64, 64));
                 ImGui::TreePop();
             }
             ImGui::Separator();
@@ -792,7 +792,7 @@ void GraphicsServer::RenderBufferedText(BatchRenderer2D* batch) {
     _textCommands.clear();
 }
 
-void GraphicsServer::FlushTextToQueue() {
+void GraphicsServer::FlushTextToCommands(std::vector<BatchDrawCommand>& out) {
     for (const auto& cmd : _textCommands) {
         Font* font = _fontManager.GetFont(cmd.fontID);
         if (!font) continue;
@@ -819,7 +819,7 @@ void GraphicsServer::FlushTextToQueue() {
                 bdc.textureID = font->textureID;
                 bdc.transform = glm::mat4(1.0f);
                 CreateQuad(bdc.vertices, bdc.indices, transform, cmd.color, uvs);
-                renderer->SubmitCanvasCommand(bdc);
+                out.push_back(std::move(bdc));
             }
             cursorX += glyph->advance * cmd.scale;
         }

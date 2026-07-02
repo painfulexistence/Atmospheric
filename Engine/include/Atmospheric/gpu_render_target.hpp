@@ -50,11 +50,19 @@ private:
     WGPUTextureView       _colorView    = nullptr;
     WGPUTextureView       _depthView    = nullptr;
     WGPURenderPassEncoder _activePass   = nullptr;
+    // Encoder whose ->pass we set in Begin(); kept so End() can null it out
+    // again. Without this, enc->pass dangles after End() releases the pass
+    // encoder, and the `if (!pass)` guards downstream can't catch it.
+    GPUCommandEncoder*    _activeEnc    = nullptr;
 
     int  _width     = 0;
     int  _height    = 0;
     bool _withDepth = false;
     bool _hdr       = false;
     glm::vec4 _clearColor = glm::vec4(0.0f);
+    // Set by Clear(), consumed (and reset to false) by the next Begin() so
+    // only that one Begin() uses loadOp=Clear; later Begin() calls within the
+    // same frame load the existing contents instead of erasing them.
+    bool _clearPending = false;
 };
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__

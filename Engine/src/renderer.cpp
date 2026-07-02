@@ -18,7 +18,11 @@
 #include <algorithm>
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "gpu_canvas_pass.hpp"
+#include "gpu_pipeline.hpp"
+#include "gpu_render_target.hpp"
+#include "command_encoder.hpp"
 #include <webgpu/webgpu.h>
+#include "renderer_wgsl.hpp"
 #endif
 #if defined(__APPLE__) && TARGET_OS_IOS
 #include <SDL3/SDL.h>
@@ -145,7 +149,8 @@ void Renderer::Init(int width, int height) {
 #endif
 
     // Screen-space quad VAO for post-process passes (bloom, etc.)
-    {
+    // GL-only: no GL context exists when running the WebGPU backend.
+    if (GfxFactory::GetBackend() != GfxBackend::WebGPU) {
         static const float quadVerts[] = {
             -1.f, -1.f, 0.f, 0.f,
              1.f, -1.f, 1.f, 0.f,
@@ -155,9 +160,9 @@ void Renderer::Init(int width, int height) {
             -1.f,  1.f, 0.f, 1.f,
         };
         GLuint vbo;
-        glGenVertexArrays(1, &screenQuadVAO);
+        glGenVertexArrays(1, &gl.screenQuadVAO);
         glGenBuffers(1, &vbo);
-        glBindVertexArray(screenQuadVAO);
+        glBindVertexArray(gl.screenQuadVAO);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
         glEnableVertexAttribArray(0);
@@ -165,10 +170,8 @@ void Renderer::Init(int width, int height) {
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
         glBindVertexArray(0);
-    }
 
-    // ── Skybox cube VAO ───────────────────────────────────────────────
-    {
+        // ── Skybox cube VAO ───────────────────────────────────────────
         static const float cubeVerts[] = {
             -1, -1, -1,  1, -1, -1,  1,  1, -1,  1,  1, -1, -1,  1, -1, -1, -1, -1,
             -1, -1,  1,  1, -1,  1,  1,  1,  1,  1,  1,  1, -1,  1,  1, -1, -1,  1,
@@ -177,10 +180,10 @@ void Renderer::Init(int width, int height) {
             -1, -1, -1, -1, -1,  1,  1, -1,  1,  1, -1,  1,  1, -1, -1, -1, -1, -1,
             -1,  1, -1, -1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, -1, -1,  1, -1,
         };
-        glGenVertexArrays(1, &skyboxVAO);
-        glGenBuffers(1, &skyboxVBO);
-        glBindVertexArray(skyboxVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
+        glGenVertexArrays(1, &gl.skyboxVAO);
+        glGenBuffers(1, &gl.skyboxVBO);
+        glBindVertexArray(gl.skyboxVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, gl.skyboxVBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVerts), cubeVerts, GL_STATIC_DRAW);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
@@ -212,10 +215,12 @@ void Renderer::Cleanup() {
     destroyReadbackPBOs();
 
     // debug and screen are now std::unique_ptr<Buffer> that auto-destruct
-    glDeleteVertexArrays(1, &canvasVAO);
-    glDeleteBuffers(1, &canvasVBO);
-    glDeleteVertexArrays(1, &skyboxVAO);
-    glDeleteBuffers(1, &skyboxVBO);
+    if (GfxFactory::GetBackend() != GfxBackend::WebGPU) {
+        glDeleteVertexArrays(1, &gl.canvasVAO);
+        glDeleteBuffers(1, &gl.canvasVBO);
+        glDeleteVertexArrays(1, &gl.skyboxVAO);
+        glDeleteBuffers(1, &gl.skyboxVBO);
+    }
 }
 
 void Renderer::Resize(int width, int height) {
@@ -341,13 +346,33 @@ void Renderer::RenderFrame(GraphicsServer* ctx, float dt) {
         SDL_Window* win = static_cast<SDL_Window*>(Window::Get()->GetNativeHandle());
         SDL_PropertiesID props = SDL_GetWindowProperties(win);
         Sint64 fb = SDL_GetNumberProperty(props, SDL_PROP_WINDOW_UIKIT_OPENGL_FRAMEBUFFER_NUMBER, 0);
-        finalFBO = static_cast<GLuint>(fb);
+        gl.finalFBO = static_cast<GLuint>(fb);
     }
     AE_GL_PROBE(*this, "RenderFrame: after query iOS FBO");
 #endif
     frameTime += dt;
     SortAndBucket(ctx->GetMainCamera()->GetEyePosition());
-    _renderGraph->Render(ctx, *this);
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        GPUCommandEncoder gpuEnc;
+        gpuEnc.encoder = wgpuDeviceCreateCommandEncoder(GfxFactory::GetWebGPUDevice(), nullptr);
+
+        sceneRT->Clear(clearColor);
+        _renderGraph->Render(ctx, *this, &gpuEnc);
+
+        WGPUCommandBufferDescriptor cmdDesc{};
+        WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(gpuEnc.encoder, &cmdDesc);
+        wgpuQueueSubmit(GfxFactory::GetWebGPUQueue(), 1, &cmdBuffer);
+        wgpuCommandBufferRelease(cmdBuffer);
+        wgpuCommandEncoderRelease(gpuEnc.encoder);
+
+        GfxFactory::PresentSwapchain();
+    } else
+#endif
+    {
+        _renderGraph->Render(ctx, *this);
+    }
 
     _hudQueue.clear();
     _canvasQueue.clear();
@@ -419,17 +444,22 @@ void Renderer::CheckErrors(const std::string& prefix) {
 }
 
 void Renderer::CreateFBOs() {
-    glGenFramebuffers(1, &shadowFBO);
-    glGenFramebuffers(1, &gBuffer.id);
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+    glGenFramebuffers(1, &gl.shadowFBO);
+    glGenFramebuffers(1, &gl.gBuffer.id);
 }
 
 void Renderer::DestroyFBOs() {
-    glDeleteFramebuffers(1, &shadowFBO);
-    glDeleteFramebuffers(1, &gBuffer.id);
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+    glDeleteFramebuffers(1, &gl.shadowFBO);
+    glDeleteFramebuffers(1, &gl.gBuffer.id);
 }
 
 void Renderer::CreateRTs(const RenderTargetProps& props) {
+    const bool isGL = GfxFactory::GetBackend() != GfxBackend::WebGPU;
+
     // 1. Create and set shadow pass attachments
+    if (isGL) {
     for (int i = 0; i < MAX_UNI_LIGHTS; ++i) {
         GLuint map;
         glGenTextures(1, &map);
@@ -439,7 +469,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, SHADOW_W, SHADOW_H, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-        uniShadowMaps[i] = map;
+        gl.uniShadowMaps[i] = map;
     }
     for (int i = 0; i < MAX_OMNI_LIGHTS; ++i) {
         GLuint map;
@@ -463,27 +493,28 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
               NULL
             );
         }
-        omniShadowMaps[i] = map;
+        gl.omniShadowMaps[i] = map;
     }
 
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
-    glBindFramebuffer(GL_FRAMEBUFFER, shadowFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, gl.shadowFBO);
     GLenum drawBuffers[] = { GL_NONE };
     glDrawBuffers(1, drawBuffers);
 #else
-    glBindFramebuffer(GL_FRAMEBUFFER, shadowFBO);
-    for (int i = 0; i < (int)uniShadowMaps.size(); ++i) {
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, uniShadowMaps[i], 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, gl.shadowFBO);
+    for (int i = 0; i < (int)gl.uniShadowMaps.size(); ++i) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gl.uniShadowMaps[i], 0);
         glDrawBuffer(GL_NONE);
         glReadBuffer(GL_NONE);
     }
-    for (int i = 0; i < (int)omniShadowMaps.size(); ++i) {
-        glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, omniShadowMaps[i], 0);
+    for (int i = 0; i < (int)gl.omniShadowMaps.size(); ++i) {
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, gl.omniShadowMaps[i], 0);
         glDrawBuffer(GL_NONE);
         glReadBuffer(GL_NONE);
     }
 #endif
     CheckErrors("Create shadow RTs");
+    } // isGL
 
     // 2. Scene render target (MSAA on forward path; RBO-based on WebGL, texture-based on desktop)
     {
@@ -498,9 +529,9 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
     }
 
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
-    if (sceneRT && sceneRT->GetNumSamples() > 1) {
-        glGenTextures(1, &glesResolvedDepthTex);
-        glBindTexture(GL_TEXTURE_2D, glesResolvedDepthTex);
+    if (isGL && sceneRT && sceneRT->GetNumSamples() > 1) {
+        glGenTextures(1, &gl.glesResolvedDepthTex);
+        glBindTexture(GL_TEXTURE_2D, gl.glesResolvedDepthTex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, props.width, props.height, 0,
                      GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -508,18 +539,18 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        glGenFramebuffers(1, &glesResolvedDepthFBO);
-        glBindFramebuffer(GL_FRAMEBUFFER, glesResolvedDepthFBO);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, glesResolvedDepthTex, 0);
+        glGenFramebuffers(1, &gl.glesResolvedDepthFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, gl.glesResolvedDepthFBO);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gl.glesResolvedDepthTex, 0);
 
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
             Console::Get()->Error("Renderer: WebGL resolved depth FBO incomplete!");
         }
-        glBindFramebuffer(GL_FRAMEBUFFER, finalFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, gl.finalFBO);
 
-        glesResolvedDepthWidth = props.width;
-        glesResolvedDepthHeight = props.height;
+        gl.glesResolvedDepthWidth = props.width;
+        gl.glesResolvedDepthHeight = props.height;
     }
 #endif
 
@@ -535,83 +566,88 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
     }
 
     // 4. Create and set geometry pass attachments
-    glGenTextures(1, &gBuffer.positionRT);
-    glBindTexture(GL_TEXTURE_2D, gBuffer.positionRT);
+    if (isGL) {
+    glGenTextures(1, &gl.gBuffer.positionRT);
+    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.positionRT);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, props.width, props.height, 0, GL_RGBA, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glGenTextures(1, &gBuffer.normalRT);
-    glBindTexture(GL_TEXTURE_2D, gBuffer.normalRT);
+    glGenTextures(1, &gl.gBuffer.normalRT);
+    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.normalRT);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, props.width, props.height, 0, GL_RGBA, GL_FLOAT, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glGenTextures(1, &gBuffer.albedoRT);
-    glBindTexture(GL_TEXTURE_2D, gBuffer.albedoRT);
+    glGenTextures(1, &gl.gBuffer.albedoRT);
+    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.albedoRT);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, props.width, props.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glGenTextures(1, &gBuffer.materialRT);
-    glBindTexture(GL_TEXTURE_2D, gBuffer.materialRT);
+    glGenTextures(1, &gl.gBuffer.materialRT);
+    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.materialRT);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, props.width, props.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glGenTextures(1, &gBuffer.depthRT);
-    glBindTexture(GL_TEXTURE_2D, gBuffer.depthRT);
+    glGenTextures(1, &gl.gBuffer.depthRT);
+    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.depthRT);
     glTexImage2D(
       GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, props.width, props.height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL
     );
 
-    glGenFramebuffers(1, &gBuffer.id);
-    glBindFramebuffer(GL_FRAMEBUFFER, gBuffer.id);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gBuffer.positionRT, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gBuffer.normalRT, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gBuffer.albedoRT, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, gBuffer.materialRT, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gBuffer.depthRT, 0);
+    glGenFramebuffers(1, &gl.gBuffer.id);
+    glBindFramebuffer(GL_FRAMEBUFFER, gl.gBuffer.id);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gl.gBuffer.positionRT, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gl.gBuffer.normalRT, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gl.gBuffer.albedoRT, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, gl.gBuffer.materialRT, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gl.gBuffer.depthRT, 0);
     std::array<GLuint, 4> attachments = {
         GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3
     };
     glDrawBuffers(attachments.size(), attachments.data());
     CheckFramebufferStatus("G-buffer incomplete");
 
-    glBindFramebuffer(GL_FRAMEBUFFER, finalFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, gl.finalFBO);
     CheckErrors("Create G-buffer RTs");
+    } // isGL
 }
 
 void Renderer::DestroyRTs() {
     sceneRT.reset();
     msaaResolveRT.reset();
 
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
-    if (glesResolvedDepthFBO) {
-        glDeleteFramebuffers(1, &glesResolvedDepthFBO);
-        glesResolvedDepthFBO = 0;
+    if (gl.glesResolvedDepthFBO) {
+        glDeleteFramebuffers(1, &gl.glesResolvedDepthFBO);
+        gl.glesResolvedDepthFBO = 0;
     }
-    if (glesResolvedDepthTex) {
-        glDeleteTextures(1, &glesResolvedDepthTex);
-        glesResolvedDepthTex = 0;
+    if (gl.glesResolvedDepthTex) {
+        glDeleteTextures(1, &gl.glesResolvedDepthTex);
+        gl.glesResolvedDepthTex = 0;
     }
-    glesResolvedDepthWidth = 0;
-    glesResolvedDepthHeight = 0;
+    gl.glesResolvedDepthWidth = 0;
+    gl.glesResolvedDepthHeight = 0;
 #endif
 
-    glDeleteTextures(1, &gBuffer.positionRT);
-    glDeleteTextures(1, &gBuffer.normalRT);
-    glDeleteTextures(1, &gBuffer.albedoRT);
-    glDeleteTextures(1, &gBuffer.materialRT);
-    glDeleteTextures(1, &gBuffer.depthRT);
+    glDeleteTextures(1, &gl.gBuffer.positionRT);
+    glDeleteTextures(1, &gl.gBuffer.normalRT);
+    glDeleteTextures(1, &gl.gBuffer.albedoRT);
+    glDeleteTextures(1, &gl.gBuffer.materialRT);
+    glDeleteTextures(1, &gl.gBuffer.depthRT);
 }
 
 void Renderer::CreateCanvasVAO() {
-    glGenVertexArrays(1, &canvasVAO);
-    glGenBuffers(1, &canvasVBO);
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+    glGenVertexArrays(1, &gl.canvasVAO);
+    glGenBuffers(1, &gl.canvasVBO);
 
-    glBindVertexArray(canvasVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, canvasVBO);
+    glBindVertexArray(gl.canvasVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, gl.canvasVBO);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)offsetof(CanvasVertex, texCoord));
     glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)offsetof(CanvasVertex, color));
@@ -640,7 +676,157 @@ void Renderer::CreateDebugBuffer() {
     debugBuffer->Initialize(VertexFormat::Debug, BufferUsage::Stream);
 }
 
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+ShadowPass::~ShadowPass() {
+    if (_uniformBG)      wgpuBindGroupRelease(_uniformBG);
+    if (_uniformBGL)     wgpuBindGroupLayoutRelease(_uniformBGL);
+    if (_pipeline)       wgpuRenderPipelineRelease(_pipeline);
+    if (_frameUniformBuf) wgpuBufferRelease(_frameUniformBuf);
+    if (_drawUniformBuf) wgpuBufferRelease(_drawUniformBuf);
+    if (_shadowView)     wgpuTextureViewRelease(_shadowView);
+    if (_shadowTex)      wgpuTextureRelease(_shadowTex);
+}
+
+void ShadowPass::_initGPU(WGPUDevice device, WGPUQueue queue) {
+    _gpuDevice = device;
+    _gpuQueue  = queue;
+
+    {
+        WGPUBufferDescriptor d{};
+        d.size  = SHADOW_FRAME_UNIFORM_SIZE;
+        d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        _frameUniformBuf = wgpuDeviceCreateBuffer(device, &d);
+    }
+    {
+        WGPUTextureDescriptor d{};
+        d.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+        d.dimension     = WGPUTextureDimension_2D;
+        d.size          = { SHADOW_W, SHADOW_H, 1 };
+        d.format        = WGPUTextureFormat_Depth32Float;
+        d.mipLevelCount = 1;
+        d.sampleCount   = 1;
+        _shadowTex  = wgpuDeviceCreateTexture(device, &d);
+        _shadowView = wgpuTextureCreateView(_shadowTex, nullptr);
+    }
+
+    // Vertex layout: only position (offset 0) from the 56-byte Standard format.
+    auto p = GpuPipelineBuilder(device)
+        .wgsl(SHADOW_WGSL)
+        .bgl({ gpuUniform(0, wgsl_stage::vert, SHADOW_FRAME_UNIFORM_SIZE),
+               gpuDynUniform(1, wgsl_stage::vert, SHADOW_DRAW_UNIFORM_SIZE) })
+        .vertex(56, { {WGPUVertexFormat_Float32x3, 0, 0} })
+        .depth(true, WGPUCompareFunction_Less)
+        .depthOnly()
+        // Front-face culling like classic shadow mapping would change peter-
+        // panning behaviour vs the GL path (which draws per-material culling);
+        // keep None to match GL output most closely.
+        .build();
+    _pipeline   = p.pipeline;
+    _uniformBGL = p.bgl(0);
+}
+
+void ShadowPass::_ensureDrawCapacity(uint32_t drawCount) {
+    if (drawCount <= _drawSlotCapacity && _drawUniformBuf) return;
+
+    uint32_t newCapacity = std::max<uint32_t>(drawCount, std::max<uint32_t>(_drawSlotCapacity * 2, 16));
+
+    if (_drawUniformBuf) { wgpuBufferRelease(_drawUniformBuf); _drawUniformBuf = nullptr; }
+    if (_uniformBG)      { wgpuBindGroupRelease(_uniformBG);   _uniformBG      = nullptr; }
+
+    WGPUBufferDescriptor d{};
+    d.size  = static_cast<uint64_t>(newCapacity) * SHADOW_DRAW_SLOT_STRIDE;
+    d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+    _drawUniformBuf   = wgpuDeviceCreateBuffer(_gpuDevice, &d);
+    _drawSlotCapacity = newCapacity;
+
+    _uniformBG = GpuBindGroupBuilder(_gpuDevice, _uniformBGL)
+        .buffer(0, _frameUniformBuf, SHADOW_FRAME_UNIFORM_SIZE)
+        .buffer(1, _drawUniformBuf,  SHADOW_DRAW_UNIFORM_SIZE)
+        .build();
+}
+#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+
 void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        WGPUDevice dev = GfxFactory::GetWebGPUDevice();
+        if (!dev) return;
+        if (!_pipeline) _initGPU(dev, GfxFactory::GetWebGPUQueue());
+
+        // Collect casters: PRIM meshes from both queues, same as the GL path.
+        struct DrawItem { Buffer* buf; glm::mat4 model; };
+        std::vector<DrawItem> draws;
+        auto collect = [&](const std::vector<Renderer::SortableCommand>& queue) {
+            for (const auto& sortable : queue) {
+                const auto& cmd = sortable.cmd;
+                Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
+                if (!mesh || mesh->type != MeshType::PRIM) continue;
+                if (!mesh->UsesRenderMesh()) continue;
+                Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
+                if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
+                draws.push_back({ buf, cmd.transform });
+            }
+        };
+        collect(renderer.GetOpaqueQueue());
+        collect(renderer.GetTransparentQueue());
+
+        // Light-space VP with the GL [-1,1] → WebGPU [0,1] NDC-z fixup baked
+        // in; without it the ortho projection would clip half the depth range.
+        auto* light = ctx->GetMainLight();
+        glm::mat4 lightVP;
+        if (light) {
+            const glm::mat4 z01 = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.5f))
+                                * glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 0.5f));
+            lightVP = z01 * light->GetProjectionMatrix(0) * light->GetViewMatrix();
+        } else {
+            // No light: push everything past far so the WGSL guard reads
+            // "outside the frustum" → fully lit.
+            lightVP = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 3.0f))
+                    * glm::scale(glm::mat4(1.0f), glm::vec3(0.0f));
+        }
+        renderer.wgpuShadowLightVP = lightVP;
+        renderer.wgpuShadowMapView = _shadowView;
+
+        if (!draws.empty()) {
+            _ensureDrawCapacity(static_cast<uint32_t>(draws.size()));
+            wgpuQueueWriteBuffer(_gpuQueue, _frameUniformBuf, 0, &lightVP, sizeof(lightVP));
+            std::vector<uint8_t> drawData(draws.size() * SHADOW_DRAW_SLOT_STRIDE, 0);
+            for (size_t i = 0; i < draws.size(); ++i)
+                std::memcpy(drawData.data() + i * SHADOW_DRAW_SLOT_STRIDE,
+                            &draws[i].model, sizeof(glm::mat4));
+            wgpuQueueWriteBuffer(_gpuQueue, _drawUniformBuf, 0, drawData.data(), drawData.size());
+        }
+
+        // Depth-only render pass; always runs (even with zero casters) so the
+        // map is cleared to 1.0 = "no occluders" and ForwardOpaquePass can
+        // sample it unconditionally.
+        auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+        WGPURenderPassDepthStencilAttachment depthAttach{};
+        depthAttach.view            = _shadowView;
+        depthAttach.depthLoadOp     = WGPULoadOp_Clear;
+        depthAttach.depthStoreOp    = WGPUStoreOp_Store;
+        depthAttach.depthClearValue = 1.0f;
+        WGPURenderPassDescriptor passDesc{};
+        passDesc.colorAttachmentCount   = 0;
+        passDesc.depthStencilAttachment = &depthAttach;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &passDesc);
+
+        if (!draws.empty()) {
+            wgpuRenderPassEncoderSetPipeline(pass, _pipeline);
+            GPUCommandEncoder shadowEnc;
+            shadowEnc.encoder = gpuEnc->encoder;
+            shadowEnc.pass    = pass;
+            for (size_t i = 0; i < draws.size(); ++i) {
+                uint32_t dynamicOffset = static_cast<uint32_t>(i * SHADOW_DRAW_SLOT_STRIDE);
+                wgpuRenderPassEncoderSetBindGroup(pass, 0, _uniformBG, 1, &dynamicOffset);
+                draws[i].buf->Draw(&shadowEnc, PrimitiveTopology::Triangles);
+            }
+        }
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+        return;
+    }
+#endif
     ZoneScopedN("ShadowPass");
     AE_GL_PROBE(renderer, "Shadow pass: entry");
     glViewport(0, 0, SHADOW_W, SHADOW_H);
@@ -663,11 +849,11 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
     }
 
     // 1. Render shadow map for directional light
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer.shadowFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.shadowFBO);
 
     auto mainLight = ctx->GetMainLight();
 
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, renderer.uniShadowMaps[0], 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, renderer.gl.uniShadowMaps[0], 0);
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     GLenum drawBuffers[] = { GL_NONE };
     glDrawBuffers(1, drawBuffers);
@@ -719,7 +905,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         glBindVertexArray(0);
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.finalFBO);
 
     // 2. Render shadow maps for point lights
     if (ctx->pointLights.size() == 0) {
@@ -736,7 +922,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
         for (int f = 0; f < 6; ++f) {
             GLenum face = GL_TEXTURE_CUBE_MAP_POSITIVE_X + f;
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, face, renderer.omniShadowMaps[i], 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, face, renderer.gl.omniShadowMaps[i], 0);
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
             GLenum drawBuffers[] = { GL_NONE };
             glDrawBuffers(1, drawBuffers);
@@ -790,10 +976,245 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         }
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.finalFBO);
 }
 
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+ForwardOpaquePass::~ForwardOpaquePass() {
+    for (auto& [id, bg] : _texBGCache) wgpuBindGroupRelease(bg);
+    if (_uniformBG)       wgpuBindGroupRelease(_uniformBG);
+    if (_uniformBGL)      wgpuBindGroupLayoutRelease(_uniformBGL);
+    if (_texBGL)          wgpuBindGroupLayoutRelease(_texBGL);
+    if (_pipeline)        wgpuRenderPipelineRelease(_pipeline);
+    if (_frameUniformBuf) wgpuBufferRelease(_frameUniformBuf);
+    if (_drawUniformBuf)  wgpuBufferRelease(_drawUniformBuf);
+    if (_whiteTex)        wgpuTextureRelease(_whiteTex);
+    if (_sampler)         wgpuSamplerRelease(_sampler);
+    if (_shadowBG)        wgpuBindGroupRelease(_shadowBG);
+    if (_shadowBGL)       wgpuBindGroupLayoutRelease(_shadowBGL);
+    if (_shadowSampler)   wgpuSamplerRelease(_shadowSampler);
+}
+
+void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat) {
+    _gpuDevice = device;
+    _gpuQueue  = queue;
+
+    {
+        WGPUBufferDescriptor d{};
+        d.size  = FWD_FRAME_UNIFORM_SIZE;
+        d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        _frameUniformBuf = wgpuDeviceCreateBuffer(device, &d);
+    }
+    // Pass-owned 1x1 white fallback texture — AssetManager::GetDefaultTextures()
+    // is GL-only, so meshes with no base map sample this instead.
+    {
+        WGPUTextureDescriptor d{};
+        d.size          = { 1, 1, 1 };
+        d.format        = WGPUTextureFormat_RGBA8Unorm;
+        d.usage         = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+        d.dimension     = WGPUTextureDimension_2D;
+        d.mipLevelCount = 1;
+        d.sampleCount   = 1;
+        _whiteTex = wgpuDeviceCreateTexture(device, &d);
+        const uint8_t white[4] = { 255, 255, 255, 255 };
+        WGPUTexelCopyTextureInfo dst{};
+        dst.texture = _whiteTex;
+        dst.aspect  = WGPUTextureAspect_All;
+        WGPUTexelCopyBufferLayout layout{};
+        layout.bytesPerRow  = 4;
+        layout.rowsPerImage = 1;
+        WGPUExtent3D extent{ 1, 1, 1 };
+        wgpuQueueWriteTexture(queue, &dst, white, 4, &layout, &extent);
+    }
+    {
+        WGPUSamplerDescriptor d = gpuSamplerDesc();
+        d.minFilter    = WGPUFilterMode_Linear;
+        d.magFilter    = WGPUFilterMode_Linear;
+        d.addressModeU = WGPUAddressMode_Repeat;
+        d.addressModeV = WGPUAddressMode_Repeat;
+        _sampler = wgpuDeviceCreateSampler(device, &d);
+    }
+    {
+        WGPUSamplerDescriptor d = gpuSamplerDesc();
+        d.minFilter = WGPUFilterMode_Linear;
+        d.magFilter = WGPUFilterMode_Linear;
+        d.compare   = WGPUCompareFunction_Less; // hardware PCF compare
+        _shadowSampler = wgpuDeviceCreateSampler(device, &d);
+    }
+
+    // Standard Vertex (vertex.hpp): pos(vec3)@0, uv(vec2)@12, normal(vec3)@20,
+    // tangent(vec3)@32, bitangent(vec3)@44 — stride 56. Tangent/bitangent are
+    // unused by this simplified (no normal-mapping) shader but stay in the
+    // buffer layout since the underlying Buffer is shared with the GL path.
+    auto p = GpuPipelineBuilder(device)
+        .wgsl(FORWARD_OPAQUE_WGSL)
+        .bgl({ gpuUniform(0, wgsl_stage::both, FWD_FRAME_UNIFORM_SIZE),
+               gpuDynUniform(1, wgsl_stage::both, FWD_DRAW_UNIFORM_SIZE) })
+        .bgl({ gpuTexture(0), gpuSampler(1) })
+        .bgl({ gpuDepthTexture(0), gpuCompareSampler(1) })
+        .vertex(56, { {WGPUVertexFormat_Float32x3,  0, 0},
+                      {WGPUVertexFormat_Float32x2, 12, 1},
+                      {WGPUVertexFormat_Float32x3, 20, 2} })
+        .colorFormat(colorFormat)
+        .depth(true, WGPUCompareFunction_Less)
+        .cull(WGPUCullMode_Back)
+        .build();
+    _pipeline   = p.pipeline;
+    _uniformBGL = p.bgl(0);
+    _texBGL     = p.bgl(1);
+    _shadowBGL  = p.bgl(2);
+}
+
+void ForwardOpaquePass::_ensureDrawCapacity(uint32_t drawCount) {
+    if (drawCount <= _drawSlotCapacity && _drawUniformBuf) return;
+
+    uint32_t newCapacity = std::max<uint32_t>(drawCount, std::max<uint32_t>(_drawSlotCapacity * 2, 16));
+
+    if (_drawUniformBuf) { wgpuBufferRelease(_drawUniformBuf); _drawUniformBuf = nullptr; }
+    if (_uniformBG)      { wgpuBindGroupRelease(_uniformBG);   _uniformBG      = nullptr; }
+
+    WGPUBufferDescriptor d{};
+    d.size  = static_cast<uint64_t>(newCapacity) * FWD_DRAW_SLOT_STRIDE;
+    d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+    _drawUniformBuf   = wgpuDeviceCreateBuffer(_gpuDevice, &d);
+    _drawSlotCapacity = newCapacity;
+
+    _uniformBG = GpuBindGroupBuilder(_gpuDevice, _uniformBGL)
+        .buffer(0, _frameUniformBuf, FWD_FRAME_UNIFORM_SIZE)
+        .buffer(1, _drawUniformBuf,  FWD_DRAW_UNIFORM_SIZE)
+        .build();
+}
+
+WGPUBindGroup ForwardOpaquePass::_getOrCreateTexBG(uint32_t texID) {
+    auto it = _texBGCache.find(texID);
+    if (it != _texBGCache.end()) return it->second;
+
+    WGPUTexture rawTex = (texID == 0) ? _whiteTex : GfxFactory::GetWGPUTexture(texID);
+    if (!rawTex) rawTex = _whiteTex;
+
+    WGPUBindGroup bg = GpuBindGroupBuilder(_gpuDevice, _texBGL)
+        .texture(0, rawTex)
+        .sampler(1, _sampler)
+        .build();
+    _texBGCache[texID] = bg;
+    return bg;
+}
+#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+
 void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        const auto& gpuQueueCmds = renderer.GetOpaqueQueue();
+        if (gpuQueueCmds.empty()) return;
+        if (!renderer.sceneRT)    return;
+
+        CameraComponent* camera = ctx->GetMainCamera();
+        if (!camera) return;
+        LightComponent* light = ctx->GetMainLight();
+
+        if (!_pipeline) {
+            WGPUDevice dev = GfxFactory::GetWebGPUDevice();
+            WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
+            if (!dev) return;
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float);
+        }
+
+        struct DrawItem { Buffer* buf; glm::mat4 model; Material* mat; };
+        std::vector<DrawItem> draws;
+        draws.reserve(gpuQueueCmds.size());
+        for (const auto& sortable : gpuQueueCmds) {
+            const auto& cmd = sortable.cmd;
+            Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
+            // TERRAIN (tessellation) has no WebGPU equivalent; VOXEL is handled
+            // by VoxelChunkPass. Both are documented simplifications.
+            if (!mesh || mesh->type != MeshType::PRIM) continue;
+            if (!mesh->UsesRenderMesh()) continue;
+            Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
+            if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
+            draws.push_back({ buf, cmd.transform, mesh->GetMaterial() });
+        }
+        if (draws.empty()) return;
+
+        _ensureDrawCapacity(static_cast<uint32_t>(draws.size()));
+
+        glm::vec3 lightDir   = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);
+        glm::vec3 lightColor = light ? light->diffuse : glm::vec3(1.0f);
+        glm::vec3 ambient    = light ? light->ambient : glm::vec3(0.1f);
+        glm::mat4 viewProj   = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+
+        struct {
+            glm::mat4 viewProj;
+            glm::mat4 lightVP;
+            glm::vec4 cameraPos;
+            glm::vec4 lightDir;
+            glm::vec4 lightColor;
+            glm::vec4 ambient;
+        } frameUniforms{
+            viewProj,
+            renderer.wgpuShadowLightVP, // published by ShadowPass earlier this frame
+            glm::vec4(camera->GetEyePosition(), 1.0f),
+            glm::vec4(lightDir, 0.0f),
+            glm::vec4(lightColor, 0.0f),
+            glm::vec4(ambient, 0.0f),
+        };
+        wgpuQueueWriteBuffer(_gpuQueue, _frameUniformBuf, 0, &frameUniforms, sizeof(frameUniforms));
+
+        // Shadow map bind group — rebuilt only when ShadowPass publishes a
+        // different view (first frame or shadow-map recreation).
+        if (!renderer.wgpuShadowMapView) return; // ShadowPass hasn't run yet
+        if (renderer.wgpuShadowMapView != _shadowBGSource) {
+            if (_shadowBG) wgpuBindGroupRelease(_shadowBG);
+            _shadowBG = GpuBindGroupBuilder(_gpuDevice, _shadowBGL)
+                .textureView(0, renderer.wgpuShadowMapView)
+                .sampler(1, _shadowSampler)
+                .build();
+            _shadowBGSource = renderer.wgpuShadowMapView;
+        }
+
+        // Pack every draw's per-instance data into its own dynamic-offset slot
+        // and upload in a single call (see VOXEL_WGSL's comment).
+        std::vector<uint8_t> drawData(draws.size() * FWD_DRAW_SLOT_STRIDE, 0);
+        for (size_t i = 0; i < draws.size(); ++i) {
+            Material* mat = draws[i].mat;
+            glm::vec3 diffuse  = mat ? mat->diffuse  : glm::vec3(0.55f);
+            glm::vec3 specular = mat ? mat->specular : glm::vec3(0.7f);
+            glm::vec3 matAmbient = mat ? mat->ambient : glm::vec3(0.0f);
+            float shininess    = mat ? mat->shininess : 0.25f;
+
+            uint8_t* slot = drawData.data() + i * FWD_DRAW_SLOT_STRIDE;
+            std::memcpy(slot,      &draws[i].model, sizeof(glm::mat4));
+            glm::vec4 d4(diffuse, 0.0f), s4(specular, 0.0f), a4(matAmbient, 0.0f), sh4(shininess, 0.0f, 0.0f, 0.0f);
+            std::memcpy(slot + 64, &d4,  sizeof(glm::vec4));
+            std::memcpy(slot + 80, &s4,  sizeof(glm::vec4));
+            std::memcpy(slot + 96, &a4,  sizeof(glm::vec4));
+            std::memcpy(slot + 112, &sh4, sizeof(glm::vec4));
+        }
+        wgpuQueueWriteBuffer(_gpuQueue, _drawUniformBuf, 0, drawData.data(), drawData.size());
+
+        auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+        // Materials without a base map fall back to the default diffuse
+        // texture (checkerboard), matching what the GL path binds via
+        // AssetManager::GetDefaultTextures(); plain white is the last resort.
+        const auto& defaults = AssetManager::Get().GetDefaultTextures();
+        uint32_t defaultDiffuse = defaults.empty() ? 0 : static_cast<uint32_t>(defaults[0]);
+
+        renderer.sceneRT->Begin(enc);
+        wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _pipeline);
+        for (size_t i = 0; i < draws.size(); ++i) {
+            Material* mat = draws[i].mat;
+            uint32_t texID = (mat && mat->baseMap.IsValid()) ? mat->baseMap.id : defaultDiffuse;
+            WGPUBindGroup texBG = _getOrCreateTexBG(texID);
+
+            uint32_t dynamicOffset = static_cast<uint32_t>(i * FWD_DRAW_SLOT_STRIDE);
+            wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 0, _uniformBG, 1, &dynamicOffset);
+            wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 1, texBG, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 2, _shadowBG, 0, nullptr);
+            draws[i].buf->Draw(enc, PrimitiveTopology::Triangles);
+        }
+        renderer.sceneRT->End();
+        return;
+    }
+#endif
     ZoneScopedN("ForwardOpaquePass");
     AE_GL_PROBE(renderer, "Opaque pass: entry");
     auto [width, height] = Window::Get()->GetPhysicalSize();
@@ -805,11 +1226,11 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
     auto& assetManager = AssetManager::Get();
     for (int i = 0; i < MAX_UNI_LIGHTS; ++i) {
         glActiveTexture(GL_TEXTURE0 + i);
-        glBindTexture(GL_TEXTURE_2D, renderer.uniShadowMaps[i]);
+        glBindTexture(GL_TEXTURE_2D, renderer.gl.uniShadowMaps[i]);
     }
     for (int i = 0; i < MAX_OMNI_LIGHTS; ++i) {
         glActiveTexture(GL_TEXTURE0 + UNI_SHADOW_MAP_COUNT + i);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, renderer.omniShadowMaps[i]);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, renderer.gl.omniShadowMaps[i]);
     }
     AE_GL_PROBE(renderer, "Opaque pass: after bind shadow maps");
     // Global static binding removed; textures are now dynamically bound per draw call
@@ -1081,7 +1502,7 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
     auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer.gBuffer.id);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.gBuffer.id);
     std::array<GLuint, 4> attachments = {
         GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3
     };
@@ -1221,19 +1642,19 @@ void DeferredLightingPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
     lightingShader->Activate();
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, renderer.gBuffer.positionRT);
+    glBindTexture(GL_TEXTURE_2D, renderer.gl.gBuffer.positionRT);
     lightingShader->SetUniform("gPosition", 0);
 
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, renderer.gBuffer.normalRT);
+    glBindTexture(GL_TEXTURE_2D, renderer.gl.gBuffer.normalRT);
     lightingShader->SetUniform("gNormal", 1);
 
     glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, renderer.gBuffer.albedoRT);
+    glBindTexture(GL_TEXTURE_2D, renderer.gl.gBuffer.albedoRT);
     lightingShader->SetUniform("gAlbedo", 2);
 
     glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, renderer.gBuffer.materialRT);
+    glBindTexture(GL_TEXTURE_2D, renderer.gl.gBuffer.materialRT);
     lightingShader->SetUniform("gMaterial", 3);
 
     auto mainLight = ctx->GetMainLight();
@@ -1262,6 +1683,9 @@ void DeferredLightingPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
 }
 
 void TransparentPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     ZoneScopedN("TransparentPass");
     auto& cam = *ctx->GetMainCamera();
     Atmospheric::CameraInfo camInfo = { .view = cam.GetViewMatrix(),
@@ -1271,8 +1695,11 @@ void TransparentPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 }
 
 void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+#endif
     ZoneScopedN("MSAAResolvePass");
-    
+
     auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
  
@@ -1283,20 +1710,64 @@ void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
                       GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
-    if (renderer.glesResolvedDepthFBO != 0) {
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, renderer.glesResolvedDepthFBO);
+    if (renderer.gl.glesResolvedDepthFBO != 0) {
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, renderer.gl.glesResolvedDepthFBO);
         glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
                           GL_DEPTH_BUFFER_BIT, GL_NEAREST);
     }
 #endif
 
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.finalFBO);
 
     renderer.CheckErrors("MSAA resolve pass");
 }
 
 // WorldCanvasPass: World sprites with depth testing
 void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        GPUCanvasPass* gpuPass = renderer.GetGPUCanvasPass();
+        if (!gpuPass) return;
+
+        // Same layer filter as the GL path below: 3D-space drawables only.
+        std::vector<CanvasDrawable*> worldDrawables;
+        for (auto* drawable : ctx->canvasDrawables) {
+            if (!drawable->gameObject->isActive) continue;
+            if ((int)drawable->GetLayer() < (int)CanvasLayer::LAYER_WORLD_2D)
+                worldDrawables.push_back(drawable);
+        }
+        if (worldDrawables.empty()) return;
+        if (!renderer.sceneRT) return;
+
+        CameraComponent* camera = ctx->GetMainCamera();
+        if (!camera) return;
+        glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+
+        glm::vec3 camPos = camera->GetEyePosition();
+        std::sort(worldDrawables.begin(), worldDrawables.end(), [&camPos](CanvasDrawable* a, CanvasDrawable* b) {
+            if (a->GetLayer() != b->GetLayer()) return a->GetLayer() < b->GetLayer();
+            float distA = glm::length(a->gameObject->GetPosition() - camPos);
+            float distB = glm::length(b->gameObject->GetPosition() - camPos);
+            return distA > distB; // Back to front
+        });
+
+        // Drain through BatchRenderer2D's CPU path, same as CanvasPass.
+        std::vector<BatchDrawCommand> allCommands;
+        auto* br = renderer.GetBatchRenderer();
+        br->StartBatch();
+        for (auto* drawable : worldDrawables)
+            drawable->Draw(br);
+        allCommands = br->DrainToCommands();
+        if (allCommands.empty()) return;
+
+        // Render into the already-open sceneRT pass (depth-tested, read-only)
+        // so world sprites are occluded by — but never occlude — 3D geometry.
+        renderer.sceneRT->Begin(enc);
+        gpuPass->Render(enc, viewProj, allCommands, /*depthTest=*/true);
+        renderer.sceneRT->End();
+        return;
+    }
+#endif
     ZoneScopedN("WorldCanvasPass");
 
     // Filter all world-space drawables (3D layers only, below LAYER_WORLD_2D)
@@ -1364,20 +1835,59 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         GPUCanvasPass* gpuPass = renderer.GetGPUCanvasPass();
         if (!gpuPass) return;
 
-        ctx->FlushTextToQueue(); // convert text commands → BatchDrawCommands in queue
+        // Note: buffered text is NOT drawn here — it goes through UIPass
+        // (post-tonemap), matching the GL path's RenderBufferedText placement.
 
-        if (renderer.GetCanvasQueue().empty()) return;
+        // Collect 2D drawables (same layer filter as the GL path below)
+        std::vector<CanvasDrawable*> drawables2D;
+        for (auto* drawable : ctx->canvasDrawables) {
+            if (!drawable->gameObject->isActive) continue;
+            if (drawable->GetLayer() < CanvasLayer::LAYER_UI_BACK)
+                drawables2D.push_back(drawable);
+        }
+        std::sort(drawables2D.begin(), drawables2D.end(), [](CanvasDrawable* a, CanvasDrawable* b) {
+            if (a->GetLayer() != b->GetLayer()) return a->GetLayer() < b->GetLayer();
+            return a->GetZOrder() < b->GetZOrder();
+        });
 
-        auto [width, height] = Window::Get()->GetPhysicalSize();
-        const glm::mat4 viewProj = glm::ortho(0.0f, (float)width, (float)height, 0.0f, -1.0f, 1.0f);
+        if (drawables2D.empty() && renderer.GetCanvasQueue().empty()) return;
 
-        WGPUTextureView targetView = GfxFactory::GetCurrentSwapchainView();
-        if (!targetView) return; // surface not ready (device still initializing)
+        // Determine viewProj the same way as the GL path: prefer camera's orthographic
+        // matrix so that world-space sprite positions map correctly.
+        glm::mat4 viewProj;
+        CameraComponent* camera = ctx->GetMainCamera();
+        if (camera && camera->IsOrthographic()) {
+            viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+        } else {
+            auto [winW, winH] = Window::Get()->GetLogicalSize();
+            viewProj = glm::ortho(0.0f, (float)winW, (float)winH, 0.0f, -1.0f, 1.0f);
+        }
 
-        gpuPass->Render(targetView, viewProj, renderer.GetCanvasQueue());
+        // Drain canvasDrawables through BatchRenderer2D's CPU path (no GL calls)
+        std::vector<BatchDrawCommand> allCommands;
+        if (!drawables2D.empty()) {
+            auto* br = renderer.GetBatchRenderer();
+            br->StartBatch();
+            for (auto* drawable : drawables2D)
+                drawable->Draw(br);
+            auto drained = br->DrainToCommands();
+            allCommands.insert(allCommands.end(),
+                               std::make_move_iterator(drained.begin()),
+                               std::make_move_iterator(drained.end()));
+        }
+        // Append direct canvas queue (text, Lua commands, etc.)
+        for (const auto& cmd : renderer.GetCanvasQueue())
+            allCommands.push_back(cmd);
 
-        wgpuTextureViewRelease(targetView);
-        GfxFactory::PresentSwapchain();
+        if (allCommands.empty()) return;
+        if (!renderer.sceneRT) return;
+
+        // Record into the shared per-frame encoder/render pass on sceneRT —
+        // PostProcessPass is the sole pass that later writes sceneRT to the
+        // swapchain, so we must not touch the swapchain or present here.
+        renderer.sceneRT->Begin(enc);
+        gpuPass->Render(enc, viewProj, allCommands);
+        renderer.sceneRT->End();
         return;
     }
 #endif
@@ -1440,15 +1950,117 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
     glEnable(GL_CULL_FACE);
 }
 
-// Helper to reduce code duplication
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+PostProcessPass::~PostProcessPass() {
+    if (_texBG)      wgpuBindGroupRelease(_texBG);
+    if (_uniformBG)  wgpuBindGroupRelease(_uniformBG);
+    if (_uniformBGL) wgpuBindGroupLayoutRelease(_uniformBGL);
+    if (_texBGL)     wgpuBindGroupLayoutRelease(_texBGL);
+    if (_pipeline)   wgpuRenderPipelineRelease(_pipeline);
+    if (_uniformBuf) wgpuBufferRelease(_uniformBuf);
+    if (_sampler)    wgpuSamplerRelease(_sampler);
+}
 
+void PostProcessPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat swapchainFormat) {
+    _gpuDevice = device;
+    _gpuQueue  = queue;
+
+    {
+        WGPUBufferDescriptor d{};
+        d.size  = POST_UNIFORM_SIZE;
+        d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        _uniformBuf = wgpuDeviceCreateBuffer(device, &d);
+    }
+    {
+        WGPUSamplerDescriptor d = gpuSamplerDesc();
+        d.minFilter = WGPUFilterMode_Linear;
+        d.magFilter = WGPUFilterMode_Linear;
+        _sampler = wgpuDeviceCreateSampler(device, &d);
+    }
+
+    auto p = GpuPipelineBuilder(device)
+        .wgsl(POSTPROCESS_WGSL)
+        .bgl({ gpuUniform(0, wgsl_stage::frag, POST_UNIFORM_SIZE) })
+        .bgl({ gpuTexture(0), gpuSampler(1) })
+        .colorFormat(swapchainFormat)
+        .build();
+    _pipeline   = p.pipeline;
+    _uniformBGL = p.bgl(0);
+    _texBGL     = p.bgl(1);
+
+    _uniformBG = GpuBindGroupBuilder(device, _uniformBGL)
+        .buffer(0, _uniformBuf, POST_UNIFORM_SIZE)
+        .build();
+}
+#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
 void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        if (!_pipeline) {
+            WGPUDevice dev = GfxFactory::GetWebGPUDevice();
+            WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
+            if (!dev) return;
+            _initGPU(dev, q, GfxFactory::GetSwapchainFormat());
+        }
+        if (!renderer.sceneRT) return;
+
+        auto* sceneRT = static_cast<GPURenderTarget*>(renderer.sceneRT.get());
+        WGPUTexture sceneTex = sceneRT->GetNativeTexture();
+        if (!sceneTex) return;
+
+        WGPUTextureView swapchainView = GfxFactory::GetCurrentSwapchainView();
+        if (!swapchainView) return; // surface not ready (device still initializing)
+
+        // Rebuild the texture bind group only when sceneRT's texture object
+        // changes (e.g. on resize) — cheap to check, avoids a per-frame alloc.
+        if (sceneTex != _texBGSource) {
+            if (_texBG) wgpuBindGroupRelease(_texBG);
+            _texBG = GpuBindGroupBuilder(_gpuDevice, _texBGL)
+                .texture(0, sceneTex)
+                .sampler(1, _sampler)
+                .build();
+            _texBGSource = sceneTex;
+        }
+
+        struct { float exposure, caEnabled, caStrength, effect, time, pad0, pad1, pad2; } u{
+            tonemapEnabled ? exposure : 1.0f,
+            caEnabled ? 1.0f : 0.0f,
+            caStrength,
+            static_cast<float>(postEffect),
+            renderer.frameTime,
+            0.0f, 0.0f, 0.0f
+        };
+        wgpuQueueWriteBuffer(_gpuQueue, _uniformBuf, 0, &u, sizeof(u));
+
+        auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+        WGPURenderPassColorAttachment ca{};
+        ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED; // required for non-3D attachments
+        ca.view       = swapchainView;
+        ca.loadOp     = WGPULoadOp_Clear;
+        ca.storeOp    = WGPUStoreOp_Store;
+        ca.clearValue = { renderer.clearColor.x, renderer.clearColor.y, renderer.clearColor.z, renderer.clearColor.w };
+        WGPURenderPassDescriptor rpDesc{};
+        rpDesc.colorAttachmentCount = 1;
+        rpDesc.colorAttachments     = &ca;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &rpDesc);
+
+        wgpuRenderPassEncoderSetPipeline(pass, _pipeline);
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, _uniformBG, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(pass, 1, _texBG, 0, nullptr);
+        wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+
+        wgpuTextureViewRelease(swapchainView);
+        return;
+    }
+#endif
     ZoneScopedN("PostProcessPass");
 
     auto size = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, size.width, size.height);
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.finalFBO);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, renderer.msaaResolveRT->GetTextureID());
@@ -1490,6 +2102,66 @@ void Renderer::SubmitCanvasCommand(const BatchDrawCommand& cmd) {
 }
 
 void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        // Text2DComponent text is already drained into the canvas queue by
+        // CanvasPass::FlushTextToQueue() earlier in the render graph, so the
+        // only thing left to handle here is RmlUi's queued geometry.
+        auto& uiQueue = renderer.GetUIQueue();
+
+        GPUCanvasPass* gpuPass = renderer.GetGPUCanvasPass();
+        if (!gpuPass) return;
+
+        // GPUCanvasPass::Render ignores BatchDrawCommand::transform — every
+        // other producer bakes translation into vertex positions before
+        // queuing. RmlUiRenderer::RenderGeometry doesn't (it reuses one
+        // compiled geometry across many translated draws), so bake it here
+        // via BatchRenderer2D's CPU path, matching what the GL path below
+        // does by calling DrawGeometry() with cmd.transform directly.
+        auto* br = renderer.GetBatchRenderer();
+        br->StartBatch();
+        for (const auto& cmd : uiQueue)
+            br->DrawGeometry(cmd.vertices, cmd.indices, cmd.textureID, cmd.transform);
+        auto allCommands = br->DrainToCommands();
+
+        // Buffered text renders here, after tonemapping, exactly like the GL
+        // path's RenderBufferedText — through sceneRT it would get tonemapped
+        // (white text turns grey). Text vertices are already pre-transformed.
+        ctx->FlushTextToCommands(allCommands);
+
+        if (allCommands.empty()) return;
+
+        WGPUTextureView swapchainView = GfxFactory::GetCurrentSwapchainView();
+        if (!swapchainView) return; // surface not ready (device still initializing)
+
+        auto logicalSize = Window::Get()->GetLogicalSize();
+        glm::mat4 projection = glm::ortho(
+            0.0f, (float)logicalSize.width, (float)logicalSize.height, 0.0f, -1.0f, 1.0f);
+
+        // UIPass runs after PostProcessPass, which has already resolved
+        // sceneRT to the swapchain — record onto the swapchain view directly
+        // (Load, not Clear, so the resolved frame underneath is preserved).
+        auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+        WGPURenderPassColorAttachment ca{};
+        ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED; // required for non-3D attachments
+        ca.view    = swapchainView;
+        ca.loadOp  = WGPULoadOp_Load;
+        ca.storeOp = WGPUStoreOp_Store;
+        WGPURenderPassDescriptor rpDesc{};
+        rpDesc.colorAttachmentCount = 1;
+        rpDesc.colorAttachments     = &ca;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &rpDesc);
+        gpuEnc->pass = pass;
+
+        gpuPass->Render(enc, projection, allCommands, /*depthTest=*/false, /*toSwapchain=*/true);
+
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+        gpuEnc->pass = nullptr;
+        wgpuTextureViewRelease(swapchainView);
+        return;
+    }
+#endif
     ZoneScopedN("UIPass");
     auto* batchRenderer = renderer.GetBatchRenderer();
     auto& queue = renderer.GetUIQueue();

@@ -3,6 +3,7 @@
 #include "gl_render_target.hpp"
 #include "console.hpp"
 #include "globals.hpp"   // glad / GLES3
+#include <vector>
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include <webgpu/webgpu.h>
@@ -12,6 +13,7 @@
 
 // ── Static member definitions ────────────────────────────────────────────────
 GfxBackend GfxFactory::_backend = GfxBackend::OpenGL;
+TextureCompressionFormat GfxFactory::_compressionFormat = TextureCompressionFormat::None;
 
 #if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
 WGPUDevice        GfxFactory::_wgpuDevice      = nullptr;
@@ -69,6 +71,23 @@ void GfxFactory::Init() {
         return;
     }
 
+    // ── Negotiate block-compressed texture support ───────────────────────────
+    // Query (not just hope for) BC/ETC2/ASTC before requesting the device —
+    // wgpuAdapterHasFeature reflects what the adapter can actually grant.
+    // Preference order: BC (most common on desktop browsers) > ETC2 > ASTC.
+    std::vector<WGPUFeatureName> deviceFeatures;
+    TextureCompressionFormat negotiatedCompression = TextureCompressionFormat::None;
+    if (wgpuAdapterHasFeature(adapter, WGPUFeatureName_TextureCompressionBC)) {
+        deviceFeatures.push_back(WGPUFeatureName_TextureCompressionBC);
+        negotiatedCompression = TextureCompressionFormat::BC7;
+    } else if (wgpuAdapterHasFeature(adapter, WGPUFeatureName_TextureCompressionETC2)) {
+        deviceFeatures.push_back(WGPUFeatureName_TextureCompressionETC2);
+        negotiatedCompression = TextureCompressionFormat::ETC2;
+    } else if (wgpuAdapterHasFeature(adapter, WGPUFeatureName_TextureCompressionASTC)) {
+        deviceFeatures.push_back(WGPUFeatureName_TextureCompressionASTC);
+        negotiatedCompression = TextureCompressionFormat::ASTC4x4;
+    }
+
     // ── Request device ────────────────────────────────────────────────────────
     WGPUDevice device = nullptr;
     WGPURequestDeviceCallbackInfo deviceCbInfo{};
@@ -81,6 +100,8 @@ void GfxFactory::Init() {
     deviceCbInfo.userdata1 = &device;
 
     WGPUDeviceDescriptor deviceDesc{};
+    deviceDesc.requiredFeatureCount = deviceFeatures.size();
+    deviceDesc.requiredFeatures     = deviceFeatures.empty() ? nullptr : deviceFeatures.data();
     WGPUFutureWaitInfo deviceWait{};
     deviceWait.future = wgpuAdapterRequestDevice(adapter, &deviceDesc, deviceCbInfo);
     wgpuInstanceWaitAny(inst, 1, &deviceWait, UINT64_MAX);
@@ -94,9 +115,22 @@ void GfxFactory::Init() {
     }
 
     Console::Get()->Info("[GfxFactory] WebGPU adapter and device acquired.");
-    _backend    = GfxBackend::WebGPU;
-    _wgpuDevice = device;
-    _wgpuQueue  = wgpuDeviceGetQueue(device);
+    _backend           = GfxBackend::WebGPU;
+    _wgpuDevice         = device;
+    _wgpuQueue          = wgpuDeviceGetQueue(device);
+    // Device creation can silently grant fewer features than requested — only
+    // trust what wgpuDeviceHasFeature reports back, not what we asked for.
+    if (negotiatedCompression != TextureCompressionFormat::None &&
+        !wgpuDeviceHasFeature(device, deviceFeatures[0])) {
+        Console::Get()->Warn("[GfxFactory] Device did not grant requested texture compression feature.");
+        negotiatedCompression = TextureCompressionFormat::None;
+    }
+    _compressionFormat = negotiatedCompression;
+    const char* compressionName =
+      negotiatedCompression == TextureCompressionFormat::BC7     ? "BC7" :
+      negotiatedCompression == TextureCompressionFormat::ETC2    ? "ETC2" :
+      negotiatedCompression == TextureCompressionFormat::ASTC4x4 ? "ASTC4x4" : "none (RGBA32 fallback)";
+    Console::Get()->Info(std::string("[GfxFactory] Texture compression: ") + compressionName);
 
     // ── Create surface ────────────────────────────────────────────────────────
     WGPUEmscriptenSurfaceSourceCanvasHTMLSelector canvasDesc{};
@@ -105,7 +139,10 @@ void GfxFactory::Init() {
     WGPUSurfaceDescriptor surfDesc{};
     surfDesc.nextInChain   = reinterpret_cast<WGPUChainedStruct*>(&canvasDesc);
     _surface = wgpuInstanceCreateSurface(inst, &surfDesc);
-    wgpuInstanceRelease(inst);
+    // Deliberately keep the instance alive (leaked for the app lifetime):
+    // emdawnwebgpu requires a live WGPUInstance for surface/present handling —
+    // releasing the last external reference here triggers "A valid external
+    // Instance reference no longer exists" and the swapchain never composites.
 
     if (!_surface) {
         Console::Get()->Warn("[GfxFactory] wgpuInstanceCreateSurface failed. Falling back to WebGL 2.");
@@ -221,12 +258,110 @@ uint32_t GfxFactory::UploadTexture2D(const uint8_t* pixels, int w, int h) {
     return static_cast<uint32_t>(texID);
 }
 
+void GfxFactory::UpdateTexture2D(uint32_t id, const uint8_t* pixels, int w, int h) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (_backend == GfxBackend::WebGPU && _wgpuDevice) {
+        auto it = _gpuTextures.find(id);
+        if (it == _gpuTextures.end()) return;
+
+        WGPUTexture tex = it->second;
+        if (wgpuTextureGetWidth(tex) != static_cast<uint32_t>(w) ||
+            wgpuTextureGetHeight(tex) != static_cast<uint32_t>(h)) {
+            // WGPUTexture storage is immutable — release and recreate under
+            // the same synthetic id so callers don't need to track resizes.
+            wgpuTextureRelease(tex);
+
+            WGPUTextureDescriptor td{};
+            td.size          = { static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+            td.format        = WGPUTextureFormat_RGBA8Unorm;
+            td.usage         = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+            td.dimension     = WGPUTextureDimension_2D;
+            td.mipLevelCount = 1;
+            td.sampleCount   = 1;
+            tex = wgpuDeviceCreateTexture(_wgpuDevice, &td);
+            it->second = tex;
+        }
+
+        WGPUTexelCopyTextureInfo dst{};
+        dst.texture = tex;
+        dst.aspect  = WGPUTextureAspect_All;
+        WGPUTexelCopyBufferLayout layout{};
+        layout.bytesPerRow  = static_cast<uint32_t>(w) * 4;
+        layout.rowsPerImage = static_cast<uint32_t>(h);
+        WGPUExtent3D extent{ static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+        wgpuQueueWriteTexture(_wgpuQueue, &dst, pixels,
+                               static_cast<size_t>(w) * h * 4, &layout, &extent);
+        return;
+    }
+#endif
+    // OpenGL / WebGL path
+    GLuint texID = (GLuint)id;
+    glBindTexture(GL_TEXTURE_2D, texID);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 WGPUTexture GfxFactory::GetWGPUTexture(uint32_t id) {
     auto it = _gpuTextures.find(id);
     return (it != _gpuTextures.end()) ? it->second : nullptr;
 }
+
+uint32_t GfxFactory::UploadCompressedTexture2D(
+  TextureCompressionFormat format, const uint8_t* data, size_t dataSize, int w, int h
+) {
+    if (format == TextureCompressionFormat::None || !_wgpuDevice) return 0;
+
+    WGPUTextureFormat wgpuFormat;
+    switch (format) {
+    case TextureCompressionFormat::BC7:     wgpuFormat = WGPUTextureFormat_BC7RGBAUnorm;   break;
+    case TextureCompressionFormat::ETC2:    wgpuFormat = WGPUTextureFormat_ETC2RGBA8Unorm; break;
+    case TextureCompressionFormat::ASTC4x4: wgpuFormat = WGPUTextureFormat_ASTC4x4Unorm;   break;
+    default: return 0;
+    }
+
+    uint32_t id = _nextTexID++;
+
+    WGPUTextureDescriptor td{};
+    td.size          = { static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+    td.format        = wgpuFormat;
+    td.usage         = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    td.dimension     = WGPUTextureDimension_2D;
+    td.mipLevelCount = 1;
+    td.sampleCount   = 1;
+    WGPUTexture tex = wgpuDeviceCreateTexture(_wgpuDevice, &td);
+
+    WGPUTexelCopyTextureInfo dst{};
+    dst.texture = tex;
+    dst.aspect  = WGPUTextureAspect_All;
+
+    // BC7 / ETC2RGBA8 / ASTC4x4 all use 4x4 blocks at 16 bytes/block.
+    const uint32_t blocksWide = (static_cast<uint32_t>(w) + 3) / 4;
+    WGPUTexelCopyBufferLayout layout{};
+    layout.bytesPerRow  = blocksWide * 16;
+    layout.rowsPerImage = static_cast<uint32_t>(h);
+    WGPUExtent3D extent{ static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+    wgpuQueueWriteTexture(_wgpuQueue, &dst, data, dataSize, &layout, &extent);
+
+    _gpuTextures[id] = tex;
+    return id;
+}
 #endif
+
+void GfxFactory::ReleaseTexture(uint32_t id) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (_backend == GfxBackend::WebGPU) {
+        auto it = _gpuTextures.find(id);
+        if (it != _gpuTextures.end()) {
+            wgpuTextureRelease(it->second);
+            _gpuTextures.erase(it);
+        }
+        return;
+    }
+#endif
+    GLuint texID = (GLuint)id;
+    glDeleteTextures(1, &texID);
+}
 
 // ── Factory methods ──────────────────────────────────────────────────────────
 std::unique_ptr<Buffer> GfxFactory::CreateBuffer() {

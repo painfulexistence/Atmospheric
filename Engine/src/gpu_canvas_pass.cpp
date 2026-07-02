@@ -1,5 +1,6 @@
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "gpu_canvas_pass.hpp"
+#include "gpu_pipeline.hpp"
 #include "gfx_factory.hpp"
 #include <glm/gtc/type_ptr.hpp>
 
@@ -9,6 +10,8 @@ GPUCanvasPass::~GPUCanvasPass() {
     if (_uniformBGL) wgpuBindGroupLayoutRelease(_uniformBGL);
     if (_texBGL)     wgpuBindGroupLayoutRelease(_texBGL);
     if (_pipeline)   wgpuRenderPipelineRelease(_pipeline);
+    if (_pipelineDepthTest) wgpuRenderPipelineRelease(_pipelineDepthTest);
+    if (_pipelineSwapchain) wgpuRenderPipelineRelease(_pipelineSwapchain);
     if (_uniformBuf) wgpuBufferRelease(_uniformBuf);
     if (_vertexBuf)  wgpuBufferRelease(_vertexBuf);
     if (_indexBuf)   wgpuBufferRelease(_indexBuf);
@@ -19,14 +22,6 @@ GPUCanvasPass::~GPUCanvasPass() {
 void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format) {
     _device = device;
     _queue  = queue;
-
-    // ── Shader module ──────────────────────────────────────────────────────
-    WGPUShaderSourceWGSL wgslDesc{};
-    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code        = { QUAD_WGSL, WGPU_STRLEN };
-    WGPUShaderModuleDescriptor shaderDesc{};
-    shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
-    WGPUShaderModule shader = wgpuDeviceCreateShaderModule(device, &shaderDesc);
 
     // ── Buffers ────────────────────────────────────────────────────────────
     {
@@ -49,13 +44,10 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     }
 
     // ── Sampler ────────────────────────────────────────────────────────────
+    // gpuSamplerDesc defaults (Nearest, ClampToEdge) are exactly what the
+    // pixel-art canvas wants.
     {
-        WGPUSamplerDescriptor d{};
-        d.minFilter    = WGPUFilterMode_Nearest;
-        d.magFilter    = WGPUFilterMode_Nearest;
-        d.mipmapFilter = WGPUMipmapFilterMode_Nearest;
-        d.addressModeU = WGPUAddressMode_ClampToEdge;
-        d.addressModeV = WGPUAddressMode_ClampToEdge;
+        WGPUSamplerDescriptor d = gpuSamplerDesc();
         _sampler = wgpuDeviceCreateSampler(device, &d);
     }
 
@@ -80,102 +72,56 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
         wgpuQueueWriteTexture(queue, &dst, white, 4, &layout, &extent);
     }
 
-    // ── Bind group layouts ─────────────────────────────────────────────────
-    {
-        WGPUBindGroupLayoutEntry e{};
-        e.binding               = 0;
-        e.visibility            = WGPUShaderStage_Vertex;
-        e.buffer.type           = WGPUBufferBindingType_Uniform;
-        e.buffer.minBindingSize = 64;
-        WGPUBindGroupLayoutDescriptor d{};
-        d.entryCount = 1;
-        d.entries    = &e;
-        _uniformBGL = wgpuDeviceCreateBindGroupLayout(device, &d);
-    }
-    {
-        WGPUBindGroupLayoutEntry e[2]{};
-        e[0].binding               = 0;
-        e[0].visibility            = WGPUShaderStage_Fragment;
-        e[0].texture.sampleType    = WGPUTextureSampleType_Float;
-        e[0].texture.viewDimension = WGPUTextureViewDimension_2D;
-        e[0].texture.multisampled  = false;
-        e[1].binding               = 1;
-        e[1].visibility            = WGPUShaderStage_Fragment;
-        e[1].sampler.type          = WGPUSamplerBindingType_Filtering;
-        WGPUBindGroupLayoutDescriptor d{};
-        d.entryCount = 2;
-        d.entries    = e;
-        _texBGL = wgpuDeviceCreateBindGroupLayout(device, &d);
-    }
+    // ── First pipeline: blend on, depth ignored (2D screenspace canvas) ────
+    // sceneRT's render pass always carries a Depth32Float attachment, so the
+    // pipeline must declare a matching depthStencil state even though the
+    // canvas neither tests nor writes depth — write=false + Always is the
+    // "depth-transparent" configuration that keeps attachment states
+    // compatible (Dawn rejects the pipeline in the pass otherwise).
+    // Vertex layout: pos(2f) uv(2f) color(4f) flags(2f) = 10 floats = 40 B.
+    const std::vector<GpuVertexAttr> quadAttrs = {
+        {WGPUVertexFormat_Float32x3,  0, 0}, // pos (xyz — see FLOATS_PER_VERT)
+        {WGPUVertexFormat_Float32x2, 12, 1}, // uv
+        {WGPUVertexFormat_Float32x4, 20, 2}, // color
+        {WGPUVertexFormat_Float32x2, 36, 3}, // texIdx(unused), flags
+    };
+    auto p = GpuPipelineBuilder(device)
+        .wgsl(QUAD_WGSL)
+        .bgl({ gpuUniform(0, wgsl_stage::vert, 64) })
+        .bgl({ gpuTexture(0), gpuSampler(1) })
+        .vertex((uint64_t)FLOATS_PER_VERT * sizeof(float), quadAttrs)
+        .colorFormat(format).blend()
+        .depth(false, WGPUCompareFunction_Always)
+        .build();
+    _pipeline   = p.pipeline;
+    _uniformBGL = p.bgl(0);
+    _texBGL     = p.bgl(1);
 
-    // ── Uniform bind group ─────────────────────────────────────────────────
-    {
-        WGPUBindGroupEntry e{};
-        e.binding = 0;
-        e.buffer  = _uniformBuf;
-        e.size    = 64;
-        WGPUBindGroupDescriptor d{};
-        d.layout     = _uniformBGL;
-        d.entryCount = 1;
-        d.entries    = &e;
-        _uniformBG = wgpuDeviceCreateBindGroup(device, &d);
-    }
+    // ── Uniform bind group (must come after build so _uniformBGL is valid) ──
+    _uniformBG = GpuBindGroupBuilder(device, _uniformBGL).buffer(0, _uniformBuf, 64).build();
 
-    // ── Pipeline layout ────────────────────────────────────────────────────
-    WGPUBindGroupLayout layouts[2] = { _uniformBGL, _texBGL };
-    WGPUPipelineLayoutDescriptor plDesc{};
-    plDesc.bindGroupLayoutCount = 2;
-    plDesc.bindGroupLayouts     = layouts;
-    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &plDesc);
+    // ── Depth-tested variant (WorldCanvasPass): read-only LessEqual ────────
+    // Borrows the BGLs created above so bind groups stay compatible.
+    _pipelineDepthTest = GpuPipelineBuilder(device)
+        .wgsl(QUAD_WGSL)
+        .bgl(_uniformBGL)
+        .bgl(_texBGL)
+        .vertex((uint64_t)FLOATS_PER_VERT * sizeof(float), quadAttrs)
+        .colorFormat(format).blend()
+        .depth(false, WGPUCompareFunction_LessEqual)
+        .build().pipeline;
 
-    // ── Vertex buffer layout (stride 40 = 10 floats) ──────────────────────
-    WGPUVertexAttribute attrs[4]{};
-    attrs[0].format = WGPUVertexFormat_Float32x2; attrs[0].offset =  0; attrs[0].shaderLocation = 0;
-    attrs[1].format = WGPUVertexFormat_Float32x2; attrs[1].offset =  8; attrs[1].shaderLocation = 1;
-    attrs[2].format = WGPUVertexFormat_Float32x4; attrs[2].offset = 16; attrs[2].shaderLocation = 2;
-    attrs[3].format = WGPUVertexFormat_Float32x2; attrs[3].offset = 32; attrs[3].shaderLocation = 3;
-    WGPUVertexBufferLayout vbl{};
-    vbl.arrayStride    = (uint64_t)FLOATS_PER_VERT * sizeof(float); // 40
-    vbl.stepMode       = WGPUVertexStepMode_Vertex;
-    vbl.attributeCount = 4;
-    vbl.attributes     = attrs;
-
-    // ── Blend state (standard src-alpha / one-minus-src-alpha) ────────────
-    WGPUBlendComponent blendColor{ WGPUBlendOperation_Add,
-                                    WGPUBlendFactor_SrcAlpha,
-                                    WGPUBlendFactor_OneMinusSrcAlpha };
-    WGPUBlendComponent blendAlpha{ WGPUBlendOperation_Add,
-                                    WGPUBlendFactor_One,
-                                    WGPUBlendFactor_OneMinusSrcAlpha };
-    WGPUBlendState blend{ blendColor, blendAlpha };
-    WGPUColorTargetState colorTarget{};
-    colorTarget.format    = format;
-    colorTarget.blend     = &blend;
-    colorTarget.writeMask = WGPUColorWriteMask_All;
-
-    WGPUFragmentState frag{};
-    frag.module      = shader;
-    frag.entryPoint  = { "fs", WGPU_STRLEN };
-    frag.targetCount = 1;
-    frag.targets     = &colorTarget;
-
-    // ── Render pipeline ────────────────────────────────────────────────────
-    WGPURenderPipelineDescriptor pd{};
-    pd.layout             = pipelineLayout;
-    pd.vertex.module      = shader;
-    pd.vertex.entryPoint  = { "vs", WGPU_STRLEN };
-    pd.vertex.bufferCount = 1;
-    pd.vertex.buffers     = &vbl;
-    pd.fragment           = &frag;
-    pd.primitive.topology = WGPUPrimitiveTopology_TriangleList;
-    pd.primitive.frontFace = WGPUFrontFace_CCW;
-    pd.primitive.cullMode  = WGPUCullMode_None;
-    pd.multisample.count  = 1;
-    pd.multisample.mask   = 0xFFFFFFFFu;
-    _pipeline = wgpuDeviceCreateRenderPipeline(device, &pd);
-
-    wgpuPipelineLayoutRelease(pipelineLayout);
-    wgpuShaderModuleRelease(shader);
+    // ── Swapchain-format variant (UIPass): no depth, blend on, but targets ──
+    // GfxFactory::GetSwapchainFormat() instead of sceneRT's HDR format, since
+    // UIPass runs after PostProcessPass has already resolved sceneRT to the
+    // swapchain. Borrows the same BGLs for bind-group compatibility.
+    _pipelineSwapchain = GpuPipelineBuilder(device)
+        .wgsl(QUAD_WGSL)
+        .bgl(_uniformBGL)
+        .bgl(_texBGL)
+        .vertex((uint64_t)FLOATS_PER_VERT * sizeof(float), quadAttrs)
+        .colorFormat(GfxFactory::GetSwapchainFormat()).blend()
+        .build().pipeline;
 
     _verts.reserve((size_t)MAX_VERTS * FLOATS_PER_VERT);
     _indices.reserve((size_t)MAX_INDICES);
@@ -188,33 +134,25 @@ WGPUBindGroup GPUCanvasPass::_getOrCreateTexBG(uint32_t texID) {
     WGPUTexture rawTex = (texID == 0) ? _whiteTex : GfxFactory::GetWGPUTexture(texID);
     if (!rawTex) rawTex = _whiteTex;
 
-    WGPUTextureView view = wgpuTextureCreateView(rawTex, nullptr);
-
-    WGPUBindGroupEntry e[2]{};
-    e[0].binding     = 0;
-    e[0].textureView = view;
-    e[1].binding     = 1;
-    e[1].sampler     = _sampler;
-    WGPUBindGroupDescriptor d{};
-    d.layout     = _texBGL;
-    d.entryCount = 2;
-    d.entries    = e;
-    WGPUBindGroup bg = wgpuDeviceCreateBindGroup(_device, &d);
-
-    wgpuTextureViewRelease(view);
+    WGPUBindGroup bg = GpuBindGroupBuilder(_device, _texBGL)
+        .texture(0, rawTex)
+        .sampler(1, _sampler)
+        .build();
     _texBGCache[texID] = bg;
     return bg;
 }
 
-void GPUCanvasPass::Render(WGPUTextureView targetView,
+void GPUCanvasPass::Render(CommandEncoder* enc,
                             const glm::mat4& viewProj,
-                            const std::vector<BatchDrawCommand>& commands) {
+                            const std::vector<BatchDrawCommand>& commands,
+                            bool depthTest,
+                            bool toSwapchain) {
     // Lazy init: wait until GfxFactory has a live device
     if (!_pipeline) {
         WGPUDevice dev = GfxFactory::GetWebGPUDevice();
         WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
         if (!dev) return;
-        _init(dev, q, GfxFactory::GetSwapchainFormat());
+        _init(dev, q, WGPUTextureFormat_RGBA16Float); // sceneRT's HDR format
     }
 
     if (commands.empty()) return;
@@ -242,6 +180,7 @@ void GPUCanvasPass::Render(WGPUTextureView targetView,
         for (const auto& bv : cmd.vertices) {
             _verts.push_back(bv.position.x);
             _verts.push_back(bv.position.y);
+            _verts.push_back(bv.position.z);
             _verts.push_back(bv.uv.x);
             _verts.push_back(bv.uv.y);
             _verts.push_back(bv.color.r);
@@ -269,20 +208,16 @@ void GPUCanvasPass::Render(WGPUTextureView targetView,
     wgpuQueueWriteBuffer(_queue, _indexBuf, 0,
                          _indices.data(), _indices.size() * sizeof(uint32_t));
 
-    // ── Record and submit command buffer ──────────────────────────────────
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(_device, nullptr);
+    // ── Record into the render pass already opened by the caller ──────────
+    // (caller must have called sceneRT->Begin(enc) before this and will call
+    // End() afterward — we do not own the pass or command-buffer lifecycle.)
+    auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+    WGPURenderPassEncoder pass = gpuEnc->pass;
+    if (!pass) return;
 
-    WGPURenderPassColorAttachment ca{};
-    ca.view       = targetView;
-    ca.loadOp     = WGPULoadOp_Clear;
-    ca.storeOp    = WGPUStoreOp_Store;
-    ca.clearValue = { 0.15, 0.183, 0.2, 1.0 };
-    WGPURenderPassDescriptor rpDesc{};
-    rpDesc.colorAttachmentCount = 1;
-    rpDesc.colorAttachments     = &ca;
-    WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &rpDesc);
-
-    wgpuRenderPassEncoderSetPipeline(pass, _pipeline);
+    wgpuRenderPassEncoderSetPipeline(pass, toSwapchain ? _pipelineSwapchain
+                                          : depthTest   ? _pipelineDepthTest
+                                                        : _pipeline);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, _uniformBG, 0, nullptr);
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, _vertexBuf, 0, WGPU_WHOLE_SIZE);
     wgpuRenderPassEncoderSetIndexBuffer(pass, _indexBuf, WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
@@ -293,13 +228,5 @@ void GPUCanvasPass::Render(WGPUTextureView targetView,
         wgpuRenderPassEncoderSetBindGroup(pass, 1, texBG, 0, nullptr);
         wgpuRenderPassEncoderDrawIndexed(pass, batch.idxCount, 1, batch.idxOffset, 0, 0);
     }
-
-    wgpuRenderPassEncoderEnd(pass);
-    wgpuRenderPassEncoderRelease(pass);
-
-    WGPUCommandBuffer cmdBuf = wgpuCommandEncoderFinish(encoder, nullptr);
-    wgpuQueueSubmit(_queue, 1, &cmdBuf);
-    wgpuCommandBufferRelease(cmdBuf);
-    wgpuCommandEncoderRelease(encoder);
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__

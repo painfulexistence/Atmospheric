@@ -16,7 +16,10 @@ GPURenderTarget::~GPURenderTarget() {
 
 void GPURenderTarget::Create() {
     WGPUTextureDescriptor colorDesc{};
-    colorDesc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+    // CopySrc: BloomPass snapshots sceneRT's color texture into a separate
+    // texture before compositing bloom back in, since a texture cannot be
+    // bound as both a render attachment and a sampled texture in the same pass.
+    colorDesc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopySrc;
     colorDesc.dimension     = WGPUTextureDimension_2D;
     colorDesc.size          = { (uint32_t)_width, (uint32_t)_height, 1 };
     colorDesc.format        = _hdr ? WGPUTextureFormat_RGBA16Float : WGPUTextureFormat_RGBA8Unorm;
@@ -42,6 +45,10 @@ void GPURenderTarget::Destroy() {
         wgpuRenderPassEncoderRelease(_activePass);
         _activePass = nullptr;
     }
+    if (_activeEnc) {
+        _activeEnc->pass = nullptr;
+        _activeEnc = nullptr;
+    }
     if (_colorView)   { wgpuTextureViewRelease(_colorView);   _colorView   = nullptr; }
     if (_depthView)   { wgpuTextureViewRelease(_depthView);   _depthView   = nullptr; }
     if (_colorTexture){ wgpuTextureRelease(_colorTexture);    _colorTexture = nullptr; }
@@ -54,8 +61,11 @@ void GPURenderTarget::Begin(CommandEncoder* enc) {
     _colorView = wgpuTextureCreateView(_colorTexture, nullptr);
 
     WGPURenderPassColorAttachment colorAttach{};
+    // Zero-init leaves depthSlice = 0, but for non-3D attachments Dawn
+    // requires WGPU_DEPTH_SLICE_UNDEFINED (newer Chrome validates this).
+    colorAttach.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
     colorAttach.view       = _colorView;
-    colorAttach.loadOp     = WGPULoadOp_Clear;
+    colorAttach.loadOp     = _clearPending ? WGPULoadOp_Clear : WGPULoadOp_Load;
     colorAttach.storeOp    = WGPUStoreOp_Store;
     colorAttach.clearValue = { _clearColor.r, _clearColor.g, _clearColor.b, _clearColor.a };
 
@@ -67,14 +77,17 @@ void GPURenderTarget::Begin(CommandEncoder* enc) {
     if (_withDepth && _depthTexture) {
         _depthView = wgpuTextureCreateView(_depthTexture, nullptr);
         depthAttach.view            = _depthView;
-        depthAttach.depthLoadOp     = WGPULoadOp_Clear;
+        depthAttach.depthLoadOp     = _clearPending ? WGPULoadOp_Clear : WGPULoadOp_Load;
         depthAttach.depthStoreOp    = WGPUStoreOp_Store;
         depthAttach.depthClearValue = 1.0f;
         passDesc.depthStencilAttachment = &depthAttach;
     }
 
+    _clearPending = false;
+
     _activePass  = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &passDesc);
     gpuEnc->pass = _activePass;
+    _activeEnc   = gpuEnc;
 }
 
 void GPURenderTarget::End() {
@@ -83,12 +96,17 @@ void GPURenderTarget::End() {
         wgpuRenderPassEncoderRelease(_activePass);
         _activePass = nullptr;
     }
+    if (_activeEnc) {
+        _activeEnc->pass = nullptr;
+        _activeEnc = nullptr;
+    }
     if (_colorView) { wgpuTextureViewRelease(_colorView); _colorView = nullptr; }
     if (_depthView) { wgpuTextureViewRelease(_depthView); _depthView = nullptr; }
 }
 
 void GPURenderTarget::Clear(const glm::vec4& color) {
-    _clearColor = color;
+    _clearColor   = color;
+    _clearPending = true;
 }
 
 uint32_t GPURenderTarget::GetTextureID() const {

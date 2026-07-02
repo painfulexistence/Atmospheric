@@ -12,6 +12,10 @@ imgui.ini
 # MacOS clutter
 .DS_Store
 
+# Python clutter
+__pycache__/
+*.pyc
+
 # CMake clutter
 CMakeCache.txt
 CMakeFiles

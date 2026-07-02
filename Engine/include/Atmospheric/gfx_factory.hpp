@@ -58,14 +58,48 @@ public:
     // pixels must be RGBA8 (4 bytes per pixel, w*h pixels).
     static uint32_t  UploadTexture2D(const uint8_t* pixels, int w, int h);
 
+    // Cross-backend update of an existing texture's pixel contents. id must
+    // have come from UploadTexture2D(). pixels must be RGBA8 (4 bytes per
+    // pixel, w*h pixels). If w/h differ from the size the texture was
+    // created with, storage is reallocated under the same id (the WebGPU
+    // texture object is immutable, so this releases and recreates it
+    // internally; callers don't need to know or care).
+    //   OpenGL  path: glTexImage2D (always reallocates; simplest way to
+    //                 handle same-size updates and resizes uniformly).
+    //   WebGPU  path: wgpuQueueWriteTexture, recreating the WGPUTexture
+    //                 first if the size changed.
+    static void      UpdateTexture2D(uint32_t id, const uint8_t* pixels, int w, int h);
+
+    // Cross-backend texture release. id must have come from UploadTexture2D()
+    // or UploadCompressedTexture2D().
+    //   OpenGL path: glDeleteTextures.
+    //   WebGPU path: releases the WGPUTexture and erases it from the registry.
+    static void ReleaseTexture(uint32_t id);
+
+    // Block-compressed texture format negotiated with the WebGPU adapter/device
+    // at Init() time (queried via wgpuAdapterHasFeature, not just requested).
+    // TextureCompressionFormat::None on the OpenGL backend, or on WebGPU if the
+    // adapter granted none of the BC/ETC2/ASTC features.
+    static TextureCompressionFormat GetSupportedCompressionFormat() { return _compressionFormat; }
+
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    // Returns the WGPUTexture previously registered via UploadTexture2D().
+    // Returns the WGPUTexture previously registered via UploadTexture2D()
+    // or UploadCompressedTexture2D().
     // Returns nullptr if the ID is unknown.
     static WGPUTexture GetWGPUTexture(uint32_t id);
+
+    // WebGPU-only: uploads pre-transcoded block-compressed texture data.
+    // `format` must match GetSupportedCompressionFormat() (caller transcodes
+    // accordingly); `w`/`h` must be multiples of 4 (the block size for all of
+    // BC7/ETC2/ASTC4x4). Returns a synthetic ID usable with GetWGPUTexture()
+    // and ReleaseTexture(), or 0 if format is None or the device lacks the
+    // feature.
+    static uint32_t UploadCompressedTexture2D(TextureCompressionFormat format, const uint8_t* data, size_t dataSize, int w, int h);
 #endif
 
 private:
     static GfxBackend _backend;
+    static TextureCompressionFormat _compressionFormat;
 
 #if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
     static WGPUDevice        _wgpuDevice;

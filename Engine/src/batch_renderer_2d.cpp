@@ -1,11 +1,13 @@
 #include "batch_renderer_2d.hpp"
 #include "asset_manager.hpp"
 #include "console.hpp"
+#include "gfx_factory.hpp"
 #include "globals.hpp" // provides glad on native, GLES3/gl3.h on Emscripten
 #include "shader.hpp"
 #include <array>
 #include <fmt/format.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <unordered_map>
 
 struct BatchRenderer2D::Renderer2DData {
     static const uint32_t MaxQuads = 20000;
@@ -50,7 +52,28 @@ BatchRenderer2D::~BatchRenderer2D() {
 }
 
 void BatchRenderer2D::Init() {
+    // CPU-side staging is needed by both backends: under WebGPU the batcher
+    // runs in CPU-only mode (StartBatch/DrawGeometry/DrainToCommands feed
+    // GPUCanvasPass) and must not touch GL — no context exists.
     m_Data->QuadVertexBufferBase = new BatchVertex[m_Data->MaxVertices];
+    m_Data->QuadIndexBufferBase  = new uint32_t[m_Data->MaxIndices];
+
+    m_Data->QuadVertexPositions[0] = { -0.5f, -0.5f, 0.0f, 1.0f };
+    m_Data->QuadVertexPositions[1] = {  0.5f, -0.5f, 0.0f, 1.0f };
+    m_Data->QuadVertexPositions[2] = {  0.5f,  0.5f, 0.0f, 1.0f };
+    m_Data->QuadVertexPositions[3] = { -0.5f,  0.5f, 0.0f, 1.0f };
+
+    m_Data->QuadTexCoords[0] = { 0.0f, 0.0f };
+    m_Data->QuadTexCoords[1] = { 1.0f, 0.0f };
+    m_Data->QuadTexCoords[2] = { 1.0f, 1.0f };
+    m_Data->QuadTexCoords[3] = { 0.0f, 1.0f };
+
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        // Slot 0 stays 0 — DrainToCommands maps it to textureID 0, which
+        // GPUCanvasPass treats as the solid-color/white sentinel.
+        m_Data->TextureSlots[0] = 0;
+        return;
+    }
 
     glGenVertexArrays(1, &m_Data->QuadVAO);
     glBindVertexArray(m_Data->QuadVAO);
@@ -74,8 +97,6 @@ void BatchRenderer2D::Init() {
     glEnableVertexAttribArray(4);
     glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(BatchVertex), (const void*)offsetof(BatchVertex, entityID));
 
-    m_Data->QuadIndexBufferBase = new uint32_t[m_Data->MaxIndices];
-
     glGenBuffers(1, &m_Data->QuadIBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_Data->QuadIBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_Data->MaxIndices * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
@@ -91,16 +112,6 @@ void BatchRenderer2D::Init() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     m_Data->TextureSlots[0] = m_Data->WhiteTexture;
-
-    m_Data->QuadVertexPositions[0] = { -0.5f, -0.5f, 0.0f, 1.0f };
-    m_Data->QuadVertexPositions[1] = { 0.5f, -0.5f, 0.0f, 1.0f };
-    m_Data->QuadVertexPositions[2] = { 0.5f, 0.5f, 0.0f, 1.0f };
-    m_Data->QuadVertexPositions[3] = { -0.5f, 0.5f, 0.0f, 1.0f };
-
-    m_Data->QuadTexCoords[0] = { 0.0f, 0.0f };
-    m_Data->QuadTexCoords[1] = { 1.0f, 0.0f };
-    m_Data->QuadTexCoords[2] = { 1.0f, 1.0f };
-    m_Data->QuadTexCoords[3] = { 0.0f, 1.0f };
 
     // Check shader
     try {
@@ -182,6 +193,11 @@ void BatchRenderer2D::StartBatch() {
 
 void BatchRenderer2D::Flush() {
     if (m_Data->QuadIndexCount == 0) return;
+    // WebGPU: the batcher is CPU-only (drained via DrainToCommands); a Flush
+    // can still be reached through NextBatch() when the staging buffer fills
+    // up mid-drain — skip the GL submission rather than crash. The overflow
+    // geometry is dropped for that frame (staging holds 20k quads).
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
 
     uint32_t dataSize = (uint32_t)((uint8_t*)m_Data->QuadVertexBufferPtr - (uint8_t*)m_Data->QuadVertexBufferBase);
     glBindBuffer(GL_ARRAY_BUFFER, m_Data->QuadVBO);
@@ -660,6 +676,72 @@ void BatchRenderer2D::DrawGeometry(
 
     m_Data->QuadIndexCount += (uint32_t)indices.size();
     m_Data->Stats.quadCount += (uint32_t)indices.size() / 6;// Approx
+}
+
+std::vector<BatchDrawCommand> BatchRenderer2D::DrainToCommands() {
+    std::vector<BatchDrawCommand> result;
+
+    uint32_t vertCount = (uint32_t)(m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase);
+    uint32_t idxCount  = (uint32_t)(m_Data->QuadIndexBufferPtr  - m_Data->QuadIndexBufferBase);
+
+    if (vertCount == 0 || idxCount == 0) {
+        StartBatch();
+        return result;
+    }
+
+    // Walk the index buffer in groups of 3 (one triangle), grouping consecutive triangles
+    // that share the same texture into a single BatchDrawCommand.
+    // texIndex slot 0 is always the white (solid-color) texture; GPUCanvasPass treats textureID=0
+    // as the solid-color sentinel, so we map slot 0 → textureID 0.
+    struct TexBatch {
+        std::vector<BatchVertex> verts;
+        std::vector<uint32_t>    idxs;
+        std::unordered_map<uint32_t, uint32_t> remap; // global index → local index
+    };
+    std::vector<uint32_t>                    texOrder; // insertion-ordered texture IDs
+    std::unordered_map<uint32_t, TexBatch>   batches;
+
+    for (uint32_t i = 0; i + 2 < idxCount; i += 3) {
+        uint32_t gi0     = m_Data->QuadIndexBufferBase[i];
+        uint32_t slotIdx = (uint32_t)m_Data->QuadVertexBufferBase[gi0].texIndex;
+        uint32_t texID   = (slotIdx == 0)
+                           ? 0u
+                           : ((slotIdx < m_Data->TextureSlotIndex) ? m_Data->TextureSlots[slotIdx] : 0u);
+
+        if (batches.find(texID) == batches.end()) {
+            texOrder.push_back(texID);
+            batches.emplace(texID, TexBatch{});
+        }
+        TexBatch& tb = batches[texID];
+
+        for (uint32_t k = 0; k < 3; ++k) {
+            uint32_t gi = m_Data->QuadIndexBufferBase[i + k];
+            auto it = tb.remap.find(gi);
+            if (it == tb.remap.end()) {
+                uint32_t newIdx     = (uint32_t)tb.verts.size();
+                tb.remap[gi]        = newIdx;
+                tb.verts.push_back(m_Data->QuadVertexBufferBase[gi]);
+                tb.idxs.push_back(newIdx);
+            } else {
+                tb.idxs.push_back(it->second);
+            }
+        }
+    }
+
+    result.reserve(texOrder.size());
+    for (uint32_t texID : texOrder) {
+        TexBatch& tb = batches[texID];
+        if (tb.verts.empty()) continue;
+        BatchDrawCommand cmd;
+        cmd.textureID = texID;
+        cmd.transform = glm::mat4(1.0f); // vertices are already in world/screen space
+        cmd.vertices  = std::move(tb.verts);
+        cmd.indices   = std::move(tb.idxs);
+        result.push_back(std::move(cmd));
+    }
+
+    StartBatch();
+    return result;
 }
 
 BatchStats BatchRenderer2D::GetStats() {
