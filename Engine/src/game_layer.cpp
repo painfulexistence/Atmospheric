@@ -15,7 +15,6 @@ void GameLayer::OnUpdate(float dt) {
         entity->Tick(dt);
     }
 
-    RmlUiManager::Get()->Update(dt);
     UIPageManager::Get()->Update(dt);
 }
 

@@ -6,7 +6,7 @@
 #include "mesh.hpp"
 #include "imgui.h"
 
-MeshComponent::MeshComponent(GameObject* gameObject, Mesh* mesh) {
+MeshComponent::MeshComponent(GameObject* gameObject, MeshHandle mesh) {
     this->_mesh = mesh;
 }
 
@@ -26,20 +26,20 @@ void MeshComponent::OnAttach() {
 void MeshComponent::OnDetach() {
 }
 
-Mesh* MeshComponent::GetMesh() const {
+MeshHandle MeshComponent::GetMesh() const {
     return _mesh;
 }
 
-void MeshComponent::SetMesh(Mesh* mesh) {
+void MeshComponent::SetMesh(MeshHandle mesh) {
     _mesh = mesh;
 }
 
 Material* MeshComponent::GetMaterial() const {
     if (_material) {
         return _material;
-    } else {
-        return _mesh->GetMaterial();
     }
+    Mesh* meshPtr = AssetManager::Get().GetMeshPtr(_mesh);
+    return meshPtr ? meshPtr->GetMaterial() : nullptr;
 }
 
 void MeshComponent::SetMaterial(Material* material) {

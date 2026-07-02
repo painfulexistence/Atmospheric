@@ -1,5 +1,6 @@
 #pragma once
 #include "component.hpp"
+#include "globals.hpp"
 #include <glm/vec3.hpp>
 
 class Material;
@@ -11,8 +12,12 @@ struct WaterProps {
     int       subdivisions =    64;
     float     waveStrength =   0.1f;
     float     waveSpeed    =   1.0f;
-    glm::vec3 fogColor     = {0.55f, 0.65f, 0.75f};
-    float     fogDensity   =   0.003f;
+    // Fog color is not configurable here -- WaterPass reads it live from
+    // SkyboxPass::skyColor, matching VX.
+    float     fogDensity   =   0.00001f; // VX: u_fog_density in scene.py render_water
+    glm::vec3 deepColor    = {0.05f,  0.1f,   0.25f};  // VX COLOR_INDIGO
+    glm::vec3 shallowColor = {0.686f, 0.933f, 0.933f}; // VX COLOR_MINT_GREEN
+    float     beerCoef     =   0.095f;
     // waterLine defaults to the owner's Y position at attach time.
     // Set explicitly to override (e.g., to account for a wave offset).
     float     waterLine    = -1e30f;  // sentinel: use owner->GetPosition().y
@@ -23,15 +28,18 @@ struct WaterProps {
 class WaterComponent : public Component {
 public:
     WaterComponent(GameObject* owner, const WaterProps& props = {});
+    ~WaterComponent() = default;
 
     std::string GetName() const override { return "Water"; }
     void OnAttach() override;
     void OnDetach() override {}
+    void OnTick(float dt) override;
+    void DrawImGui() override;
 
     Material* GetMaterial() const { return _material; }
 
 private:
-    Mesh*      _mesh     = nullptr;
+    MeshHandle _mesh;
     Material*  _material = nullptr;
     WaterProps _props;
 };

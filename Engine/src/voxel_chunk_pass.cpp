@@ -180,8 +180,11 @@ void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEnc
     shader->SetUniform("u_lightDir",    lightDir);
     shader->SetUniform("u_lightColor",  lightColor);
     shader->SetUniform("u_ambientColor",ambient);
-    shader->SetUniform("u_fogColor",    glm::vec3(0.55f, 0.65f, 0.75f));
-    shader->SetUniform("u_fogDensity",  0.003f);
+    // VX ties terrain/water fog color to the skybox's sky gradient color every frame.
+    SkyboxPass* skybox = renderer.GetPass<SkyboxPass>();
+    shader->SetUniform("u_fogColor",     skybox ? skybox->skyColor : glm::vec3(0.686f, 0.933f, 0.933f));
+    shader->SetUniform("u_fogDensity",   0.00001f); // VX: scene.py u_fog_density
+    shader->SetUniform("u_paletteIndex", paletteIndex);
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
@@ -189,7 +192,7 @@ void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEnc
 
     for (const auto& sortable : queue) {
         const auto& cmd = sortable.cmd;
-        Mesh* mesh = cmd.mesh;
+        Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
 
         if (!mesh || mesh->type != MeshType::VOXEL) continue;
         if (!mesh->UsesRenderMesh()) continue;
@@ -246,6 +249,10 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
     shader->SetUniform("u_lightDir",   lightDir);
     shader->SetUniform("u_lightColor", lightColor);
 
+    // VX ties terrain/water fog color to the skybox's sky gradient color every frame.
+    SkyboxPass* skybox = renderer.GetPass<SkyboxPass>();
+    glm::vec3 skyFogColor = skybox ? skybox->skyColor : glm::vec3(0.686f, 0.933f, 0.933f);
+
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, depthTex);
 
@@ -256,18 +263,21 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
 
     for (const auto& s : queue) {
         const auto& cmd = s.cmd;
-        Mesh* mesh = cmd.mesh;
+        Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
         if (!mesh) continue;
 
         Material* mat = mesh->GetMaterial();
         if (!mat || mat->renderQueue != RenderQueue::Transparent) continue;
 
-        const auto& wd = mesh->waterData.value_or(WaterShaderData{});
-        shader->SetUniform("u_waterLine",    wd.waterLine);
-        shader->SetUniform("u_waveStrength", wd.waveStrength);
-        shader->SetUniform("u_waveSpeed",    wd.waveSpeed);
-        shader->SetUniform("u_fogColor",     wd.waterFogColor);
-        shader->SetUniform("u_fogDensity",   wd.waterFogDensity);
+        auto* wm = dynamic_cast<WaterMaterial*>(mesh->GetMaterial());
+        shader->SetUniform("u_waterLine",    wm ? wm->waterLine       : 32.0f);
+        shader->SetUniform("u_waveStrength", wm ? wm->waveStrength    :  0.1f);
+        shader->SetUniform("u_waveSpeed",    wm ? wm->waveSpeed       :  1.0f);
+        shader->SetUniform("u_fogColor",     skyFogColor);
+        shader->SetUniform("u_fogDensity",   wm ? wm->waterFogDensity :  0.00001f);
+        shader->SetUniform("u_deepColor",    wm ? wm->deepColor       : glm::vec3{0.05f, 0.1f, 0.25f});
+        shader->SetUniform("u_shallowColor", wm ? wm->shallowColor    : glm::vec3{0.686f, 0.933f, 0.933f});
+        shader->SetUniform("u_beerCoef",     wm ? wm->beerCoef        :  0.095f);
         shader->SetUniform("u_model",        cmd.transform);
 
         glBindVertexArray(mesh->vao);

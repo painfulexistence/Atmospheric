@@ -1,5 +1,6 @@
 #pragma once
 #include "component.hpp"
+#include "globals.hpp"
 #include <memory>
 
 class GraphicsServer;
@@ -27,13 +28,14 @@ public:
         const std::shared_ptr<HeightField>& heightField,
         const TerrainMeshProps&             props
     );
+    ~TerrainMeshComponent() = default;
 
     std::string GetName() const override { return "TerrainMesh"; }
     void OnAttach() override {}
     void OnDetach() override {}
 
-    Mesh* GetMesh() const { return _mesh; }
+    MeshHandle GetMesh() const { return _mesh; }
 
 private:
-    Mesh* _mesh = nullptr;
+    MeshHandle _mesh;
 };

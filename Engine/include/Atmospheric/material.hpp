@@ -2,6 +2,7 @@
 #include "globals.hpp"
 #include "buffer.hpp"
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
 enum class PolygonMode {
     Fill,
@@ -56,6 +57,8 @@ public:
         return static_cast<int>(renderQueue) + renderQueueOffset;
     }
 
+    virtual ~Material() = default;
+
     Material(const MaterialProps& props) {
         baseMap = props.baseMap;
         normalMap = props.normalMap;
@@ -71,4 +74,31 @@ public:
         primitiveType = props.primitiveType;
         polygonMode = props.polygonMode;
     }
+};
+
+class WaterMaterial : public Material {
+public:
+    float     waterLine       = 32.0f;
+    float     waveStrength    =  0.1f;
+    float     waveSpeed       =  1.0f;
+    // Fog color is not stored here -- WaterPass reads it live from SkyboxPass::skyColor,
+    // matching VX (chunk/water fog both track the sky gradient color every frame).
+    float     waterFogDensity =  0.00001f; // VX: u_fog_density in scene.py render_water/render_terrain
+    glm::vec3 deepColor       = {0.05f, 0.1f, 0.25f};   // VX COLOR_INDIGO
+    glm::vec3 shallowColor    = {0.686f, 0.933f, 0.933f}; // VX COLOR_MINT_GREEN
+    float     beerCoef        =  0.095f;
+
+    WaterMaterial() : Material(MaterialProps{}) {
+        renderQueue     = RenderQueue::Transparent;
+        cullFaceEnabled = false;
+    }
+};
+
+class TerrainMaterial : public Material {
+public:
+    float heightScale        = 32.0f;
+    float tessellationFactor = 16.0f;
+
+    TerrainMaterial() : Material(MaterialProps{}) {}
+    explicit TerrainMaterial(const MaterialProps& props) : Material(props) {}
 };

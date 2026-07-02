@@ -1,8 +1,8 @@
 #!/bin/bash
 # Check that the active Emscripten version matches the required version.
 # Usage:
-#   ./scripts/check-emscripten-version.sh
-#   ./scripts/check-emscripten-version.sh --print-primary-version
+#   ./scripts/checkEmscriptenVersion.sh
+#   ./scripts/checkEmscriptenVersion.sh --print-primary-version
 
 set -euo pipefail
 

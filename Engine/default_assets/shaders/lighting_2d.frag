@@ -1,12 +1,10 @@
+#version 410
+
 // GL 4.1 fragment shader for LightingSystem2D fullscreen post-process.
 // Samples the scene offscreen texture and applies ambient + up to 16 point lights.
 // Ported from 2d-engine/src/fx/lighting.ts  LIGHTING_WGSL.
-//
-// For WebGL2 / Emscripten, replace the first two lines with:
-//   #version 300 es
-//   precision highp float;
-
-#version 410
+// WebGL2 / Emscripten builds auto-translate this to "#version 300 es" +
+// injected precision qualifiers — see PreprocessShaderForWebGL() in shader.cpp.
 
 #define MAX_LIGHTS 16
 
