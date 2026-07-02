@@ -190,6 +190,12 @@ public:
     // touching __root__ itself or other persistent entities.
     void ClearScenes();
 
+    // Internal: unload everything the current scene owns — its GameObjects,
+    // registered cameras/lights, audio, physics bodies, and GPU assets — leaving
+    // a blank slate for the next scene. Counterpart to UnloadScene(name), which
+    // targets a single named scene. Clears _currentSceneName.
+    void UnloadCurrentScene();
+
 protected:
     // These subsystems will be game accessible
     AudioManager audio;

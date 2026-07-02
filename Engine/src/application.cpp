@@ -1006,24 +1006,14 @@ void Application::TransitionToScene(std::string sceneName, std::function<void()>
         spdlog::info("TransitionToScene: prefetching {} asset(s) for '{}'", assetPaths.size(), sceneName);
 
         FileSystem::Get().Prefetch(assetPaths, [this, sceneName, bp = std::move(bp), onComplete]() mutable {
-            // ── Tear down the previous scene first.  This runs under the loading
-            //    overlay, so freeing the old scene before loading the new one is
-            //    invisible to the player.
-            const std::string prevScene = _currentSceneName;
-
-            ClearScenes();                              // delete previous scene GameObjects
-            graphics.cameras.clear();
-            graphics.directionalLights.clear();
-            graphics.pointLights.clear();
-            audio.StopAll();
-            physics.Reset();
-            if (!prevScene.empty())
-                AssetManager::Get().ClearSceneAssets(); // free previous scene GPU assets
+            // Unload the current scene first. This runs under the loading overlay,
+            // so freeing the old scene before loading the new one is invisible.
+            UnloadCurrentScene();
 
             _currentSceneName = sceneName;
 
-            // ── Load the new scene: the single place where scene assets are
-            //    uploaded and entities are instantiated.
+            // Load the new scene: the single place where scene assets are
+            // uploaded and entities are instantiated.
             ENGINE_LOG("TransitionToScene: loading '{}'...", sceneName);
             LoadSceneResources(bp);
             InstantiateScene(bp);
@@ -1137,6 +1127,19 @@ void Application::ClearScenes()
             names.push_back(e->GetName());
     }
     for (const auto& n : names) UnloadScene(n);
+}
+
+void Application::UnloadCurrentScene()
+{
+    ClearScenes();                              // delete scene GameObjects
+    graphics.cameras.clear();
+    graphics.directionalLights.clear();
+    graphics.pointLights.clear();
+    audio.StopAll();
+    physics.Reset();
+    if (!_currentSceneName.empty())
+        AssetManager::Get().ClearSceneAssets(); // free scene GPU assets
+    _currentSceneName.clear();
 }
 
 void Application::AddScene(const std::string& json)
