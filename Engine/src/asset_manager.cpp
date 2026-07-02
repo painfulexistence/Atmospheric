@@ -1,6 +1,7 @@
 #include "asset_manager.hpp"
 #include <algorithm>
 #include <unordered_set>
+#include <nlohmann/json.hpp>
 #include "console.hpp"
 #include "file_system.hpp"
 #include "job_system.hpp"
@@ -136,7 +137,7 @@ void AssetManager::Shutdown() {
 }
 
 void AssetManager::Clear() {
-    // Clean up textures
+    // Clean up textures (no nullptrs in these flat vectors)
     if (!textures.empty()) {
         glDeleteTextures(textures.size(), textures.data());
         textures.clear();
@@ -148,9 +149,9 @@ void AssetManager::Clear() {
     _textureCache.clear();
     _nextTextureID = 0;
 
-    // Clean up shaders
+    // Shaders may have nullptr slots (RemoveMaterial/RemoveShader leaves holes).
     for (auto* shader : shaders) {
-        delete shader;
+        if (shader) delete shader;
     }
     shaders.clear();
     _shaderCache.clear();
@@ -165,9 +166,9 @@ void AssetManager::Clear() {
     _ownedMeshIDs.clear();
     _nextMeshID = 1;
 
-    // Clean up materials
+    // Materials may have nullptr slots.
     for (auto* material : materials) {
-        delete material;
+        if (material) delete material;
     }
     materials.clear();
     _materialCache.clear();
@@ -193,16 +194,17 @@ void AssetManager::ClearSceneAssets() {
     }
 
     // Shaders: delete only scene shaders (indices >= _defaultShaderCount).
+    // Slots may be nullptr if RemoveMaterial/UnloadSceneAssets nulled them.
     for (uint32_t i = _defaultShaderCount; i < (uint32_t)shaders.size(); ++i)
-        delete shaders[i];
+        if (shaders[i]) delete shaders[i];
     shaders.resize(_defaultShaderCount);
     // Rebuild shader cache to only contain default shaders.
     for (auto it = _shaderCache.begin(); it != _shaderCache.end(); )
         it = (it->second < _defaultShaderCount) ? std::next(it) : _shaderCache.erase(it);
     _nextShaderID = _defaultShaderCount;
 
-    // Materials and meshes are always scene-specific.
-    for (auto* m : materials) delete m;
+    // Materials and meshes are always scene-specific (slots may be nullptr).
+    for (auto* m : materials) if (m) delete m;
     materials.clear();
     _materialCache.clear();
     _nextMaterialID = 0;
@@ -214,6 +216,105 @@ void AssetManager::ClearSceneAssets() {
     _nextMeshID = 1;
 
     _imageCache.clear();
+    _sceneJsons.clear();
+}
+
+// ============================================================================
+// Component-owned asset cleanup
+// ============================================================================
+
+void AssetManager::RemoveMaterial(Material* mat) {
+    if (!mat) return;
+    for (auto it = _materialCache.begin(); it != _materialCache.end(); ++it) {
+        if (it->second < materials.size() && materials[it->second] == mat) {
+            materials[it->second] = nullptr;
+            _materialCache.erase(it);
+            break;
+        }
+    }
+    delete mat;
+}
+
+
+void AssetManager::RemoveTexture(const std::string& path) {
+    auto it = _textureCache.find(path);
+    if (it == _textureCache.end()) return;
+    GLuint glID = it->second.glID;
+    glDeleteTextures(1, &glID);
+    textures.erase(std::remove(textures.begin(), textures.end(), glID), textures.end());
+    _textureCache.erase(it);
+}
+
+// ============================================================================
+// Per-scene asset ownership
+// ============================================================================
+
+void AssetManager::StoreSceneJson(const std::string& sceneName, const std::string& json) {
+    _sceneJsons[sceneName] = json;
+}
+
+void AssetManager::UnloadSceneAssets(const std::string& sceneName) {
+    auto it = _sceneJsons.find(sceneName);
+    if (it == _sceneJsons.end()) return;
+
+    nlohmann::json j;
+    try {
+        j = nlohmann::json::parse(it->second);
+    } catch (...) {
+        _sceneJsons.erase(it);
+        return;
+    }
+
+    // Textures: erase by compaction is safe here because the texture vector
+    // is indexed only by cache lookup (no stable integer IDs like shaders).
+    if (j.contains("textures") && j["textures"].is_array()) {
+        for (const auto& tex : j["textures"]) {
+            std::string path = tex.get<std::string>();
+            auto texIt = _textureCache.find(path);
+            if (texIt == _textureCache.end()) continue;
+            GLuint glID = texIt->second.glID;
+            glDeleteTextures(1, &glID);
+            _textureCache.erase(texIt);
+            textures.erase(std::remove(textures.begin(), textures.end(), glID), textures.end());
+        }
+    }
+
+    // Shaders: null the slot, do NOT compact — indices in _shaderCache for
+    // surviving shaders must remain valid.
+    if (j.contains("shaders") && j["shaders"].is_object()) {
+        for (const auto& [name, _] : j["shaders"].items()) {
+            auto shaderIt = _shaderCache.find(name);
+            if (shaderIt == _shaderCache.end()) continue;
+            uint32_t idx = shaderIt->second;
+            if (idx < shaders.size()) {
+                delete shaders[idx];
+                shaders[idx] = nullptr;
+            }
+            _shaderCache.erase(shaderIt);
+        }
+        // No compaction: shaders[idx] == nullptr is a valid empty slot.
+    }
+
+    // Materials: same no-compact invariant.
+    if (j.contains("materials") && j["materials"].is_array()) {
+        for (const auto& mat : j["materials"]) {
+            std::string name = mat.get<std::string>();
+            auto matIt = _materialCache.find(name);
+            if (matIt == _materialCache.end()) continue;
+            uint32_t idx = matIt->second;
+            if (idx < materials.size()) {
+                delete materials[idx];
+                materials[idx] = nullptr;
+            }
+            _materialCache.erase(matIt);
+        }
+        // No compaction.
+    }
+
+    // TODO: unload meshes declared in the scene JSON "meshes" array.
+
+    _sceneJsons.erase(it);
+    Console::Get()->Info(fmt::format("[AssetManager] Unloaded assets for scene '{}'.", sceneName));
 }
 
 // ============================================================================

@@ -105,6 +105,23 @@ public:
 
     size_t getTotalTextureBytes() const;
 
+    // ========== Component-owned asset cleanup ==========
+    // Null the slot in the flat vector, erase from the name cache, and delete
+    // the object.  Index stability is preserved (no vector compaction).
+    void RemoveMaterial(Material* mat);
+    void RemoveTexture(const std::string& path);
+
+    // ========== Per-scene asset ownership ==========
+    // Store the raw scene JSON so UnloadSceneAssets can re-parse it to free
+    // every asset type declared by that scene.  Adding new asset types to the
+    // JSON format (fonts, sounds, ui, …) is automatically handled — no struct
+    // changes needed here.
+    //
+    // Invariant: correct when simultaneously-loaded scenes do not share asset
+    // paths.  Namespace each demo's assets under its own subdirectory.
+    void StoreSceneJson(const std::string& sceneName, const std::string& json);
+    void UnloadSceneAssets(const std::string& sceneName);
+
     // ========== Cleanup ==========
     void Clear();
     void ClearSceneAssets();  // Clears scene assets only, preserving defaults.
@@ -140,6 +157,9 @@ private:
     std::unordered_map<std::string, uint32_t> _meshCache;
     std::unordered_set<uint32_t> _ownedMeshIDs;  // IDs AssetManager must delete; excludes RegisterMesh entries
     uint32_t _nextMeshID = 1;
+
+    // Raw JSON strings keyed by scene name — re-parsed on unload.
+    std::unordered_map<std::string, std::string> _sceneJsons;
 
 #ifdef AE_USE_BASIS_UNIVERSAL
     // KTX2 / Basis Universal GPU-compressed texture loader.
