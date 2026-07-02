@@ -62,14 +62,17 @@ public:
     void EnableDebugUI(bool enable = true);
 
 private:
-    btCollisionConfiguration* _config;
-    btCollisionDispatcher* _dispatcher;
-    btBroadphaseInterface* _broadphase;
-    btConstraintSolver* _solver;
-    btDiscreteDynamicsWorld* _world;
-    PhysicsDebugDrawer* _debugDrawer;
+    // Members are destroyed in reverse declaration order, so _world (which
+    // references the four subsystems and the debug drawer) is declared last
+    // and dies first — same order the old manual destructor enforced by hand.
+    std::unique_ptr<btCollisionConfiguration> _config;
+    std::unique_ptr<btCollisionDispatcher> _dispatcher;
+    std::unique_ptr<btBroadphaseInterface> _broadphase;
+    std::unique_ptr<btConstraintSolver> _solver;
+    std::unique_ptr<PhysicsDebugDrawer> _debugDrawer;
+    std::unique_ptr<btDiscreteDynamicsWorld> _world;
     std::unique_ptr<BulletTaskScheduler> _taskScheduler;
-    std::unordered_map<ColliderID, btCollisionShape*> _colliders;
+    std::unordered_map<ColliderID, std::unique_ptr<btCollisionShape>> _colliders;
     std::vector<RigidbodyComponent*> _impostors;
     float _timeAccum;
 
