@@ -45,10 +45,3 @@ TerrainMeshComponent::TerrainMeshComponent(
     if (meshPtr) meshPtr->SetMaterial(terrainMat);
     owner->AddComponent<MeshComponent>(_mesh);
 }
-
-TerrainMeshComponent::~TerrainMeshComponent() {
-    auto& am = AssetManager::Get();
-    if (_ownsMaterial) am.RemoveMaterial(_material);
-    am.RemoveMesh(_mesh);
-    if (gameObject) am.RemoveTexture("hm_" + gameObject->GetName());
-}
