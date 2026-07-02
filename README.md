@@ -1,6 +1,6 @@
 # Atmospheric
 
-[![Native](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-native.yml/badge.svg)](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-native.yml)
+[![Native](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-desktop.yml/badge.svg)](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-desktop.yml)
 [![Web](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-web.yml/badge.svg)](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-web.yml)
 [![Android](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-android.yml/badge.svg)](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-android.yml)
 [![iOS](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-ios.yml/badge.svg)](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-ios.yml)

@@ -1,4 +1,4 @@
-name: Build (iOS)
+name: CI (iOS)
 
 permissions:
   contents: read

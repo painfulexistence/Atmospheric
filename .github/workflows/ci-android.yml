@@ -1,4 +1,7 @@
-name: Build (Android)
+name: CI (Android)
+
+permissions:
+  contents: read
 
 # Builds HelloWorld — the only bundled example with Android platform
 # scaffolding — through its real Gradle project rather than invoking cmake
@@ -14,12 +17,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
   build-android:
-    name: Android Release
+    name: Android, Release
     runs-on: ubuntu-latest
 
     steps:

@@ -1,12 +1,5 @@
 name: Build (WebAssembly)
 
-# Validates that AtmosLua links successfully as a WebAssembly module.
-# A successful link catches the majority of WebGL-specific failures:
-#   - Missing -sUSE_GLFW / -sFETCH / -sFULL_ES3 flags
-#   - GLSL version mismatches discovered at shader-compile time (runtime)
-#   - WASM-incompatible dependencies (x86 archives, system glad, etc.)
-#   - Emscripten-incompatible C++ (non-portable intrinsics, POSIX-only APIs)
-#
 # The build artifact (.html + .wasm + .js + .data) is uploaded so that
 # manual smoke-testing in a browser is possible without a local emsdk install.
 
@@ -19,6 +12,7 @@ on:
 
 jobs:
   build-wasm-webgl:
+    name: WebAssembly WebGL, MinSizeRel
     runs-on: ubuntu-latest
 
     steps:
@@ -109,7 +103,8 @@ jobs:
   # ── WebGPU compile check (non-blocking) ──────────────────────────────────
   # Verifies that AE_USE_WEBGPU=ON compiles cleanly with emdawnwebgpu.
   # The WebGPU backend is still WIP so failures here do not block merging.
-  build-wam-webgpu:
+  build-wasm-webgpu:
+    name: WebAssembly WebGPU, MinSizeRel
     runs-on: ubuntu-latest
     continue-on-error: true
 
