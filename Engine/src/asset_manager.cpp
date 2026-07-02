@@ -235,18 +235,6 @@ void AssetManager::RemoveMaterial(Material* mat) {
     delete mat;
 }
 
-void AssetManager::RemoveMesh(Mesh* mesh) {
-    if (!mesh) return;
-    for (auto it = _meshCache.begin(); it != _meshCache.end(); ++it) {
-        if (it->second == mesh) {
-            _meshCache.erase(it);
-            break;
-        }
-    }
-    auto vecIt = std::find(meshes.begin(), meshes.end(), mesh);
-    if (vecIt != meshes.end()) *vecIt = nullptr;
-    delete mesh;
-}
 
 void AssetManager::RemoveTexture(const std::string& path) {
     auto it = _textureCache.find(path);

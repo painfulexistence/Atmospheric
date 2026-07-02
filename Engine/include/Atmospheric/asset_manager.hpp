@@ -109,7 +109,6 @@ public:
     // Null the slot in the flat vector, erase from the name cache, and delete
     // the object.  Index stability is preserved (no vector compaction).
     void RemoveMaterial(Material* mat);
-    void RemoveMesh(Mesh* mesh);
     void RemoveTexture(const std::string& path);
 
     // ========== Per-scene asset ownership ==========
