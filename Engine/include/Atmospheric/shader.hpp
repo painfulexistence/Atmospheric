@@ -31,15 +31,19 @@ struct ShaderProgramProps {
 class ShaderProgram {
 public:
     virtual ~ShaderProgram() = default;
-    
+
     virtual void Activate() = 0;
     virtual void Deactivate() = 0;
-    
+
     virtual void SetUniform(const std::string& uniform, const glm::mat4& val) = 0;
     virtual void SetUniform(const std::string& uniform, const glm::vec2& val) = 0;
     virtual void SetUniform(const std::string& uniform, const glm::vec3& val) = 0;
     virtual void SetUniform(const std::string& uniform, int val) = 0;
     virtual void SetUniform(const std::string& uniform, float val) = 0;
+
+    // Hot reload support
+    virtual bool Reload() = 0;
+    virtual const ShaderProgramProps& GetProps() const = 0;
 };
 
 // OpenGL implementation of ShaderProgram.
@@ -64,6 +68,10 @@ public:
     void SetUniform(const std::string& uniform, int val) override;
     void SetUniform(const std::string& uniform, float val) override;
 
+    // Hot reload support
+    bool Reload() override;
+    const ShaderProgramProps& GetProps() const override { return _props; }
+
     int GetAttrib(const std::string& attrib);
     int GetUniform(const std::string& uniform);
 
@@ -73,6 +81,7 @@ public:
 
 private:
     uint32_t _program = 0;
+    ShaderProgramProps _props;
     std::unordered_map<std::string, int> _uniformLocationCache;
 
     int CacheUniform(const std::string& uniform);

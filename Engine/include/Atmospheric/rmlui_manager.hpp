@@ -2,6 +2,7 @@
 #include <RmlUi/Core.h>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 class RmlUiRenderer;
 class RmlUiSystem;
@@ -39,6 +40,10 @@ public:
     void ShowDocument(const std::string& id);
     void HideDocument(const std::string& id);
 
+    // Hot reload support
+    bool ReloadDocument(const std::string& path);
+    int ReloadAllDocuments();
+
     // Context access
     Rml::Context* GetContext() {
         return m_context;
@@ -63,4 +68,7 @@ private:
     int m_width = 0;
     int m_height = 0;
     bool m_initialized = false;
+
+    // Track loaded documents for hot reload
+    std::unordered_map<std::string, Rml::ElementDocument*> m_loadedDocuments;
 };

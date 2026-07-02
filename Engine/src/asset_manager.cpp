@@ -9,6 +9,9 @@
 #include "mesh.hpp"
 #include "mesh_builder.hpp"
 #include "shader.hpp"
+#ifdef AE_USE_RMLUI
+#include "rmlui_manager.hpp"
+#endif
 
 TextureHandle::TextureHandle(const char* path) {
     *this = AssetManager::Get().CreateTexture(path);
@@ -317,6 +320,22 @@ void AssetManager::UnloadSceneAssets(const std::string& sceneName) {
     Console::Get()->Info(fmt::format("[AssetManager] Unloaded assets for scene '{}'.", sceneName));
 }
 
+void AssetManager::ReloadAll() {
+    ENGINE_LOG("Reloading all assets...");
+    int shaderCount = ReloadShaders();
+    int textureCount = ReloadTextures();
+
+    // Reload RmlUI documents if available
+    int rmlCount = 0;
+#ifdef AE_USE_RMLUI
+    if (auto* rmlMgr = RmlUiManager::Get()) {
+        rmlCount = rmlMgr->ReloadAllDocuments();
+    }
+#endif
+
+    ENGINE_LOG("Asset reload complete: {} shaders, {} textures, {} UI docs", shaderCount, textureCount, rmlCount);
+}
+
 // ============================================================================
 // Image Management
 // ============================================================================
@@ -468,9 +487,53 @@ ShaderProgram* AssetManager::GetShaderByID(uint32_t id) const {
     throw std::runtime_error(fmt::format("Shader ID {} out of range", id));
 }
 
-void AssetManager::ReloadShaders() {
-    // TODO: Implement shader hot reloading
-    ENGINE_LOG("Shader reloading not yet implemented");
+bool AssetManager::ReloadShader(const std::string& name) {
+    auto it = _shaderCache.find(name);
+    if (it == _shaderCache.end()) {
+        spdlog::error("Cannot reload shader '{}': not found", name);
+        return false;
+    }
+
+    ShaderProgram* shader = shaders[it->second];
+    const auto& props = shader->GetProps();
+
+    if (props.vert.empty() || props.frag.empty()) {
+        spdlog::warn("Cannot reload shader '{}': missing source paths", name);
+        return false;
+    }
+
+    if (shader->Reload()) {
+        ENGINE_LOG("Shader '{}' reloaded successfully", name);
+        return true;
+    } else {
+        spdlog::error("Failed to reload shader '{}'", name);
+        return false;
+    }
+}
+
+int AssetManager::ReloadShaders() {
+    int successCount = 0;
+    int failCount = 0;
+
+    for (const auto& [name, id] : _shaderCache) {
+        ShaderProgram* shader = shaders[id];
+        const auto& props = shader->GetProps();
+
+        if (props.vert.empty() || props.frag.empty()) {
+            continue;
+        }
+
+        if (shader->Reload()) {
+            ENGINE_LOG("Shader '{}' reloaded", name);
+            successCount++;
+        } else {
+            spdlog::error("Failed to reload shader '{}'", name);
+            failCount++;
+        }
+    }
+
+    ENGINE_LOG("Shader reload complete: {} succeeded, {} failed", successCount, failCount);
+    return successCount;
 }
 
 // ============================================================================
@@ -776,6 +839,116 @@ std::string AssetManager::GetTexturePath(GLuint id) const {
     return "";
 }
 
+bool AssetManager::ReloadTexture(const std::string& path) {
+    std::string normalizedPath = path;
+    if (normalizedPath.size() >= 2 && normalizedPath[0] == '.' && normalizedPath[1] == '/')
+        normalizedPath = normalizedPath.substr(2);
+
+    auto it = _textureCache.find(normalizedPath);
+    if (it == _textureCache.end()) {
+        spdlog::error("Cannot reload texture '{}': not found in cache", path);
+        return false;
+    }
+
+    GLuint texID = it->second.glID;
+
+    // Clear from image cache to force reload from disk
+    _imageCache.erase(normalizedPath);
+
+    auto image = LoadImage(normalizedPath);
+    if (!image) {
+        spdlog::error("Failed to reload texture '{}': could not load image", path);
+        return false;
+    }
+
+    // Re-upload to existing GL texture object
+    glBindTexture(GL_TEXTURE_2D, texID);
+
+    switch (image->channelCount) {
+    case 1:
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, image->width, image->height, 0,
+                     GL_RED, GL_UNSIGNED_BYTE, image->byteArray.data());
+        break;
+    case 3:
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image->width, image->height, 0,
+                     GL_RGB, GL_UNSIGNED_BYTE, image->byteArray.data());
+        break;
+    case 4:
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image->width, image->height, 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, image->byteArray.data());
+        break;
+    }
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    // Update cache metadata
+    it->second.width = image->width;
+    it->second.height = image->height;
+    it->second.bytes = (size_t)image->width * image->height * image->channelCount;
+
+    ENGINE_LOG("Texture '{}' reloaded successfully", path);
+    return true;
+}
+
+int AssetManager::ReloadTextures() {
+    int successCount = 0;
+    int failCount = 0;
+
+    // Collect paths first to avoid iterator invalidation
+    std::vector<std::string> paths;
+    for (const auto& [path, tex2d] : _textureCache) {
+        // Skip KTX2 textures (GPU-compressed, not easily reloadable)
+        if (path.size() >= 5 && path.compare(path.size() - 5, 5, ".ktx2") == 0)
+            continue;
+        // Skip unnamed textures (created from code, not files)
+        if (path.find("unnamed_") == 0)
+            continue;
+        paths.push_back(path);
+    }
+
+    for (const auto& path : paths) {
+        // Clear from image cache
+        _imageCache.erase(path);
+
+        auto image = LoadImage(path);
+        if (!image) {
+            spdlog::error("Failed to reload texture '{}'", path);
+            failCount++;
+            continue;
+        }
+
+        auto it = _textureCache.find(path);
+        if (it == _textureCache.end()) continue;
+
+        GLuint texID = it->second.glID;
+        glBindTexture(GL_TEXTURE_2D, texID);
+
+        switch (image->channelCount) {
+        case 1:
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, image->width, image->height, 0,
+                         GL_RED, GL_UNSIGNED_BYTE, image->byteArray.data());
+            break;
+        case 3:
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, image->width, image->height, 0,
+                         GL_RGB, GL_UNSIGNED_BYTE, image->byteArray.data());
+            break;
+        case 4:
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image->width, image->height, 0,
+                         GL_RGBA, GL_UNSIGNED_BYTE, image->byteArray.data());
+            break;
+        }
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        it->second.width = image->width;
+        it->second.height = image->height;
+        it->second.bytes = (size_t)image->width * image->height * image->channelCount;
+
+        ENGINE_LOG("Texture '{}' reloaded", path);
+        successCount++;
+    }
+
+    ENGINE_LOG("Texture reload complete: {} succeeded, {} failed", successCount, failCount);
+    return successCount;
+}
 
 size_t AssetManager::getTotalTextureBytes() const {
     std::unordered_set<GLuint> seen;

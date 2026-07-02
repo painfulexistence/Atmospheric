@@ -60,7 +60,8 @@ public:
     ShaderProgram* GetShaderByID(uint32_t id) const;
     void LoadDefaultShaders();
     void LoadShaders(const std::unordered_map<std::string, ShaderProgramProps>& shaderDefs);
-    void ReloadShaders();
+    bool ReloadShader(const std::string& name);
+    int ReloadShaders();
 
     // ========== GPU Resource Management ==========
     TextureHandle CreateTexture(const std::string& path);
@@ -70,6 +71,8 @@ public:
     std::string GetTexturePath(GLuint id) const;
     void LoadDefaultTextures();
     void LoadTextures(const std::vector<std::string>& paths);
+    bool ReloadTexture(const std::string& path);
+    int ReloadTextures();
     MeshHandle CreateMesh(Mesh* mesh = nullptr);
     MeshHandle CreateMesh(const std::string& name, Mesh* mesh = nullptr);
     MeshHandle CreateCubeMesh(const std::string& name, float size = 1.0f);
@@ -104,6 +107,9 @@ public:
     }
 
     size_t getTotalTextureBytes() const;
+
+    // ========== Hot Reload ==========
+    void ReloadAll();  // Reload all shaders, textures, and UI documents
 
     // ========== Component-owned asset cleanup ==========
     // Null the slot in the flat vector, erase from the name cache, and delete
