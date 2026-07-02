@@ -11,10 +11,19 @@ cmake_minimum_required(VERSION 3.21)
 
 set(ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../..")
 
+# Both arm64-ios and arm64-ios-simulator vcpkg triplets only build arm64 slices.
+# Without this, Xcode defaults to its standard simulator archs (which includes
+# x86_64 on the Simulator SDK), and linking fails with missing symbols for the
+# x86_64 slice since vcpkg never built its dependencies for it.
+set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "" FORCE)
+
 # vcpkg must be loaded before project().
 # Set VCPKG_MANIFEST_DIR explicitly so vcpkg finds vcpkg.json in the repo root
 # regardless of which directory cmake is invoked from.
 set(VCPKG_MANIFEST_DIR "${ROOT_DIR}" CACHE STRING "")
+# arm64-ios / arm64-ios-simulator are custom triplets (triplets/*.cmake), not
+# community vcpkg triplets — without this, vcpkg can't locate them at all.
+list(APPEND VCPKG_OVERLAY_TRIPLETS "${ROOT_DIR}/triplets")
 include("${ROOT_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake")
 
 project(HelloWorld-iOS LANGUAGES C CXX OBJC OBJCXX Swift)

@@ -12,6 +12,7 @@
 
 #include "physics_server_2d.hpp"
 #include "scene.hpp"
+#include "scene_transition.hpp"
 
 #include <memory>
 #include <string>
@@ -21,6 +22,7 @@ class Window;
 class GameObject;
 class EditorLayer;
 class VideoRecorder;
+struct SceneBlueprint;
 
 struct FrameData {
     FrameData(uint64_t number, float time, float deltaTime) {
@@ -86,6 +88,12 @@ public:
     virtual void OnReload() {
     }// Reset game objects (side effects clean up and recreate)
 
+    // Called just before a scene transition begins and just after the new scene is ready.
+    // Override to customize the loading screen content (e.g. add a spinner or progress bar).
+    // Base implementation fades a full-screen black overlay in and out via RmlUI.
+    virtual void ShowLoadingScreen();
+    virtual void HideLoadingScreen();
+
     uint64_t GetClock();
 
     GameObject* GetDefaultGameObject() {
@@ -134,7 +142,6 @@ public:
 #endif
 
     std::shared_ptr<Window> GetWindow();
-    void LoadScene(const std::string& jsonContent);
     void ReloadScene();
     void GoScene(const std::string& sceneName, std::function<void()> onReady = nullptr);
 
@@ -182,6 +189,12 @@ public:
     // touching __root__ itself or other persistent entities.
     void ClearScenes();
 
+    // Internal: unload everything the current scene owns — its GameObjects,
+    // registered cameras/lights, audio, physics bodies, and GPU assets — leaving
+    // a blank slate for the next scene. Counterpart to UnloadScene(name), which
+    // targets a single named scene. Clears _currentSceneName.
+    void UnloadCurrentScene();
+
 protected:
     // These subsystems will be game accessible
     AudioManager audio;
@@ -217,6 +230,11 @@ private:
 
     void RegisterComponents();
 
+    // Phase 2a: upload GPU resources declared in the blueprint.  Must run on the main thread.
+    void LoadSceneResources(const SceneBlueprint& bp);
+    // Phase 2b: create GameObjects + Components from resolved entity blueprints.
+    void InstantiateScene(const SceneBlueprint& bp);
+
     AppConfig _config;
 
     std::shared_ptr<Window> _window = nullptr;
@@ -244,6 +262,9 @@ private:
     void Render(const FrameData& frame
     );// TODO: Properly separate rendering and drawing logic if the backend supports command buffering
     void SyncTransformWithPhysics();
+
+    // ─── Loading screen / transition ────────────────────────────────────
+    SceneTransition _transition;
 
     // ─── Automated capture ──────────────────────────────────────────────
     std::unique_ptr<VideoRecorder> _recorder;

@@ -304,8 +304,8 @@ public:
     void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
     bool  enabled       = false;
-    float threshold     = 0.8f;
-    float bloomStrength = 0.04f;
+    float threshold     = 1.0f;  // VX: brightness.frag hard cutoff
+    float bloomStrength = 0.08f; // VX: u_bloom_strength
 
 private:
     static constexpr int MIP_LEVELS = 5;

@@ -80,11 +80,6 @@ class MidnightSkyraiders : public Application {
     // ── lifecycle ──────────────────────────────────────────────────────────────
 
     void OnInit() override {
-        GoScene("main", [this]{ OnLoad(); });
-    }
-
-    void OnLoad() override {
-        // Register local components
         ComponentFactory::Register("ParallaxLayerComponent",
           [](GameObject* o, Deserializer& d) -> Component* {
               int textureID = 0, zOrder = 0;
@@ -121,6 +116,10 @@ class MidnightSkyraiders : public Application {
           [](GameObject* o, Deserializer& d) -> Component* {
               return new PlayerComponent(o);
           });
+        GoScene("main", [this]{ OnLoad(); });
+    }
+
+    void OnLoad() override {
 
         texPlayer  = "assets/images/player.png";
         texEnemy1  = "assets/images/enemy1.png";

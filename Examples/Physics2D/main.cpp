@@ -293,11 +293,6 @@ class PolyMerge : public Application {
     }
 
     void OnInit() override {
-        GoScene("main", [this]{ OnLoad(); });
-    }
-
-    void OnLoad() override {
-        // Register local components
         ComponentFactory::Register("MergeableComponent",
           [](GameObject* o, Deserializer& d) -> Component* {
               int sides = 3, minGroup = 2;
@@ -313,6 +308,10 @@ class PolyMerge : public Application {
               d.Read("target", target);
               return new ColorRestoreComponent(o, speed, target);
           });
+        GoScene("main", [this]{ OnLoad(); });
+    }
+
+    void OnLoad() override {
 
         rng.seed(std::random_device{}());
         score = 0;
