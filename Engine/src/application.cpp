@@ -810,8 +810,9 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
 }
 
 // Phase 1: pure JSON parse — no GPU calls, no side effects, can run off-thread.
-// Returns a SceneBlueprint with name="" on parse failure.
-static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent) {
+// Returns a SceneBlueprint with name="" on parse failure. On failure, when
+// `error` is non-null it receives the parser's message (for editor reporting).
+static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::string* error = nullptr) {
     SceneBlueprint bp;
     bp.rawJson = jsonContent;
 
@@ -820,6 +821,7 @@ static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent) {
         j = nlohmann::json::parse(jsonContent);
     } catch (const std::exception& e) {
         spdlog::error("ParseSceneBlueprint: JSON parse error: {}", e.what());
+        if (error) *error = e.what();
         return bp; // bp.name is "" — caller checks this
     }
 
@@ -910,13 +912,6 @@ void Application::InstantiateScene(const SceneBlueprint& bp) {
 
     mainCamera = graphics.GetMainCamera();
     mainLight = graphics.GetMainLight();
-}
-
-void Application::LoadScene(const std::string& jsonContent) {
-    SceneBlueprint bp = ParseSceneBlueprint(jsonContent);
-    if (bp.name.empty()) return; // parse failed — error already logged
-    LoadSceneResources(bp);
-    InstantiateScene(bp);
 }
 
 void Application::ShowLoadingScreen() {
@@ -1149,29 +1144,26 @@ void Application::UnloadCurrentScene()
 
 void Application::AddScene(const std::string& json)
 {
-    nlohmann::json j;
-    try {
-        j = nlohmann::json::parse(json);
-    } catch (const std::exception& e) {
-        _editorSceneError = e.what();
-        _lastLoadedScene  = "";
-        spdlog::warn("[Scene] AddScene JSON parse error: {}", e.what());
+    SceneBlueprint bp = ParseSceneBlueprint(json, &_editorSceneError);
+    if (bp.name.empty()) { // parse failed — _editorSceneError set by ParseSceneBlueprint
+        _lastLoadedScene = "";
+        spdlog::warn("[Scene] AddScene JSON parse error: {}", _editorSceneError);
         return;
     }
 
-    std::string sceneName = j.value("name", "Unnamed");
     // Replace any existing scene with the same name.
-    UnloadScene(sceneName);
+    UnloadScene(bp.name);
 
     try {
-        LoadScene(json);
+        LoadSceneResources(bp);
+        InstantiateScene(bp);
         _editorSceneError.clear();
-        _lastLoadedScene = sceneName;
-        spdlog::info("[Scene] Added scene '{}'.", sceneName);
+        _lastLoadedScene = bp.name;
+        spdlog::info("[Scene] Added scene '{}'.", bp.name);
     } catch (const std::exception& e) {
         _editorSceneError = e.what();
         _lastLoadedScene  = "";
-        spdlog::warn("[Scene] AddScene '{}' failed: {}", sceneName, e.what());
+        spdlog::warn("[Scene] AddScene '{}' failed: {}", bp.name, e.what());
     }
 }
 
