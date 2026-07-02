@@ -983,20 +983,20 @@ static std::vector<std::string> CollectPrefetchPaths(const SceneBlueprint& bp, b
 
 void Application::TransitionToScene(std::string sceneName, std::function<void()> onComplete)
 {
-    const std::string manifestPath = "assets/scenes/" + sceneName + ".json";
+    const std::string scenePath = "assets/scenes/" + sceneName + ".json";
 
-    // Stage 1: ensure the manifest file itself is cached (async on WASM).
-    FileSystem::Get().Prefetch({ manifestPath }, [this, sceneName, manifestPath, onComplete]() {
-        auto bytes = FileSystem::Get().ReadSync(manifestPath);
+    // Stage 1: ensure the scene file itself is cached (async on WASM).
+    FileSystem::Get().Prefetch({ scenePath }, [this, sceneName, scenePath, onComplete]() {
+        auto bytes = FileSystem::Get().ReadSync(scenePath);
         if (bytes.empty()) {
-            spdlog::error("TransitionToScene: failed to read manifest '{}'", manifestPath);
+            spdlog::error("TransitionToScene: failed to read scene file '{}'", scenePath);
             if (onComplete) onComplete(); // finish so the loading screen doesn't hang
             return;
         }
 
         SceneBlueprint bp = ParseSceneBlueprint(std::string(bytes.begin(), bytes.end()));
         if (bp.name.empty()) {
-            spdlog::error("TransitionToScene: manifest parse failed '{}'", manifestPath);
+            spdlog::error("TransitionToScene: scene blueprint parse failed '{}'", scenePath);
             if (onComplete) onComplete();
             return;
         }
@@ -1055,7 +1055,7 @@ void Application::ReloadScene() {
 
 void Application::LoadEditorScene(const uint8_t* data, size_t len)
 {
-    // Mirror GoScene's entity-clearing logic without requiring a manifest file.
+    // Mirror GoScene's entity-clearing logic without requiring a scene file.
     for (auto* e : _entities) {
         if (e != _defaultGameObject) delete e;
     }

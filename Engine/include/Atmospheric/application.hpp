@@ -231,7 +231,7 @@ private:
     void InstantiateScene(const SceneBlueprint& bp);
 
     // Async single-owner scene loader driving a full transition:
-    //   prefetch manifest → parse → prefetch assets → tear down previous scene
+    //   prefetch scene file → parse → prefetch assets → tear down previous scene
     //   → load new scene (resources + entities) → onComplete.
     // On native the prefetches are synchronous; on WASM they resolve via the
     // browser event loop, so onComplete may run after this returns.
