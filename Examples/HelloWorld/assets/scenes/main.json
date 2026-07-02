@@ -2,6 +2,14 @@
   "name": "main",
   "textures": [],
   "shaders": [],
+  "materials": {
+    "cubeMat": {
+      "diffuse": [1.0, 1.0, 1.0],
+      "specular": [0.296648, 0.296648, 0.296648],
+      "ambient": [0.25, 0.20725, 0.20725],
+      "shininess": 0.088
+    }
+  },
   "entities": [
     {
       "name": "MainCamera",

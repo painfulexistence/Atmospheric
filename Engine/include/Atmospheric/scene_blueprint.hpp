@@ -1,9 +1,23 @@
 #pragma once
 #include "shader.hpp"
+#include <glm/vec3.hpp>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+// Raw material definition parsed from the scene "materials" object. Texture maps
+// are kept as asset paths here (Phase 1 is pure — no GPU) and resolved to
+// TextureHandles in LoadSceneResources (Phase 2). An empty path means "no map".
+struct MaterialBlueprint {
+    std::string name;
+    glm::vec3   diffuse  = glm::vec3(0.55f, 0.55f, 0.55f);
+    glm::vec3   specular = glm::vec3(0.70f, 0.70f, 0.70f);
+    glm::vec3   ambient  = glm::vec3(0.00f, 0.00f, 0.00f);
+    float       shininess       = 0.25f;
+    bool        cullFaceEnabled = true;
+    std::string baseMap, normalMap, aoMap, roughnessMap, metallicMap, heightMap;
+};
 
 // Resolved, instantiation-ready description of one entity (and its children).
 // Built during Phase 1 (pure parse, no side effects) before any GameObjects are
@@ -33,6 +47,7 @@ struct SceneBlueprint {
     // Resource declarations (loaded before entity instantiation)
     std::vector<std::string>                             textures;
     std::unordered_map<std::string, ShaderProgramProps>  shaders;
+    std::vector<MaterialBlueprint>                       materials;
     std::vector<std::string>                             meshes; // TODO: unload in UnloadSceneAssets
 
     // Top-level entity blueprints (children embedded in resolvedData["children"])

@@ -8,6 +8,7 @@
 #endif
 #include "animator_2d.hpp"
 #include "asset_manager.hpp"
+#include "material.hpp"
 #include "camera_component.hpp"
 #include "component_factory.hpp"
 #include "deserializer.hpp"
@@ -843,6 +844,25 @@ static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::s
         }
     }
 
+    if (j.contains("materials") && j["materials"].is_object()) {
+        for (const auto& [name, matVal] : j["materials"].items()) {
+            MaterialBlueprint mb;
+            mb.name     = name;
+            mb.diffuse  = ParseVec3(matVal.value("diffuse",  nlohmann::json::array()), mb.diffuse);
+            mb.specular = ParseVec3(matVal.value("specular", nlohmann::json::array()), mb.specular);
+            mb.ambient  = ParseVec3(matVal.value("ambient",  nlohmann::json::array()), mb.ambient);
+            mb.shininess       = matVal.value("shininess", mb.shininess);
+            mb.cullFaceEnabled = matVal.value("cullFaceEnabled", mb.cullFaceEnabled);
+            mb.baseMap      = matVal.value("baseMap",      std::string(""));
+            mb.normalMap    = matVal.value("normalMap",    std::string(""));
+            mb.aoMap        = matVal.value("aoMap",        std::string(""));
+            mb.roughnessMap = matVal.value("roughnessMap", std::string(""));
+            mb.metallicMap  = matVal.value("metallicMap",  std::string(""));
+            mb.heightMap    = matVal.value("heightMap",    std::string(""));
+            bp.materials.push_back(std::move(mb));
+        }
+    }
+
     if (j.contains("meshes") && j["meshes"].is_array()) {
         for (const auto& mesh : j["meshes"])
             bp.meshes.push_back(mesh.get<std::string>());
@@ -892,6 +912,26 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
         AssetManager::Get().LoadShaders(shadersToLoad);
         ENGINE_LOG("JSON Shaders created.");
     }
+
+    // Materials are created after textures so their map paths resolve to
+    // already-loaded TextureHandles. CreateMaterial dedups by name.
+    for (const auto& mb : bp.materials) {
+        MaterialProps props;
+        props.diffuse         = mb.diffuse;
+        props.specular        = mb.specular;
+        props.ambient         = mb.ambient;
+        props.shininess       = mb.shininess;
+        props.cullFaceEnabled = mb.cullFaceEnabled;
+        if (!mb.baseMap.empty())      props.baseMap      = TextureHandle(mb.baseMap);
+        if (!mb.normalMap.empty())    props.normalMap    = TextureHandle(mb.normalMap);
+        if (!mb.aoMap.empty())        props.aoMap        = TextureHandle(mb.aoMap);
+        if (!mb.roughnessMap.empty()) props.roughnessMap = TextureHandle(mb.roughnessMap);
+        if (!mb.metallicMap.empty())  props.metallicMap  = TextureHandle(mb.metallicMap);
+        if (!mb.heightMap.empty())    props.heightMap    = TextureHandle(mb.heightMap);
+        AssetManager::Get().CreateMaterial(mb.name, props);
+    }
+    if (!bp.materials.empty())
+        ENGINE_LOG("JSON Materials created.");
 
     // TODO: load meshes from bp.meshes
 }

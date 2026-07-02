@@ -53,17 +53,12 @@ class HelloWorld : public Application {
 
         // Font is used by the cube's 3D label (the HUD loads its own via fontPath).
         fontID = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
-        MaterialProps matProps = {
-            .diffuse = { 1., 1., 1. },
-            .specular = { .296648, .296648, .296648 },
-            .ambient = { .25, .20725, .20725 },
-            .shininess = 0.088
-        };
-        AssetManager::Get().CreateMaterial(matProps);
 
-        // === Rotating, bobbing cube (procedural mesh + material — stays in code) ===
+        // === Rotating, bobbing cube ===
+        // The mesh is still procedural, but its material ("cubeMat") is now
+        // declared in assets/scenes/main.json and looked up by name here.
         auto cubeMesh = AssetManager::Get().CreateCubeMesh("CubeMesh", 1.0f);
-        AssetManager::Get().GetMeshPtr(cubeMesh)->SetMaterial(AssetManager::Get().GetMaterials()[0]);
+        AssetManager::Get().GetMeshPtr(cubeMesh)->SetMaterial(AssetManager::Get().GetMaterial("cubeMat"));
 
         auto* cube = CreateGameObject(glm::vec3(0.0f, 5.0f, 0.0f));
         cube->AddComponent<MeshComponent>(cubeMesh);
