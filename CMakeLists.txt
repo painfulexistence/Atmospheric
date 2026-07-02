@@ -3,6 +3,15 @@ cmake_minimum_required(VERSION 3.19)
 option(AE_USE_BASIS_UNIVERSAL "Enable Basis Universal transcoder for KTX2 GPU-compressed textures" OFF)
 option(AE_USE_FFMPEG "Enable FFmpeg for VideoPlayer and VideoRecorder (uses the system FFmpeg found via pkg-config)" ON)
 option(AE_BUILD_EXAMPLES "Build the bundled example projects" ON)
+option(AE_USE_NETWORKING "Enable HTTP and WebSocket networking" OFF)
+
+# curl + libwebsockets live behind the "networking" vcpkg manifest feature so
+# that default builds don't compile OpenSSL and friends. Must be requested
+# before project() — that's when the vcpkg toolchain runs the install.
+# (Emscripten builds are excluded by the "platform" gates inside vcpkg.json.)
+if(AE_USE_NETWORKING)
+    list(APPEND VCPKG_MANIFEST_FEATURES networking)
+endif()
 
 # Custom triplets (Android, iOS, etc.) override vcpkg community triplets.
 # Must be set before vcpkg.cmake is included.
