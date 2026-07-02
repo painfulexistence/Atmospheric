@@ -649,13 +649,18 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
         };
         wgpuQueueWriteBuffer(_gpuQueue, _frameUniformBuf, 0, &frameUniforms, sizeof(frameUniforms));
 
+        // Fog color is no longer stored on WaterMaterial — read it live from
+        // SkyboxPass::skyColor each frame, mirroring the GL path below.
+        SkyboxPass* skybox = renderer.GetPass<SkyboxPass>();
+        glm::vec3 skyFogColor = skybox ? skybox->skyColor : glm::vec3(0.686f, 0.933f, 0.933f);
+
         std::vector<uint8_t> drawData(draws.size() * WATER_DRAW_SLOT_STRIDE, 0);
         for (size_t i = 0; i < draws.size(); ++i) {
             const auto& wd = draws[i].wd;
             uint8_t* slot = drawData.data() + i * WATER_DRAW_SLOT_STRIDE;
             std::memcpy(slot, &draws[i].model, sizeof(glm::mat4));
             glm::vec4 params0(wd.waterLine, wd.waveStrength, wd.waveSpeed, wd.waterFogDensity);
-            glm::vec4 fogColor(wd.waterFogColor, 0.0f);
+            glm::vec4 fogColor(skyFogColor, 0.0f);
             std::memcpy(slot + 64, &params0,  sizeof(glm::vec4));
             std::memcpy(slot + 80, &fogColor, sizeof(glm::vec4));
         }
