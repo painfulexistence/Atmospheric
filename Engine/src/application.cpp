@@ -1172,9 +1172,19 @@ void Application::ClearScenes()
 void Application::UnloadCurrentScene()
 {
     ClearScenes();                              // delete scene GameObjects
+
+    // Deleting the GameObjects does not unregister their components from the
+    // graphics render lists (GameObject's destructor doesn't run OnDetach — see
+    // the component-lifecycle TODO), so those lists would otherwise keep dangling
+    // pointers to freed owners and re-draw the previous scene. Clear every
+    // scene-populated list here, mirroring the camera/light reset.
     graphics.cameras.clear();
     graphics.directionalLights.clear();
     graphics.pointLights.clear();
+    graphics.sunComponents.clear();
+    graphics.renderables.clear();      // MeshComponent
+    graphics.canvasDrawables.clear();  // SpriteComponent / Text2DComponent / ...
+
     audio.StopAll();
     physics.Reset();
     if (!_currentSceneName.empty())
