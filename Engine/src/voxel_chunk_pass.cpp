@@ -801,10 +801,16 @@ void BloomPass::_initGPU(WGPUDevice device, WGPUQueue queue) {
         _blurPipeline = p.pipeline; _blurBGL = p.bgl(0);
     }
     {
+        // Composite renders back into sceneRT, whose pass carries a depth
+        // attachment — declare a matching depth-transparent state (write=false,
+        // Always) so the attachment states are compatible. Threshold/blur
+        // stay depthless: they target the standalone half-res bright textures.
         auto p = GpuPipelineBuilder(device).wgsl(BLOOM_COMP_WGSL)
             .bgl({ gpuUniform(0, wgsl_stage::frag, 16),
                    gpuTexture(1), gpuTexture(2), gpuSampler(3) })
-            .colorFormat(WGPUTextureFormat_RGBA16Float).build();
+            .colorFormat(WGPUTextureFormat_RGBA16Float)
+            .depth(false, WGPUCompareFunction_Always)
+            .build();
         _compPipeline = p.pipeline; _compBGL = p.bgl(0);
     }
 }

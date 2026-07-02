@@ -72,7 +72,12 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
         wgpuQueueWriteTexture(queue, &dst, white, 4, &layout, &extent);
     }
 
-    // ── First pipeline: no depth, blend on (2D screenspace canvas) ────────
+    // ── First pipeline: blend on, depth ignored (2D screenspace canvas) ────
+    // sceneRT's render pass always carries a Depth32Float attachment, so the
+    // pipeline must declare a matching depthStencil state even though the
+    // canvas neither tests nor writes depth — write=false + Always is the
+    // "depth-transparent" configuration that keeps attachment states
+    // compatible (Dawn rejects the pipeline in the pass otherwise).
     // Vertex layout: pos(2f) uv(2f) color(4f) flags(2f) = 10 floats = 40 B.
     auto p = GpuPipelineBuilder(device)
         .wgsl(QUAD_WGSL)
@@ -83,7 +88,9 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
                   {WGPUVertexFormat_Float32x2,  8, 1},
                   {WGPUVertexFormat_Float32x4, 16, 2},
                   {WGPUVertexFormat_Float32x2, 32, 3} })
-        .colorFormat(format).blend().build();
+        .colorFormat(format).blend()
+        .depth(false, WGPUCompareFunction_Always)
+        .build();
     _pipeline   = p.pipeline;
     _uniformBGL = p.bgl(0);
     _texBGL     = p.bgl(1);
