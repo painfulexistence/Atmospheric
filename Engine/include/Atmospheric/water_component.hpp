@@ -27,7 +27,7 @@ struct WaterProps {
 class WaterComponent : public Component {
 public:
     WaterComponent(GameObject* owner, const WaterProps& props = {});
-    ~WaterComponent();
+    ~WaterComponent() = default;
 
     std::string GetName() const override { return "Water"; }
     void OnAttach() override;
