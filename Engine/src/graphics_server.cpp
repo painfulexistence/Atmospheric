@@ -365,6 +365,7 @@ void GraphicsServer::DrawImGui(float dt) {
         if (ImGui::TreeNode("Materials")) {
             auto& assetManager = AssetManager::Get();
             for (const auto& m : assetManager.GetMaterials()) {
+                if (!m) continue;// slot emptied by RemoveMaterial/UnloadSceneAssets
                 if (ImGui::TreeNode("Mat")) {
                     ImGui::Text("Base Map ID: %d", static_cast<int>(m->baseMap));
                     ImGui::Text("Normal Map ID: %d", static_cast<int>(m->normalMap));

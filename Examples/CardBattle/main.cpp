@@ -61,11 +61,6 @@ class CardBattleGame : public Application {
     //  lifecycle
     // ========================================================================
     void OnInit() override {
-        GoScene("main", [this] { OnLoad(); });
-    }
-
-    void OnLoad() override {
-        // Register local components
         ComponentFactory::Register("HealthComponent",
           [](GameObject* o, Deserializer& d) -> Component* {
               int maxHp = 100;
@@ -112,14 +107,19 @@ class CardBattleGame : public Application {
           [](GameObject* o, Deserializer& d) -> Component* {
               return new BattleManagerComponent(o, o->GetApp());
           });
+        GoScene("main", [this] { OnLoad(); });
+    }
 
+    void OnLoad() override {
         _font = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
-        GameObject* mgrGO = CreateGameObject();
-        mgrGO->SetName("BattleManager");
-        mgrGO->AddComponent<BattleManagerComponent>(this);
-        _mgr = mgrGO->GetComponent<BattleManagerComponent>();
-        _mgr->StartRun();
+        for (auto* go : GetEntities()) {
+            if (go->GetName() == "BattleManager") {
+                _mgr = go->GetComponent<BattleManagerComponent>();
+                break;
+            }
+        }
+        if (_mgr) _mgr->StartRun();
     }
 
     void OnUpdate(float dt, float /*time*/) override {

@@ -73,7 +73,7 @@ void Input::Init(Application* app)
     for (int k = static_cast<int>(FIRST_KEY); k <= static_cast<int>(LAST_KEY); ++k) {
         auto key = static_cast<Key>(k);
         _keyStates[key] = KeyState::UNKNOWN;
-        _prevKeyStates[key] = KeyState::UNKNOWN;
+        _prevKeyStates[key] = KeyState::RELEASED;
     }
 
     Window::Get()->AddKeyPressCallback([this, app](Key key, int mods) {

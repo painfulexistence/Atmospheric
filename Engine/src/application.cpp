@@ -1,4 +1,5 @@
 #include "application.hpp"
+#include "scene_blueprint.hpp"
 #include "scene_loader.hpp"
 #include <algorithm>
 #include <unordered_set>
@@ -555,6 +556,8 @@ void Application::Run() {
     auto windowSize = _window->GetLogicalSize();
     RmlUiManager::Get()->Initialize(windowSize.width, windowSize.height, graphics.renderer);
 
+    _transition.Init();
+
     OnInit();
 
     _window->MainLoop([this](float currTime, float deltaTime) {
@@ -806,121 +809,243 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
     }
 }
 
-void Application::LoadScene(const std::string& jsonContent) {
+// Phase 1: pure JSON parse — no GPU calls, no side effects, can run off-thread.
+// Returns a SceneBlueprint with name="" on parse failure. On failure, when
+// `error` is non-null it receives the parser's message (for editor reporting).
+static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::string* error = nullptr) {
+    SceneBlueprint bp;
+    bp.rawJson = jsonContent;
+
     nlohmann::json j;
     try {
         j = nlohmann::json::parse(jsonContent);
     } catch (const std::exception& e) {
-        spdlog::error("Application::LoadScene: JSON parse error: {}", e.what());
-        return;
+        Console::Get()->Error(fmt::format("ParseSceneBlueprint: JSON parse error: {}", e.what()));
+        if (error) *error = e.what();
+        return bp; // bp.name is "" — caller checks this
     }
 
-    std::string sceneName = j.value("name", "Unnamed");
-    ENGINE_LOG("Loading scene '{}' from JSON...", sceneName);
+    bp.name = j.value("name", "Unnamed");
 
-    // Load textures
     if (j.contains("textures") && j["textures"].is_array()) {
-        std::vector<std::string> texturesToLoad;
-        for (const auto& tex : j["textures"]) {
-            std::string texPath = tex.get<std::string>();
-            if (AssetManager::Get().GetTexture(texPath) == 0) {
-                texturesToLoad.push_back(texPath);
-            }
-        }
-        if (!texturesToLoad.empty()) {
-            if (_config.useDefaultTextures) {
-                AssetManager::Get().LoadDefaultTextures();
-            }
-            AssetManager::Get().LoadTextures(texturesToLoad);
-            ENGINE_LOG("JSON Textures created.");
-        }
+        for (const auto& tex : j["textures"])
+            bp.textures.push_back(tex.get<std::string>());
     }
 
-    // Load shaders
     if (j.contains("shaders") && j["shaders"].is_object()) {
-        std::unordered_map<std::string, ShaderProgramProps> shadersToLoad;
-        for (auto& [name, shaderVal] : j["shaders"].items()) {
-            if (AssetManager::Get().GetShader(name) != nullptr) {
-                continue;
-            }
+        for (const auto& [name, shaderVal] : j["shaders"].items()) {
             ShaderProgramProps props;
             props.vert = shaderVal.value("vert", "");
             props.frag = shaderVal.value("frag", "");
-            if (shaderVal.contains("tesc")) {
-                props.tesc = shaderVal["tesc"].get<std::string>();
-            }
-            if (shaderVal.contains("tese")) {
-                props.tese = shaderVal["tese"].get<std::string>();
-            }
-            shadersToLoad[name] = props;
-        }
-        if (!shadersToLoad.empty()) {
-            if (_config.useDefaultShaders) {
-                AssetManager::Get().LoadDefaultShaders();
-            }
-            AssetManager::Get().LoadShaders(shadersToLoad);
-            ENGINE_LOG("JSON Shaders created.");
+            if (shaderVal.contains("tesc")) props.tesc = shaderVal["tesc"].get<std::string>();
+            if (shaderVal.contains("tese")) props.tese = shaderVal["tese"].get<std::string>();
+            bp.shaders[name] = props;
         }
     }
 
-    // Create a scene container under __root__ so scenes can be layered.
-    // All entities from this JSON become children of this container.
-    auto* container = CreateGameObject();
-    container->SetName(sceneName);
-    container->parent = GetDefaultGameObject();
+    if (j.contains("meshes") && j["meshes"].is_array()) {
+        for (const auto& mesh : j["meshes"])
+            bp.meshes.push_back(mesh.get<std::string>());
+    }
 
-    // Load entities recursively
     if (j.contains("entities") && j["entities"].is_array()) {
         for (const auto& entityVal : j["entities"]) {
-            ParseEntity(this, entityVal, container);
+            EntityBlueprint eb;
+            eb.resolvedData = entityVal;
+            bp.entities.push_back(std::move(eb));
         }
-        ENGINE_LOG("JSON Game objects created.");
     }
+
+    return bp;
+}
+
+// Phase 2a: upload GPU resources — must run on the main thread.
+void Application::LoadSceneResources(const SceneBlueprint& bp) {
+    AssetManager::Get().StoreSceneJson(bp.name, bp.rawJson);
+
+    // Default PBR textures are loaded per scene whenever the app opts into them,
+    // independently of whether this scene declares any textures of its own —
+    // materials and meshes rely on the defaults even in texture-less scenes
+    // (e.g. HelloWorld's cube).  There is no startup load point for these, unlike
+    // default shaders (loaded once by GraphicsServer).
+    if (_config.useDefaultTextures)
+        AssetManager::Get().LoadDefaultTextures();
+
+    std::vector<std::string> texturesToLoad;
+    for (const auto& path : bp.textures) {
+        if (AssetManager::Get().GetTexture(path) == 0)
+            texturesToLoad.push_back(path);
+    }
+    if (!texturesToLoad.empty()) {
+        AssetManager::Get().LoadTextures(texturesToLoad);
+        ENGINE_LOG("JSON Textures created.");
+    }
+
+    std::unordered_map<std::string, ShaderProgramProps> shadersToLoad;
+    for (const auto& [name, props] : bp.shaders) {
+        if (AssetManager::Get().GetShader(name) != nullptr) continue;
+        shadersToLoad[name] = props;
+    }
+    if (!shadersToLoad.empty()) {
+        if (_config.useDefaultShaders)
+            AssetManager::Get().LoadDefaultShaders();
+        AssetManager::Get().LoadShaders(shadersToLoad);
+        ENGINE_LOG("JSON Shaders created.");
+    }
+
+    // TODO: load meshes from bp.meshes
+}
+
+// Phase 2b: create GameObjects + Components from resolved blueprints.
+void Application::InstantiateScene(const SceneBlueprint& bp) {
+    ENGINE_LOG("Loading scene '{}' from JSON...", bp.name);
+
+    auto* container = CreateGameObject();
+    container->SetName(bp.name);
+    container->parent = GetDefaultGameObject();
+
+    for (const auto& eb : bp.entities)
+        ParseEntity(this, eb.resolvedData, container);
+
+    if (!bp.entities.empty())
+        ENGINE_LOG("JSON Game objects created.");
 
     mainCamera = graphics.GetMainCamera();
     mainLight = graphics.GetMainLight();
 }
 
+void Application::ShowLoadingScreen() {
+    _transition.Begin();
+}
+
+void Application::HideLoadingScreen() {
+    _transition.End();
+}
+
+// Collect every file that must be in the FileSystem cache before the blueprint's
+// resources can be uploaded on the main thread: the scene textures (redirected to
+// their .ktx2 variants on WebGL), the default PBR textures (when the app uses
+// them), and every shader stage source.  Mirrors the redirect logic in
+// AssetManager::LoadTextures so the prefetched path and the loaded path match.
+static std::vector<std::string> CollectPrefetchPaths(const SceneBlueprint& bp, bool useDefaultTextures)
+{
+    std::vector<std::string> paths;
+
+#if defined(AE_USE_BASIS_UNIVERSAL) && defined(__EMSCRIPTEN__)
+    for (const auto& path : bp.textures) {
+        std::string p = (path.size() >= 2 && path[0] == '.' && path[1] == '/') ? path.substr(2) : path;
+        if (p.find("aim.png") != std::string::npos || p.find("heightmap") != std::string::npos) {
+            paths.push_back(p);
+            continue;
+        }
+        size_t extPos = p.find_last_of('.');
+        if (extPos != std::string::npos) {
+            std::string ext = p.substr(extPos);
+            if (ext == ".jpg" || ext == ".jpeg" || ext == ".png") {
+                paths.push_back(p.substr(0, extPos) + ".ktx2");
+                continue;
+            }
+        }
+        paths.push_back(p);
+    }
+    if (useDefaultTextures) {
+        paths.push_back("assets/textures/default_diff.ktx2");
+        paths.push_back("assets/textures/default_norm.ktx2");
+        paths.push_back("assets/textures/default_ao.ktx2");
+        paths.push_back("assets/textures/default_rough.ktx2");
+        paths.push_back("assets/textures/default_metallic.ktx2");
+    }
+#else
+    paths.insert(paths.end(), bp.textures.begin(), bp.textures.end());
+    if (useDefaultTextures) {
+        paths.push_back("assets/textures/default_diff.jpg");
+        paths.push_back("assets/textures/default_norm.jpg");
+        paths.push_back("assets/textures/default_ao.jpg");
+        paths.push_back("assets/textures/default_rough.jpg");
+        paths.push_back("assets/textures/default_metallic.jpg");
+    }
+#endif
+
+    for (const auto& [name, props] : bp.shaders) {
+        if (!props.vert.empty()) paths.push_back(props.vert);
+        if (!props.frag.empty()) paths.push_back(props.frag);
+        if (props.tesc.has_value() && !props.tesc->empty()) paths.push_back(*props.tesc);
+        if (props.tese.has_value() && !props.tese->empty()) paths.push_back(*props.tese);
+    }
+
+    return paths;
+}
+
+// Async transition to a scene, by name:
+//   show loading screen → prefetch scene file → parse → prefetch assets →
+//   unload current scene → load new scene → run onReady, hide loading screen.
+// On native the prefetches are synchronous; on WASM they resolve via the browser
+// event loop, so the load completes after this returns.
 void Application::GoScene(const std::string& sceneName, std::function<void()> onReady)
 {
     _sceneReady = false;
-    SceneTransition::Go(sceneName, [this, sceneName, onReady]{
-        // Full scene transition: clear all scene containers, then load fresh.
-        ClearScenes();
+    ShowLoadingScreen();
 
-        graphics.cameras.clear();
-        graphics.directionalLights.clear();
-        graphics.pointLights.clear();
-
-        audio.StopAll();
-        physics.Reset();
-
-        _currentSceneName = sceneName;
-
-        // Load scene.json!
-        std::string manifestPath = "assets/scenes/" + sceneName + ".json";
-        ENGINE_LOG("GoScene: Transitioning to scene '{}'...", sceneName);
-        auto bytes = FileSystem::Get().ReadSync(manifestPath);
-        if (!bytes.empty()) {
-            ENGINE_LOG("GoScene: Found scene JSON file '{}', loading...", manifestPath);
-            LoadScene(std::string(bytes.begin(), bytes.end()));
-        } else {
-            ENGINE_LOG("GoScene: Scene JSON file '{}' is empty or not found. Skipping JSON scene loading.", manifestPath);
-        }
-
+    // Runs the caller's hook, marks the scene ready, and fades the overlay out.
+    // Called on both success and error so the loading screen never hangs.
+    auto finish = [this, onReady]() {
         if (onReady) onReady();
         _sceneReady = true;
-    }, nullptr, _currentSceneName);
+        HideLoadingScreen();
+    };
+
+    const std::string scenePath = "assets/scenes/" + sceneName + ".json";
+
+    // Stage 1: ensure the scene file itself is cached (async on WASM).
+    FileSystem::Get().Prefetch({ scenePath }, [this, sceneName, scenePath, finish]() {
+        auto bytes = FileSystem::Get().ReadSync(scenePath);
+        if (bytes.empty()) {
+            console.Error(fmt::format("GoScene: failed to read scene file '{}'", scenePath));
+            finish();
+            return;
+        }
+
+        SceneBlueprint bp = ParseSceneBlueprint(std::string(bytes.begin(), bytes.end()));
+        if (bp.name.empty()) {
+            console.Error(fmt::format("GoScene: scene blueprint parse failed '{}'", scenePath));
+            finish();
+            return;
+        }
+
+        // Stage 2: prefetch every asset the blueprint declares, then load.
+        std::vector<std::string> assetPaths = CollectPrefetchPaths(bp, _config.useDefaultTextures);
+        console.Info(fmt::format("GoScene: prefetching {} asset(s) for '{}'", assetPaths.size(), sceneName));
+
+        FileSystem::Get().Prefetch(assetPaths, [this, sceneName, bp = std::move(bp), finish]() mutable {
+            // Unload the current scene first. This runs under the loading overlay,
+            // so freeing the old scene before loading the new one is invisible.
+            UnloadCurrentScene();
+
+            _currentSceneName = sceneName;
+
+            // The single place where scene assets are uploaded and entities are
+            // instantiated.
+            ENGINE_LOG("GoScene: loading '{}'...", sceneName);
+            LoadSceneResources(bp);
+            InstantiateScene(bp);
+
+            finish();
+
+            // Drop the raw byte cache — every asset is now a GPU object or a
+            // parsed shader; keeping the bytes just bloats the WASM heap.
+            FileSystem::Get().ClearCache();
+        });
+    });
 }
 
 void Application::ReloadScene() {
     if (_currentSceneName.empty()) return;
-    SceneTransition::Go(_currentSceneName, [this]{ OnLoad(); });
+    GoScene(_currentSceneName, [this]{ OnLoad(); });
 }
 
 void Application::LoadEditorScene(const uint8_t* data, size_t len)
 {
-    // Mirror GoScene's entity-clearing logic without requiring a manifest file.
+    // Mirror GoScene's entity-clearing logic without requiring a scene file.
     for (auto* e : _entities) {
         if (e != _defaultGameObject) delete e;
     }
@@ -942,10 +1067,10 @@ void Application::LoadEditorScene(const uint8_t* data, size_t len)
     auto result = loader.LoadFromBuffer(data, len);
     if (!result.success) {
         _editorSceneError = result.error;
-        spdlog::warn("[Editor] Scene load failed: {}", result.error);
+        console.Warn(fmt::format("[Editor] Scene load failed: {}", result.error));
     } else {
         _editorSceneError.clear();
-        spdlog::info("[Editor] Scene loaded: {} node(s)", result.allNodes.size());
+        console.Info(fmt::format("[Editor] Scene loaded: {} node(s)", result.allNodes.size()));
     }
 
     _sceneReady = true;
@@ -982,9 +1107,13 @@ void Application::UnloadScene(const std::string& name)
         _entities.end());
     for (auto* e : toRemove) delete e;
 
+    // Free GPU/CPU assets that were first loaded by this scene.
+    // Must come after GameObjects are deleted so no component holds a dangling ref.
+    AssetManager::Get().UnloadSceneAssets(name);
+
     mainCamera = graphics.GetMainCamera();
     mainLight = graphics.GetMainLight();
-    spdlog::info("[Scene] Unloaded scene '{}'.", name);
+    console.Info(fmt::format("[Scene] Unloaded scene '{}'.", name));
 }
 
 void Application::ClearScenes()
@@ -1000,31 +1129,41 @@ void Application::ClearScenes()
     for (const auto& n : names) UnloadScene(n);
 }
 
+void Application::UnloadCurrentScene()
+{
+    ClearScenes();                              // delete scene GameObjects
+    graphics.cameras.clear();
+    graphics.directionalLights.clear();
+    graphics.pointLights.clear();
+    audio.StopAll();
+    physics.Reset();
+    if (!_currentSceneName.empty())
+        AssetManager::Get().ClearSceneAssets(); // free scene GPU assets
+    _currentSceneName.clear();
+}
+
 void Application::AddScene(const std::string& json)
 {
-    nlohmann::json j;
-    try {
-        j = nlohmann::json::parse(json);
-    } catch (const std::exception& e) {
-        _editorSceneError = e.what();
-        _lastLoadedScene  = "";
-        spdlog::warn("[Scene] AddScene JSON parse error: {}", e.what());
+    SceneBlueprint bp = ParseSceneBlueprint(json, &_editorSceneError);
+    if (bp.name.empty()) { // parse failed — _editorSceneError set by ParseSceneBlueprint
+        _lastLoadedScene = "";
+        console.Warn(fmt::format("[Scene] AddScene JSON parse error: {}", _editorSceneError));
         return;
     }
 
-    std::string sceneName = j.value("name", "Unnamed");
     // Replace any existing scene with the same name.
-    UnloadScene(sceneName);
+    UnloadScene(bp.name);
 
     try {
-        LoadScene(json);
+        LoadSceneResources(bp);
+        InstantiateScene(bp);
         _editorSceneError.clear();
-        _lastLoadedScene = sceneName;
-        spdlog::info("[Scene] Added scene '{}'.", sceneName);
+        _lastLoadedScene = bp.name;
+        console.Info(fmt::format("[Scene] Added scene '{}'.", bp.name));
     } catch (const std::exception& e) {
         _editorSceneError = e.what();
         _lastLoadedScene  = "";
-        spdlog::warn("[Scene] AddScene '{}' failed: {}", sceneName, e.what());
+        console.Warn(fmt::format("[Scene] AddScene '{}' failed: {}", bp.name, e.what()));
     }
 }
 
@@ -1063,6 +1202,13 @@ void Application::Update(const FrameData& props) {
 #ifdef TRACY_ENABLE
     ZoneScopedN("Application::Update");
 #endif
+    float dt = props.deltaTime;
+
+    // Update RmlUI and tick the loading-screen transition regardless of whether
+    // the scene is ready, so the overlay animates during transitions.
+    RmlUiManager::Get()->Update(dt);
+    _transition.Update(dt);
+
     if (!_sceneReady) return;
 
     // Flush deferred spawns queued by component OnTick last frame.
@@ -1073,8 +1219,6 @@ void Application::Update(const FrameData& props) {
         queue.swap(_spawnQueue);
         for (auto& cmd : queue) cmd();
     }
-
-    float dt = props.deltaTime;
 
     OnUpdate(dt, GetWindowTime());
 

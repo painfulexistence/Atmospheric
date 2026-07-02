@@ -1,4 +1,4 @@
-name: Build (Native)
+name: CI (Desktop)
 
 on:
   push:
@@ -9,7 +9,8 @@ on:
 
 
 jobs:
-  build:
+  build-desktop:
+    name: Desktop, Debug and MinSizeRel
     runs-on: ${{ matrix.os }}
 
     strategy:
