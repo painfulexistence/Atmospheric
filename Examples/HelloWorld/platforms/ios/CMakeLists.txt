@@ -21,6 +21,9 @@ set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "" FORCE)
 # Set VCPKG_MANIFEST_DIR explicitly so vcpkg finds vcpkg.json in the repo root
 # regardless of which directory cmake is invoked from.
 set(VCPKG_MANIFEST_DIR "${ROOT_DIR}" CACHE STRING "")
+# arm64-ios / arm64-ios-simulator are custom triplets (triplets/*.cmake), not
+# community vcpkg triplets — without this, vcpkg can't locate them at all.
+list(APPEND VCPKG_OVERLAY_TRIPLETS "${ROOT_DIR}/triplets")
 include("${ROOT_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake")
 
 project(HelloWorld-iOS LANGUAGES C CXX OBJC OBJCXX Swift)

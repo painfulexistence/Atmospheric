@@ -1,0 +1,53 @@
+name: Build (iOS)
+
+# Builds HelloWorld — the only bundled example with iOS platform
+# scaffolding — for the iOS Simulator via the same CMake invocation a
+# developer would run locally (see the usage comment atop
+# Examples/HelloWorld/platforms/ios/CMakeLists.txt).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-ios-sim:
+    name: iOS Simulator (arm64), Release
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Install vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          path: vcpkg
+
+      - name: Bootstrap vcpkg
+        run: ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/vcpkg/installed
+            ${{ github.workspace }}/vcpkg/packages
+          key: vcpkg-ios-sim-arm64-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-ios-sim-arm64-
+
+      - name: Configure (Xcode, iOS Simulator)
+        run: |
+          cmake -S Examples/HelloWorld/platforms/ios -B build-ios-sim \
+            -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \
+            -DVCPKG_TARGET_TRIPLET=arm64-ios-simulator
+
+      - name: Build
+        run: cmake --build build-ios-sim --config Release
