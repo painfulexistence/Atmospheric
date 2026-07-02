@@ -56,7 +56,7 @@ class HelloWorld : public Application {
 
         // === Rotating, bobbing cube ===
         auto cubeMesh = AssetManager::Get().CreateCubeMesh("CubeMesh", 1.0f);
-        cubeMesh->SetMaterial(AssetManager::Get().GetMaterials()[0]);
+        AssetManager::Get().GetMeshPtr(cubeMesh)->SetMaterial(AssetManager::Get().GetMaterials()[0]);
 
         auto* cube = CreateGameObject(glm::vec3(0.0f, 5.0f, 0.0f));
         cube->AddComponent<MeshComponent>(cubeMesh);

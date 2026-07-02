@@ -125,24 +125,17 @@ void EditorLayer::DrawAppView() {
     ImGui::Begin("Application");
     {
         ImGui::BeginChild("Scene", ImVec2(200, 400), true);
-        ImGui::Text("Scene (%d entities)", (uint32_t)_app->GetEntities().size());
+        const auto& entities = _app->GetEntities();
+        int rootCount = 0;
+        for (auto* e : entities) if (!e->parent) ++rootCount;
+        ImGui::Text("Scene (%d / %d)", rootCount, (int)entities.size());
         if (ImGui::Button("Reload Scene")) {
             _app->ReloadScene();
         }
         ImGui::Separator();
-
-        const auto& entities = _app->GetEntities();
-        std::unordered_map<GameObject*, std::vector<GameObject*>> childrenMap;
-        std::vector<GameObject*> roots;
-        for (auto* e : entities) {
-            if (e->parent == nullptr)
-                roots.push_back(e);
-            else
-                childrenMap[e->parent].push_back(e);
+        for (auto* entity : entities) {
+            if (!entity->parent) DrawEntityNode(entity, entities);
         }
-        for (auto* root : roots)
-            DrawEntityTree(root, childrenMap);
-
         ImGui::EndChild();
 
         ImGui::SameLine();
@@ -158,24 +151,26 @@ void EditorLayer::DrawAppView() {
     ImGui::End();
 }
 
-void EditorLayer::DrawEntityTree(GameObject* entity, const std::unordered_map<GameObject*, std::vector<GameObject*>>& childrenMap) {
-    auto it = childrenMap.find(entity);
-    bool hasChildren = (it != childrenMap.end() && !it->second.empty());
+void EditorLayer::DrawEntityNode(GameObject* entity, const std::vector<GameObject*>& all) {
+    bool hasChildren = false;
+    for (auto* e : all) {
+        if (e->parent == entity) { hasChildren = true; break; }
+    }
 
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
-    if (entity == _selectedEntity)
-        flags |= ImGuiTreeNodeFlags_Selected;
-    if (!hasChildren)
-        flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+    if (entity == _selectedEntity) flags |= ImGuiTreeNodeFlags_Selected;
+    if (!hasChildren) flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 
     bool open = ImGui::TreeNodeEx((void*)entity, flags, "%s", entity->GetName().c_str());
-    if (ImGui::IsItemClicked())
-        _selectedEntity = entity;
+    if (ImGui::IsItemClicked()) _selectedEntity = entity;
 
-    if (hasChildren && open) {
-        for (auto* child : it->second)
-            DrawEntityTree(child, childrenMap);
-        ImGui::TreePop();
+    if (hasChildren) {
+        if (open) {
+            for (auto* e : all) {
+                if (e->parent == entity) DrawEntityNode(e, all);
+            }
+            ImGui::TreePop();
+        }
     }
 }
 
