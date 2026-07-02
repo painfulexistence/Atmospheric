@@ -236,13 +236,6 @@ private:
     // Phase 2b: create GameObjects + Components from resolved entity blueprints.
     void InstantiateScene(const SceneBlueprint& bp);
 
-    // Async single-owner scene loader driving a full transition:
-    //   prefetch scene file → parse → prefetch assets → tear down previous scene
-    //   → load new scene (resources + entities) → onComplete.
-    // On native the prefetches are synchronous; on WASM they resolve via the
-    // browser event loop, so onComplete may run after this returns.
-    void TransitionToScene(std::string sceneName, std::function<void()> onComplete);
-
     AppConfig _config;
 
     std::shared_ptr<Window> _window = nullptr;

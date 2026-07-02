@@ -981,60 +981,65 @@ static std::vector<std::string> CollectPrefetchPaths(const SceneBlueprint& bp, b
     return paths;
 }
 
-void Application::TransitionToScene(std::string sceneName, std::function<void()> onComplete)
+// Async transition to a scene, by name:
+//   show loading screen → prefetch scene file → parse → prefetch assets →
+//   unload current scene → load new scene → run onReady, hide loading screen.
+// On native the prefetches are synchronous; on WASM they resolve via the browser
+// event loop, so the load completes after this returns.
+void Application::GoScene(const std::string& sceneName, std::function<void()> onReady)
 {
+    _sceneReady = false;
+    ShowLoadingScreen();
+
+    // Runs the caller's hook, marks the scene ready, and fades the overlay out.
+    // Called on both success and error so the loading screen never hangs.
+    auto finish = [this, onReady]() {
+        if (onReady) onReady();
+        _sceneReady = true;
+        HideLoadingScreen();
+    };
+
     const std::string scenePath = "assets/scenes/" + sceneName + ".json";
 
     // Stage 1: ensure the scene file itself is cached (async on WASM).
-    FileSystem::Get().Prefetch({ scenePath }, [this, sceneName, scenePath, onComplete]() {
+    FileSystem::Get().Prefetch({ scenePath }, [this, sceneName, scenePath, finish]() {
         auto bytes = FileSystem::Get().ReadSync(scenePath);
         if (bytes.empty()) {
-            spdlog::error("TransitionToScene: failed to read scene file '{}'", scenePath);
-            if (onComplete) onComplete(); // finish so the loading screen doesn't hang
+            spdlog::error("GoScene: failed to read scene file '{}'", scenePath);
+            finish();
             return;
         }
 
         SceneBlueprint bp = ParseSceneBlueprint(std::string(bytes.begin(), bytes.end()));
         if (bp.name.empty()) {
-            spdlog::error("TransitionToScene: scene blueprint parse failed '{}'", scenePath);
-            if (onComplete) onComplete();
+            spdlog::error("GoScene: scene blueprint parse failed '{}'", scenePath);
+            finish();
             return;
         }
 
         // Stage 2: prefetch every asset the blueprint declares, then load.
         std::vector<std::string> assetPaths = CollectPrefetchPaths(bp, _config.useDefaultTextures);
-        spdlog::info("TransitionToScene: prefetching {} asset(s) for '{}'", assetPaths.size(), sceneName);
+        spdlog::info("GoScene: prefetching {} asset(s) for '{}'", assetPaths.size(), sceneName);
 
-        FileSystem::Get().Prefetch(assetPaths, [this, sceneName, bp = std::move(bp), onComplete]() mutable {
+        FileSystem::Get().Prefetch(assetPaths, [this, sceneName, bp = std::move(bp), finish]() mutable {
             // Unload the current scene first. This runs under the loading overlay,
             // so freeing the old scene before loading the new one is invisible.
             UnloadCurrentScene();
 
             _currentSceneName = sceneName;
 
-            // Load the new scene: the single place where scene assets are
-            // uploaded and entities are instantiated.
-            ENGINE_LOG("TransitionToScene: loading '{}'...", sceneName);
+            // The single place where scene assets are uploaded and entities are
+            // instantiated.
+            ENGINE_LOG("GoScene: loading '{}'...", sceneName);
             LoadSceneResources(bp);
             InstantiateScene(bp);
 
-            if (onComplete) onComplete();
+            finish();
 
             // Drop the raw byte cache — every asset is now a GPU object or a
             // parsed shader; keeping the bytes just bloats the WASM heap.
             FileSystem::Get().ClearCache();
         });
-    });
-}
-
-void Application::GoScene(const std::string& sceneName, std::function<void()> onReady)
-{
-    _sceneReady = false;
-    ShowLoadingScreen();
-    TransitionToScene(sceneName, [this, onReady]() {
-        if (onReady) onReady();
-        _sceneReady = true;
-        HideLoadingScreen();
     });
 }
 

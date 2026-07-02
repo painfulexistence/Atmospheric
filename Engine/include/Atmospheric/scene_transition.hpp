@@ -9,7 +9,7 @@ namespace Rml { class ElementDocument; }
 // once the fade completes, and (later) drive a progress bar.
 //
 // It performs NO asset loading and knows nothing about scenes, textures, or
-// shaders — Application owns all of that (see Application::TransitionToScene).
+// shaders — Application owns all of that (see Application::GoScene).
 class SceneTransition {
 public:
     // Load the loading-screen RML document. Call once, after RmlUiManager has
