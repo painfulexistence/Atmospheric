@@ -43,6 +43,9 @@ void SpriteComponent::OnAttach() {
 }
 
 void SpriteComponent::OnDetach() {
+    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
+        gameObject->GetApp()->GetGraphicsServer()->UnregisterCanvasDrawable(this);
+    }
 }
 
 void SpriteComponent::Draw(BatchRenderer2D* renderer) {

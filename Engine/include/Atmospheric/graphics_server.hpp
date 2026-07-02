@@ -114,6 +114,8 @@ public:
 
     void UnregisterCamera(CameraComponent* camera);
     void UnregisterLight(LightComponent* light);
+    void UnregisterMesh(MeshComponent* mesh);
+    void UnregisterCanvasDrawable(CanvasDrawable* drawable);
 
     // ===== Render Target Management =====
 

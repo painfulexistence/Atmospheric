@@ -489,6 +489,20 @@ void GraphicsServer::UnregisterLight(LightComponent* light) {
     }
 }
 
+void GraphicsServer::UnregisterMesh(MeshComponent* mesh) {
+    auto it = std::find(renderables.begin(), renderables.end(), mesh);
+    if (it != renderables.end()) {
+        renderables.erase(it);
+    }
+}
+
+void GraphicsServer::UnregisterCanvasDrawable(CanvasDrawable* drawable) {
+    auto it = std::find(canvasDrawables.begin(), canvasDrawables.end(), drawable);
+    if (it != canvasDrawables.end()) {
+        canvasDrawables.erase(it);
+    }
+}
+
 // ===== Render Target Management Implementation =====
 std::shared_ptr<RenderTarget> GraphicsServer::CreateRenderTarget(int width, int height, bool withDepth) {
     RenderTarget::Props p;

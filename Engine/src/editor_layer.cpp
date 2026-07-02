@@ -155,7 +155,7 @@ void EditorLayer::DrawAppView() {
 
 void EditorLayer::DrawEntityInspector(GameObject* entity) {
     ImGui::Text("Name: %s", entity->GetName().c_str());
-    for (auto* comp : entity->GetComponents()) {
+    for (const auto& comp : entity->GetComponents()) {
         if (ImGui::CollapsingHeader(comp->GetName().c_str()))
             comp->DrawImGui();
     }

@@ -1,4 +1,5 @@
 #include "game_object.hpp"
+#include <algorithm>
 #include "application.hpp"
 #include "component.hpp"
 #include "graphics_server.hpp"
@@ -13,22 +14,27 @@ GameObject::GameObject(Application* app, glm::vec3 position, glm::vec3 rotation,
 }
 
 GameObject::~GameObject() {
-    // Components are deleted by the component system
-    // _transform will be deleted when _components are cleaned up
+    // Detach in reverse attach order so components can still reach their
+    // server-side registries (graphics/physics) while unregistering; the
+    // unique_ptrs then destroy them when _components goes away.
+    for (auto it = _components.rbegin(); it != _components.rend(); ++it) {
+        (*it)->OnDetach();
+    }
 }
 
 void GameObject::AddComponent(Component* component) {
-    _components.push_back(component);
+    _components.push_back(std::unique_ptr<Component>(component));
     // _namedComponents.insert_or_assign(component->GetName(), component);
     component->gameObject = this;
     component->OnAttach();
 }
 
 void GameObject::RemoveComponent(Component* component) {
-    auto it = std::find(_components.begin(), _components.end(), component);
+    auto it = std::find_if(_components.begin(), _components.end(),
+                           [component](const std::unique_ptr<Component>& c) { return c.get() == component; });
     if (it != _components.end()) {
         component->OnDetach();
-        _components.erase(it);
+        _components.erase(it);// destroys the component
     }
     // _namedComponents.erase(component->GetName());
 }
@@ -44,7 +50,7 @@ void GameObject::RemoveComponent(Component* component) {
 
 void GameObject::Tick(float dt) {
     if (!isActive) return;
-    for (auto* component : _components) {
+    for (const auto& component : _components) {
         if (component->CanTick()) {
             component->OnTick(dt);
         }
@@ -53,7 +59,7 @@ void GameObject::Tick(float dt) {
 
 void GameObject::PhysicsTick(float dt) {
     if (!isActive) return;
-    for (auto* component : _components) {
+    for (const auto& component : _components) {
         if (component->CanPhysicsTick()) {
             component->OnPhysicsTick(dt);
         }

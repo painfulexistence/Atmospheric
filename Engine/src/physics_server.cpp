@@ -1,4 +1,5 @@
 #include "physics_server.hpp"
+#include <algorithm>
 #include "LinearMath/btThreads.h"
 #include "bullet_task_scheduler.hpp"
 #include "game_object.hpp"
@@ -130,20 +131,23 @@ void PhysicsServer::DrawImGui(float dt) {
 }
 
 void PhysicsServer::Reset() {
-    for (auto impostor : _impostors) {
-        _world->removeRigidBody(impostor->_rigidbody);
-        delete impostor;
+    // Components are owned by their GameObjects (which unregister themselves
+    // via OnDetach on destruction); here we only detach whatever is left from
+    // the simulation, we never delete the components.
+    for (auto* impostor : _impostors) {
+        _world->removeRigidBody(impostor->_rigidbody.get());
     }
     _impostors.clear();
 }
 
 void PhysicsServer::AddRigidbody(RigidbodyComponent* impostor) {
-    _world->addRigidBody(impostor->_rigidbody);
+    _world->addRigidBody(impostor->_rigidbody.get());
     _impostors.push_back(impostor);
 }
 
 void PhysicsServer::RemoveRigidbody(RigidbodyComponent* impostor) {
-    _world->removeRigidBody(impostor->_rigidbody);
+    _world->removeRigidBody(impostor->_rigidbody.get());
+    _impostors.erase(std::remove(_impostors.begin(), _impostors.end(), impostor), _impostors.end());
 }
 
 ColliderID PhysicsServer::CreateCollider(const Shape& shape) {

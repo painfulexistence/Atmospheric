@@ -24,6 +24,9 @@ void MeshComponent::OnAttach() {
 }
 
 void MeshComponent::OnDetach() {
+    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
+        gameObject->GetApp()->GetGraphicsServer()->UnregisterMesh(this);
+    }
 }
 
 MeshHandle MeshComponent::GetMesh() const {
