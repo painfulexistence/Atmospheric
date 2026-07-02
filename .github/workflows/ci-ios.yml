@@ -21,6 +21,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: false
+          sparse-checkout: |
+            Engine
+            cmake
+            triplets
+            Examples
+            CMakeLists.txt
+            CMakePresets.json
+            vcpkg.json
 
       - name: Install vcpkg
         uses: actions/checkout@v4

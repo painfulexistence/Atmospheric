@@ -23,6 +23,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: false
+          sparse-checkout: |
+            Engine
+            cmake
+            triplets
+            Examples
+            scripts
+            CMakeLists.txt
+            CMakePresets.json
+            vcpkg.json
 
       - name: Check NDK version pin matches vcpkg triplets
         run: ./scripts/checkNdkVersion.sh
