@@ -293,7 +293,7 @@ class MidnightSkyraiders : public Application {
     void spawnWave() {
         director->OnWaveSpawned();
         int   wave = director->WaveCount();
-        int   idx  = (int)(rnd() * 23);
+        int   idx  = static_cast<int>(rnd() * 23);
         float ox   = (rnd() - 0.5f) * 30.0f;
         float oy   = (rnd() - 0.5f) * 30.0f;
 

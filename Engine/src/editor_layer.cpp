@@ -125,7 +125,7 @@ void EditorLayer::DrawAppView() {
     ImGui::Begin("Application");
     {
         ImGui::BeginChild("Scene", ImVec2(200, 400), true);
-        ImGui::Text("Scene (%d entities)", (uint32_t)_app->GetEntities().size());
+        ImGui::Text("Scene (%d entities)", static_cast<uint32_t>(_app->GetEntities().size()));
         if (ImGui::Button("Reload Scene")) {
             _app->ReloadScene();
         }

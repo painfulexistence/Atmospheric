@@ -111,7 +111,7 @@ void Physics2DServer::Process(float dt) {
 
 void Physics2DServer::DrawImGui(float dt) {
     if (ImGui::CollapsingHeader("Physics 2D")) {
-        ImGui::Text("Bodies: %d", (int)_rigidbodies.size());
+        ImGui::Text("Bodies: %d", static_cast<int>(_rigidbodies.size()));
         ImGui::Checkbox("Debug Draw", &_debugDrawEnabled);
 
         glm::vec2 gravity = GetGravity();

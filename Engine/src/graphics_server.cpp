@@ -227,7 +227,7 @@ void GraphicsServer::DrawImGui(float dt) {
             ImGui::Checkbox("Tonemap", &pp->tonemapEnabled);
             ImGui::Checkbox("Chromatic Aberration", &pp->caEnabled);
         }
-        ImGui::Text("Opaque Queue Size: %d", (int)renderer->GetOpaqueQueue().size());
+        ImGui::Text("Opaque Queue Size: %d", static_cast<int>(renderer->GetOpaqueQueue().size()));
 
         ImGui::Separator();
 
@@ -288,15 +288,15 @@ void GraphicsServer::DrawImGui(float dt) {
             }
             ImGui::Separator();
             if (ImGui::TreeNode(fmt::format("Scene Color RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)(uint32_t)(renderer->sceneRT ? renderer->sceneRT->GetTextureID() : 0), ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)static_cast<uint32_t>(renderer->sceneRT ? renderer->sceneRT->GetTextureID() : 0), ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("Scene Depth RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)(uint32_t)(renderer->sceneRT ? renderer->sceneRT->GetDepthTextureID() : 0), ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)static_cast<uint32_t>(renderer->sceneRT ? renderer->sceneRT->GetDepthTextureID() : 0), ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("MSAA Resolve RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)(uint32_t)(renderer->msaaResolveRT ? renderer->msaaResolveRT->GetTextureID() : 0), ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)static_cast<uint32_t>(renderer->msaaResolveRT ? renderer->msaaResolveRT->GetTextureID() : 0), ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Position RT").c_str())) {
@@ -340,12 +340,12 @@ void GraphicsServer::DrawImGui(float dt) {
             auto& assetManager = AssetManager::Get();
             for (const auto& m : assetManager.GetMaterials()) {
                 if (ImGui::TreeNode("Mat")) {
-                    ImGui::Text("Base Map ID: %d", (int)m->baseMap);
-                    ImGui::Text("Normal Map ID: %d", (int)m->normalMap);
-                    ImGui::Text("AO Map ID: %d", (int)m->aoMap);
-                    ImGui::Text("Roughness Map ID: %d", (int)m->roughnessMap);
-                    ImGui::Text("Metallic Map ID: %d", (int)m->metallicMap);
-                    ImGui::Text("Height Map ID: %d", (int)m->heightMap);
+                    ImGui::Text("Base Map ID: %d", static_cast<int>(m->baseMap));
+                    ImGui::Text("Normal Map ID: %d", static_cast<int>(m->normalMap));
+                    ImGui::Text("AO Map ID: %d", static_cast<int>(m->aoMap));
+                    ImGui::Text("Roughness Map ID: %d", static_cast<int>(m->roughnessMap));
+                    ImGui::Text("Metallic Map ID: %d", static_cast<int>(m->metallicMap));
+                    ImGui::Text("Height Map ID: %d", static_cast<int>(m->heightMap));
                     ImGui::Text("Ambient: %.3f, %.3f, %.3f", m->ambient.x, m->ambient.y, m->ambient.z);
                     ImGui::Text("Diffuse: %.3f, %.3f, %.3f", m->diffuse.x, m->diffuse.y, m->diffuse.z);
                     ImGui::Text("Specular: %.3f, %.3f, %.3f", m->specular.x, m->specular.y, m->specular.z);

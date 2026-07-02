@@ -90,7 +90,7 @@ public:
             "3333333333333333333333333",
         };
         Tilemap2DData md;
-        md.width = (int)MAP[0].size(); md.height = (int)MAP.size();
+        md.width = static_cast<int>(MAP)[0].size(); md.height = static_cast<int>(MAP.size());
         md.tileSize = TS; md.tilesetCols = TC; md.tilesetRows = TR;
         md.solid = {3,4};
         for (const auto& row : MAP) for (char c : row) md.tiles.push_back(c-'0');
@@ -208,7 +208,7 @@ public:
             auto* eObj = CreateGameObject();
             eObj->SetName("Enemy_" + std::to_string(i));
             eObj->AddComponent<EnemyAIComponent>(
-                &_enemies[i], &_enemyAnims[i], (int)i,
+                &_enemies[i], &_enemyAnims[i], static_cast<int>(i),
                 EnemyAICallbacks{
                     [this]()           { return vec2(_player.cx(), _player.cy()); },
                     [this]()           { return _player.aabb(); },
@@ -244,7 +244,7 @@ public:
                 _mode = GameMode::Battle;
             }
             DrawExplore();
-            GetGraphicsServer()->DrawQuad(0,0,(float)_screenW,(float)_screenH,0,
+            GetGraphicsServer()->DrawQuad(0,0,static_cast<float>(_screenW),static_cast<float>(_screenH),0,
                                          vec4(0,0,0,_transition));
             break;
 
@@ -259,13 +259,13 @@ public:
                 _mode = GameMode::Explore;
             }
             DrawExplore();
-            GetGraphicsServer()->DrawQuad(0,0,(float)_screenW,(float)_screenH,0,
+            GetGraphicsServer()->DrawQuad(0,0,static_cast<float>(_screenW),static_cast<float>(_screenH),0,
                                          vec4(0,0,0,_transition));
             break;
         }
 
         if (_fadeIn > 0.01f)
-            GetGraphicsServer()->DrawQuad(0,0,(float)_screenW,(float)_screenH,0,
+            GetGraphicsServer()->DrawQuad(0,0,static_cast<float>(_screenW),static_cast<float>(_screenH),0,
                                          vec4(0,0,0,_fadeIn));
     }
 
@@ -281,8 +281,8 @@ private:
         _camY = tcy - _screenH*0.5f;
     }
     void CameraClamp(int mapW, int mapH) {
-        _camX = std::clamp(_camX, 0.0f, (float)(mapW  - _screenW));
-        _camY = std::clamp(_camY, 0.0f, (float)(mapH - _screenH));
+        _camX = std::clamp(_camX, 0.0f, static_cast<float>(mapW  - _screenW));
+        _camY = std::clamp(_camY, 0.0f, static_cast<float>(mapH - _screenH));
     }
 
     void StartBattle(int enemyIdx) {
@@ -300,7 +300,7 @@ private:
             for (auto& npc : _npcs) {
                 float dx = npc.cx()-_player.cx(), dy = npc.cy()-_player.cy();
                 if (std::sqrt(dx*dx+dy*dy) < npc.talkR) {
-                    _dialogText  = npc.dialogue[npc.dialogIdx % (int)npc.dialogue.size()];
+                    _dialogText  = npc.dialogue[npc.dialogIdx % static_cast<int>(npc.dialogue.size())];
                     npc.dialogIdx++;
                     _dialogTimer = 3.5f;
                     break;
@@ -338,16 +338,16 @@ private:
             const Enemy& e = _enemies[i];
             auto [fc,fr] = _enemyAnims[i].currentFrame();
             float sx=e.x-camX, sy=e.y-camY;
-            vec2 uv0{(float)fc/CCOLS,(float)fr/CROWS};
-            vec2 uv1{(float)(fc+1)/CCOLS,(float)(fr+1)/CROWS};
+            vec2 uv0{static_cast<float>(fc)/CCOLS,static_cast<float>(fr)/CROWS};
+            vec2 uv1{static_cast<float>(fc+1)/CCOLS,static_cast<float>(fr+1)/CROWS};
             gfx->DrawSprite2D(sx, sy, e.w, e.h, _enemyTex, uv0, uv1);
         }
 
         {
             auto [fc,fr] = _playerAnim.currentFrame();
             float sx=_player.x-camX, sy=_player.y-camY;
-            vec2 uv0{(float)fc/CCOLS,(float)fr/CROWS};
-            vec2 uv1{(float)(fc+1)/CCOLS,(float)(fr+1)/CROWS};
+            vec2 uv0{static_cast<float>(fc)/CCOLS,static_cast<float>(fr)/CROWS};
+            vec2 uv1{static_cast<float>(fc+1)/CCOLS,static_cast<float>(fr+1)/CROWS};
             gfx->DrawSprite2D(sx, sy, _player.w, _player.h, _playerTex, uv0, uv1);
         }
 
@@ -367,15 +367,15 @@ private:
 
         gfx->DrawText(_fontID,
             fmt::format("Gold:{}", b.gold),
-            14, (float)_screenH-36, 0.55f, vec4(1,0.9f,0.3f,1));
+            14, static_cast<float>(_screenH)-36, 0.55f, vec4(1,0.9f,0.3f,1));
         gfx->DrawText(_fontID,
             "WASD:move  E:talk  walk into enemy to battle",
-            14, (float)_screenH-20, 0.45f, vec4(0.7f,0.7f,0.7f,0.8f));
+            14, static_cast<float>(_screenH)-20, 0.45f, vec4(0.7f,0.7f,0.7f,0.8f));
     }
 
     void DrawDialog() {
         auto* gfx = GetGraphicsServer();
-        const float W=(float)_screenW, H=(float)_screenH;
+        const float W=static_cast<float>(_screenW), H=static_cast<float>(_screenH);
         const float bx=40, bh=70, by=H-bh-20, bw=W-80;
         DrawPanel(bx, by, bw, bh);
         gfx->DrawQuad(bx+bw*0.5f, by+1.5f, bw, 3, 0, vec4(0.5f,0.8f,1,1));
@@ -394,7 +394,7 @@ private:
                    vec4 color = vec4(0.2f,0.85f,0.2f,1)) {
         auto* gfx = GetGraphicsServer();
         gfx->DrawQuad(x+w*0.5f, y+h*0.5f, w, h, 0, vec4(0.1f,0.1f,0.1f,0.85f));
-        float ratio = maxHp>0 ? (float)hp/maxHp : 0;
+        float ratio = maxHp>0 ? static_cast<float>(hp)/maxHp : 0;
         float fw = (w-2)*ratio;
         if (fw > 0) gfx->DrawQuad(x+1+fw*0.5f, y+1+(h-2)*0.5f, fw, h-2, 0, color);
     }
@@ -402,7 +402,7 @@ private:
     void DrawMPBar(float x, float y, float w, float h, int mp, int maxMp) {
         auto* gfx = GetGraphicsServer();
         gfx->DrawQuad(x+w*0.5f, y+h*0.5f, w, h, 0, vec4(0.1f,0.1f,0.1f,0.85f));
-        float ratio = maxMp>0 ? (float)mp/maxMp : 0;
+        float ratio = maxMp>0 ? static_cast<float>(mp)/maxMp : 0;
         float fw = (w-2)*ratio;
         if (fw > 0) gfx->DrawQuad(x+1+fw*0.5f, y+1+(h-2)*0.5f, fw, h-2, 0, vec4(0.2f,0.4f,1,1));
     }

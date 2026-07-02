@@ -134,7 +134,7 @@ void Script::LoadScene(int index)
             int baseMapIdx = materialData.get_or("baseMapId", -1);
             int normalMapIdx = materialData.get_or("normalMapId", -1);
             int aoMapIdx = materialData.get_or("aoMapId", -1);
-            int roughnessMapIdx = materialData.get_or("roughnessMapId", (int)materialData.get_or("roughtnessMapId", -1));
+            int roughnessMapIdx = materialData.get_or("roughnessMapId", static_cast<int>(materialData.get_or("roughtnessMapId", -1)));
             int metallicMapIdx = materialData.get_or("metallicMapId", -1);
             int heightMapIdx = materialData.get_or("heightMapId", -1);
 
@@ -148,7 +148,7 @@ void Script::LoadScene(int index)
                 .diffuse = glm::vec3(materialData["diffuse"][1], materialData["diffuse"][2], materialData["diffuse"][3]),
                 .specular = glm::vec3(materialData["specular"][1], materialData["specular"][2], materialData["specular"][3]),
                 .ambient = glm::vec3(materialData["ambient"][1], materialData["ambient"][2], materialData["ambient"][3]),
-                .shininess = (float)materialData.get_or("shininess", 0.25)
+                .shininess = static_cast<float>(materialData.get_or("shininess", 0.25))
             });
         }
         AssetManager::Get().LoadMaterials(materials);
@@ -182,16 +182,16 @@ void Script::LoadScene(int index)
                     if (componentType == "camera") {
                         CameraProps cameraProps;
                         cameraProps.isOrthographic = false;
-                        cameraProps.perspective.fieldOfView = (float)componentData.get_or("field_of_view", glm::radians(60.f));
-                        cameraProps.perspective.aspectRatio = (float)componentData.get_or("aspect_ratio", 4.f / 3.f);
-                        cameraProps.perspective.nearClip = (float)componentData.get_or("near_clip_plane", 0.1f);
-                        cameraProps.perspective.farClip = (float)componentData.get_or("far_clip_plane", 1000.0f);
-                        cameraProps.verticalAngle = (float)componentData.get_or("vertical_angle", 0);
-                        cameraProps.horizontalAngle = (float)componentData.get_or("horizontal_angle", 0);
+                        cameraProps.perspective.fieldOfView = static_cast<float>(componentData.get_or("field_of_view", glm::radians(60.f)));
+                        cameraProps.perspective.aspectRatio = static_cast<float>(componentData.get_or("aspect_ratio", 4.f / 3.f));
+                        cameraProps.perspective.nearClip = static_cast<float>(componentData.get_or("near_clip_plane", 0.1f));
+                        cameraProps.perspective.farClip = static_cast<float>(componentData.get_or("far_clip_plane", 1000.0f));
+                        cameraProps.verticalAngle = static_cast<float>(componentData.get_or("vertical_angle", 0));
+                        cameraProps.horizontalAngle = static_cast<float>(componentData.get_or("horizontal_angle", 0));
                         cameraProps.eyeOffset = glm::vec3(
-                            (float)componentData.get_or("eye_offset.x", 0),
-                            (float)componentData.get_or("eye_offset.y", 0),
-                            (float)componentData.get_or("eye_offset.z", 0)
+                            static_cast<float>(componentData.get_or("eye_offset.x", 0)),
+                            static_cast<float>(componentData.get_or("eye_offset.y", 0)),
+                            static_cast<float>(componentData.get_or("eye_offset.z", 0))
                         );
                         go->AddComponent<CameraComponent>(cameraProps);
                     } else if (componentType == "light") {
@@ -213,7 +213,7 @@ void Script::LoadScene(int index)
                                 componentData["specular"][2],
                                 componentData["specular"][3]
                             ),
-                            .intensity = (float)componentData.get_or("intensity", 1.0),
+                            .intensity = static_cast<float>(componentData.get_or("intensity", 1.0)),
                             .castShadow = (bool)componentData.get_or("castShadow", 0)
                         };
                         if (lightType == LightType::Point) {

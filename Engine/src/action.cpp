@@ -441,7 +441,7 @@ void Animate::Update(float t) {
             break;
         }
     }
-    if (t >= 1.0f) frameIndex = (int)_splitTimes.size() - 1;
+    if (t >= 1.0f) frameIndex = static_cast<int>(_splitTimes.size()) - 1;
 
     if (frameIndex != _currentFrame) {
         _currentFrame = frameIndex;

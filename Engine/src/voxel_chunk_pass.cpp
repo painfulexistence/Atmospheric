@@ -238,7 +238,7 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
     shader->SetUniform("u_time",         renderer.frameTime);
     shader->SetUniform("u_invProj",      glm::inverse(proj));
     shader->SetUniform("u_invView",      glm::inverse(view));
-    shader->SetUniform("u_screenSize",   glm::vec2((float)width, (float)height));
+    shader->SetUniform("u_screenSize",   glm::vec2(static_cast<float>(width), static_cast<float>(height)));
     shader->SetUniform("u_depthTexture", 1);
 
     glm::vec3 lightDir   = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);

@@ -358,8 +358,8 @@ public:
     }
 
     void DrawImGui() override {
-        ImGui::Text("Bullets tracked: %d", (int)_bullets.size());
-        ImGui::Text("Enemies tracked: %d", (int)_enemies.size());
+        ImGui::Text("Bullets tracked: %d", static_cast<int>(_bullets.size()));
+        ImGui::Text("Enemies tracked: %d", static_cast<int>(_enemies.size()));
     }
 
 private:

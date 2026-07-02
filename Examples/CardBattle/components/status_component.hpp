@@ -37,27 +37,27 @@ public:
     std::string GetName() const override { return "StatusComponent"; }
     bool CanTick() const override { return false; }
 
-    int  Get(StatusType t) const { return _stacks[(int)t]; }
-    bool Has(StatusType t) const { return _stacks[(int)t] > 0; }
+    int  Get(StatusType t) const { return _stacks[static_cast<int>(t)]; }
+    bool Has(StatusType t) const { return _stacks[static_cast<int>(t)] > 0; }
 
     void Add(StatusType t, int amount) {
-        _stacks[(int)t] = std::max(0, _stacks[(int)t] + amount);
+        _stacks[static_cast<int>(t)] = std::max(0, _stacks[static_cast<int>(t)] + amount);
     }
-    void Clear(StatusType t) { _stacks[(int)t] = 0; }
+    void Clear(StatusType t) { _stacks[static_cast<int>(t)] = 0; }
     void ClearAll() { _stacks.fill(0); }
 
     // Damage this combatant deals: + Strength, then x Weak.
     int ModifyOutgoingDamage(int base) const {
         int dmg = base + Get(StatusType::Strength);
         if (Has(StatusType::Weak))
-            dmg = (int)std::floor(dmg * Tuning::WEAK_MULT);
+            dmg = static_cast<int>(std)::floor(dmg * Tuning::WEAK_MULT);
         return std::max(0, dmg);
     }
 
     // Damage this combatant takes: x Vulnerable.
     int ModifyIncomingDamage(int dmg) const {
         if (Has(StatusType::Vulnerable))
-            dmg = (int)std::floor(dmg * Tuning::VULNERABLE_MULT);
+            dmg = static_cast<int>(std)::floor(dmg * Tuning::VULNERABLE_MULT);
         return std::max(0, dmg);
     }
 
@@ -76,9 +76,9 @@ public:
     }
 
 private:
-    void decay(StatusType t) { if (_stacks[(int)t] > 0) _stacks[(int)t]--; }
+    void decay(StatusType t) { if (_stacks[static_cast<int>(t)] > 0) _stacks[static_cast<int>(t)]--; }
 
-    std::array<int, (int)StatusType::COUNT> _stacks{};
+    std::array<int, static_cast<int>(StatusType)::COUNT> _stacks{};
 };
 
 } // namespace CardGame

@@ -52,7 +52,7 @@ void MeshComponent::SetMaterial(Material* material) {
 void MeshComponent::DrawImGui() {
     auto* mat = GetMaterial();
     auto& assetManager = AssetManager::Get();
-    int textureCount = (int)assetManager.GetTextures().size();
+    int textureCount = static_cast<int>(assetManager.GetTextures().size());
     int baseMap = mat->baseMap;
     if (ImGui::SliderInt("Base map ID", &baseMap, -1, textureCount - 1)) mat->baseMap = baseMap;
     int normalMap = mat->normalMap;

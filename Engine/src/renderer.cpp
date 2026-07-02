@@ -243,10 +243,10 @@ uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& c
     // Generate 64-bit sort key
     // [16 bits: render queue] [16 bits: depth] [16 bits: material] [16 bits: mesh]
     uint64_t key = 0;
-    key |= (uint64_t)(renderQueue & 0xFFFF) << 48;
-    key |= (uint64_t)((uint16_t)(depth * 100.0f) & 0xFFFF) << 32;
-    key |= (uint64_t)(materialID & 0xFFFF) << 16;
-    key |= (uint64_t)(meshID & 0xFFFF);
+    key |= static_cast<uint64_t>(renderQueue & 0xFFFF) << 48;
+    key |= static_cast<uint64_t>(static_cast<uint16_t>(depth * 100.0f) & 0xFFFF) << 32;
+    key |= static_cast<uint64_t>(materialID & 0xFFFF) << 16;
+    key |= static_cast<uint64_t>(meshID & 0xFFFF);
 
     return key;
 }
@@ -431,12 +431,12 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
     glDrawBuffers(1, drawBuffers);
 #else
     glBindFramebuffer(GL_FRAMEBUFFER, shadowFBO);
-    for (int i = 0; i < (int)uniShadowMaps.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(uniShadowMaps.size()); ++i) {
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, uniShadowMaps[i], 0);
         glDrawBuffer(GL_NONE);
         glReadBuffer(GL_NONE);
     }
-    for (int i = 0; i < (int)omniShadowMaps.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(omniShadowMaps.size()); ++i) {
         glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, omniShadowMaps[i], 0);
         glDrawBuffer(GL_NONE);
         glReadBuffer(GL_NONE);
@@ -797,7 +797,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
         if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
-        AE_GL_PROBE(renderer, fmt::format("Opaque pass: batch entry (type={})", (int)mesh->type));
+        AE_GL_PROBE(renderer, fmt::format("Opaque pass: batch entry (type={})", static_cast<int>(mesh->type)));
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
@@ -837,8 +837,8 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             terrainShader->SetUniform(std::string("height_scale"),         tm ? tm->heightScale        : 32.0f);
             glActiveTexture(GL_TEXTURE7);
             TextureHandle heightMap = mesh->GetMaterial()->heightMap;
-            if (heightMap.IsValid() && (uint32_t)heightMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)heightMap);
+            if (heightMap.IsValid() && static_cast<uint32_t>(heightMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(heightMap));
             } else {
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
@@ -913,9 +913,9 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
                     );
                 }
             }
-            colorShader->SetUniform(std::string("aux_light_count"), (int)ctx->pointLights.size());
+            colorShader->SetUniform(std::string("aux_light_count"), static_cast<int>(ctx->pointLights.size()));
             colorShader->SetUniform(std::string("shadow_map_unit"), (int)0);
-            colorShader->SetUniform(std::string("omni_shadow_map_unit"), (int)UNI_SHADOW_MAP_COUNT);
+            colorShader->SetUniform(std::string("omni_shadow_map_unit"), static_cast<int>(UNI_SHADOW_MAP_COUNT));
             colorShader->SetUniform(std::string("ProjectionView"), projectionView);
             // Surface parameters
             colorShader->SetUniform(std::string("surf_params.diffuse"), mesh->GetMaterial()->diffuse);
@@ -927,8 +927,8 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             // Base Map (Unit 2)
             glActiveTexture(GL_TEXTURE2);
             TextureHandle baseMap = mesh->GetMaterial()->baseMap;
-            if (baseMap.IsValid() && (uint32_t)baseMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)baseMap);
+            if (baseMap.IsValid() && static_cast<uint32_t>(baseMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(baseMap));
             } else if (assetManager.GetDefaultTextures().size() > 0) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[0]);
             } else {
@@ -939,8 +939,8 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             // Normal Map (Unit 3)
             glActiveTexture(GL_TEXTURE3);
             TextureHandle normalMap = mesh->GetMaterial()->normalMap;
-            if (normalMap.IsValid() && (uint32_t)normalMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)normalMap);
+            if (normalMap.IsValid() && static_cast<uint32_t>(normalMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(normalMap));
             } else if (assetManager.GetDefaultTextures().size() > 1) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[1]);
             } else {
@@ -951,8 +951,8 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             // AO Map (Unit 4)
             glActiveTexture(GL_TEXTURE4);
             TextureHandle aoMap = mesh->GetMaterial()->aoMap;
-            if (aoMap.IsValid() && (uint32_t)aoMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)aoMap);
+            if (aoMap.IsValid() && static_cast<uint32_t>(aoMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(aoMap));
             } else if (assetManager.GetDefaultTextures().size() > 2) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[2]);
             } else {
@@ -963,8 +963,8 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             // Roughness Map (Unit 5)
             glActiveTexture(GL_TEXTURE5);
             TextureHandle roughnessMap = mesh->GetMaterial()->roughnessMap;
-            if (roughnessMap.IsValid() && (uint32_t)roughnessMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)roughnessMap);
+            if (roughnessMap.IsValid() && static_cast<uint32_t>(roughnessMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(roughnessMap));
             } else if (assetManager.GetDefaultTextures().size() > 3) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[3]);
             } else {
@@ -975,8 +975,8 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             // Metallic Map (Unit 6)
             glActiveTexture(GL_TEXTURE6);
             TextureHandle metallicMap = mesh->GetMaterial()->metallicMap;
-            if (metallicMap.IsValid() && (uint32_t)metallicMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)metallicMap);
+            if (metallicMap.IsValid() && static_cast<uint32_t>(metallicMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(metallicMap));
             } else if (assetManager.GetDefaultTextures().size() > 4) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[4]);
             } else {
@@ -1093,8 +1093,8 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
             // Base Map (Unit 2)
             glActiveTexture(GL_TEXTURE2);
             TextureHandle baseMap = mesh->GetMaterial()->baseMap;
-            if (baseMap.IsValid() && (uint32_t)baseMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)baseMap);
+            if (baseMap.IsValid() && static_cast<uint32_t>(baseMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(baseMap));
             } else if (assetManager.GetDefaultTextures().size() > 0) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[0]);
             } else {
@@ -1105,8 +1105,8 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
             // Normal Map (Unit 3)
             glActiveTexture(GL_TEXTURE3);
             TextureHandle normalMap = mesh->GetMaterial()->normalMap;
-            if (normalMap.IsValid() && (uint32_t)normalMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)normalMap);
+            if (normalMap.IsValid() && static_cast<uint32_t>(normalMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(normalMap));
             } else if (assetManager.GetDefaultTextures().size() > 1) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[1]);
             } else {
@@ -1117,8 +1117,8 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
             // AO Map (Unit 4)
             glActiveTexture(GL_TEXTURE4);
             TextureHandle aoMap = mesh->GetMaterial()->aoMap;
-            if (aoMap.IsValid() && (uint32_t)aoMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)aoMap);
+            if (aoMap.IsValid() && static_cast<uint32_t>(aoMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(aoMap));
             } else if (assetManager.GetDefaultTextures().size() > 2) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[2]);
             } else {
@@ -1129,8 +1129,8 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
             // Roughness Map (Unit 5)
             glActiveTexture(GL_TEXTURE5);
             TextureHandle roughnessMap = mesh->GetMaterial()->roughnessMap;
-            if (roughnessMap.IsValid() && (uint32_t)roughnessMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)roughnessMap);
+            if (roughnessMap.IsValid() && static_cast<uint32_t>(roughnessMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(roughnessMap));
             } else if (assetManager.GetDefaultTextures().size() > 3) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[3]);
             } else {
@@ -1141,8 +1141,8 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
             // Metallic Map (Unit 6)
             glActiveTexture(GL_TEXTURE6);
             TextureHandle metallicMap = mesh->GetMaterial()->metallicMap;
-            if (metallicMap.IsValid() && (uint32_t)metallicMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)metallicMap);
+            if (metallicMap.IsValid() && static_cast<uint32_t>(metallicMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(metallicMap));
             } else if (assetManager.GetDefaultTextures().size() > 4) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[4]);
             } else {
@@ -1213,7 +1213,7 @@ void DeferredLightingPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
         lightingShader->SetUniform(prefix + ".attenuation", l->attenuation);
         lightingShader->SetUniform(prefix + ".intensity", l->intensity);
     }
-    lightingShader->SetUniform("pointLightCount", (int)ctx->pointLights.size());
+    lightingShader->SetUniform("pointLightCount", static_cast<int>(ctx->pointLights.size()));
 
     renderer.screenBuffer->Draw(enc, PrimitiveTopology::TriangleStrip);
 
@@ -1262,7 +1262,7 @@ void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
     std::vector<CanvasDrawable*> worldDrawables;
     for (auto* drawable : ctx->canvasDrawables) {
         if (!drawable->gameObject->isActive) continue;
-        if ((int)drawable->GetLayer() < (int)CanvasLayer::LAYER_WORLD_2D) {
+        if (static_cast<int>(drawable->GetLayer()) < static_cast<int>(CanvasLayer)::LAYER_WORLD_2D) {
             worldDrawables.push_back(drawable);
         }
     }
@@ -1328,7 +1328,7 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         if (renderer.GetCanvasQueue().empty()) return;
 
         auto [width, height] = Window::Get()->GetPhysicalSize();
-        const glm::mat4 viewProj = glm::ortho(0.0f, (float)width, (float)height, 0.0f, -1.0f, 1.0f);
+        const glm::mat4 viewProj = glm::ortho(0.0f, static_cast<float>(width), static_cast<float>(height), 0.0f, -1.0f, 1.0f);
 
         WGPUTextureView targetView = GfxFactory::GetCurrentSwapchainView();
         if (!targetView) return; // surface not ready (device still initializing)
@@ -1381,7 +1381,7 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         // For now, if perspective, we might just use screen space or a default ortho.
         // Let's assume default ortho for safety if no 2D camera is set.
         auto [winW, winH] = Window::Get()->GetLogicalSize();
-        worldViewProj = glm::ortho(0.0f, (float)winW, (float)winH, 0.0f, -1.0f, 1.0f);
+        worldViewProj = glm::ortho(0.0f, static_cast<float>(winW), static_cast<float>(winH), 0.0f, -1.0f, 1.0f);
     }
 
     renderer.GetBatchRenderer()->BeginBatch(worldViewProj);
@@ -1419,7 +1419,7 @@ void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
     shader->Activate();
     shader->SetUniform(std::string("color_map_unit"), (int)0);
     shader->SetUniform(std::string("exposure"),       tonemapEnabled ? exposure : 1.0f);
-    shader->SetUniform(std::string("u_ca_enabled"),   (int)caEnabled);
+    shader->SetUniform(std::string("u_ca_enabled"),   static_cast<int>(caEnabled));
     shader->SetUniform(std::string("u_ca_strength"),  caStrength);
 
     renderer.screenBuffer->Draw(enc, PrimitiveTopology::TriangleStrip);
@@ -1448,8 +1448,8 @@ void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* en
 
     // RmlUi context dimensions are in logical pixels, so projection must match.
     auto logicalSize = Window::Get()->GetLogicalSize();
-    float width = (float)logicalSize.width;
-    float height = (float)logicalSize.height;
+    float width = static_cast<float>(logicalSize.width);
+    float height = static_cast<float>(logicalSize.height);
 
     glViewport(0, 0, Window::Get()->GetPhysicalSize().width, Window::Get()->GetPhysicalSize().height);
     glm::mat4 projection = glm::ortho(0.0f, width, height, 0.0f, -1.0f, 1.0f);

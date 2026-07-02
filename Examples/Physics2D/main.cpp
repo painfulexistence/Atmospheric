@@ -42,7 +42,7 @@ static glm::vec4 SideColor(int sides) {
         {0.10f, 0.65f, 1.00f, 1.0f}, // 8 - sky blue   192°
         {0.75f, 0.15f, 1.00f, 1.0f}, // 9 - violet     270° (circle)
     };
-    int idx = std::clamp(sides - MIN_SIDES, 0, (int)std::size(palette) - 1);
+    int idx = std::clamp(sides - MIN_SIDES, 0, static_cast<int>(std)::size(palette) - 1);
     return palette[idx];
 }
 
@@ -234,19 +234,19 @@ class PolyMerge : public Application {
         int sides = mcA->sides;
         // Collect the whole connected group
         auto group = FloodFill(goA, sides);
-        if ((int)group.size() < mcA->minGroup) return;
+        if (static_cast<int>(group.size()) < mcA->minGroup) return;
 
         // Mark all as pending remove so re-entrant callbacks skip them
         for (auto* go : group)
             go->GetComponent<MergeableComponent>()->pendingRemove = true;
 
-        int n = (int)group.size();
+        int n = static_cast<int>(group.size());
 
         // Calculate centroid
         glm::vec2 centroid{0, 0};
         for (auto* go : group)
             centroid += go->GetComponent<Rigidbody2DComponent>()->GetPosition();
-        centroid /= (float)n;
+        centroid /= static_cast<float>(n);
 
         int newSides = sides + 1;
         if (sides >= MAX_SIDES) {
@@ -439,8 +439,8 @@ class PolyMerge : public Application {
 int main(int /*argc*/, char* /*argv*/[]) {
     PolyMerge game({
         .windowTitle = "PolyMerge - Shape Merge Puzzle",
-        .windowWidth  = (int)W,
-        .windowHeight = (int)H,
+        .windowWidth  = static_cast<int>(W),
+        .windowHeight = static_cast<int>(H),
         .useDefaultTextures = true,
         .useDefaultShaders  = true,
         .preset = "2D"

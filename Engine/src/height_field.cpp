@@ -46,7 +46,7 @@ NoiseHeightField::NoiseHeightField(const NoiseHeightFieldParams& p)
     _grid.resize(_resolution * _resolution);
     for (int z = 0; z < _resolution; ++z) {
         for (int x = 0; x < _resolution; ++x) {
-            float v = noise.GetNoise((float)x, (float)z);
+            float v = noise.GetNoise(static_cast<float>(x), static_cast<float>(z));
             _grid[z * _resolution + x] = (v + 1.0f) * 0.5f;  // map [-1,1] → [0,1]
         }
     }

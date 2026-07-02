@@ -226,7 +226,7 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
     }
 
     int width, height, numChannels;
-    if (!stbi_info_from_memory(fileData.data(), (int)fileData.size(), &width, &height, &numChannels)) {
+    if (!stbi_info_from_memory(fileData.data(), static_cast<int>(fileData.size()), &width, &height, &numChannels)) {
         Console::Get()->Warn(fmt::format("stbi_info_from_memory: Failed to read image metadata at '{}'", path));
         return nullptr;
     }
@@ -248,7 +248,7 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
     }
 
     stbi_set_flip_vertically_on_load(true);
-    uint8_t* data = stbi_load_from_memory(fileData.data(), (int)fileData.size(), &width, &height, &numChannels, desiredChannels);
+    uint8_t* data = stbi_load_from_memory(fileData.data(), static_cast<int>(fileData.size()), &width, &height, &numChannels, desiredChannels);
     if (data) {
         auto image = std::make_shared<Image>(width, height, desiredChannels, data);
         stbi_image_free(data);
@@ -311,7 +311,7 @@ void AssetManager::LoadDefaultShaders() {
                   { "bloom_downsample",{ .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_downsample.frag" } },
                   { "bloom_upsample",  { .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_upsample.frag" } },
                   { "bloom_composite", { .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_composite.frag" } } });
-    _defaultShaderCount = (uint32_t)shaders.size();
+    _defaultShaderCount = static_cast<uint32_t>(shaders.size());
 }
 
 void AssetManager::LoadShaders(const std::unordered_map<std::string, ShaderProgramProps>& shaderDefs) {
@@ -469,8 +469,8 @@ static std::string RedirectToKTX2(const std::string& path) {
 #endif
 
 void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
-    int oldCount = (int)textures.size();
-    int newCount = (int)paths.size();
+    int oldCount = static_cast<int>(textures.size());
+    int newCount = static_cast<int>(paths.size());
 
     // Reserve final slots so ordering matches input path ordering.
     textures.resize(oldCount + newCount, 0u);
@@ -512,7 +512,7 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
 
     // ── Parallel CPU image decode for regular (non-KTX2) textures
     std::vector<std::shared_ptr<Image>> images(regularPaths.size());
-    for (int j = 0; j < (int)regularPaths.size(); j++) {
+    for (int j = 0; j < static_cast<int>(regularPaths.size()); j++) {
         auto path  = regularPaths[j];
         auto image = &images[j];
         JobSystem::Get()->Execute([this, path, image](int /*threadID*/) { *image = LoadImage(path); });
@@ -521,9 +521,9 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
 
     // ── Batch generate GL texture objects for regular images
     std::vector<GLuint> regularTexIDs(regularPaths.size());
-    glGenTextures((GLsizei)regularPaths.size(), regularTexIDs.data());
+    glGenTextures(static_cast<GLsizei>(regularPaths.size()), regularTexIDs.data());
 
-    for (int j = 0; j < (int)regularPaths.size(); j++) {
+    for (int j = 0; j < static_cast<int>(regularPaths.size()); j++) {
         int i      = regularIndices[j];
         auto& img  = images[j];
         GLuint texID = regularTexIDs[j];
@@ -561,8 +561,8 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
             throw std::runtime_error(fmt::format("Unknown texture format at {}\n", regularPaths[j]));
         }
         glGenerateMipmap(GL_TEXTURE_2D);
-        _textureCache[regularPaths[j]] = { texID, (uint32_t)img->width, (uint32_t)img->height,
-                                           (size_t)img->width * img->height * img->channelCount };
+        _textureCache[regularPaths[j]] = { texID, static_cast<uint32_t>(img->width), static_cast<uint32_t>(img->height),
+                                           static_cast<size_t>(img->width) * img->height * img->channelCount };
     }
 }
 
@@ -636,8 +636,8 @@ TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>&
     }
     glGenerateMipmap(GL_TEXTURE_2D);
 
-    size_t bytes = (size_t)image->width * image->height * image->channelCount;
-    _textureCache["unnamed_" + std::to_string(_nextTextureID++)] = { texID, (uint32_t)image->width, (uint32_t)image->height, bytes };
+    size_t bytes = static_cast<size_t>(image->width) * image->height * image->channelCount;
+    _textureCache["unnamed_" + std::to_string(_nextTextureID++)] = { texID, static_cast<uint32_t>(image->width), static_cast<uint32_t>(image->height), bytes };
     textures.push_back(texID);
     return TextureHandle(texID);
 }
@@ -715,7 +715,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
 
     // ── Parse KTX2 container ─────────────────────────────────────────────────
     basist::ktx2_transcoder ktx2Dec;
-    if (!ktx2Dec.init(fileData.data(), (uint32_t)fileData.size()))
+    if (!ktx2Dec.init(fileData.data(), static_cast<uint32_t>(fileData.size())))
         throw std::runtime_error(fmt::format("Failed to parse KTX2 header: {}", path));
 
     // ── Choose transcoding target based on GL extension availability ─────────
@@ -759,7 +759,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
     if (levels > 1) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, (GLint)(levels - 1));
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(levels - 1));
     } else {
         // Single level in the KTX2 — warn the user and use bilinear.
         ENGINE_LOG("KTX2 '{}' has no pre-generated mips; encoding with -mipmap is recommended", path);
@@ -786,11 +786,11 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         }
 
         // Level dimensions (clamped to 1 for very small mips).
-        GLsizei w = (GLsizei)std::max(1u, baseWidth  >> level);
-        GLsizei h = (GLsizei)std::max(1u, baseHeight >> level);
+        GLsizei w = static_cast<GLsizei>(std)::max(1u, baseWidth  >> level);
+        GLsizei h = static_cast<GLsizei>(std)::max(1u, baseHeight >> level);
 
-        glCompressedTexImage2D(GL_TEXTURE_2D, (GLint)level, glFmt,
-                               w, h, 0, (GLsizei)bufferSize, buf.data());
+        glCompressedTexImage2D(GL_TEXTURE_2D, static_cast<GLint>(level), glFmt,
+                               w, h, 0, static_cast<GLsizei>(bufferSize), buf.data());
     }
 
     ENGINE_LOG("Loaded KTX2 texture '{}' ({}×{}, {} mips, {})",
@@ -803,7 +803,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         for (uint32_t level = 0; level < levels; ++level) {
             basist::ktx2_image_level_info info;
             if (ktx2Dec.get_image_level_info(info, level, 0, 0))
-                totalBytes += (size_t)info.m_total_blocks * bytesPerBlk;
+                totalBytes += static_cast<size_t>(info.m_total_blocks) * bytesPerBlk;
         }
         *out = { texID, baseWidth, baseHeight, totalBytes };
     }
@@ -875,16 +875,16 @@ MeshHandle AssetManager::CreatePlaneMeshSubdivided(const std::string& name,
             float fx = -hw + width  * x / n;
             float fz = -hh + height * z / n;
             verts.push_back({ { fx, 0.0f, fz },
-                              { (float)x / n, (float)z / n },
+                              { static_cast<float>(x) / n, static_cast<float>(z) / n },
                               { 0.0f, 1.0f, 0.0f } });
         }
     }
     for (int z = 0; z < n; ++z) {
         for (int x = 0; x < n; ++x) {
-            uint16_t i0 = (uint16_t)( z      * (n + 1) + x    );
-            uint16_t i1 = (uint16_t)( z      * (n + 1) + x + 1);
-            uint16_t i2 = (uint16_t)((z + 1) * (n + 1) + x    );
-            uint16_t i3 = (uint16_t)((z + 1) * (n + 1) + x + 1);
+            uint16_t i0 = static_cast<uint16_t>( z      * (n + 1) + x    );
+            uint16_t i1 = static_cast<uint16_t>( z      * (n + 1) + x + 1);
+            uint16_t i2 = static_cast<uint16_t>((z + 1) * (n + 1) + x    );
+            uint16_t i3 = static_cast<uint16_t>((z + 1) * (n + 1) + x + 1);
             tris.insert(tris.end(), { i0, i2, i1, i1, i2, i3 });
         }
     }
@@ -1217,6 +1217,6 @@ TextureHandle AssetManager::CreateHeightmapTexture(
     glBindTexture(GL_TEXTURE_2D, 0);
 
     textures.push_back(texID);
-    _textureCache[name] = { texID, (uint32_t)width, (uint32_t)height, (size_t)(width * height) };
+    _textureCache[name] = { texID, static_cast<uint32_t>(width), static_cast<uint32_t>(height), static_cast<size_t>(width * height) };
     return TextureHandle(texID);
 }

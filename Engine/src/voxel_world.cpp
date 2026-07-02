@@ -151,11 +151,11 @@ void VoxelWorld::GenerateTerrain() {
                     int wx = cx * VoxelChunkComponent::SIZE + lx;
                     int wz = cz * VoxelChunkComponent::SIZE + lz;
 
-                    float h = heightNoise.GetNoise((float)wx, (float)wz);
-                    int height = std::clamp((int)(h * 32.0f + 32.0f), 0, worldYVoxels - 1);
+                    float h = heightNoise.GetNoise(static_cast<float>(wx), static_cast<float>(wz));
+                    int height = std::clamp(static_cast<int>(h * 32.0f + 32.0f), 0, worldYVoxels - 1);
 
                     for (int wy = 0; wy < height; ++wy) {
-                        float cv = caveNoise.GetNoise((float)wx, (float)wy, (float)wz);
+                        float cv = caveNoise.GetNoise(static_cast<float>(wx), static_cast<float>(wy), static_cast<float>(wz));
                         if (cv > 0.55f && wy > 4) continue;
 
                         int cy = wy / VoxelChunkComponent::SIZE;
@@ -164,7 +164,7 @@ void VoxelWorld::GenerateTerrain() {
                         if (!chunk) continue;
 
                         // voxel_id = wy + 1, matching VX's height-based palette
-                        chunk->SetVoxel(lx, ly, lz, (uint8_t)std::min(wy + 1, 255));
+                        chunk->SetVoxel(lx, ly, lz, static_cast<uint8_t>(std)::min(wy + 1, 255));
                     }
                 }
             }

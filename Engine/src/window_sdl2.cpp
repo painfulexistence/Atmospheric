@@ -309,7 +309,7 @@ void Window::SetTitle(const std::string& title) {
 }
 
 float Window::GetTime() {
-    return (float)SDL_GetTicks() * 0.001f; // Note that glfwGetTime() only starts to calculate time after the window is created;
+    return static_cast<float>(SDL_GetTicks()) * 0.001f; // Note that glfwGetTime() only starts to calculate time after the window is created;
 }
 
 void Window::SetTime(double time) {

@@ -188,7 +188,7 @@ void Window::Init() {
     glfwSetCursorPosCallback(window, [](GLFWwindow* win, double x, double y) {
         auto self = static_cast<Window*>(glfwGetWindowUserPointer(win));
         for (auto [id, callback] : self->_mouseMoveCallbacks) {
-            callback((float)x, (float)y);
+            callback(static_cast<float>(x), static_cast<float>(y));
         }
     });
     glfwSetCursorEnterCallback(window, [](GLFWwindow* win, int entered) {
@@ -436,7 +436,7 @@ void Window::SetTitle(const std::string& title) {
 }
 
 float Window::GetTime() {
-    return (float)glfwGetTime(); // Note that glfwGetTime() only starts to calculate time after the window is created;
+    return static_cast<float>(glfwGetTime()); // Note that glfwGetTime() only starts to calculate time after the window is created;
 }
 
 void Window::SetTime(double time) {
@@ -476,7 +476,7 @@ glm::vec2 Window::GetMousePosition()
     double x, y;
     glfwGetCursorPos(static_cast<GLFWwindow*>(_internal), &x, &y);
     glm::vec2 scale = GetDPI();
-    return glm::vec2((float)x * scale.x, (float)y * scale.y);
+    return glm::vec2(static_cast<float>(x) * scale.x, static_cast<float>(y) * scale.y);
 }
 
 // TODO: implement mouse button state

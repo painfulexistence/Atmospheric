@@ -103,7 +103,7 @@ class CardBattleGame : public Application {
               d.Read("enemyId", enemyId);
               d.Read("seed", seedVal);
               const auto& db = EnemyDB();
-              if (enemyId < 0 || enemyId >= (int)db.size()) {
+              if (enemyId < 0 || enemyId >= static_cast<int>(db.size())) {
                   enemyId = 0;
               }
               return new EnemyBrainComponent(o, &db[enemyId], static_cast<unsigned int>(seedVal));
@@ -136,7 +136,7 @@ class CardBattleGame : public Application {
         // Enemies along the top, centered.
         const auto& enemies = _mgr->enemies();
         const float EW = 140.0f, EH = 150.0f, gap = 48.0f;
-        int n = (int)enemies.size();
+        int n = static_cast<int>(enemies.size());
         float total = n * EW + (n - 1) * gap;
         float startX = (W - total) * 0.5f;
         for (int i = 0; i < n; ++i)
@@ -150,7 +150,7 @@ class CardBattleGame : public Application {
         _handRects.clear();
         const auto& hand = _mgr->deck()->Hand();
         const float CW = 116.0f, CH = 166.0f, cgap = 12.0f;
-        int hn = (int)hand.size();
+        int hn = static_cast<int>(hand.size());
         float htotal = hn * CW + std::max(0, hn - 1) * cgap;
         float hstart = (W - htotal) * 0.5f;
         float baseY = H - CH - 24.0f;
@@ -170,7 +170,7 @@ class CardBattleGame : public Application {
         _rewardRects.clear();
         if (_mgr->phase() == Phase::Reward) {
             const auto& rc = _mgr->rewardCards();
-            int rn = (int)rc.size();
+            int rn = static_cast<int>(rc.size());
             float rtotal = rn * CW + std::max(0, rn - 1) * 40.0f;
             float rstart = (W - rtotal) * 0.5f;
             for (int i = 0; i < rn; ++i)
@@ -202,7 +202,7 @@ class CardBattleGame : public Application {
             // select target by clicking an enemy
             if (click) {
                 const auto& enemies = _mgr->enemies();
-                for (int i = 0; i < (int)enemies.size(); ++i)
+                for (int i = 0; i < static_cast<int>(enemies.size()); ++i)
                     if (enemies[i]->IsAlive() && enemies[i]->rect.Contains(m))
                         _mgr->SetTarget(i);
             }
@@ -218,7 +218,7 @@ class CardBattleGame : public Application {
             break;
         }
         case Phase::Reward: {
-            for (int i = 0; i < (int)_rewardRects.size(); ++i) {
+            for (int i = 0; i < static_cast<int>(_rewardRects.size()); ++i) {
                 if (input.IsKeyPressed(numKey(i)) ||
                     (click && _rewardRects[i].Contains(m))) {
                     _mgr->TakeReward(i);
@@ -289,7 +289,7 @@ class CardBattleGame : public Application {
     void drawBar(float x, float y, float w, float h, int cur, int max, vec4 fill) {
         auto* g = GraphicsServer::Get();
         g->DrawQuad(x + w * 0.5f, y + h * 0.5f, w, h, 0, COL_HP_BG);
-        float ratio = max > 0 ? std::clamp((float)cur / max, 0.0f, 1.0f) : 0.0f;
+        float ratio = max > 0 ? std::clamp(static_cast<float>(cur) / max, 0.0f, 1.0f) : 0.0f;
         float fw = (w - 2) * ratio;
         if (fw > 0) g->DrawQuad(x + 1 + fw * 0.5f, y + 1 + (h - 2) * 0.5f, fw, h - 2, 0, fill);
     }
@@ -360,7 +360,7 @@ class CardBattleGame : public Application {
         // selection highlight
         const auto& enemies = _mgr->enemies();
         int sel = _mgr->selectedTarget();
-        bool selected = (sel >= 0 && sel < (int)enemies.size() && enemies[sel] == e);
+        bool selected = (sel >= 0 && sel < static_cast<int>(enemies.size()) && enemies[sel] == e);
         if (selected) {
             auto* g = GraphicsServer::Get();
             g->DrawRect(r.x - 3, r.y - 3, r.w + 6, r.h + 6, COL_SELECT);
@@ -393,7 +393,7 @@ class CardBattleGame : public Application {
         if (_handRects.size() < hand.size()) {
             _handRects.clear();
             const float CW = 116.0f, CH = 166.0f, cgap = 12.0f;
-            int hn = (int)hand.size();
+            int hn = static_cast<int>(hand.size());
             float htotal = hn * CW + std::max(0, hn - 1) * cgap;
             float hstart = (W - htotal) * 0.5f;
             float baseY = H - CH - 24.0f;
@@ -401,7 +401,7 @@ class CardBattleGame : public Application {
                 _handRects.push_back({ hstart + i * (CW + cgap), baseY, CW, CH });
         }
 
-        for (int i = 0; i < (int)hand.size(); ++i) {
+        for (int i = 0; i < static_cast<int>(hand.size()); ++i) {
             const CardDef& card = GetCard(hand[i]);
             Rect r = _handRects[i];
             bool hovered = (i == _hoverCard);
@@ -506,14 +506,14 @@ class CardBattleGame : public Application {
         if (_rewardRects.size() < rc.size()) {
             _rewardRects.clear();
             const float CW = 116.0f, CH = 166.0f;
-            int rn = (int)rc.size();
+            int rn = static_cast<int>(rc.size());
             float rtotal = rn * CW + std::max(0, rn - 1) * 40.0f;
             float rstart = (W - rtotal) * 0.5f;
             for (int i = 0; i < rn; ++i)
                 _rewardRects.push_back({ rstart + i * (CW + 40.0f), H * 0.5f - CH * 0.5f, CW, CH });
         }
 
-        for (int i = 0; i < (int)rc.size(); ++i) {
+        for (int i = 0; i < static_cast<int>(rc.size()); ++i) {
             const CardDef& card = GetCard(rc[i]);
             Rect r = _rewardRects[i];
             vec4 base;

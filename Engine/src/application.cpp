@@ -1291,7 +1291,7 @@ void printMemoryStats() {
         return -1;
     });
     if (jsHeapBytes >= 0) {
-        jsHeapSizeMB = (double)jsHeapBytes / mb;
+        jsHeapSizeMB = static_cast<double>(jsHeapBytes) / mb;
     }
 
     printf("========== Memory Stats ==========\n");

@@ -31,13 +31,13 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     // ── Buffers ────────────────────────────────────────────────────────────
     {
         WGPUBufferDescriptor d{};
-        d.size  = (uint64_t)MAX_VERTS * FLOATS_PER_VERT * sizeof(float);
+        d.size  = static_cast<uint64_t>(MAX_VERTS) * FLOATS_PER_VERT * sizeof(float);
         d.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
         _vertexBuf = wgpuDeviceCreateBuffer(device, &d);
     }
     {
         WGPUBufferDescriptor d{};
-        d.size  = (uint64_t)MAX_INDICES * sizeof(uint32_t);
+        d.size  = static_cast<uint64_t>(MAX_INDICES) * sizeof(uint32_t);
         d.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
         _indexBuf = wgpuDeviceCreateBuffer(device, &d);
     }
@@ -135,7 +135,7 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     attrs[2].format = WGPUVertexFormat_Float32x4; attrs[2].offset = 16; attrs[2].shaderLocation = 2;
     attrs[3].format = WGPUVertexFormat_Float32x2; attrs[3].offset = 32; attrs[3].shaderLocation = 3;
     WGPUVertexBufferLayout vbl{};
-    vbl.arrayStride    = (uint64_t)FLOATS_PER_VERT * sizeof(float); // 40
+    vbl.arrayStride    = static_cast<uint64_t>(FLOATS_PER_VERT) * sizeof(float); // 40
     vbl.stepMode       = WGPUVertexStepMode_Vertex;
     vbl.attributeCount = 4;
     vbl.attributes     = attrs;
@@ -177,8 +177,8 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     wgpuPipelineLayoutRelease(pipelineLayout);
     wgpuShaderModuleRelease(shader);
 
-    _verts.reserve((size_t)MAX_VERTS * FLOATS_PER_VERT);
-    _indices.reserve((size_t)MAX_INDICES);
+    _verts.reserve(static_cast<size_t>(MAX_VERTS) * FLOATS_PER_VERT);
+    _indices.reserve(static_cast<size_t>(MAX_INDICES));
 }
 
 WGPUBindGroup GPUCanvasPass::_getOrCreateTexBG(uint32_t texID) {

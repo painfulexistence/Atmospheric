@@ -23,8 +23,8 @@ public:
 
     const std::vector<int>& Hand()    const { return _hand; }
     const std::vector<int>& Master()  const { return _master; }
-    int DrawCount()    const { return (int)_draw.size(); }
-    int DiscardCount() const { return (int)_discard.size(); }
+    int DrawCount()    const { return static_cast<int>(_draw.size()); }
+    int DiscardCount() const { return static_cast<int>(_discard.size()); }
 
     // Permanently add a card to the deck (post-battle reward).
     void AddCard(int cardId) { _master.push_back(cardId); }
@@ -47,7 +47,7 @@ public:
 
     // Remove the card at hand index, sending it to discard or exhaust.
     void RemoveFromHand(int handIdx, bool exhaust) {
-        if (handIdx < 0 || handIdx >= (int)_hand.size()) return;
+        if (handIdx < 0 || handIdx >= static_cast<int>(_hand.size())) return;
         int id = _hand[handIdx];
         _hand.erase(_hand.begin() + handIdx);
         if (exhaust) _exhaust.push_back(id);
@@ -56,7 +56,7 @@ public:
 
 private:
     void drawOne() {
-        if ((int)_hand.size() >= Tuning::MAX_HAND_SIZE) return;
+        if (static_cast<int>(_hand.size()) >= Tuning::MAX_HAND_SIZE) return;
         if (_draw.empty()) reshuffleDiscardIntoDraw();
         if (_draw.empty()) return;
         _hand.push_back(_draw.back());
