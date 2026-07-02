@@ -90,7 +90,7 @@ public:
             "3333333333333333333333333",
         };
         Tilemap2DData md;
-        md.width = static_cast<int>(MAP)[0].size(); md.height = static_cast<int>(MAP.size());
+        md.width = static_cast<int>(MAP[0].size()); md.height = static_cast<int>(MAP.size());
         md.tileSize = TS; md.tilesetCols = TC; md.tilesetRows = TR;
         md.solid = {3,4};
         for (const auto& row : MAP) for (char c : row) md.tiles.push_back(c-'0');
