@@ -1,39 +1,38 @@
 #pragma once
-#include <functional>
-#include <string>
-#include <vector>
 
-#include "shader.hpp"
-#include <unordered_map>
+namespace Rml { class ElementDocument; }
 
-// Describes the assets required by one game/scene.
-// Loaded from scenes/<name>.json.
-struct GameManifest {
-    std::string              name;
-    std::vector<std::string> textures;
-    std::unordered_map<std::string, ShaderProgramProps> shaders;
-
-    static GameManifest FromJSON(const std::string& json);
-};
-
-// Async scene transition: prefetch assets → clear previous scene → load new assets → callback.
+// Loading-screen / transition controller.
 //
-// Manifest path convention: assets/scenes/<sceneName>.json
+// Responsibilities are strictly presentation: show and fade the loading overlay
+// in when a scene transition begins, tick the fade-out timer each frame, hide it
+// once the fade completes, and (later) drive a progress bar.
 //
-// Usage:
-//   SceneTransition::Go("poker", [this]{
-//       // assets ready — instantiate game objects, hide loading screen
-//   });
-//
-// Loading UI is the caller's responsibility.
+// It performs NO asset loading and knows nothing about scenes, textures, or
+// shaders — Application owns all of that (see Application::TransitionToScene).
 class SceneTransition {
 public:
-    using OnReadyFn = std::function<void()>;
-    using OnErrorFn = std::function<void(const std::string& reason)>;
+    // Load the loading-screen RML document. Call once, after RmlUiManager has
+    // been initialized.
+    void Init();
 
-    static void Go(const std::string& sceneName, OnReadyFn onReady, OnErrorFn onError = nullptr,
-                   const std::string& currentSceneName = "");
+    // Begin a transition: show the overlay and fade it in.
+    void Begin();
+
+    // End a transition: fade the overlay out. The document is hidden once the
+    // fade-out timer elapses (see Update).
+    void End();
+
+    // Tick the fade-out timer; hides the document when it reaches zero. Safe to
+    // call every frame regardless of whether a transition is in progress.
+    void Update(float dt);
+
+    // Set the progress bar fill in [0, 1]. No-op if the loading-screen document
+    // has no "loading-progress" element (reserved for future use).
+    void SetProgress(float fraction);
 
 private:
-    static constexpr const char* kManifestDir = "assets/scenes/";
+    Rml::ElementDocument* _doc = nullptr;
+    float _fadeOutTimer = 0.0f;
+    static constexpr float kFadeDuration = 0.5f;
 };

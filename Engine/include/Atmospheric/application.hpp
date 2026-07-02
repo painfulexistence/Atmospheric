@@ -12,6 +12,7 @@
 
 #include "physics_server_2d.hpp"
 #include "scene.hpp"
+#include "scene_transition.hpp"
 
 #include <memory>
 #include <string>
@@ -22,7 +23,6 @@ class GameObject;
 class EditorLayer;
 class VideoRecorder;
 struct SceneBlueprint;
-namespace Rml { class ElementDocument; }
 
 struct FrameData {
     FrameData(uint64_t number, float time, float deltaTime) {
@@ -230,6 +230,13 @@ private:
     // Phase 2b: create GameObjects + Components from resolved entity blueprints.
     void InstantiateScene(const SceneBlueprint& bp);
 
+    // Async single-owner scene loader driving a full transition:
+    //   prefetch manifest → parse → prefetch assets → tear down previous scene
+    //   → load new scene (resources + entities) → onComplete.
+    // On native the prefetches are synchronous; on WASM they resolve via the
+    // browser event loop, so onComplete may run after this returns.
+    void TransitionToScene(std::string sceneName, std::function<void()> onComplete);
+
     AppConfig _config;
 
     std::shared_ptr<Window> _window = nullptr;
@@ -258,10 +265,8 @@ private:
     );// TODO: Properly separate rendering and drawing logic if the backend supports command buffering
     void SyncTransformWithPhysics();
 
-    // ─── Loading screen ─────────────────────────────────────────────────
-    Rml::ElementDocument* _loadingDoc = nullptr;
-    float _loadingScreenFadeOutTimer = 0.0f;
-    static constexpr float kLoadingScreenFadeDuration = 0.5f;
+    // ─── Loading screen / transition ────────────────────────────────────
+    SceneTransition _transition;
 
     // ─── Automated capture ──────────────────────────────────────────────
     std::unique_ptr<VideoRecorder> _recorder;
