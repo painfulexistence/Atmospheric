@@ -17,7 +17,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Keep in sync with scripts/check-emscripten-version.sh
+# Keep in sync with scripts/checkEmscriptenVersion.sh
 env:
   EMSDK_VERSION: "4.0.18"
 

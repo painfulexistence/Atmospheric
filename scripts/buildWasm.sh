@@ -49,7 +49,7 @@ fi
 echo -e ""
 
 # 1. 檢查是否已設定 Emscripten SDK 環境變數
-REQUIRED_VERSION=$("$SCRIPT_DIR/check-emscripten-version.sh" --print-primary-version)
+REQUIRED_VERSION=$("$SCRIPT_DIR/checkEmscriptenVersion.sh" --print-primary-version)
 if [ -z "$EMSDK" ]; then
     echo -e "${RED}❌ 錯誤: 未偵測到 \$EMSDK 環境變數。${NC}"
     echo -e "要為 WebAssembly (Emscripten) 進行建置，您必須先安裝並啟用 Emscripten SDK (emsdk)。"
@@ -66,7 +66,7 @@ if [ -z "$EMSDK" ]; then
 fi
 
 source "$EMSDK/emsdk_env.sh" > /dev/null 2>&1
-"$SCRIPT_DIR/check-emscripten-version.sh"
+"$SCRIPT_DIR/checkEmscriptenVersion.sh"
 
 echo -e "${GREEN}✓ 找到 EMSDK 路徑: $EMSDK${NC}"
 echo -e "Emscripten 編譯器版本: $(emcc --version | head -n 1)"
@@ -159,12 +159,12 @@ if [ "$RUN_SERVER" = "y" ] || [ "$RUN_SERVER" = "Y" ]; then
         # 移除結尾的斜線
         target_dir=${target_dir%/}
         target_name=$(basename "$target_dir")
-        
+
         # 排除系統/輔助目錄
         if [ "$target_name" = "CMakeFiles" ] || [ "$target_name" = "vcpkg_installed" ] || [ "$target_name" = "lib" ] || [ "$target_name" = "bin" ]; then
             continue
         fi
-        
+
         # 尋找該目錄下的首個 .html 檔案
         html_file=$(find "$target_dir" -maxdepth 1 -name "*.html" | head -n 1)
         if [ -n "$html_file" ]; then
