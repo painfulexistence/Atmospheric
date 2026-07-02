@@ -1,5 +1,8 @@
 name: Build (iOS)
 
+permissions:
+  contents: read
+
 # Builds HelloWorld — the only bundled example with iOS platform
 # scaffolding — for the iOS Simulator via the same CMake invocation a
 # developer would run locally (see the usage comment atop
