@@ -768,12 +768,9 @@ void BloomPass::_initGPU(WGPUDevice device, WGPUQueue queue) {
     _gpuQueue  = queue;
 
     {
-        WGPUSamplerDescriptor d{};
-        d.minFilter    = WGPUFilterMode_Linear;
-        d.magFilter    = WGPUFilterMode_Linear;
-        d.mipmapFilter = WGPUMipmapFilterMode_Nearest;
-        d.addressModeU = WGPUAddressMode_ClampToEdge;
-        d.addressModeV = WGPUAddressMode_ClampToEdge;
+        WGPUSamplerDescriptor d = gpuSamplerDesc();
+        d.minFilter = WGPUFilterMode_Linear;
+        d.magFilter = WGPUFilterMode_Linear;
         _sampler = wgpuDeviceCreateSampler(device, &d);
     }
 
@@ -987,6 +984,7 @@ void BloomPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
 
         auto runFullscreenPass = [&](WGPUTextureView target, WGPURenderPipeline pipeline, WGPUBindGroup bg) {
             WGPURenderPassColorAttachment ca{};
+            ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED; // required for non-3D attachments
             ca.view       = target;
             ca.loadOp     = WGPULoadOp_Clear;
             ca.storeOp    = WGPUStoreOp_Store;

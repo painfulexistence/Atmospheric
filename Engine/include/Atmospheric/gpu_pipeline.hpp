@@ -43,6 +43,23 @@ inline GpuBGLEntry gpuCompareSampler(uint32_t b, WGPUShaderStage v = WGPUShaderS
     return { b, v, GpuBGLEntry::Kind::ComparisonSampler, 0 };
 }
 
+// Correctly-defaulted WGPUSamplerDescriptor. Zero-initializing the struct is
+// INVALID: maxAnisotropy 0 fails Dawn validation ("Max anisotropy (0.000000)
+// is less than 1"). Start from this and override the fields you need.
+inline WGPUSamplerDescriptor gpuSamplerDesc() {
+    WGPUSamplerDescriptor d{};
+    d.addressModeU  = WGPUAddressMode_ClampToEdge;
+    d.addressModeV  = WGPUAddressMode_ClampToEdge;
+    d.addressModeW  = WGPUAddressMode_ClampToEdge;
+    d.magFilter     = WGPUFilterMode_Nearest;
+    d.minFilter     = WGPUFilterMode_Nearest;
+    d.mipmapFilter  = WGPUMipmapFilterMode_Nearest;
+    d.lodMinClamp   = 0.0f;
+    d.lodMaxClamp   = 32.0f; // WebGPU spec default
+    d.maxAnisotropy = 1;     // must be >= 1
+    return d;
+}
+
 // ── Pipeline result ───────────────────────────────────────────────────────────
 // Caller owns the handles; no automatic release on destruction (matches the
 // manual-release pattern used for all WebGPU handles in this codebase).

@@ -1027,22 +1027,18 @@ void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTexture
         wgpuQueueWriteTexture(queue, &dst, white, 4, &layout, &extent);
     }
     {
-        WGPUSamplerDescriptor d{};
+        WGPUSamplerDescriptor d = gpuSamplerDesc();
         d.minFilter    = WGPUFilterMode_Linear;
         d.magFilter    = WGPUFilterMode_Linear;
-        d.mipmapFilter = WGPUMipmapFilterMode_Nearest;
         d.addressModeU = WGPUAddressMode_Repeat;
         d.addressModeV = WGPUAddressMode_Repeat;
         _sampler = wgpuDeviceCreateSampler(device, &d);
     }
     {
-        WGPUSamplerDescriptor d{};
-        d.minFilter    = WGPUFilterMode_Linear;
-        d.magFilter    = WGPUFilterMode_Linear;
-        d.mipmapFilter = WGPUMipmapFilterMode_Nearest;
-        d.addressModeU = WGPUAddressMode_ClampToEdge;
-        d.addressModeV = WGPUAddressMode_ClampToEdge;
-        d.compare      = WGPUCompareFunction_Less; // hardware PCF compare
+        WGPUSamplerDescriptor d = gpuSamplerDesc();
+        d.minFilter = WGPUFilterMode_Linear;
+        d.magFilter = WGPUFilterMode_Linear;
+        d.compare   = WGPUCompareFunction_Less; // hardware PCF compare
         _shadowSampler = wgpuDeviceCreateSampler(device, &d);
     }
 
@@ -1969,12 +1965,9 @@ void PostProcessPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFo
         _uniformBuf = wgpuDeviceCreateBuffer(device, &d);
     }
     {
-        WGPUSamplerDescriptor d{};
-        d.minFilter    = WGPUFilterMode_Linear;
-        d.magFilter    = WGPUFilterMode_Linear;
-        d.mipmapFilter = WGPUMipmapFilterMode_Nearest;
-        d.addressModeU = WGPUAddressMode_ClampToEdge;
-        d.addressModeV = WGPUAddressMode_ClampToEdge;
+        WGPUSamplerDescriptor d = gpuSamplerDesc();
+        d.minFilter = WGPUFilterMode_Linear;
+        d.magFilter = WGPUFilterMode_Linear;
         _sampler = wgpuDeviceCreateSampler(device, &d);
     }
 
@@ -2035,6 +2028,7 @@ void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 
         auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
         WGPURenderPassColorAttachment ca{};
+        ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED; // required for non-3D attachments
         ca.view       = swapchainView;
         ca.loadOp     = WGPULoadOp_Clear;
         ca.storeOp    = WGPUStoreOp_Store;
@@ -2140,6 +2134,7 @@ void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* en
         // (Load, not Clear, so the resolved frame underneath is preserved).
         auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
         WGPURenderPassColorAttachment ca{};
+        ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED; // required for non-3D attachments
         ca.view    = swapchainView;
         ca.loadOp  = WGPULoadOp_Load;
         ca.storeOp = WGPUStoreOp_Store;

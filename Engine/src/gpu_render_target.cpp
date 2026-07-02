@@ -61,6 +61,9 @@ void GPURenderTarget::Begin(CommandEncoder* enc) {
     _colorView = wgpuTextureCreateView(_colorTexture, nullptr);
 
     WGPURenderPassColorAttachment colorAttach{};
+    // Zero-init leaves depthSlice = 0, but for non-3D attachments Dawn
+    // requires WGPU_DEPTH_SLICE_UNDEFINED (newer Chrome validates this).
+    colorAttach.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
     colorAttach.view       = _colorView;
     colorAttach.loadOp     = _clearPending ? WGPULoadOp_Clear : WGPULoadOp_Load;
     colorAttach.storeOp    = WGPUStoreOp_Store;

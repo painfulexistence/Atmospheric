@@ -44,13 +44,10 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     }
 
     // ── Sampler ────────────────────────────────────────────────────────────
+    // gpuSamplerDesc defaults (Nearest, ClampToEdge) are exactly what the
+    // pixel-art canvas wants.
     {
-        WGPUSamplerDescriptor d{};
-        d.minFilter    = WGPUFilterMode_Nearest;
-        d.magFilter    = WGPUFilterMode_Nearest;
-        d.mipmapFilter = WGPUMipmapFilterMode_Nearest;
-        d.addressModeU = WGPUAddressMode_ClampToEdge;
-        d.addressModeV = WGPUAddressMode_ClampToEdge;
+        WGPUSamplerDescriptor d = gpuSamplerDesc();
         _sampler = wgpuDeviceCreateSampler(device, &d);
     }
 
