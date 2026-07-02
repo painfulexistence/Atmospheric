@@ -139,7 +139,10 @@ void GfxFactory::Init() {
     WGPUSurfaceDescriptor surfDesc{};
     surfDesc.nextInChain   = reinterpret_cast<WGPUChainedStruct*>(&canvasDesc);
     _surface = wgpuInstanceCreateSurface(inst, &surfDesc);
-    wgpuInstanceRelease(inst);
+    // Deliberately keep the instance alive (leaked for the app lifetime):
+    // emdawnwebgpu requires a live WGPUInstance for surface/present handling —
+    // releasing the last external reference here triggers "A valid external
+    // Instance reference no longer exists" and the swapchain never composites.
 
     if (!_surface) {
         Console::Get()->Warn("[GfxFactory] wgpuInstanceCreateSurface failed. Falling back to WebGL 2.");

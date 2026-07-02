@@ -2,6 +2,7 @@
 
 #include "asset_manager.hpp"
 #include "console.hpp"
+#include "gfx_factory.hpp"
 #include "graphics_server.hpp"
 #include "particle_emitter.hpp"
 #include "renderer.hpp"
@@ -112,6 +113,9 @@ namespace Atmospheric {
     }
 
     void ParticleServer::CreateEmitterResources(ParticleEmitterComponent* emitter) {
+        // Particles are GL-only for now (transform-feedback simulation has no
+        // WebGPU equivalent until a compute pipeline abstraction exists).
+        if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
         // 1. Create VAO for simulation pass
         glGenVertexArrays(1, &emitter->vao);
 
@@ -158,6 +162,7 @@ namespace Atmospheric {
     }
 
     void ParticleServer::ReleaseEmitterResources(ParticleEmitterComponent* emitter) {
+        if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
         if (emitter->vao != 0) {
             glDeleteVertexArrays(1, &emitter->vao);
         }
@@ -172,6 +177,7 @@ namespace Atmospheric {
     };
 
     void ParticleServer::Simulate(float deltaTime) {
+        if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
         if (emitters.empty() || !simulation_shader) return;
 
         simulation_shader->Activate();
@@ -196,6 +202,7 @@ namespace Atmospheric {
     }
 
     void ParticleServer::Draw(const CameraInfo& camInfo) {
+        if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
         if (emitters.empty() || !drawing_shader) return;
 
         drawing_shader->Activate();

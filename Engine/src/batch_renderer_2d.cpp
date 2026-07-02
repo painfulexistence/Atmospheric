@@ -1,6 +1,7 @@
 #include "batch_renderer_2d.hpp"
 #include "asset_manager.hpp"
 #include "console.hpp"
+#include "gfx_factory.hpp"
 #include "globals.hpp" // provides glad on native, GLES3/gl3.h on Emscripten
 #include "shader.hpp"
 #include <array>
@@ -51,7 +52,28 @@ BatchRenderer2D::~BatchRenderer2D() {
 }
 
 void BatchRenderer2D::Init() {
+    // CPU-side staging is needed by both backends: under WebGPU the batcher
+    // runs in CPU-only mode (StartBatch/DrawGeometry/DrainToCommands feed
+    // GPUCanvasPass) and must not touch GL — no context exists.
     m_Data->QuadVertexBufferBase = new BatchVertex[m_Data->MaxVertices];
+    m_Data->QuadIndexBufferBase  = new uint32_t[m_Data->MaxIndices];
+
+    m_Data->QuadVertexPositions[0] = { -0.5f, -0.5f, 0.0f, 1.0f };
+    m_Data->QuadVertexPositions[1] = {  0.5f, -0.5f, 0.0f, 1.0f };
+    m_Data->QuadVertexPositions[2] = {  0.5f,  0.5f, 0.0f, 1.0f };
+    m_Data->QuadVertexPositions[3] = { -0.5f,  0.5f, 0.0f, 1.0f };
+
+    m_Data->QuadTexCoords[0] = { 0.0f, 0.0f };
+    m_Data->QuadTexCoords[1] = { 1.0f, 0.0f };
+    m_Data->QuadTexCoords[2] = { 1.0f, 1.0f };
+    m_Data->QuadTexCoords[3] = { 0.0f, 1.0f };
+
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        // Slot 0 stays 0 — DrainToCommands maps it to textureID 0, which
+        // GPUCanvasPass treats as the solid-color/white sentinel.
+        m_Data->TextureSlots[0] = 0;
+        return;
+    }
 
     glGenVertexArrays(1, &m_Data->QuadVAO);
     glBindVertexArray(m_Data->QuadVAO);
@@ -75,8 +97,6 @@ void BatchRenderer2D::Init() {
     glEnableVertexAttribArray(4);
     glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(BatchVertex), (const void*)offsetof(BatchVertex, entityID));
 
-    m_Data->QuadIndexBufferBase = new uint32_t[m_Data->MaxIndices];
-
     glGenBuffers(1, &m_Data->QuadIBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_Data->QuadIBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_Data->MaxIndices * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
@@ -92,16 +112,6 @@ void BatchRenderer2D::Init() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     m_Data->TextureSlots[0] = m_Data->WhiteTexture;
-
-    m_Data->QuadVertexPositions[0] = { -0.5f, -0.5f, 0.0f, 1.0f };
-    m_Data->QuadVertexPositions[1] = { 0.5f, -0.5f, 0.0f, 1.0f };
-    m_Data->QuadVertexPositions[2] = { 0.5f, 0.5f, 0.0f, 1.0f };
-    m_Data->QuadVertexPositions[3] = { -0.5f, 0.5f, 0.0f, 1.0f };
-
-    m_Data->QuadTexCoords[0] = { 0.0f, 0.0f };
-    m_Data->QuadTexCoords[1] = { 1.0f, 0.0f };
-    m_Data->QuadTexCoords[2] = { 1.0f, 1.0f };
-    m_Data->QuadTexCoords[3] = { 0.0f, 1.0f };
 
     // Check shader
     try {
@@ -183,6 +193,11 @@ void BatchRenderer2D::StartBatch() {
 
 void BatchRenderer2D::Flush() {
     if (m_Data->QuadIndexCount == 0) return;
+    // WebGPU: the batcher is CPU-only (drained via DrainToCommands); a Flush
+    // can still be reached through NextBatch() when the staging buffer fills
+    // up mid-drain — skip the GL submission rather than crash. The overflow
+    // geometry is dropped for that frame (staging holds 20k quads).
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
 
     uint32_t dataSize = (uint32_t)((uint8_t*)m_Data->QuadVertexBufferPtr - (uint8_t*)m_Data->QuadVertexBufferBase);
     glBindBuffer(GL_ARRAY_BUFFER, m_Data->QuadVBO);
