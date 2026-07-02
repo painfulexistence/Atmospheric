@@ -1,0 +1,75 @@
+name: Build (Android)
+
+# Builds HelloWorld — the only bundled example with Android platform
+# scaffolding — through its real Gradle project rather than invoking cmake
+# directly. A raw cmake build only proves the engine compiles for Android;
+# it misses real integration issues (missing gradle-wrapper.jar, CMake
+# version mismatches with AGP, APK packaging) that only surface once Gradle
+# actually drives the build.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    name: Android Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          sparse-checkout: |
+            Engine
+            cmake
+            triplets
+            Examples
+            scripts
+            CMakeLists.txt
+            CMakePresets.json
+            vcpkg.json
+
+      - name: Check NDK version pin matches vcpkg triplets
+        run: ./scripts/checkNdkVersion.sh
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install NDK
+        run: |
+          NDK_VERSION=$(./scripts/checkNdkVersion.sh --print-primary-version)
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null
+
+      - name: Install vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          path: vcpkg
+
+      - name: Bootstrap vcpkg
+        run: ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Cache vcpkg installed packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/vcpkg/installed
+            ${{ github.workspace }}/vcpkg/packages
+          key: vcpkg-android-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-android-
+
+      - name: Build APK (Gradle)
+        working-directory: Examples/HelloWorld/platforms/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon

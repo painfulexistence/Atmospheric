@@ -17,10 +17,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Keep in sync with scripts/checkEmscriptenVersion.sh
-env:
-  EMSDK_VERSION: "4.0.18"
-
 jobs:
   build-wasm-webgl:
     runs-on: ubuntu-latest
@@ -34,9 +30,14 @@ jobs:
             cmake
             triplets
             Examples
+            scripts
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json
+
+      - name: Detect required Emscripten version
+        id: emsdk-version
+        run: echo "version=$(./scripts/checkEmscriptenVersion.sh --print-primary-version)" >> "$GITHUB_OUTPUT"
 
       # ── Emscripten SDK ─────────────────────────────────────────────────────
       # EMSDK env var is exported automatically and is read by CMakeLists.txt:
@@ -44,8 +45,8 @@ jobs:
       - name: Set up Emscripten SDK
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: ${{ env.EMSDK_VERSION }}
-          actions-cache-folder: emsdk-${{ env.EMSDK_VERSION }}
+          version: ${{ steps.emsdk-version.outputs.version }}
+          actions-cache-folder: emsdk-${{ steps.emsdk-version.outputs.version }}
 
       # ── System tools ───────────────────────────────────────────────────────
       - name: Install system dependencies
@@ -121,15 +122,20 @@ jobs:
             cmake
             triplets
             Examples
+            scripts
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json
 
+      - name: Detect required Emscripten version
+        id: emsdk-version
+        run: echo "version=$(./scripts/checkEmscriptenVersion.sh --print-primary-version)" >> "$GITHUB_OUTPUT"
+
       - name: Set up Emscripten SDK
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: ${{ env.EMSDK_VERSION }}
-          actions-cache-folder: emsdk-${{ env.EMSDK_VERSION }}
+          version: ${{ steps.emsdk-version.outputs.version }}
+          actions-cache-folder: emsdk-${{ steps.emsdk-version.outputs.version }}
 
       - name: Install system dependencies
         run: |
