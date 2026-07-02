@@ -60,12 +60,12 @@ jobs:
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json
-            scripts/check-emscripten-version.sh
+            scripts/checkEmscriptenVersion.sh
 
       - name: Read Emscripten version
         id: emver
         run: |
-          echo "version=$(bash scripts/check-emscripten-version.sh --print-primary-version)" >> "$GITHUB_OUTPUT"
+          echo "version=$(bash scripts/checkEmscriptenVersion.sh --print-primary-version)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Emscripten SDK
         uses: mymindstorm/setup-emsdk@v14
