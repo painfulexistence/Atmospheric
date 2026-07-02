@@ -15,7 +15,10 @@ class GPUCanvasPass {
 public:
     static constexpr int MAX_VERTS       = 32768; // 8192 quads × 4
     static constexpr int MAX_INDICES     = 49152; // 8192 quads × 6
-    static constexpr int FLOATS_PER_VERT = 10;    // x,y, u,v, r,g,b,a, texIdx(unused), flags
+    // Full 3D position: WorldCanvasPass feeds world-space vertices through a
+    // perspective viewProj, so z must survive to the shader (dropping it
+    // projects every world sprite onto the z=0 plane — they vanish).
+    static constexpr int FLOATS_PER_VERT = 11;    // x,y,z, u,v, r,g,b,a, texIdx(unused), flags
 
     GPUCanvasPass() = default;
     ~GPUCanvasPass();
@@ -53,7 +56,7 @@ struct Uniforms { viewProj: mat4x4<f32> }
 @group(1) @binding(1) var samp: sampler;
 
 struct Vert {
-  @location(0) pos:   vec2<f32>,
+  @location(0) pos:   vec3<f32>,
   @location(1) uv:    vec2<f32>,
   @location(2) color: vec4<f32>,
   @location(3) flags: vec2<f32>,
@@ -66,7 +69,7 @@ struct VOut {
 }
 
 @vertex fn vs(v: Vert) -> VOut {
-  return VOut(uni.viewProj * vec4<f32>(v.pos, 0.0, 1.0), v.uv, v.color, v.flags);
+  return VOut(uni.viewProj * vec4<f32>(v.pos, 1.0), v.uv, v.color, v.flags);
 }
 
 @fragment fn fs(in: VOut) -> @location(0) vec4<f32> {

@@ -79,15 +79,17 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     // "depth-transparent" configuration that keeps attachment states
     // compatible (Dawn rejects the pipeline in the pass otherwise).
     // Vertex layout: pos(2f) uv(2f) color(4f) flags(2f) = 10 floats = 40 B.
+    const std::vector<GpuVertexAttr> quadAttrs = {
+        {WGPUVertexFormat_Float32x3,  0, 0}, // pos (xyz — see FLOATS_PER_VERT)
+        {WGPUVertexFormat_Float32x2, 12, 1}, // uv
+        {WGPUVertexFormat_Float32x4, 20, 2}, // color
+        {WGPUVertexFormat_Float32x2, 36, 3}, // texIdx(unused), flags
+    };
     auto p = GpuPipelineBuilder(device)
         .wgsl(QUAD_WGSL)
         .bgl({ gpuUniform(0, wgsl_stage::vert, 64) })
         .bgl({ gpuTexture(0), gpuSampler(1) })
-        .vertex((uint64_t)FLOATS_PER_VERT * sizeof(float),
-                { {WGPUVertexFormat_Float32x2,  0, 0},
-                  {WGPUVertexFormat_Float32x2,  8, 1},
-                  {WGPUVertexFormat_Float32x4, 16, 2},
-                  {WGPUVertexFormat_Float32x2, 32, 3} })
+        .vertex((uint64_t)FLOATS_PER_VERT * sizeof(float), quadAttrs)
         .colorFormat(format).blend()
         .depth(false, WGPUCompareFunction_Always)
         .build();
@@ -100,12 +102,6 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
 
     // ── Depth-tested variant (WorldCanvasPass): read-only LessEqual ────────
     // Borrows the BGLs created above so bind groups stay compatible.
-    const std::vector<GpuVertexAttr> quadAttrs = {
-        {WGPUVertexFormat_Float32x2,  0, 0},
-        {WGPUVertexFormat_Float32x2,  8, 1},
-        {WGPUVertexFormat_Float32x4, 16, 2},
-        {WGPUVertexFormat_Float32x2, 32, 3},
-    };
     _pipelineDepthTest = GpuPipelineBuilder(device)
         .wgsl(QUAD_WGSL)
         .bgl(_uniformBGL)
@@ -184,6 +180,7 @@ void GPUCanvasPass::Render(CommandEncoder* enc,
         for (const auto& bv : cmd.vertices) {
             _verts.push_back(bv.position.x);
             _verts.push_back(bv.position.y);
+            _verts.push_back(bv.position.z);
             _verts.push_back(bv.uv.x);
             _verts.push_back(bv.uv.y);
             _verts.push_back(bv.color.r);

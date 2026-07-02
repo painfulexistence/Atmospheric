@@ -1192,11 +1192,17 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
         wgpuQueueWriteBuffer(_gpuQueue, _drawUniformBuf, 0, drawData.data(), drawData.size());
 
         auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
+        // Materials without a base map fall back to the default diffuse
+        // texture (checkerboard), matching what the GL path binds via
+        // AssetManager::GetDefaultTextures(); plain white is the last resort.
+        const auto& defaults = AssetManager::Get().GetDefaultTextures();
+        uint32_t defaultDiffuse = defaults.empty() ? 0 : static_cast<uint32_t>(defaults[0]);
+
         renderer.sceneRT->Begin(enc);
         wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _pipeline);
         for (size_t i = 0; i < draws.size(); ++i) {
             Material* mat = draws[i].mat;
-            uint32_t texID = (mat && mat->baseMap.IsValid()) ? mat->baseMap.id : 0;
+            uint32_t texID = (mat && mat->baseMap.IsValid()) ? mat->baseMap.id : defaultDiffuse;
             WGPUBindGroup texBG = _getOrCreateTexBG(texID);
 
             uint32_t dynamicOffset = static_cast<uint32_t>(i * FWD_DRAW_SLOT_STRIDE);
@@ -1829,7 +1835,8 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         GPUCanvasPass* gpuPass = renderer.GetGPUCanvasPass();
         if (!gpuPass) return;
 
-        ctx->FlushTextToQueue(); // convert text commands → BatchDrawCommands in queue
+        // Note: buffered text is NOT drawn here — it goes through UIPass
+        // (post-tonemap), matching the GL path's RenderBufferedText placement.
 
         // Collect 2D drawables (same layer filter as the GL path below)
         std::vector<CanvasDrawable*> drawables2D;
@@ -2101,13 +2108,9 @@ void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* en
         // CanvasPass::FlushTextToQueue() earlier in the render graph, so the
         // only thing left to handle here is RmlUi's queued geometry.
         auto& uiQueue = renderer.GetUIQueue();
-        if (uiQueue.empty()) return;
 
         GPUCanvasPass* gpuPass = renderer.GetGPUCanvasPass();
         if (!gpuPass) return;
-
-        WGPUTextureView swapchainView = GfxFactory::GetCurrentSwapchainView();
-        if (!swapchainView) return; // surface not ready (device still initializing)
 
         // GPUCanvasPass::Render ignores BatchDrawCommand::transform — every
         // other producer bakes translation into vertex positions before
@@ -2120,10 +2123,16 @@ void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* en
         for (const auto& cmd : uiQueue)
             br->DrawGeometry(cmd.vertices, cmd.indices, cmd.textureID, cmd.transform);
         auto allCommands = br->DrainToCommands();
-        if (allCommands.empty()) {
-            wgpuTextureViewRelease(swapchainView);
-            return;
-        }
+
+        // Buffered text renders here, after tonemapping, exactly like the GL
+        // path's RenderBufferedText — through sceneRT it would get tonemapped
+        // (white text turns grey). Text vertices are already pre-transformed.
+        ctx->FlushTextToCommands(allCommands);
+
+        if (allCommands.empty()) return;
+
+        WGPUTextureView swapchainView = GfxFactory::GetCurrentSwapchainView();
+        if (!swapchainView) return; // surface not ready (device still initializing)
 
         auto logicalSize = Window::Get()->GetLogicalSize();
         glm::mat4 projection = glm::ortho(

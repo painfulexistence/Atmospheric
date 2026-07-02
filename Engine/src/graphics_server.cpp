@@ -792,7 +792,7 @@ void GraphicsServer::RenderBufferedText(BatchRenderer2D* batch) {
     _textCommands.clear();
 }
 
-void GraphicsServer::FlushTextToQueue() {
+void GraphicsServer::FlushTextToCommands(std::vector<BatchDrawCommand>& out) {
     for (const auto& cmd : _textCommands) {
         Font* font = _fontManager.GetFont(cmd.fontID);
         if (!font) continue;
@@ -819,7 +819,7 @@ void GraphicsServer::FlushTextToQueue() {
                 bdc.textureID = font->textureID;
                 bdc.transform = glm::mat4(1.0f);
                 CreateQuad(bdc.vertices, bdc.indices, transform, cmd.color, uvs);
-                renderer->SubmitCanvasCommand(bdc);
+                out.push_back(std::move(bdc));
             }
             cursorX += glyph->advance * cmd.scale;
         }
