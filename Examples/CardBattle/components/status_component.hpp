@@ -50,14 +50,14 @@ public:
     int ModifyOutgoingDamage(int base) const {
         int dmg = base + Get(StatusType::Strength);
         if (Has(StatusType::Weak))
-            dmg = static_cast<int>(std)::floor(dmg * Tuning::WEAK_MULT);
+            dmg = static_cast<int>(std::floor(dmg * Tuning::WEAK_MULT));
         return std::max(0, dmg);
     }
 
     // Damage this combatant takes: x Vulnerable.
     int ModifyIncomingDamage(int dmg) const {
         if (Has(StatusType::Vulnerable))
-            dmg = static_cast<int>(std)::floor(dmg * Tuning::VULNERABLE_MULT);
+            dmg = static_cast<int>(std::floor(dmg * Tuning::VULNERABLE_MULT));
         return std::max(0, dmg);
     }
 
@@ -78,7 +78,7 @@ public:
 private:
     void decay(StatusType t) { if (_stacks[static_cast<int>(t)] > 0) _stacks[static_cast<int>(t)]--; }
 
-    std::array<int, static_cast<int>(StatusType)::COUNT> _stacks{};
+    std::array<int, static_cast<int>(StatusType::COUNT)> _stacks{};
 };
 
 } // namespace CardGame

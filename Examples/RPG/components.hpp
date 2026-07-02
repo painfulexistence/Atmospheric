@@ -317,7 +317,7 @@ private:
         b.tickLog(dt);
         switch (b.phase) {
         case BattlePhase::PlayerMenu: {
-            int count = static_cast<int>(BattleMenuSel)::COUNT;
+            int count = static_cast<int>(BattleMenuSel::COUNT);
             if (inp->IsKeyPressed(Key::UP)   || inp->IsKeyPressed(Key::W)) b.menuSel=(b.menuSel+count-1)%count;
             if (inp->IsKeyPressed(Key::DOWN) || inp->IsKeyPressed(Key::S)) b.menuSel=(b.menuSel+1)%count;
             if (inp->IsKeyPressed(Key::Z)    || inp->IsKeyPressed(Key::ENTER)) {

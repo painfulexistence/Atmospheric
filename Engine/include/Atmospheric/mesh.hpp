@@ -12,7 +12,6 @@
 #include <optional>
 #include <vector>
 
-
 enum class MeshType {
     PRIM    = 0,
     TERRAIN = 1,

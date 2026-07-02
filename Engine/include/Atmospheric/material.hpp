@@ -81,8 +81,12 @@ public:
     float     waterLine       = 32.0f;
     float     waveStrength    =  0.1f;
     float     waveSpeed       =  1.0f;
-    glm::vec3 waterFogColor   = {0.55f, 0.65f, 0.75f};
-    float     waterFogDensity =  0.003f;
+    // Fog color is not stored here -- WaterPass reads it live from SkyboxPass::skyColor,
+    // matching VX (chunk/water fog both track the sky gradient color every frame).
+    float     waterFogDensity =  0.00001f; // VX: u_fog_density in scene.py render_water/render_terrain
+    glm::vec3 deepColor       = {0.05f, 0.1f, 0.25f};   // VX COLOR_INDIGO
+    glm::vec3 shallowColor    = {0.686f, 0.933f, 0.933f}; // VX COLOR_MINT_GREEN
+    float     beerCoef        =  0.095f;
 
     WaterMaterial() : Material(MaterialProps{}) {
         renderQueue     = RenderQueue::Transparent;

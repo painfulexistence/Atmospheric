@@ -125,19 +125,17 @@ void EditorLayer::DrawAppView() {
     ImGui::Begin("Application");
     {
         ImGui::BeginChild("Scene", ImVec2(200, 400), true);
-        ImGui::Text("Scene (%d entities)", static_cast<uint32_t>(_app->GetEntities().size()));
+        const auto& entities = _app->GetEntities();
+        int rootCount = 0;
+        for (auto* e : entities) if (!e->parent) ++rootCount;
+        ImGui::Text("Scene (%d / %d)", rootCount, static_cast<int>(entities.size()));
         if (ImGui::Button("Reload Scene")) {
             _app->ReloadScene();
         }
         ImGui::Separator();
-        ImGui::BeginGroup();
-        for (auto& entity : _app->GetEntities()) {
-            bool selected = entity == _selectedEntity;
-            if (ImGui::Selectable(entity->GetName().c_str(), selected)) {
-                _selectedEntity = entity;
-            }
+        for (auto* entity : entities) {
+            if (!entity->parent) DrawEntityNode(entity, entities);
         }
-        ImGui::EndGroup();
         ImGui::EndChild();
 
         ImGui::SameLine();
@@ -151,6 +149,29 @@ void EditorLayer::DrawAppView() {
         ImGui::EndChild();
     }
     ImGui::End();
+}
+
+void EditorLayer::DrawEntityNode(GameObject* entity, const std::vector<GameObject*>& all) {
+    bool hasChildren = false;
+    for (auto* e : all) {
+        if (e->parent == entity) { hasChildren = true; break; }
+    }
+
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+    if (entity == _selectedEntity) flags |= ImGuiTreeNodeFlags_Selected;
+    if (!hasChildren) flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+
+    bool open = ImGui::TreeNodeEx((void*)entity, flags, "%s", entity->GetName().c_str());
+    if (ImGui::IsItemClicked()) _selectedEntity = entity;
+
+    if (hasChildren) {
+        if (open) {
+            for (auto* e : all) {
+                if (e->parent == entity) DrawEntityNode(e, all);
+            }
+            ImGui::TreePop();
+        }
+    }
 }
 
 void EditorLayer::DrawEntityInspector(GameObject* entity) {

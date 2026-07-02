@@ -36,6 +36,7 @@ private:
 
     void DrawSystemInfo();
     void DrawAppView();
+    void DrawEntityNode(GameObject* entity, const std::vector<GameObject*>& all);
     void DrawEntityInspector(GameObject* entity);
     void DrawEngineView();
     void ToggleRecording();

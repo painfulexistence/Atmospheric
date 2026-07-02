@@ -314,9 +314,9 @@ inline std::vector<uint8_t> MakeColorSheetPixels(
                 for (int px_ = 0; px_ < tileSize; px_++) {
                     int i = ((r * tileSize + py) * W + c * tileSize + px_) * 4;
                     bool edge = px_ < 2 || py < 2 || px_ >= tileSize - 2 || py >= tileSize - 2;
-                    px[i  ] = static_cast<uint8_t>(std)::clamp(static_cast<int>(cr) + (edge ? -30 : noise(rng)), 0, 255);
-                    px[i+1] = static_cast<uint8_t>(std)::clamp(static_cast<int>(cg) + (edge ? -30 : noise(rng)), 0, 255);
-                    px[i+2] = static_cast<uint8_t>(std)::clamp(static_cast<int>(cb) + (edge ? -30 : noise(rng)), 0, 255);
+                    px[i  ] = static_cast<uint8_t>(std::clamp(static_cast<int>(cr) + (edge ? -30 : noise(rng)), 0, 255));
+                    px[i+1] = static_cast<uint8_t>(std::clamp(static_cast<int>(cg) + (edge ? -30 : noise(rng)), 0, 255));
+                    px[i+2] = static_cast<uint8_t>(std::clamp(static_cast<int>(cb) + (edge ? -30 : noise(rng)), 0, 255));
                     px[i+3] = 255;
                 }
             }

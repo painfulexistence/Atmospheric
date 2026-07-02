@@ -42,7 +42,7 @@ static glm::vec4 SideColor(int sides) {
         {0.10f, 0.65f, 1.00f, 1.0f}, // 8 - sky blue   192°
         {0.75f, 0.15f, 1.00f, 1.0f}, // 9 - violet     270° (circle)
     };
-    int idx = std::clamp(sides - MIN_SIDES, 0, static_cast<int>(std)::size(palette) - 1);
+    int idx = std::clamp(sides - MIN_SIDES, 0, static_cast<int>(std::size(palette)) - 1);
     return palette[idx];
 }
 

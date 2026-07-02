@@ -310,7 +310,14 @@ void AssetManager::LoadDefaultShaders() {
                   { "bloom_threshold", { .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_threshold.frag" } },
                   { "bloom_downsample",{ .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_downsample.frag" } },
                   { "bloom_upsample",  { .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_upsample.frag" } },
-                  { "bloom_composite", { .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_composite.frag" } } });
+                  { "bloom_composite",    { .vert = "assets/shaders/bloom.vert",  .frag = "assets/shaders/bloom_composite.frag"    } },
+                  { "post_crt",          { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_crt.frag"           } },
+                  { "post_vhs",          { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_vhs.frag"           } },
+                  { "post_color_grading",{ .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_color_grading.frag" } },
+                  { "post_posterize",    { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_posterize.frag"     } },
+                  { "post_sobel",        { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_sobel.frag"         } },
+                  { "post_edges",        { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_edges.frag"         } },
+                  { "post_vignette",     { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_vignette.frag"      } } });
     _defaultShaderCount = static_cast<uint32_t>(shaders.size());
 }
 
@@ -786,8 +793,8 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         }
 
         // Level dimensions (clamped to 1 for very small mips).
-        GLsizei w = static_cast<GLsizei>(std)::max(1u, baseWidth  >> level);
-        GLsizei h = static_cast<GLsizei>(std)::max(1u, baseHeight >> level);
+        GLsizei w = static_cast<GLsizei>(std::max(1u, baseWidth  >> level));
+        GLsizei h = static_cast<GLsizei>(std::max(1u, baseHeight >> level));
 
         glCompressedTexImage2D(GL_TEXTURE_2D, static_cast<GLint>(level), glFmt,
                                w, h, 0, static_cast<GLsizei>(bufferSize), buf.data());
