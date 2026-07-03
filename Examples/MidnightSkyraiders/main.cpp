@@ -51,7 +51,6 @@ class MidnightSkyraiders : public Application {
     TextureHandle texBullet, texCircle, texOrbit;
     TextureHandle texEBullet, texECircle;
     TextureHandle texBg[3]   = {};
-    TextureHandle texTitle;
     FontHandle fontID     = 0;
 
     MusicID bgm     = 0;
@@ -133,7 +132,7 @@ class MidnightSkyraiders : public Application {
         texBg[0]   = "assets/images/nightsky-bg.png";
         texBg[1]   = "assets/images/nightsky-mountains.png";
         texBg[2]   = "assets/images/nightsky-fg.png";
-        texTitle   = "assets/images/title.png";
+        // The title sprite (and its texture) live in assets/scenes/main.json.
 
         fontID = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 22.0f);
 
@@ -186,16 +185,12 @@ class MidnightSkyraiders : public Application {
 
     void enterTitle() {
         state = GameState::Title;
-        titleObj = CreateGameObject(glm::vec2(HALF, HALF));
-        titleObj->AddComponent<SpriteComponent>(SpriteProps{
-            .size      = glm::vec2(WORLD, WORLD),
-            .pivot     = glm::vec2(0.5f, 0.5f),
-            .color     = glm::vec4(1,1,1,1),
-            .texture   = texTitle,
-            .layer     = CanvasLayer::LAYER_WORLD_2D,
-            .flipY     = true,
-            .zOrder    = 20,
-        });
+        // The title sprite is instantiated from assets/scenes/main.json. Grab a
+        // reference to it so updateTitle can hide it once the player starts.
+        titleObj = nullptr;
+        for (auto* e : GetEntities()) {
+            if (e->GetName() == "Title") { titleObj = e; break; }
+        }
     }
 
     void updateTitle(float /*dt*/) {
@@ -389,7 +384,8 @@ static const std::vector<std::string> kAssets = {
     "assets/images/nightsky-bg.ktx2",
     "assets/images/nightsky-mountains.ktx2",
     "assets/images/nightsky-fg.ktx2",
-    "assets/images/title.ktx2",
+    // title.png is declared in assets/scenes/main.json and prefetched/loaded by
+    // the scene system, so it is intentionally not listed here.
     "assets/sounds/sky-lines.ogg",
     "assets/sounds/explosion.wav",
     "assets/sounds/game-over.wav",

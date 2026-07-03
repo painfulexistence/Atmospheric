@@ -2,17 +2,22 @@
 <head>
     <title>Loading</title>
     <style>
+        /* Opaque by default: when the document is first shown (before the very
+           first scene loads) it covers the frame immediately, so there is no
+           scene/skybox flash. The fade-out is driven by adding the "hidden"
+           class; a later Begin() removes it again, which fades the overlay back
+           in for mid-game transitions. */
         body {
             width: 100%;
             height: 100%;
             margin: 0px;
             padding: 0px;
             background-color: #000000;
-            opacity: 0;
+            opacity: 1;
             transition: opacity 0.4s;
         }
-        body.visible {
-            opacity: 1;
+        body.hidden {
+            opacity: 0;
         }
     </style>
 </head>

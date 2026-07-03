@@ -286,10 +286,10 @@ void AssetManager::UnloadSceneAssets(const std::string& sceneName) {
         // No compaction: shaders[idx] == nullptr is a valid empty slot.
     }
 
-    // Materials: same no-compact invariant.
-    if (j.contains("materials") && j["materials"].is_array()) {
-        for (const auto& mat : j["materials"]) {
-            std::string name = mat.get<std::string>();
+    // Materials: same no-compact invariant. The "materials" section is an object
+    // mapping name -> props (see Application::LoadSceneResources); iterate keys.
+    if (j.contains("materials") && j["materials"].is_object()) {
+        for (const auto& [name, _] : j["materials"].items()) {
             auto matIt = _materialCache.find(name);
             if (matIt == _materialCache.end()) continue;
             uint32_t idx = matIt->second;

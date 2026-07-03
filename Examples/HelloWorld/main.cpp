@@ -12,11 +12,8 @@ class HelloWorld : public Application {
     FontHandle fontID;
 
     void OnInit() override {
-        GoScene("main", [this]{ OnLoad(); });
-    }
-
-    void OnLoad() override {
-        // Register local components
+        // Component types referenced by assets/scenes/main.json must be registered
+        // before GoScene instantiates the scene's entities.
         ComponentFactory::Register("RotatorComponent",
           [](GameObject* o, Deserializer& d) -> Component* {
               glm::vec3 angVel(0.0f);
@@ -33,7 +30,6 @@ class HelloWorld : public Application {
               d.Read("phase", phase);
               return new OscillatorComponent(o, axis, amp, freq, phase);
           });
-
         ComponentFactory::Register("SpritePulseComponent",
           [](GameObject* o, Deserializer& d) -> Component* {
               float minA = 0.0f, maxA = 1.0f, freq = 1.0f, phase = 0.0f;
@@ -44,21 +40,25 @@ class HelloWorld : public Application {
               return new SpritePulseComponent(o, minA, maxA, freq, phase);
           });
 
-        // Load font
-        fontID = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
-        MaterialProps matProps = {
-            .diffuse = { 1., 1., 1. },
-            .specular = { .296648, .296648, .296648 },
-            .ambient = { .25, .20725, .20725 },
-            .shininess = 0.088
-        };
-        AssetManager::Get().CreateMaterial(matProps);
+        GoScene("main", [this]{ OnLoad(); });
+    }
 
-        mainCamera->gameObject->SetPosition(glm::vec3(-10.0, 5.0, 0.0));
+    void OnLoad() override {
+        // The camera, world-space sprites, 2D sprites and HUD are all declared in
+        // assets/scenes/main.json and instantiated before this runs. Keeping the
+        // camera in the scene means it has its own GameObject — repositioning it
+        // no longer moves __root__ (the default camera's owner), which used to
+        // offset every JSON-parented entity. OnLoad only sets up the things that
+        // are still procedural: the font, the material, and the cube's runtime mesh.
+
+        // Font is used by the cube's 3D label (the HUD loads its own via fontPath).
+        fontID = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
 
         // === Rotating, bobbing cube ===
+        // The mesh is still procedural, but its material ("cubeMat") is now
+        // declared in assets/scenes/main.json and looked up by name here.
         auto cubeMesh = AssetManager::Get().CreateCubeMesh("CubeMesh", 1.0f);
-        AssetManager::Get().GetMeshPtr(cubeMesh)->SetMaterial(AssetManager::Get().GetMaterials()[0].get());
+        AssetManager::Get().GetMeshPtr(cubeMesh)->SetMaterial(AssetManager::Get().GetMaterial("cubeMat"));
 
         auto* cube = CreateGameObject(glm::vec3(0.0f, 5.0f, 0.0f));
         cube->AddComponent<MeshComponent>(cubeMesh);
@@ -73,62 +73,9 @@ class HelloWorld : public Application {
             .color    = glm::vec4(1.0f, 1.0f, 0.0f, 1.0f),
         });
 
-        // === World Space Sprites (WorldCanvasPass) ===
-        // Rendered with depth testing - occluded by 3D geometry. Each one bobs
-        // up and down via an OscillatorComponent.
-        glm::vec4 worldColors[] = {
-            { 1.0f, 0.3f, 0.3f, 0.8f },// Red
-            { 0.3f, 1.0f, 0.3f, 0.8f },// Green
-            { 0.3f, 0.3f, 1.0f, 0.8f },// Blue
-            { 1.0f, 1.0f, 0.3f, 0.8f },// Yellow
-        };
-
-        for (int i = 0; i < 4; i++) {
-            auto* spriteObj = CreateGameObject(glm::vec3(i * 2.0f - 3.0f, 2.0f, 3.0f));
-            spriteObj->AddComponent<SpriteComponent>(SpriteProps{
-              .size = glm::vec2(1.0f, 1.0f),
-              .pivot = glm::vec2(0.5f, 0.5f),
-              .color = worldColors[i],
-              .texture = -1,
-              .layer = CanvasLayer::LAYER_WORLD,
-            });
-            spriteObj->AddComponent<OscillatorComponent>(glm::vec3(0.0f, 1.0f, 0.0f), 0.5f, 2.0f, i * 0.5f);
-        }
-
-        // === 2D Sprites (CanvasPass) ===
-        // Screen coordinates (pixels), rendered after 3D. Each pulses its alpha
-        // via a SpritePulseComponent.
-        glm::vec4 sprite2DColors[] = {
-            { 1.0f, 0.5f, 0.0f, 0.9f },// Orange
-            { 0.5f, 0.0f, 1.0f, 0.9f },// Purple
-            { 0.0f, 1.0f, 1.0f, 0.9f },// Cyan
-        };
-
-        for (int i = 0; i < 3; i++) {
-            // Screen coordinates: top-left origin, pixels
-            auto* spriteObj = CreateGameObject(glm::vec3(20.0f + i * 70.0f, 20.0f, 0.0f));
-            spriteObj->AddComponent<SpriteComponent>(SpriteProps{
-              .size = glm::vec2(50.0f, 50.0f),// Pixels
-              .pivot = glm::vec2(0.0f, 0.0f),// Top-left pivot
-              .color = sprite2DColors[i],
-              .texture = -1,
-              // Default layer is LAYER_WORLD_2D (2D screen space)
-            });
-            spriteObj->AddComponent<SpritePulseComponent>(0.4f, 1.0f, 3.0f, i * 1.0f);
-        }
-
-        // === HUD text ===
-        auto* hud = CreateGameObject(glm::vec3(50.0f, 100.0f, 0.0f));
-        hud->AddComponent<Text2DComponent>(Text2DProps{
-            .text = "Hello World from C++!",
-            .font = fontID,
-            .fontSize = 32.0f,
-            .layer = CanvasLayer::LAYER_WORLD_2D
-        });
-
         console.Info(fmt::format("Game fully loaded in {:.1f} seconds", GetWindowTime()));
         console.Info("Press R to reload shaders, ESC to quit");
-        console.Info("3D sprites: 4 (depth tested), 2D sprites: 3 (screen space)");
+        console.Info("Scene (camera, 3D sprites, 2D sprites, HUD) loaded from assets/scenes/main.json");
     }
 
     void OnUpdate(float dt, float time) override {
