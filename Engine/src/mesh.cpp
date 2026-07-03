@@ -53,9 +53,18 @@ void Mesh::Initialize(const std::vector<Vertex>& verts) {
     vertCount = verts.size();
     triCount = 0;
 
-    // Terrain (tessellation) is GL-only; under WebGPU just mark initialized —
-    // ForwardOpaquePass skips MeshType::TERRAIN there.
+    // WebGPU: no GL context — vertex-only geometry goes through the abstract
+    // Buffer system, same as the indexed variant below. Terrain meshes take
+    // this path (ForwardOpaquePass draws them with the non-tessellated
+    // heightmap-displacement pipeline, mirroring terrain_simple.vert).
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        if (!_renderMeshHandle.IsValid()) {
+            _renderMeshHandle = GraphicsServer::Get()->AllocateRenderMesh(VertexFormat::Standard, BufferUsage::Static);
+        }
+        Buffer* renderMesh = GraphicsServer::Get()->GetRenderMesh(_renderMeshHandle);
+        if (renderMesh) {
+            renderMesh->Upload(verts.data(), verts.size(), sizeof(Vertex));
+        }
         this->initialized = true;
         return;
     }

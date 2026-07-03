@@ -164,6 +164,123 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 }
 )";
 
+// Non-tessellated terrain, mirroring the GLES/WebGL2 fallback pair
+// terrain_simple.vert + terrain.frag (palette path — the Terrain example uses
+// no color/splat/layer maps). The heightmap arrives as RGBA8 with a 16-bit
+// height packed into r (high byte) / g (low byte) — see AssetManager::
+// PackHeightmapRGBA8; the decode is linear in both channels so hardware
+// bilinear filtering equals filtering the original heights. Shares group 0
+// (frame + dynamic draw slot) and group 1 (texture + sampler) layouts with
+// FORWARD_OPAQUE_WGSL so the pass reuses _uniformBG and _getOrCreateTexBG.
+// Terrain draw slots pack params at the draw-uniform offset 64:
+//   params = (height_scale, world_size, palette_index, unused)
+static const char* TERRAIN_WGSL = R"(
+struct FrameUniforms {
+    viewProj:   mat4x4<f32>,
+    lightVP:    mat4x4<f32>,
+    cameraPos:  vec4<f32>,
+    lightDir:   vec4<f32>,
+    lightColor: vec4<f32>,
+    ambient:    vec4<f32>,
+};
+struct DrawUniforms {
+    model:  mat4x4<f32>,
+    params: vec4<f32>, // x=height_scale y=world_size z=palette_index w=unused
+};
+@group(0) @binding(0) var<uniform> frame: FrameUniforms;
+@group(0) @binding(1) var<uniform> draw: DrawUniforms;
+@group(1) @binding(0) var height_map: texture_2d<f32>;
+@group(1) @binding(1) var samp: sampler;
+
+// Decode the RG-packed 16-bit height. Coords are clamped in-shader because
+// the shared sampler uses Repeat addressing (base maps want tiling).
+fn readHeight(uv: vec2<f32>) -> f32 {
+    let c = textureSampleLevel(height_map, samp,
+                               clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0);
+    return dot(c.rg, vec2<f32>(65280.0, 255.0)) / 65535.0;
+}
+
+struct VSOut {
+    @builtin(position) position: vec4<f32>,
+    @location(0) worldPos: vec3<f32>,
+    @location(1) uv:       vec2<f32>,
+    @location(2) height:   f32,
+};
+
+@vertex
+fn vs(@location(0) aPos: vec3<f32>, @location(1) aUV: vec2<f32>) -> VSOut {
+    var out: VSOut;
+    let h = readHeight(aUV);
+    var pos = aPos;
+    pos.y += h * draw.params.x;
+    let world = draw.model * vec4<f32>(pos, 1.0);
+    out.worldPos = world.xyz;
+    out.uv       = aUV;
+    out.height   = h;
+    out.position = frame.viewProj * world;
+    return out;
+}
+
+// Cosine palette a + b*cos(2π(c*t + d)); constants copied from terrain.frag
+// (which shares them with voxel.frag). Index 0 is the legacy warm pink/gold.
+fn palette(t: f32, idx: i32) -> vec3<f32> {
+    var a: vec3<f32>; var b: vec3<f32>; var c: vec3<f32>; var d: vec3<f32>;
+    switch (idx) {
+        case 1: { // cool blue/purple
+            a = vec3<f32>(0.288, 0.303, 0.466); b = vec3<f32>(0.806, 0.664, 0.998);
+            c = vec3<f32>(1.253, 0.992, 1.569); d = vec3<f32>(3.379, 3.574, 3.026);
+        }
+        case 2: { // earthy green
+            a = vec3<f32>(0.420, 0.696, 0.625); b = vec3<f32>(0.791, 0.182, 0.271);
+            c = vec3<f32>(0.368, 0.650, 0.103); d = vec3<f32>(0.913, 3.624, 0.320);
+        }
+        case 3: { // forest
+            a = vec3<f32>(0.427, 0.346, 0.372); b = vec3<f32>(0.288, 0.918, 0.336);
+            c = vec3<f32>(0.635, 1.136, 0.404); d = vec3<f32>(1.893, 0.663, 1.910);
+        }
+        case 4: { // soft cool blue-grey
+            a = vec3<f32>(0.746, 0.815, 0.846); b = vec3<f32>(0.195, 0.283, 0.187);
+            c = vec3<f32>(1.093, 1.417, 1.405); d = vec3<f32>(5.435, 2.400, 5.741);
+        }
+        case 5: { // vivid mint/coral
+            a = vec3<f32>(0.686, 0.933, 0.933); b = vec3<f32>(0.957, 0.643, 0.957);
+            c = vec3<f32>(0.867, 0.627, 0.867); d = vec3<f32>(1.961, 2.871, 1.702);
+        }
+        default: { // warm pink/gold (legacy terrain default)
+            a = vec3<f32>(0.800, 0.150, 0.560); b = vec3<f32>(0.610, 0.300, 0.120);
+            c = vec3<f32>(0.640, 0.100, 0.590); d = vec3<f32>(0.380, 0.860, 0.470);
+        }
+    }
+    return a + b * cos(6.28318 * (c * t + d));
+}
+
+// World-space normal from heightmap central differences (terrain.frag's
+// HeightmapNormal). Mesh UV maps u -> +X and v -> +Z across world_size, so
+// the derivation matches the displaced geometry exactly.
+fn heightmapNormal(uv: vec2<f32>, heightScale: f32, worldSize: f32) -> vec3<f32> {
+    let ts = 1.0 / vec2<f32>(textureDimensions(height_map));
+    let hl = readHeight(uv - vec2<f32>(ts.x, 0.0));
+    let hr = readHeight(uv + vec2<f32>(ts.x, 0.0));
+    let hd = readHeight(uv - vec2<f32>(0.0, ts.y));
+    let hu = readHeight(uv + vec2<f32>(0.0, ts.y));
+    let dhdx = (hr - hl) * heightScale / (2.0 * ts.x * worldSize);
+    let dhdz = (hu - hd) * heightScale / (2.0 * ts.y * worldSize);
+    return normalize(vec3<f32>(-dhdx, 1.0, -dhdz));
+}
+
+@fragment
+fn fs(in: VSOut) -> @location(0) vec4<f32> {
+    let n        = heightmapNormal(in.uv, draw.params.x, draw.params.y);
+    let albedo   = palette(in.height, i32(draw.params.z + 0.5));
+    let lightDir = normalize(frame.lightDir.xyz);
+    let ndl      = clamp(dot(n, lightDir), 0.0, 1.0);
+    var lit = albedo * frame.lightColor.rgb * ndl;
+    lit += vec3<f32>(0.2) * albedo; // fixed ambient term, matching terrain.frag
+    // Gamma-encode: the tonemap pass expects gamma-encoded input.
+    return vec4<f32>(pow(lit, vec3<f32>(1.0 / 2.2)), 1.0);
+}
+)";
+
 // ── PostProcessPass ──────────────────────────────────────────────────────────
 constexpr uint64_t POST_UNIFORM_SIZE = 48; // exposure,caEn,caStr,time + crt,vhs,grading,posterize + sobel,edges,vignette,pad
 

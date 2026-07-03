@@ -1441,6 +1441,26 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
 // uses GL_R16F (filterable in ES 3.0, unlike R32F). No mipmaps: the heightmap
 // is always sampled at LOD 0 for displacement, and mip generation both blurs
 // detail and is invalid for non-color-renderable R16F on WebGL2.
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+// Pack a 0-1 height grid into RGBA8 with the 16-bit height split across
+// r (high byte) and g (low byte). The WGSL decode is linear in both channels,
+// so hardware bilinear filtering of the packed texture is exactly bilinear
+// filtering of the original heights — full R16 precision with no extra
+// bind-group-layout kinds (r32float would be unfilterable).
+static std::vector<uint8_t> PackHeightmapRGBA8(const std::vector<float>& grid, int width, int height) {
+    std::vector<uint8_t> rgba((size_t)width * height * 4);
+    for (size_t i = 0; i < (size_t)width * height; ++i) {
+        const float h = std::clamp(grid[i], 0.0f, 1.0f);
+        const uint32_t h16 = (uint32_t)std::lround(h * 65535.0f);
+        rgba[i * 4 + 0] = (uint8_t)(h16 >> 8);
+        rgba[i * 4 + 1] = (uint8_t)(h16 & 0xFF);
+        rgba[i * 4 + 2] = 0;
+        rgba[i * 4 + 3] = 255;
+    }
+    return rgba;
+}
+#endif
+
 static void UploadHeightmapPixels(const std::vector<float>& grid, int width, int height) {
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, width, height, 0, GL_RED, GL_FLOAT, grid.data());
@@ -1463,12 +1483,17 @@ TextureHandle AssetManager::CreateHeightmapTexture(
         return TextureHandle(it->second.glID);
     }
 
-    // Heightmap textures feed the GL-only tessellated terrain path, which
-    // ForwardOpaquePass skips under WebGPU (no GL context to gen the texture).
-    // Return an invalid handle rather than crash on the raw glGenTextures.
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    // WebGPU: upload the packed 16-bit height grid through GfxFactory so
+    // ForwardOpaquePass's terrain pipeline can displace/shade from it.
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
-        return TextureHandle{};
+        auto rgba = PackHeightmapRGBA8(grid, width, height);
+        uint32_t texID = GfxFactory::UploadTexture2D(rgba.data(), width, height);
+        textures.push_back(texID);
+        _textureCache[name] = { texID, (uint32_t)width, (uint32_t)height, rgba.size() };
+        return TextureHandle(texID);
     }
+#endif
 
     GLuint texID = 0;
     glGenTextures(1, &texID);
@@ -1489,7 +1514,13 @@ void AssetManager::UpdateHeightmapTexture(
     TextureHandle handle, const std::vector<float>& grid, int width, int height
 ) {
     if (!handle.IsValid()) return;
-    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return; // GL-only terrain path
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        auto rgba = PackHeightmapRGBA8(grid, width, height);
+        GfxFactory::UpdateTexture2D(handle.id, rgba.data(), width, height);
+        return;
+    }
+#endif
 
     glBindTexture(GL_TEXTURE_2D, handle.id);
     // Full re-specification: handles resolution changes as well as data updates.

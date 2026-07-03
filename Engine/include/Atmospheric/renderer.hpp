@@ -74,8 +74,10 @@ private:
 #endif
 };
 
-// Renders MeshType::PRIM meshes from the opaque queue. TERRAIN (tessellation,
-// GL-only) and VOXEL (handled by VoxelChunkPass) are skipped under WebGPU.
+// Renders MeshType::PRIM meshes from the opaque queue. Under WebGPU, TERRAIN
+// meshes are drawn too, via a non-tessellated heightmap-displacement pipeline
+// mirroring the GLES/WebGL2 fallback (terrain_simple.vert + terrain.frag);
+// VOXEL is handled by VoxelChunkPass.
 class ForwardOpaquePass : public RenderPass {
 public:
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
@@ -92,6 +94,9 @@ private:
     WGPUDevice          _gpuDevice       = nullptr;
     WGPUQueue           _gpuQueue        = nullptr;
     WGPURenderPipeline  _pipeline        = nullptr;
+    // Heightmap-displacement terrain (TERRAIN_WGSL); shares group 0/1 layouts
+    // with _pipeline so _uniformBG and the texture BG cache are reused.
+    WGPURenderPipeline  _terrainPipeline = nullptr;
     WGPUBindGroupLayout _uniformBGL      = nullptr;
     WGPUBindGroupLayout _texBGL          = nullptr;
     WGPUBindGroup       _uniformBG       = nullptr;

@@ -992,6 +992,7 @@ ForwardOpaquePass::~ForwardOpaquePass() {
     if (_uniformBGL)      wgpuBindGroupLayoutRelease(_uniformBGL);
     if (_texBGL)          wgpuBindGroupLayoutRelease(_texBGL);
     if (_pipeline)        wgpuRenderPipelineRelease(_pipeline);
+    if (_terrainPipeline) wgpuRenderPipelineRelease(_terrainPipeline);
     if (_frameUniformBuf) wgpuBufferRelease(_frameUniformBuf);
     if (_drawUniformBuf)  wgpuBufferRelease(_drawUniformBuf);
     if (_whiteTex)        wgpuTextureRelease(_whiteTex);
@@ -1070,6 +1071,25 @@ void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTexture
     _uniformBGL = p.bgl(0);
     _texBGL     = p.bgl(1);
     _shadowBGL  = p.bgl(2);
+
+    // Terrain: the non-tessellated GLES/WebGL2 fallback (terrain_simple.vert +
+    // terrain.frag) ported to WGSL. Borrows the main pipeline's group 0/1
+    // layouts so the same _uniformBG (dynamic slot) and texture-BG cache
+    // serve both; group 1 binds the heightmap instead of a base map. Culling
+    // is off: a displaced heightfield seen from below is a hole either way,
+    // and this keeps the terrain visible regardless of patch winding.
+    auto tp = GpuPipelineBuilder(device)
+        .wgsl(TERRAIN_WGSL)
+        .bgl(_uniformBGL)
+        .bgl(_texBGL)
+        .vertex(56, { {WGPUVertexFormat_Float32x3,  0, 0},
+                      {WGPUVertexFormat_Float32x2, 12, 1} })
+        .colorFormat(colorFormat)
+        .depth(true, WGPUCompareFunction_Less)
+        .cull(WGPUCullMode_None)
+        .multisample(sampleCount)
+        .build();
+    _terrainPipeline = tp.pipeline;
 }
 
 void ForwardOpaquePass::_ensureDrawCapacity(uint32_t drawCount) {
@@ -1133,19 +1153,20 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
                      (uint32_t)renderer.sceneRT->GetNumSamples());
         }
 
-        struct DrawItem { Buffer* buf; glm::mat4 model; Material* mat; };
+        struct DrawItem { Buffer* buf; glm::mat4 model; Material* mat; MeshType type; };
         std::vector<DrawItem> draws;
         draws.reserve(gpuQueueCmds.size());
         for (const auto& sortable : gpuQueueCmds) {
             const auto& cmd = sortable.cmd;
             Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
-            // TERRAIN (tessellation) has no WebGPU equivalent; VOXEL is handled
-            // by VoxelChunkPass. Both are documented simplifications.
-            if (!mesh || mesh->type != MeshType::PRIM) continue;
+            // TERRAIN draws with the heightmap-displacement pipeline; VOXEL is
+            // handled by VoxelChunkPass.
+            if (!mesh) continue;
+            if (mesh->type != MeshType::PRIM && mesh->type != MeshType::TERRAIN) continue;
             if (!mesh->UsesRenderMesh()) continue;
             Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
             if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
-            draws.push_back({ buf, cmd.transform, mesh->GetMaterial() });
+            draws.push_back({ buf, cmd.transform, mesh->GetMaterial(), mesh->type });
         }
         if (draws.empty()) return;
 
@@ -1190,13 +1211,26 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
         std::vector<uint8_t> drawData(draws.size() * FWD_DRAW_SLOT_STRIDE, 0);
         for (size_t i = 0; i < draws.size(); ++i) {
             Material* mat = draws[i].mat;
+            uint8_t* slot = drawData.data() + i * FWD_DRAW_SLOT_STRIDE;
+            std::memcpy(slot, &draws[i].model, sizeof(glm::mat4));
+
+            if (draws[i].type == MeshType::TERRAIN) {
+                // TERRAIN_WGSL's DrawUniforms: model + (height_scale,
+                // world_size, palette_index, unused) at offset 64.
+                auto* tm = dynamic_cast<TerrainMaterial*>(mat);
+                glm::vec4 params(tm ? tm->heightScale : 32.0f,
+                                 tm ? tm->worldSize   : 1024.0f,
+                                 tm ? static_cast<float>(tm->paletteIndex) : 0.0f,
+                                 0.0f);
+                std::memcpy(slot + 64, &params, sizeof(glm::vec4));
+                continue;
+            }
+
             glm::vec3 diffuse  = mat ? mat->diffuse  : glm::vec3(0.55f);
             glm::vec3 specular = mat ? mat->specular : glm::vec3(0.7f);
             glm::vec3 matAmbient = mat ? mat->ambient : glm::vec3(0.0f);
             float shininess    = mat ? mat->shininess : 0.25f;
 
-            uint8_t* slot = drawData.data() + i * FWD_DRAW_SLOT_STRIDE;
-            std::memcpy(slot,      &draws[i].model, sizeof(glm::mat4));
             glm::vec4 d4(diffuse, 0.0f), s4(specular, 0.0f), a4(matAmbient, 0.0f), sh4(shininess, 0.0f, 0.0f, 0.0f);
             std::memcpy(slot + 64, &d4,  sizeof(glm::vec4));
             std::memcpy(slot + 80, &s4,  sizeof(glm::vec4));
@@ -1213,15 +1247,32 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
         uint32_t defaultDiffuse = defaults.empty() ? 0 : static_cast<uint32_t>(defaults[0]);
 
         renderer.sceneRT->Begin(enc);
+        MeshType boundType = MeshType::PRIM;
         wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _pipeline);
         for (size_t i = 0; i < draws.size(); ++i) {
+            if (draws[i].type != boundType) {
+                boundType = draws[i].type;
+                wgpuRenderPassEncoderSetPipeline(
+                    gpuEnc->pass, boundType == MeshType::TERRAIN ? _terrainPipeline : _pipeline);
+            }
+
             Material* mat = draws[i].mat;
-            uint32_t texID = (mat && mat->baseMap.IsValid()) ? mat->baseMap.id : defaultDiffuse;
+            uint32_t texID;
+            if (draws[i].type == MeshType::TERRAIN) {
+                // Group 1 carries the heightmap; an invalid handle falls back
+                // to the white sentinel (flat terrain at full height).
+                auto* tm = dynamic_cast<TerrainMaterial*>(mat);
+                texID = (tm && tm->heightMap.IsValid()) ? tm->heightMap.id : 0;
+            } else {
+                texID = (mat && mat->baseMap.IsValid()) ? mat->baseMap.id : defaultDiffuse;
+            }
             WGPUBindGroup texBG = _getOrCreateTexBG(texID);
 
             uint32_t dynamicOffset = static_cast<uint32_t>(i * FWD_DRAW_SLOT_STRIDE);
             wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 0, _uniformBG, 1, &dynamicOffset);
             wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 1, texBG, 0, nullptr);
+            // Group 2 (shadow map) is outside the terrain pipeline's layout;
+            // leaving it bound is legal and the main pipeline needs it.
             wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 2, _shadowBG, 0, nullptr);
             draws[i].buf->Draw(enc, PrimitiveTopology::Triangles);
         }
