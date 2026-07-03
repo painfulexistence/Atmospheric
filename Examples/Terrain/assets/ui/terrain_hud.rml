@@ -7,25 +7,27 @@
     <div id="panel">
         <div class="title">Terrain</div>
 
-        <div id="mode_toggle" class="btn">Mode: Procedural</div>
+        <div class="label">Mode</div>
+        <select id="mode_select">
+            <option value="proc">Procedural</option>
+            <option value="hmap">Heightmap</option>
+        </select>
 
         <div class="label">Palette</div>
-        <div id="palette_dd" class="dropdown">
-            <div id="palette_current" class="dd_current">
-                <span id="palette_label">1 - Warm Pink/Gold</span>
-                <span class="caret">&#9662;</span>
-            </div>
-            <div class="dd_list">
-                <div class="dd_item" id="pal0">1 - Warm Pink/Gold</div>
-                <div class="dd_item" id="pal1">2 - Cool Blue/Purple</div>
-                <div class="dd_item" id="pal2">3 - Earthy Green</div>
-                <div class="dd_item" id="pal3">4 - Forest</div>
-                <div class="dd_item" id="pal4">5 - Soft Cool</div>
-                <div class="dd_item" id="pal5">6 - Vivid Mint/Coral</div>
-            </div>
-        </div>
+        <select id="palette_select">
+            <option value="0">1 - Warm Pink/Gold</option>
+            <option value="1">2 - Cool Blue/Purple</option>
+            <option value="2">3 - Earthy Green</option>
+            <option value="3">4 - Forest</option>
+            <option value="4">5 - Soft Cool</option>
+            <option value="5">6 - Vivid Mint/Coral</option>
+        </select>
 
-        <div class="hint">SPACE/LMB switch &#8226; P palette &#8226; I wireframe</div>
+        <div class="hints">
+            <div class="hint">SPACE - switch mode</div>
+            <div class="hint">P - select palette</div>
+            <div class="hint">I - toggle wireframe</div>
+        </div>
     </div>
 </body>
 </rml>

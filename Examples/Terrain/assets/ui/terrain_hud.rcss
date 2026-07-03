@@ -21,97 +21,90 @@ body {
 .title {
     font-size: 18dp;
     color: #ffffff;
-    margin-bottom: 8dp;
+    margin-bottom: 12dp;
 }
 
+/* Label above each control (Mode / Palette) */
 .label {
     font-size: 12dp;
     color: #9a9aa8;
-    margin-bottom: 3dp;
+    margin-bottom: 4dp;
 }
 
+/* Keybinding hints, one per line */
+.hints {
+    margin-top: 14dp;
+}
 .hint {
-    margin-top: 10dp;
     font-size: 11dp;
     color: #70707e;
+    margin-bottom: 2dp;
 }
 
-/* Toggle button */
-.btn {
+/* ── Native <select> dropdowns ────────────────────────────────────────────
+   RmlUi builds each <select> from internal elements: selectvalue (current
+   text), selectarrow (the button on the right) and selectbox (the popup that
+   holds the <option>s). The invader sample styles these with sprite
+   decorators; here we use plain background/border so no image asset is
+   needed. The arrow has no glyph without an image — its area is just tinted;
+   drop a `decorator: image(...)` on `selectarrow` to add a real caret. */
+select {
     display: block;
-    padding: 7dp 8dp;
-    margin-bottom: 10dp;
-    text-align: center;
+    width: 100%;
+    height: 30dp;
+    margin-bottom: 14dp;
     color: #e6e6ee;
+    font-size: 14dp;
     background-color: #22283ae6;
     border-radius: 5dp;
     border-width: 1dp;
     border-color: #38405a;
-    cursor: pointer;
-    white-space: nowrap;
-    overflow: hidden;
 }
-.btn:hover {
-    background-color: #2e3550e6;
+select:hover, select:focus {
     border-color: #58aaff;
 }
 
-/* Dropdown */
-.dropdown {
-    position: relative;
-}
-
-.dd_current {
-    position: relative;
-    padding: 7dp 22dp 7dp 8dp;   /* right padding leaves room for the caret */
-    color: #e6e6ee;
-    background-color: #22283ae6;
-    border-radius: 5dp;
-    border-width: 1dp;
-    border-color: #38405a;
-    cursor: pointer;
+select selectvalue {
+    width: auto;
+    margin-right: 28dp;      /* leaves room for the arrow */
+    height: 30dp;
+    line-height: 30dp;       /* vertically center the single line */
+    padding: 0dp 8dp;
     white-space: nowrap;
     overflow: hidden;
 }
-.dd_current:hover {
-    border-color: #58aaff;
+
+select selectarrow {
+    width: 28dp;
+    height: 30dp;
+    background-color: #2e3550c8;
+    border-radius: 0dp 5dp 5dp 0dp;
+}
+select selectarrow:hover {
+    background-color: #37406ade;
 }
 
-/* Absolutely positioned so it never affects the label's line box (avoids the
-   float-collapse / wrap issues that shifted layout on longer palette names). */
-.caret {
-    position: absolute;
-    top: 7dp;
-    right: 8dp;
-    color: #8a8a9a;
-}
-
-.dd_list {
-    display: none;
-    margin-top: 3dp;
+select selectbox {
+    margin-top: 2dp;         /* sit just below the select */
+    width: 100%;
     background-color: #161a28f2;
-    border-radius: 5dp;
     border-width: 1dp;
     border-color: #38405a;
-}
-#palette_dd.open .dd_list {
-    display: block;
+    border-radius: 5dp;
 }
 
-.dd_item {
-    display: block;
+select selectbox option {
+    width: auto;
     padding: 6dp 8dp;
     font-size: 13dp;
     color: #b8b8c8;
-    cursor: pointer;
     white-space: nowrap;
-    overflow: hidden;
 }
-.dd_item:hover {
+select selectbox option:hover {
     background-color: #2a3350e6;
     color: #ffffff;
 }
-.dd_item.sel {
+select selectbox option:checked {
     color: #ffffff;
     background-color: #2a3a55e6;
 }

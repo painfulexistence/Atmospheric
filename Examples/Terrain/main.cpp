@@ -1,15 +1,16 @@
 #include "Atmospheric.hpp"
 #include "Atmospheric/rmlui_manager.hpp"
 #include <RmlUi/Core.h>
+#include <RmlUi/Core/Elements/ElementFormControlSelect.h>
 #include <array>
 #include <functional>
 #include <memory>
 
-// Minimal RmlUi click listener that forwards to a std::function. Instances are
+// Minimal RmlUi event listener that forwards to a std::function. Instances are
 // owned by the app (must outlive the elements they're attached to).
-class ClickListener : public Rml::EventListener {
+class RmlEventCallback : public Rml::EventListener {
 public:
-    explicit ClickListener(std::function<void()> cb) : _cb(std::move(cb)) {}
+    explicit RmlEventCallback(std::function<void()> cb) : _cb(std::move(cb)) {}
     void ProcessEvent(Rml::Event& /*event*/) override { if (_cb) _cb(); }
 private:
     std::function<void()> _cb;
@@ -36,14 +37,14 @@ class TerrainDemo : public Application {
         "4 - Forest",         "5 - Soft Cool",        "6 - Vivid Mint/Coral"
     };
 
-    // HUD (RmlUi)
-    Rml::ElementDocument* _hud = nullptr;
-    Rml::Element*         _elModeToggle   = nullptr;
-    Rml::Element*         _elPaletteDD     = nullptr;
-    Rml::Element*         _elPaletteLabel  = nullptr;
-    Rml::Element*         _elPaletteItems[PALETTE_COUNT] = {};
-    bool                  _ddOpen = false;
-    std::vector<std::unique_ptr<ClickListener>> _listeners;
+    // HUD (RmlUi native <select> controls)
+    Rml::ElementDocument*          _hud        = nullptr;
+    Rml::ElementFormControlSelect* _selMode    = nullptr;
+    Rml::ElementFormControlSelect* _selPalette = nullptr;
+    // Guards SetSelection() so syncing the UI from code doesn't re-enter the
+    // change handler (which would call Apply* again).
+    bool _syncing = false;
+    std::vector<std::unique_ptr<RmlEventCallback>> _listeners;
 
     void OnInit() override {
         GoScene("main", [this]{ OnLoad(); });
@@ -54,8 +55,7 @@ class TerrainDemo : public Application {
         _showProcedural = procedural;
         if (_proceduralTerrain) _proceduralTerrain->SetActive(procedural);
         if (_heightmapTerrain)  _heightmapTerrain->SetActive(!procedural);
-        if (_elModeToggle)
-            _elModeToggle->SetInnerRML(procedural ? "Mode: Procedural" : "Mode: Heightmap");
+        if (_selMode) { _syncing = true; _selMode->SetSelection(procedural ? 0 : 1); _syncing = false; }
         console.Info(procedural ? "Switched to procedural noise terrain"
                                 : "Switched to heightmap terrain");
     }
@@ -68,15 +68,8 @@ class TerrainDemo : public Application {
                 if (auto* mat = tm->GetTerrainMaterial())
                     mat->paletteIndex = _paletteIndex;
         }
-        if (_elPaletteLabel) _elPaletteLabel->SetInnerRML(PALETTE_NAMES[_paletteIndex]);
-        for (int i = 0; i < PALETTE_COUNT; ++i)
-            if (_elPaletteItems[i]) _elPaletteItems[i]->SetClass("sel", i == _paletteIndex);
+        if (_selPalette) { _syncing = true; _selPalette->SetSelection(_paletteIndex); _syncing = false; }
         console.Info(std::string("Terrain palette ") + PALETTE_NAMES[_paletteIndex]);
-    }
-
-    void SetDropdownOpen(bool open) {
-        _ddOpen = open;
-        if (_elPaletteDD) _elPaletteDD->SetClass("open", open);
     }
 
     GameObject* CreateTerrain(const std::string& name, const std::shared_ptr<HeightField>& hf) {
@@ -106,12 +99,11 @@ class TerrainDemo : public Application {
         return terrain;
     }
 
-    // Attach a click listener to an element by id; the listener is owned by _listeners.
-    void OnClick(const char* id, std::function<void()> cb) {
-        Rml::Element* el = _hud ? _hud->GetElementById(id) : nullptr;
+    // Attach an event listener to an element; the listener is owned by _listeners.
+    void AddListener(Rml::Element* el, const char* event, std::function<void()> cb) {
         if (!el) return;
-        auto listener = std::make_unique<ClickListener>(std::move(cb));
-        el->AddEventListener("click", listener.get());
+        auto listener = std::make_unique<RmlEventCallback>(std::move(cb));
+        el->AddEventListener(event, listener.get());
         _listeners.push_back(std::move(listener));
     }
 
@@ -123,21 +115,17 @@ class TerrainDemo : public Application {
         }
         _hud->Show();
 
-        _elModeToggle   = _hud->GetElementById("mode_toggle");
-        _elPaletteDD    = _hud->GetElementById("palette_dd");
-        _elPaletteLabel = _hud->GetElementById("palette_label");
-        for (int i = 0; i < PALETTE_COUNT; ++i)
-            _elPaletteItems[i] = _hud->GetElementById("pal" + std::to_string(i));
+        _selMode    = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("mode_select"));
+        _selPalette = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("palette_select"));
 
-        // Wire interactions.
-        OnClick("mode_toggle",     [this]{ ApplyProcedural(!_showProcedural); });
-        OnClick("palette_current", [this]{ SetDropdownOpen(!_ddOpen); });
-        for (int i = 0; i < PALETTE_COUNT; ++i) {
-            OnClick(("pal" + std::to_string(i)).c_str(), [this, i]{
-                ApplyPalette(i);
-                SetDropdownOpen(false);
-            });
-        }
+        // Native <select> fires "change" on user selection; apply it to the
+        // terrain. The _syncing guard skips changes we triggered from code.
+        AddListener(_selMode, "change", [this]{
+            if (!_syncing && _selMode) ApplyProcedural(_selMode->GetSelection() == 0);
+        });
+        AddListener(_selPalette, "change", [this]{
+            if (!_syncing && _selPalette) ApplyPalette(_selPalette->GetSelection());
+        });
     }
 
     void OnLoad() override {
