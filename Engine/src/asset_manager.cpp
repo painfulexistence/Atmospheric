@@ -1315,8 +1315,9 @@ static void UploadHeightmapPixels(const std::vector<float>& grid, int width, int
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, width, height, 0, GL_RED, GL_FLOAT, grid.data());
 #else
-    std::vector<uint16_t> texels(width * height);
-    for (int i = 0; i < width * height; ++i)
+    const size_t count = (size_t)width * height;
+    std::vector<uint16_t> texels(count);
+    for (size_t i = 0; i < count; ++i)
         texels[i] = static_cast<uint16_t>(std::clamp(grid[i], 0.0f, 1.0f) * 65535.0f);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, texels.data());
@@ -1343,7 +1344,7 @@ TextureHandle AssetManager::CreateHeightmapTexture(
     glBindTexture(GL_TEXTURE_2D, 0);
 
     textures.push_back(texID);
-    _textureCache[name] = { texID, (uint32_t)width, (uint32_t)height, (size_t)(width * height * 2) };
+    _textureCache[name] = { texID, (uint32_t)width, (uint32_t)height, (size_t)width * height * 2 };
     return TextureHandle(texID);
 }
 
