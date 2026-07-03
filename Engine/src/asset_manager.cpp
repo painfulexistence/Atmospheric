@@ -1425,6 +1425,13 @@ TextureHandle AssetManager::CreateHeightmapTexture(
         return TextureHandle(it->second.glID);
     }
 
+    // Heightmap textures feed the GL-only tessellated terrain path, which
+    // ForwardOpaquePass skips under WebGPU (no GL context to gen the texture).
+    // Return an invalid handle rather than crash on the raw glGenTextures.
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        return TextureHandle{};
+    }
+
     GLuint texID = 0;
     glGenTextures(1, &texID);
     glBindTexture(GL_TEXTURE_2D, texID);
@@ -1444,6 +1451,7 @@ void AssetManager::UpdateHeightmapTexture(
     TextureHandle handle, const std::vector<float>& grid, int width, int height
 ) {
     if (!handle.IsValid()) return;
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return; // GL-only terrain path
 
     glBindTexture(GL_TEXTURE_2D, handle.id);
     // Full re-specification: handles resolution changes as well as data updates.
