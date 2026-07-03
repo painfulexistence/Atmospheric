@@ -625,6 +625,44 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
     }
     JobSystem::Get()->Wait();
 
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    // WebGPU has no GL context — upload regular images through GfxFactory rather
+    // than the raw glGenTextures batch below (which would crash on GLctx). Keeps
+    // the same slot/cache bookkeeping the GL loop uses so lookups by path work.
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        for (int j = 0; j < (int)regularPaths.size(); j++) {
+            int   i   = regularIndices[j];
+            auto& img = images[j];
+            if (!img) {
+                Console::Get()->Warn(fmt::format("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]));
+                textures[oldCount + i] = defaultTextures.empty() ? 0u : defaultTextures[0];
+                _textureCache[regularPaths[j]] = { textures[oldCount + i], 0, 0, 0 };
+                continue;
+            }
+            // UploadTexture2D wants tightly-packed RGBA8; expand narrower images.
+            const uint8_t* rgba = img->byteArray.data();
+            std::vector<uint8_t> expanded;
+            if (img->channelCount != 4) {
+                expanded.resize((size_t)img->width * img->height * 4);
+                for (size_t px = 0; px < (size_t)img->width * img->height; ++px) {
+                    uint8_t r = img->byteArray[px * img->channelCount + 0];
+                    uint8_t g = (img->channelCount >= 3) ? img->byteArray[px * img->channelCount + 1] : r;
+                    uint8_t b = (img->channelCount >= 3) ? img->byteArray[px * img->channelCount + 2] : r;
+                    uint8_t a = (img->channelCount == 4) ? img->byteArray[px * img->channelCount + 3] : 255;
+                    expanded[px * 4 + 0] = r; expanded[px * 4 + 1] = g;
+                    expanded[px * 4 + 2] = b; expanded[px * 4 + 3] = a;
+                }
+                rgba = expanded.data();
+            }
+            uint32_t texID = GfxFactory::UploadTexture2D(rgba, img->width, img->height);
+            textures[oldCount + i] = texID;
+            _textureCache[regularPaths[j]] = { texID, (uint32_t)img->width, (uint32_t)img->height,
+                                               (size_t)img->width * img->height * 4 };
+        }
+        return;
+    }
+#endif
+
     // ── Batch generate GL texture objects for regular images
     std::vector<GLuint> regularTexIDs(regularPaths.size());
     glGenTextures((GLsizei)regularPaths.size(), regularTexIDs.data());
