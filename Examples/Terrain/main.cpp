@@ -13,9 +13,21 @@ class TerrainDemo : public Application {
     GameObject* _proceduralTerrain = nullptr;
     GameObject* _heightmapTerrain  = nullptr;
     bool        _showProcedural    = true;
+    int         _paletteIndex      = 0;  // 0-5; 0 = default warm pink/gold
+
+    static constexpr int PALETTE_COUNT = 6;
 
     void OnInit() override {
         GoScene("main", [this]{ OnLoad(); });
+    }
+
+    void SetPalette(int index) {
+        for (auto* go : { _proceduralTerrain, _heightmapTerrain }) {
+            if (!go) continue;
+            if (auto* tm = go->GetComponent<TerrainMeshComponent>())
+                if (auto* mat = tm->GetTerrainMaterial())
+                    mat->paletteIndex = index;
+        }
     }
 
     GameObject* CreateTerrain(const std::string& name, const std::shared_ptr<HeightField>& hf) {
@@ -100,7 +112,7 @@ class TerrainDemo : public Application {
         _proceduralTerrain->SetActive(_showProcedural);
         _heightmapTerrain->SetActive(!_showProcedural);
 
-        console.Info("Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, T wireframe, ESC quit.");
+        console.Info("Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, ESC quit.");
     }
 
     void OnUpdate(float dt, float /*time*/) override {
@@ -130,7 +142,12 @@ class TerrainDemo : public Application {
             console.Info(_showProcedural ? "Switched to procedural noise terrain"
                                          : "Switched to heightmap terrain");
         }
-        if (input.IsKeyPressed(Key::T)) {
+        if (input.IsKeyPressed(Key::P)) {
+            _paletteIndex = (_paletteIndex + 1) % PALETTE_COUNT;
+            SetPalette(_paletteIndex);
+            console.Info("Terrain palette " + std::to_string(_paletteIndex + 1));
+        }
+        if (input.IsKeyPressed(Key::I)) {
             _wireframe = !_wireframe;
             GetGraphicsServer()->renderer->EnableWireframe(_wireframe);
         }

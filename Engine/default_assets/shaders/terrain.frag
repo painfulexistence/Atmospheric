@@ -50,6 +50,7 @@ uniform sampler2D layer3_normal_unit;
 
 uniform float height_scale;
 uniform float world_size;
+uniform int palette_index;  // 0-5, default 0 (warm pink/gold — legacy terrain color)
 uniform int has_base_map;
 uniform int has_normal_map;
 uniform int has_ao_map;
@@ -66,13 +67,32 @@ layout(location = 0) out vec4 Color;
 
 const float gamma = 2.2;
 
-// Legacy debug coloring, kept as the no-maps fallback.
+// Cosine colour palette: a + b * cos(2π * (c*t + d)), kept as the no-maps
+// fallback. The 6 palettes match VoxelWorld (voxel.frag); index 0 is the
+// legacy terrain color so palette_index=0 reproduces the original look.
 vec3 palette(float t) {
-  vec3 a = vec3(0.80, 0.15, 0.56);
-  vec3 b = vec3(0.61, 0.30, 0.12);
-  vec3 c = vec3(0.64, 0.10, 0.59);
-  vec3 d = vec3(0.38, 0.86, 0.47);
-  return a + b * cos(6.28318 * (c * t + d));
+    vec3 a, b, c, d;
+    switch (palette_index) {
+        case 1: // Palette 2 — cool blue/purple
+            a = vec3(0.288, 0.303, 0.466); b = vec3(0.806, 0.664, 0.998);
+            c = vec3(1.253, 0.992, 1.569); d = vec3(3.379, 3.574, 3.026); break;
+        case 2: // Palette 3 — earthy green
+            a = vec3(0.420, 0.696, 0.625); b = vec3(0.791, 0.182, 0.271);
+            c = vec3(0.368, 0.650, 0.103); d = vec3(0.913, 3.624, 0.320); break;
+        case 3: // Palette 4 — forest
+            a = vec3(0.427, 0.346, 0.372); b = vec3(0.288, 0.918, 0.336);
+            c = vec3(0.635, 1.136, 0.404); d = vec3(1.893, 0.663, 1.910); break;
+        case 4: // Palette 5 — soft cool blue-grey
+            a = vec3(0.746, 0.815, 0.846); b = vec3(0.195, 0.283, 0.187);
+            c = vec3(1.093, 1.417, 1.405); d = vec3(5.435, 2.400, 5.741); break;
+        case 5: // Palette 6 — vivid mint/coral
+            a = vec3(0.686, 0.933, 0.933); b = vec3(0.957, 0.643, 0.957);
+            c = vec3(0.867, 0.627, 0.867); d = vec3(1.961, 2.871, 1.702); break;
+        default: // Palette 1 — warm pink/gold (legacy terrain default)
+            a = vec3(0.800, 0.150, 0.560); b = vec3(0.610, 0.300, 0.120);
+            c = vec3(0.640, 0.100, 0.590); d = vec3(0.380, 0.860, 0.470); break;
+    }
+    return a + b * cos(6.28318 * (c * t + d));
 }
 
 // World-space normal from heightmap central differences. Mesh UV maps u -> +X

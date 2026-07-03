@@ -118,6 +118,9 @@ public:
     float heightScale        = 32.0f;
     float tessellationFactor = 16.0f;
     float worldSize          = 1024.0f;  // XZ extent; needed to derive normals from the heightmap
+    // Fallback height-palette selection (0-5), used when no color/detail maps
+    // are set. Matches the VoxelWorld palettes; 0 = legacy warm pink/gold.
+    int   paletteIndex       = 0;
 
     TextureHandle splatMap;
     TerrainLayer  layers[MAX_LAYERS];

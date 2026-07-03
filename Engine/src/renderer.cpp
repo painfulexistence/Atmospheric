@@ -877,6 +877,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             terrainShader->SetUniform(std::string("tessellation_factor"), tm ? tm->tessellationFactor : 16.0f);
             terrainShader->SetUniform(std::string("height_scale"),         tm ? tm->heightScale        : 32.0f);
             terrainShader->SetUniform(std::string("world_size"),           tm ? tm->worldSize          : 1024.0f);
+            terrainShader->SetUniform(std::string("palette_index"),        tm ? tm->paletteIndex       : 0);
             glActiveTexture(GL_TEXTURE7);
             TextureHandle heightMap = mesh->GetMaterial()->heightMap;
             if (heightMap.IsValid() && (uint32_t)heightMap != 0) {

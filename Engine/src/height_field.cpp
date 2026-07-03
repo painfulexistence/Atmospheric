@@ -124,7 +124,7 @@ void ImageHeightField::LoadStb(const std::vector<unsigned char>& bytes, const st
 }
 
 float ImageHeightField::Sample(int xi, int zi) const {
-    return _grid[zi * _width + xi];
+    return _grid[(size_t)zi * _width + xi];
 }
 
 // ----------------------------------------------------------------------------
@@ -147,15 +147,15 @@ void NoiseHeightField::Regenerate() {
     noise.SetFractalGain(_params.gain);
 
     const int res = _params.resolution;
-    _grid.resize(res * res);
+    _grid.resize((size_t)res * res);
     for (int z = 0; z < res; ++z) {
         for (int x = 0; x < res; ++x) {
             float v = noise.GetNoise((float)x, (float)z);
-            _grid[z * res + x] = (v + 1.0f) * 0.5f;  // map [-1,1] → [0,1]
+            _grid[(size_t)z * res + x] = (v + 1.0f) * 0.5f;  // map [-1,1] → [0,1]
         }
     }
 }
 
 float NoiseHeightField::Sample(int xi, int zi) const {
-    return _grid[zi * _params.resolution + xi];
+    return _grid[(size_t)zi * _params.resolution + xi];
 }
