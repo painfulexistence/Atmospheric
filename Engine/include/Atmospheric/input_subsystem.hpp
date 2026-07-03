@@ -30,6 +30,11 @@ public:
     bool IsMouseButtonDown();
     bool IsMouseButtonPressed();
 
+    // True when the cursor is over an interactive RmlUi element this frame.
+    // Games should gate world-space mouse actions on !IsMouseOverUI() so a
+    // click on the HUD doesn't also hit the scene behind it.
+    bool IsMouseOverUI() const { return _mouseOverUi; }
+
     glm::vec2 GetMousePosition();
 
 private:
@@ -37,6 +42,7 @@ private:
     std::unordered_map<Key, KeyState> _prevKeyStates;
     bool _mouseDown = false;
     bool _prevMouseDown = false;
+    bool _mouseOverUi = false;
     std::deque<KeyEvent> _keyPressHistory;
     const size_t _keyPressHistorySize = 16;
     const uint64_t KEY_EVENT_LIFETIME = 400;

@@ -54,7 +54,10 @@ public:
     void ProcessKeyDown(Rml::Input::KeyIdentifier key, int key_modifier);
     void ProcessKeyUp(Rml::Input::KeyIdentifier key, int key_modifier);
     void ProcessTextInput(Rml::Character character);
-    void ProcessMouseMove(int x, int y, int key_modifier);
+    // Returns true when the cursor is NOT over any interactive element
+    // (matching Rml::Context::ProcessMouseMove), so callers can gate
+    // world-space input on the UI.
+    bool ProcessMouseMove(int x, int y, int key_modifier);
     void ProcessMouseButtonDown(int button_index, int key_modifier);
     void ProcessMouseButtonUp(int button_index, int key_modifier);
     void ProcessMouseWheel(float wheel_delta, int key_modifier);

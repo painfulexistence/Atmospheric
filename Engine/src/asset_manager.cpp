@@ -1325,6 +1325,26 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     return CreateMesh(path, mesh);
 }
 
+// Uploads the [0,1] float grid at 16-bit precision — 8-bit quantization shows
+// visible terracing on high-fidelity heightmaps (WorldCreator/Gaea exports).
+// Desktop GL uses normalized GL_R16; GLES/WebGL2 has no normalized R16, so it
+// uses GL_R16F (filterable in ES 3.0, unlike R32F). No mipmaps: the heightmap
+// is always sampled at LOD 0 for displacement, and mip generation both blurs
+// detail and is invalid for non-color-renderable R16F on WebGL2.
+static void UploadHeightmapPixels(const std::vector<float>& grid, int width, int height) {
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, width, height, 0, GL_RED, GL_FLOAT, grid.data());
+#else
+    const size_t count = (size_t)width * height;
+    std::vector<uint16_t> texels(count);
+    for (size_t i = 0; i < count; ++i)
+        texels[i] = static_cast<uint16_t>(std::clamp(grid[i], 0.0f, 1.0f) * 65535.0f);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16, width, height, 0, GL_RED, GL_UNSIGNED_SHORT, texels.data());
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+#endif
+}
+
 TextureHandle AssetManager::CreateHeightmapTexture(
     const std::string& name, const std::vector<float>& grid, int width, int height
 ) {
@@ -1333,22 +1353,29 @@ TextureHandle AssetManager::CreateHeightmapTexture(
         return TextureHandle(it->second.glID);
     }
 
-    std::vector<uint8_t> bytes(width * height);
-    for (int i = 0; i < width * height; ++i)
-        bytes[i] = static_cast<uint8_t>(std::clamp(grid[i] * 255.0f, 0.0f, 255.0f));
-
     GLuint texID = 0;
     glGenTextures(1, &texID);
     glBindTexture(GL_TEXTURE_2D, texID);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, bytes.data());
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    UploadHeightmapPixels(grid, width, height);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture(GL_TEXTURE_2D, 0);
 
     textures.push_back(texID);
-    _textureCache[name] = { texID, static_cast<uint32_t>(width), static_cast<uint32_t>(height), static_cast<size_t>(width * height) };
+    // 2 bytes per texel: heightmaps upload as GL_R16 (see UploadHeightmapPixels).
+    _textureCache[name] = { texID, static_cast<uint32_t>(width), static_cast<uint32_t>(height), static_cast<size_t>(width) * height * 2 };
     return TextureHandle(texID);
+}
+
+void AssetManager::UpdateHeightmapTexture(
+    TextureHandle handle, const std::vector<float>& grid, int width, int height
+) {
+    if (!handle.IsValid()) return;
+
+    glBindTexture(GL_TEXTURE_2D, handle.id);
+    // Full re-specification: handles resolution changes as well as data updates.
+    UploadHeightmapPixels(grid, width, height);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }

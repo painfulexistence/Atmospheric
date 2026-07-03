@@ -105,6 +105,9 @@ public:
     // Upload a normalized [0,1] float grid as a GL_R8 grayscale texture.
     // Returns the scene-texture index usable as Material::heightMap.
     TextureHandle CreateHeightmapTexture(const std::string& name, const std::vector<float>& grid, int width, int height);
+    // Re-upload the pixel data of a heightmap texture previously created with
+    // CreateHeightmapTexture (e.g. after regenerating a NoiseHeightField).
+    void UpdateHeightmapTexture(TextureHandle handle, const std::vector<float>& grid, int width, int height);
     std::shared_ptr<Mesh> LoadOBJ(const std::string& path);
     MeshHandle LoadGLTF(const std::string& path);
 

@@ -234,10 +234,11 @@ void RmlUiManager::ProcessTextInput(Rml::Character character) {
     }
 }
 
-void RmlUiManager::ProcessMouseMove(int x, int y, int key_modifier) {
+bool RmlUiManager::ProcessMouseMove(int x, int y, int key_modifier) {
     if (m_context) {
-        m_context->ProcessMouseMove(x, y, key_modifier);
+        return m_context->ProcessMouseMove(x, y, key_modifier);
     }
+    return true;  // no context ⇒ nothing to interact with
 }
 
 void RmlUiManager::ProcessMouseButtonDown(int button_index, int key_modifier) {
