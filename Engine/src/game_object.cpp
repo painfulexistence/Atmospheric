@@ -81,7 +81,7 @@ GameObject* GameObject::AddCamera(const CameraProps& props) {
 // Shortcut 1 for adding renderable component
 GameObject* GameObject::AddMesh(const std::string& meshName) {
     if (_app) {
-        auto graphics = _app->GetGraphicsSubsystem();
+        auto graphics = GraphicsSubsystem::Get();
         if (graphics) {
             auto mesh = graphics->GetMesh(meshName);
             AddMesh(mesh);

@@ -64,7 +64,7 @@ void ShapeRendererComponent::Draw(BatchRenderer2D* renderer) {
 }
 
 void ShapeRendererComponent::OnAttach() {
-    gameObject->GetApp()->GetGraphicsSubsystem()->RegisterCanvasDrawable(this);
+    GraphicsSubsystem::Get()->RegisterCanvasDrawable(this);
 }
 
 void ShapeRendererComponent::OnDetach() {

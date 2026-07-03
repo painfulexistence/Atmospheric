@@ -293,12 +293,12 @@ std::string Sprite3DComponent::GetName() const {
 }
 
 void Sprite3DComponent::OnAttach() {
-    gameObject->GetApp()->GetGraphicsSubsystem()->RegisterCanvasDrawable(this);
+    GraphicsSubsystem::Get()->RegisterCanvasDrawable(this);
 }
 
 void Sprite3DComponent::OnDetach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsSubsystem()) {
-        gameObject->GetApp()->GetGraphicsSubsystem()->UnregisterCanvasDrawable(this);
+    if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->UnregisterCanvasDrawable(this);
     }
 }
 
@@ -443,7 +443,7 @@ void Sprite3DComponent::Draw(BatchRenderer2D* renderer) {
     glm::vec3 pos = gameObject->GetPosition();
     glm::vec3 scale = gameObject->GetScale();
 
-    auto* graphics = gameObject->GetApp()->GetGraphicsSubsystem();
+    auto* graphics = GraphicsSubsystem::Get();
     auto* camera = graphics->GetMainCamera();
 
     glm::mat4 transform;

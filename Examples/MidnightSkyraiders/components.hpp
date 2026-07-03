@@ -217,7 +217,7 @@ public:
     std::string GetName() const override { return "PlayerInputComponent"; }
 
     void OnTick(float dt) override {
-        auto* inp = gameObject->GetApp()->GetInput();
+        auto* inp = InputSubsystem::Get();
         float dx = 0, dy = 0;
         if (inp->IsKeyDown(Key::LEFT))  dx = -_speed * dt;
         if (inp->IsKeyDown(Key::RIGHT)) dx = +_speed * dt;
@@ -314,7 +314,7 @@ public:
 
     void OnTick(float /*dt*/) override {
         if (!_player || !_director) return;
-        auto* gs = gameObject->GetApp()->GetGraphicsSubsystem();
+        auto* gs = GraphicsSubsystem::Get();
         std::ostringstream oss;
         oss << "Score: " << std::setw(8) << std::setfill('0') << (long long)_director->Score()
             << "  Kills: " << std::setw(4) << std::setfill('0') << _director->Kills()

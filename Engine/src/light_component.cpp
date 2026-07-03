@@ -72,14 +72,14 @@ void LightComponent::DrawImGui() {
 }
 
 void LightComponent::OnAttach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsSubsystem()) {
-        gameObject->GetApp()->GetGraphicsSubsystem()->RegisterLight(this);
+    if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->RegisterLight(this);
     }
 }
 
 void LightComponent::OnDetach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsSubsystem()) {
-        gameObject->GetApp()->GetGraphicsSubsystem()->UnregisterLight(this);
+    if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->UnregisterLight(this);
     }
 }
 

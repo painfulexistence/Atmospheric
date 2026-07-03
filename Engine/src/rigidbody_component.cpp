@@ -93,14 +93,14 @@ void RigidbodyComponent::DrawImGui() {
 }
 
 void RigidbodyComponent::OnAttach() {
-    if (gameObject->GetApp()->GetPhysicsSubsystem()) {
-        gameObject->GetApp()->GetPhysicsSubsystem()->AddRigidbody(this);
+    if (PhysicsSubsystem::Get()) {
+        PhysicsSubsystem::Get()->AddRigidbody(this);
     }
 }
 
 void RigidbodyComponent::OnDetach() {
-    if (gameObject->GetApp()->GetPhysicsSubsystem()) {
-        gameObject->GetApp()->GetPhysicsSubsystem()->RemoveRigidbody(this);
+    if (PhysicsSubsystem::Get()) {
+        PhysicsSubsystem::Get()->RemoveRigidbody(this);
     }
 }
 

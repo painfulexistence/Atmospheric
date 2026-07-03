@@ -55,7 +55,7 @@ public:
     }
 
     void OnLoad() override {
-        auto* gfx = GetGraphicsSubsystem();
+        auto* gfx = GraphicsSubsystem::Get();
         _fontID = gfx->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 20.0f);
 
         // Tileset (4×2, 32px)
@@ -244,7 +244,7 @@ public:
                 _mode = GameMode::Battle;
             }
             DrawExplore();
-            GetGraphicsSubsystem()->DrawQuad(0,0,static_cast<float>(_screenW),static_cast<float>(_screenH),0,
+            GraphicsSubsystem::Get()->DrawQuad(0,0,static_cast<float>(_screenW),static_cast<float>(_screenH),0,
                                          vec4(0,0,0,_transition));
             break;
 
@@ -259,13 +259,13 @@ public:
                 _mode = GameMode::Explore;
             }
             DrawExplore();
-            GetGraphicsSubsystem()->DrawQuad(0,0,static_cast<float>(_screenW),static_cast<float>(_screenH),0,
+            GraphicsSubsystem::Get()->DrawQuad(0,0,static_cast<float>(_screenW),static_cast<float>(_screenH),0,
                                          vec4(0,0,0,_transition));
             break;
         }
 
         if (_fadeIn > 0.01f)
-            GetGraphicsSubsystem()->DrawQuad(0,0,static_cast<float>(_screenW),static_cast<float>(_screenH),0,
+            GraphicsSubsystem::Get()->DrawQuad(0,0,static_cast<float>(_screenW),static_cast<float>(_screenH),0,
                                          vec4(0,0,0,_fadeIn));
     }
 
@@ -290,7 +290,7 @@ private:
     }
 
     void UpdateExplore(float dt) {
-        auto* inp = GetInput();
+        auto* inp = InputSubsystem::Get();
 
         _playerAnim.play(_player.moving ? "walk" : "idle");
         _playerAnim.update(dt);
@@ -322,7 +322,7 @@ private:
     }
 
     void DrawExplore() {
-        auto* gfx = GetGraphicsSubsystem();
+        auto* gfx = GraphicsSubsystem::Get();
         float camX = _camX, camY = _camY;
 
         _tilemap->Draw(gfx, camX, camY, _screenW, _screenH);
@@ -355,7 +355,7 @@ private:
     }
 
     void DrawExploreHUD() {
-        auto* gfx = GetGraphicsSubsystem();
+        auto* gfx = GraphicsSubsystem::Get();
         const Stats& s = _player.stats;
         const auto& b = _battleComp->GetBattle();
 
@@ -374,7 +374,7 @@ private:
     }
 
     void DrawDialog() {
-        auto* gfx = GetGraphicsSubsystem();
+        auto* gfx = GraphicsSubsystem::Get();
         const float W=static_cast<float>(_screenW), H=static_cast<float>(_screenH);
         const float bx=40, bh=70, by=H-bh-20, bw=W-80;
         DrawPanel(bx, by, bw, bh);
@@ -385,14 +385,14 @@ private:
 
     void DrawPanel(float x, float y, float w, float h,
                    vec4 bg = vec4(0.05f,0.05f,0.12f,0.92f)) {
-        auto* gfx = GetGraphicsSubsystem();
+        auto* gfx = GraphicsSubsystem::Get();
         gfx->DrawQuad(x+w*0.5f, y+h*0.5f, w, h, 0, bg);
         gfx->DrawRect(x, y, w, h, vec4(0.35f,0.35f,0.55f,0.8f));
     }
 
     void DrawHPBar(float x, float y, float w, float h, int hp, int maxHp,
                    vec4 color = vec4(0.2f,0.85f,0.2f,1)) {
-        auto* gfx = GetGraphicsSubsystem();
+        auto* gfx = GraphicsSubsystem::Get();
         gfx->DrawQuad(x+w*0.5f, y+h*0.5f, w, h, 0, vec4(0.1f,0.1f,0.1f,0.85f));
         float ratio = maxHp>0 ? static_cast<float>(hp)/maxHp : 0;
         float fw = (w-2)*ratio;
@@ -400,7 +400,7 @@ private:
     }
 
     void DrawMPBar(float x, float y, float w, float h, int mp, int maxMp) {
-        auto* gfx = GetGraphicsSubsystem();
+        auto* gfx = GraphicsSubsystem::Get();
         gfx->DrawQuad(x+w*0.5f, y+h*0.5f, w, h, 0, vec4(0.1f,0.1f,0.1f,0.85f));
         float ratio = maxMp>0 ? static_cast<float>(mp)/maxMp : 0;
         float fw = (w-2)*ratio;

@@ -14,7 +14,7 @@ SunComponent::SunComponent(glm::vec3 billboardColor,
 {}
 
 void SunComponent::OnAttach() {
-    if (auto* gfx = gameObject->GetApp()->GetGraphicsSubsystem()) {
+    if (auto* gfx = GraphicsSubsystem::Get()) {
         gfx->RegisterSun(this);
     }
 }
@@ -26,7 +26,7 @@ void SunComponent::DrawImGui() {
 }
 
 void SunComponent::OnDetach() {
-    if (auto* gfx = gameObject->GetApp()->GetGraphicsSubsystem()) {
+    if (auto* gfx = GraphicsSubsystem::Get()) {
         auto& list = gfx->sunComponents;
         list.erase(std::remove(list.begin(), list.end(), this), list.end());
     }

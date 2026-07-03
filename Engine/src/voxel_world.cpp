@@ -23,7 +23,7 @@ static int WorldToChunkCoord(float w) {
 
 void VoxelWorld::Init(Application* app, int seed, GameObject* root) {
     _app  = app;
-    _gfx  = app->GetGraphicsSubsystem();
+    _gfx  = GraphicsSubsystem::Get();
     _seed = seed;
     _root = root;
 

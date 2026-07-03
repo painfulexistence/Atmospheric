@@ -20,7 +20,7 @@ public:
     std::string GetName() const override { return "PlayerMovementComponent"; }
 
     void OnTick(float dt) override {
-        auto* inp = gameObject->GetApp()->GetInput();
+        auto* inp = InputSubsystem::Get();
         float ax = 0, ay = 0;
         if (inp->IsKeyDown(Key::LEFT)  || inp->IsKeyDown(Key::A)) ax -= 1;
         if (inp->IsKeyDown(Key::RIGHT) || inp->IsKeyDown(Key::D)) ax += 1;
@@ -311,7 +311,7 @@ private:
     }
 
     void UpdateBattle(float dt) {
-        auto* inp = gameObject->GetApp()->GetInput();
+        auto* inp = InputSubsystem::Get();
         BattleState& b = _battle;
         if (_shakeTimer > 0) _shakeTimer -= dt; else _shakeMag = 0;
         b.tickLog(dt);
@@ -381,7 +381,7 @@ private:
     }
 
     void DrawBattle() {
-        auto* gfx = gameObject->GetApp()->GetGraphicsSubsystem();
+        auto* gfx = GraphicsSubsystem::Get();
         const float W = static_cast<float>(_screenW), H = static_cast<float>(_screenH);
         gfx->DrawQuad(W*0.5f, H*0.5f, W, H, 0, glm::vec4(0.08f,0.06f,0.14f,1));
         for (int i=0; i<8; i++)

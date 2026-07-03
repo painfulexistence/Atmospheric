@@ -38,7 +38,7 @@ void Text2DComponent::DrawImGui() {
 
 void Text2DComponent::OnAttach() {
     ConsoleSubsystem::Get()->Info(fmt::format("Text2DComponent: Attaching with text='{}'", _text));
-    auto* graphics = gameObject->GetApp()->GetGraphicsSubsystem();
+    auto* graphics = GraphicsSubsystem::Get();
     graphics->RegisterCanvasDrawable(this);
 
     // Resolve font fallback
@@ -48,8 +48,8 @@ void Text2DComponent::OnAttach() {
 }
 
 void Text2DComponent::OnDetach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsSubsystem()) {
-        gameObject->GetApp()->GetGraphicsSubsystem()->UnregisterCanvasDrawable(this);
+    if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->UnregisterCanvasDrawable(this);
     }
 }
 

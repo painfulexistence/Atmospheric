@@ -113,26 +113,11 @@ public:
     const std::vector<std::unique_ptr<GameObject>>& GetEntities() const {
         return _entities;
     }
-    GraphicsSubsystem* GetGraphicsSubsystem() {
-        return &graphics;
-    }
-    PhysicsSubsystem* GetPhysicsSubsystem() {
-        return &physics;
-    }
-    Physics2DSubsystem* GetPhysics2DSubsystem() {
-        return &physics2D;
-    }
-    ConsoleSubsystem* GetConsole() {
-        return &console;
-    }
-    InputSubsystem* GetInput() {
-        return &input;
-    }
+    // Subsystems are reached through their static locator (e.g.
+    // GraphicsSubsystem::Get()), consistent with AssetManager/FileSystem/etc.
+    // No per-Application accessors — there is exactly one way in.
     CameraComponent* GetMainCamera() {
         return mainCamera;
-    }
-    AudioSubsystem* GetAudioSubsystem() {
-        return &audio;
     }
     // Shared video recorder. Drives both the automated capture sequence and the
     // manual F2 toggle in EditorLayer; both operate on this single instance.

@@ -103,19 +103,19 @@ void LuaApplication::BindEngineAPIs() {
     BindCoreTypes(_lua);
 
     // Bind input API
-    BindInputAPI(_lua, GetInput());
+    BindInputAPI(_lua, InputSubsystem::Get());
 
     // Bind World/Scene API
     BindWorldAPI(_lua, this);
 
     // Bind Graphics API
-    BindGraphicsAPI(_lua, GetGraphicsSubsystem());
+    BindGraphicsAPI(_lua, GraphicsSubsystem::Get());
 
     // Bind Physics API
     BindPhysicsAPI(_lua, this);
 
     // Bind Audio API
-    BindAudioAPI(_lua, GetAudioSubsystem());
+    BindAudioAPI(_lua, AudioSubsystem::Get());
 
     // Bind application-level functions
     atmos["quit"] = [this]() { Quit(); };

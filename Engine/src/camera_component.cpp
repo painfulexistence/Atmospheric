@@ -47,14 +47,14 @@ void CameraComponent::DrawImGui() {
 }
 
 void CameraComponent::OnAttach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsSubsystem()) {
-        gameObject->GetApp()->GetGraphicsSubsystem()->RegisterCamera(this);
+    if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->RegisterCamera(this);
     }
 }
 
 void CameraComponent::OnDetach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsSubsystem()) {
-        gameObject->GetApp()->GetGraphicsSubsystem()->UnregisterCamera(this);
+    if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->UnregisterCamera(this);
     }
 }
 
