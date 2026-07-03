@@ -28,7 +28,7 @@ class VideoPlayerDemo : public Application {
     }
 
     void OnLoad() override {
-        m_fontID = GraphicsSubsystem::Get()->LoadFont(
+        m_fontID = graphics.LoadFont(
             "assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
         // Allocate a GL texture; upload a 1x1 black pixel so the state is

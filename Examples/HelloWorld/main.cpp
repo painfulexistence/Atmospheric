@@ -52,7 +52,7 @@ class HelloWorld : public Application {
         // are still procedural: the font, the material, and the cube's runtime mesh.
 
         // Font is used by the cube's 3D label (the HUD loads its own via fontPath).
-        fontID = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
+        fontID = graphics.LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
 
         // === Rotating, bobbing cube ===
         // The mesh is still procedural, but its material ("cubeMat") is now

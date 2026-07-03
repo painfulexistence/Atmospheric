@@ -79,7 +79,7 @@ class TerrainDemo : public Application {
         auto* terrain = CreateGameObject(glm::vec3(0.0f, -10.0f, 0.0f));
         terrain->SetName(name);
         terrain->AddComponent<TerrainMeshComponent>(
-            GraphicsSubsystem::Get(), hf,
+            &graphics, hf,
             TerrainMeshProps{
                 .worldSize          = worldSize,
                 .resolution         = 256,
@@ -165,7 +165,7 @@ class TerrainDemo : public Application {
         // auto hf = std::make_shared<ImageHeightField>("assets/textures/gaea_height.r16");
         // auto* terrain = CreateGameObject(glm::vec3(0.0f, -10.0f, 0.0f));
         // terrain->AddComponent<TerrainMeshComponent>(
-        //     GraphicsSubsystem::Get(), hf,
+        //     &graphics, hf,
         //     TerrainMeshProps{
         //         .worldSize     = 2048.0f,
         //         .resolution    = 256,
@@ -225,7 +225,7 @@ class TerrainDemo : public Application {
         }
         if (input.IsKeyPressed(Key::I)) {
             _wireframe = !_wireframe;
-            GraphicsSubsystem::Get()->renderer->EnableWireframe(_wireframe);
+            graphics.renderer->EnableWireframe(_wireframe);
         }
         if (input.IsKeyPressed(Key::ESCAPE)) Quit();
     }

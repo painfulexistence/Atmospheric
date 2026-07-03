@@ -134,7 +134,7 @@ class MidnightSkyraiders : public Application {
         texBg[2]   = "assets/images/nightsky-fg.png";
         // The title sprite (and its texture) live in assets/scenes/main.json.
 
-        fontID = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 22.0f);
+        fontID = graphics.LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 22.0f);
 
         bgm     = audio.LoadMusic("assets/sounds/sky-lines.ogg");
         sfxExp  = audio.LoadSound("assets/sounds/explosion.wav");
@@ -194,7 +194,7 @@ class MidnightSkyraiders : public Application {
     }
 
     void updateTitle(float /*dt*/) {
-        GraphicsSubsystem::Get()->DrawText(fontID,
+        graphics.DrawText(fontID,
             "Press SPACE or ENTER to start",
             HALF - 140.0f, WORLD - 60.0f, 0.8f, glm::vec4(1,1,0,1));
 
@@ -345,7 +345,7 @@ class MidnightSkyraiders : public Application {
     }
 
     void updateGameOver(float /*dt*/) {
-        auto* gs = GraphicsSubsystem::Get();
+        auto* gs = &graphics;
         gs->DrawText(fontID, "GAME  OVER",
             HALF - 80.0f, WORLD * 0.30f, 1.5f, glm::vec4(1,0.2f,0.2f,1));
         gs->DrawText(fontID, "Score: " + std::to_string((long long)director->Score()),
