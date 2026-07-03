@@ -3,7 +3,7 @@
 #include "application.hpp"
 #include "component.hpp"
 #include "graphics_subsystem.hpp"
-#include "physics_subsystem.hpp"
+#include "physics_subsystem_3d.hpp"
 #include "rigidbody_component.hpp"
 #include "sprite_component.hpp"
 #include "transform_component.hpp"

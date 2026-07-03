@@ -20,7 +20,7 @@ struct RigidbodyProps {
 };
 
 class GameObject;
-class PhysicsSubsystem;
+class Physics3DSubsystem;
 
 class RigidbodyComponent : public Component {
 public:
@@ -77,5 +77,5 @@ private:
     // from the world before either is destroyed.
     std::unique_ptr<btDefaultMotionState> _motionState;
     std::unique_ptr<btRigidBody> _rigidbody;
-    friend class PhysicsSubsystem;
+    friend class Physics3DSubsystem;
 };

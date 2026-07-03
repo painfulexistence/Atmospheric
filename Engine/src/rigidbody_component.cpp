@@ -93,14 +93,14 @@ void RigidbodyComponent::DrawImGui() {
 }
 
 void RigidbodyComponent::OnAttach() {
-    if (PhysicsSubsystem::Get()) {
-        PhysicsSubsystem::Get()->AddRigidbody(this);
+    if (Physics3DSubsystem::Get()) {
+        Physics3DSubsystem::Get()->AddRigidbody(this);
     }
 }
 
 void RigidbodyComponent::OnDetach() {
-    if (PhysicsSubsystem::Get()) {
-        PhysicsSubsystem::Get()->RemoveRigidbody(this);
+    if (Physics3DSubsystem::Get()) {
+        Physics3DSubsystem::Get()->RemoveRigidbody(this);
     }
 }
 

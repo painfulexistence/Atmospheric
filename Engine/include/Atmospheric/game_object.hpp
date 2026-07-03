@@ -18,7 +18,7 @@ class Mesh;
 
 class GraphicsSubsystem;
 
-class PhysicsSubsystem;
+class Physics3DSubsystem;
 
 class GameObject {
 public:

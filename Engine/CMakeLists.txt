@@ -190,7 +190,7 @@ set(SOURCES
     src/graphics_subsystem.cpp
     src/graphics_subsystem_tile.cpp
     src/renderer.cpp
-    src/physics_subsystem.cpp
+    src/physics_subsystem_3d.cpp
     src/physics_debug_drawer.cpp
     src/input_subsystem.cpp
     src/scene.cpp

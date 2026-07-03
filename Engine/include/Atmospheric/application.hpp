@@ -7,9 +7,7 @@
 #include "imgui.h"
 #include "input_subsystem.hpp"
 #include "layer.hpp"
-#include "physics_subsystem.hpp"
-#include "physics_subsystem_2d.hpp"
-
+#include "physics_subsystem_3d.hpp"
 #include "physics_subsystem_2d.hpp"
 #include "scene.hpp"
 #include "scene_transition.hpp"
@@ -187,7 +185,7 @@ public:
 protected:
     // These subsystems will be game accessible
     AudioSubsystem audio;
-    PhysicsSubsystem physics;
+    Physics3DSubsystem physics;
     Physics2DSubsystem physics2D;
     ConsoleSubsystem console;
     InputSubsystem input;

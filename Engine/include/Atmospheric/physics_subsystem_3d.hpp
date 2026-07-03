@@ -30,19 +30,19 @@ class BulletTaskScheduler;
 
 using ColliderID = uint32_t;
 
-class PhysicsSubsystem : public Subsystem
+class Physics3DSubsystem : public Subsystem
 {
 private:
-    static PhysicsSubsystem* _instance;
+    static Physics3DSubsystem* _instance;
 
 public:
-    static PhysicsSubsystem* Get()
+    static Physics3DSubsystem* Get()
     {
         return _instance;
     }
 
-    PhysicsSubsystem();
-    ~PhysicsSubsystem();
+    Physics3DSubsystem();
+    ~Physics3DSubsystem();
 
     void Init(Application* app) override;
     void Process(float dt) override;

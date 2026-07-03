@@ -189,7 +189,7 @@ void EditorLayer::DrawEngineView() {
         ConsoleSubsystem::Get()->DrawImGui(dt);
         InputSubsystem::Get()->DrawImGui(dt);
         GraphicsSubsystem::Get()->DrawImGui(dt);
-        PhysicsSubsystem::Get()->DrawImGui(dt);
+        Physics3DSubsystem::Get()->DrawImGui(dt);
 #ifndef __EMSCRIPTEN__
         AudioSubsystem::Get()->DrawImGui(dt);
         if (ImGui::CollapsingHeader("Recording (F2)")) {
