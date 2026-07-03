@@ -137,7 +137,7 @@ class TerrainDemo : public Application {
         _proceduralTerrain = CreateTerrain("ProceduralTerrain", std::make_shared<NoiseHeightField>(NoiseHeightFieldParams{
             .resolution = 256,
             .seed       = 42,
-            .frequency  = 0.004f,
+            .frequency  = 0.02f,
             .octaves    = 8,
             .lacunarity = 2.0f,
             .gain       = 0.5f,
