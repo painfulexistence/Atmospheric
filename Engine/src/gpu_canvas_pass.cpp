@@ -13,8 +13,10 @@ GPUCanvasPass::~GPUCanvasPass() {
     if (_pipelineDepthTest) wgpuRenderPipelineRelease(_pipelineDepthTest);
     if (_pipelineSwapchain) wgpuRenderPipelineRelease(_pipelineSwapchain);
     if (_uniformBuf) wgpuBufferRelease(_uniformBuf);
-    if (_vertexBuf)  wgpuBufferRelease(_vertexBuf);
-    if (_indexBuf)   wgpuBufferRelease(_indexBuf);
+    for (uint32_t s = 0; s < UNIFORM_SLOT_COUNT; ++s) {
+        if (_vertexBufs[s]) wgpuBufferRelease(_vertexBufs[s]);
+        if (_indexBufs[s])  wgpuBufferRelease(_indexBufs[s]);
+    }
     if (_whiteTex)   wgpuTextureRelease(_whiteTex);
     if (_sampler)    wgpuSamplerRelease(_sampler);
 }
@@ -23,22 +25,30 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     _device = device;
     _queue  = queue;
 
-    // ── Buffers ────────────────────────────────────────────────────────────
-    {
-        WGPUBufferDescriptor d{};
-        d.size  = (uint64_t)MAX_VERTS * FLOATS_PER_VERT * sizeof(float);
-        d.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
-        _vertexBuf = wgpuDeviceCreateBuffer(device, &d);
+    // ── Buffers (one geometry pair per pass variant — see header) ──────────
+    for (uint32_t s = 0; s < UNIFORM_SLOT_COUNT; ++s) {
+        {
+            WGPUBufferDescriptor d{};
+            d.size  = (uint64_t)MAX_VERTS * FLOATS_PER_VERT * sizeof(float);
+            d.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+            _vertexBufs[s] = wgpuDeviceCreateBuffer(device, &d);
+        }
+        {
+            WGPUBufferDescriptor d{};
+            d.size  = (uint64_t)MAX_INDICES * sizeof(uint32_t);
+            d.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+            _indexBufs[s] = wgpuDeviceCreateBuffer(device, &d);
+        }
     }
     {
+        // One 256-byte slot per pass variant (world / screen / UI), selected
+        // via dynamic offset. A single shared slot is WRONG: WriteBuffer
+        // takes effect at submit, not at record time, so when WorldCanvasPass,
+        // CanvasPass and UIPass each wrote their viewProj into the same slot
+        // during one frame, the LAST write won for all three — world sprites
+        // ended up projected with the screen-space ortho matrix.
         WGPUBufferDescriptor d{};
-        d.size  = (uint64_t)MAX_INDICES * sizeof(uint32_t);
-        d.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
-        _indexBuf = wgpuDeviceCreateBuffer(device, &d);
-    }
-    {
-        WGPUBufferDescriptor d{};
-        d.size  = 64; // mat4x4<f32>
+        d.size  = UNIFORM_SLOT_COUNT * UNIFORM_SLOT_STRIDE;
         d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
         _uniformBuf = wgpuDeviceCreateBuffer(device, &d);
     }
@@ -87,7 +97,7 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     };
     auto p = GpuPipelineBuilder(device)
         .wgsl(QUAD_WGSL)
-        .bgl({ gpuUniform(0, wgsl_stage::vert, 64) })
+        .bgl({ gpuDynUniform(0, wgsl_stage::vert, 64) })
         .bgl({ gpuTexture(0), gpuSampler(1) })
         .vertex((uint64_t)FLOATS_PER_VERT * sizeof(float), quadAttrs)
         .colorFormat(format).blend()
@@ -98,6 +108,8 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     _texBGL     = p.bgl(1);
 
     // ── Uniform bind group (must come after build so _uniformBGL is valid) ──
+    // size = one slot's binding size (64B mat4); the slot is picked per draw
+    // via dynamic offset in Render().
     _uniformBG = GpuBindGroupBuilder(device, _uniformBGL).buffer(0, _uniformBuf, 64).build();
 
     // ── Depth-tested variant (WorldCanvasPass): read-only LessEqual ────────
@@ -198,14 +210,17 @@ void GPUCanvasPass::Render(CommandEncoder* enc,
         idxOff  += static_cast<uint32_t>(cmd.indices.size());
     }
 
-    // ── Upload all data before beginning the render pass ──────────────────
-    // wgpuQueueWriteBuffer is ordered before any subsequent submit, so the
-    // data is guaranteed to be on the GPU when the render pass executes.
-    wgpuQueueWriteBuffer(_queue, _uniformBuf, 0,
+    // ── Upload into this variant's own slot/buffers ────────────────────────
+    // wgpuQueueWriteBuffer applies at submit time (not record time), so each
+    // of the three per-frame invocations must write disjoint destinations —
+    // otherwise the last writer's matrix AND geometry replace everyone's.
+    const uint32_t slot       = toSwapchain ? 2u : depthTest ? 1u : 0u;
+    const uint32_t uniformOff = slot * UNIFORM_SLOT_STRIDE;
+    wgpuQueueWriteBuffer(_queue, _uniformBuf, uniformOff,
                          glm::value_ptr(viewProj), 64);
-    wgpuQueueWriteBuffer(_queue, _vertexBuf, 0,
+    wgpuQueueWriteBuffer(_queue, _vertexBufs[slot], 0,
                          _verts.data(), _verts.size() * sizeof(float));
-    wgpuQueueWriteBuffer(_queue, _indexBuf, 0,
+    wgpuQueueWriteBuffer(_queue, _indexBufs[slot], 0,
                          _indices.data(), _indices.size() * sizeof(uint32_t));
 
     // ── Record into the render pass already opened by the caller ──────────
@@ -218,9 +233,9 @@ void GPUCanvasPass::Render(CommandEncoder* enc,
     wgpuRenderPassEncoderSetPipeline(pass, toSwapchain ? _pipelineSwapchain
                                           : depthTest   ? _pipelineDepthTest
                                                         : _pipeline);
-    wgpuRenderPassEncoderSetBindGroup(pass, 0, _uniformBG, 0, nullptr);
-    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, _vertexBuf, 0, WGPU_WHOLE_SIZE);
-    wgpuRenderPassEncoderSetIndexBuffer(pass, _indexBuf, WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, _uniformBG, 1, &uniformOff);
+    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, _vertexBufs[slot], 0, WGPU_WHOLE_SIZE);
+    wgpuRenderPassEncoderSetIndexBuffer(pass, _indexBufs[slot], WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
 
     for (const auto& batch : batches) {
         if (batch.idxCount == 0) continue;

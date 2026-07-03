@@ -86,7 +86,9 @@ fn shadowFactor(worldPos: vec3<f32>, nDotL: f32) -> f32 {
         uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
         return 1.0;
     }
-    let bias  = max(0.002 * (1.0 - nDotL), 0.0005);
+    // Bias doubled vs the GL shader's 0.0025: the [-1,1]→[0,1] z fixup halves
+    // depth-space derivatives, so the same world-space slope needs 2x bias.
+    let bias  = max(0.004 * (1.0 - nDotL), 0.001);
     let texel = 1.0 / vec2<f32>(textureDimensions(shadow_map));
     var lit = 0.0;
     for (var y = -1; y <= 1; y++) {
@@ -111,8 +113,10 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     let diff = max(dot(norm, lightDir), 0.0);
     let spec = pow(max(dot(norm, halfDir), 0.0), max(draw.shininess.x * 128.0, 1.0));
 
+    // Decode the sRGB-encoded base map to linear before lighting, matching
+    // pbr.frag's SurfaceColor (pow 2.2); PostProcess re-encodes after tonemap.
     let texColor = textureSample(base_map, samp, in.uv);
-    let albedo   = texColor.rgb * draw.diffuse.rgb;
+    let albedo   = pow(texColor.rgb, vec3<f32>(2.2)) * draw.diffuse.rgb;
 
     let shadow   = shadowFactor(in.worldPos, diff);
     let ambient  = draw.materialAmbient.rgb + frame.ambient.rgb * albedo;

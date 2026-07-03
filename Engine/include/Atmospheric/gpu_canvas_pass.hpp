@@ -20,6 +20,12 @@ public:
     // projects every world sprite onto the z=0 plane — they vanish).
     static constexpr int FLOATS_PER_VERT = 11;    // x,y,z, u,v, r,g,b,a, texIdx(unused), flags
 
+    // viewProj uniform slots: one per pass variant so the three Render()
+    // invocations per frame don't overwrite each other's matrix (WriteBuffer
+    // is submit-ordered, not record-ordered).
+    static constexpr uint32_t UNIFORM_SLOT_STRIDE = 256; // WebGPU dyn-offset alignment
+    static constexpr uint32_t UNIFORM_SLOT_COUNT  = 3;   // world / screen / UI
+
     GPUCanvasPass() = default;
     ~GPUCanvasPass();
 
@@ -91,16 +97,18 @@ struct VOut {
     WGPURenderPipeline  _pipeline   = nullptr;
     // Depth-tested variant (read-only, no write) used by WorldCanvasPass so
     // world-space sprites are occluded by 3D geometry already in sceneRT's
-    // depth buffer. Shares every other piece of state (buffers, bind groups,
-    // texture cache) with the no-depth pipeline above.
+    // depth buffer. Shares BGLs and the texture cache with the pipeline above.
     WGPURenderPipeline  _pipelineDepthTest = nullptr;
     // Swapchain-format variant used by UIPass (see Render() doc above).
-    // Shares BGLs/buffers/bind groups with the other two pipelines.
     WGPURenderPipeline  _pipelineSwapchain = nullptr;
     WGPUBindGroupLayout _uniformBGL = nullptr;
     WGPUBindGroupLayout _texBGL     = nullptr;
-    WGPUBuffer          _vertexBuf  = nullptr;
-    WGPUBuffer          _indexBuf   = nullptr;
+    // Per-variant geometry buffers. All three Render() invocations record
+    // into the SAME frame's command buffer, but WriteBuffer applies at
+    // submit — sharing one vertex/index buffer means the last invocation's
+    // geometry replaces everyone's. Each variant streams into its own pair.
+    WGPUBuffer          _vertexBufs[UNIFORM_SLOT_COUNT] = {};
+    WGPUBuffer          _indexBufs[UNIFORM_SLOT_COUNT]  = {};
     WGPUBuffer          _uniformBuf = nullptr;
     WGPUBindGroup       _uniformBG  = nullptr;
     WGPUSampler         _sampler    = nullptr;

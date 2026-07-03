@@ -772,17 +772,23 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
         // Light-space VP with the GL [-1,1] → WebGPU [0,1] NDC-z fixup baked
         // in; without it the ortho projection would clip half the depth range.
+        // castShadow gates shadowing exactly like the GL path (pbr.frag's
+        // main_light.cast_shadow uniform) — the engine's default light has
+        // castShadow=false, so scenes without an explicit shadow light must
+        // render fully lit, not self-shadowed.
         auto* light = ctx->GetMainLight();
+        const bool shadowsOn = light && light->castShadow;
         glm::mat4 lightVP;
-        if (light) {
+        if (shadowsOn) {
             const glm::mat4 z01 = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.5f))
                                 * glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 0.5f));
             lightVP = z01 * light->GetProjectionMatrix(0) * light->GetViewMatrix();
         } else {
-            // No light: push everything past far so the WGSL guard reads
+            // Shadowing off: push everything past far so the WGSL guard reads
             // "outside the frustum" → fully lit.
             lightVP = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 3.0f))
                     * glm::scale(glm::mat4(1.0f), glm::vec3(0.0f));
+            draws.clear(); // nothing to render into the map
         }
         renderer.wgpuShadowLightVP = lightVP;
         renderer.wgpuShadowMapView = _shadowView;
