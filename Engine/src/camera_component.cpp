@@ -94,14 +94,14 @@ glm::mat4 CameraComponent::GetProjectionMatrix() {
 glm::vec3 CameraComponent::GetMoveVector(Axis axis) {
     glm::vec3 dir = GetEyeDirection();
     switch (axis) {
-    case BACK:
-    case FRONT:
+    case Axis::BACK:
+    case Axis::FRONT:
         return glm::normalize(glm::vec3(dir.x, 0, dir.z));
-    case RIGHT:
-    case LEFT:
+    case Axis::RIGHT:
+    case Axis::LEFT:
         return glm::normalize(glm::cross(dir, glm::vec3(0, 1, 0)));
-    case UP:
-    case DOWN:
+    case Axis::UP:
+    case Axis::DOWN:
         return glm::vec3(0, 1, 0);
     default:
         throw std::runtime_error("Invalid camera move axis");

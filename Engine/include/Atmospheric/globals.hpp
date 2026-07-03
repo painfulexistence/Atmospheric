@@ -152,7 +152,7 @@ struct MeshHandle {
     operator bool() const noexcept { return IsValid(); }
 };
 
-enum Axis { UP, DOWN, BACK, FRONT, RIGHT, LEFT };
+enum class Axis { UP, DOWN, BACK, FRONT, RIGHT, LEFT };
 
 // Canvas layer constants for z-ordering
 // World 3D layers (< LAYER_WORLD_2D): rendered by WorldCanvasPass with depth testing
