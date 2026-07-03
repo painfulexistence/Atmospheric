@@ -115,6 +115,13 @@ class TerrainDemo : public Application {
         }
         _hud->Show();
 
+#if defined(__EMSCRIPTEN__)
+        // Wireframe (glPolygonMode) is unavailable on WebGL — hide its hint.
+        // The I-key handler stays active but is a harmless no-op on the web.
+        if (auto* hint = _hud->GetElementById("hint_wireframe"))
+            hint->SetProperty("display", "none");
+#endif
+
         _selMode    = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("mode_select"));
         _selPalette = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("palette_select"));
 
@@ -184,12 +191,7 @@ class TerrainDemo : public Application {
         ApplyProcedural(_showProcedural);
         ApplyPalette(_paletteIndex);
 
-#if !defined(__EMSCRIPTEN__)
         console.Info("Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, ESC quit.");
-#else
-        // Wireframe (glPolygonMode) is unavailable on WebGL, so the I key is omitted.
-        console.Info("Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, ESC quit.");
-#endif
     }
 
     void OnUpdate(float dt, float /*time*/) override {
@@ -221,12 +223,10 @@ class TerrainDemo : public Application {
         if (input.IsKeyPressed(Key::P)) {
             ApplyPalette(_paletteIndex + 1);
         }
-#if !defined(__EMSCRIPTEN__)
         if (input.IsKeyPressed(Key::I)) {
             _wireframe = !_wireframe;
             GetGraphicsServer()->renderer->EnableWireframe(_wireframe);
         }
-#endif
         if (input.IsKeyPressed(Key::ESCAPE)) Quit();
     }
 };
