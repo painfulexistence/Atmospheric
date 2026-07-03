@@ -18,7 +18,7 @@ void GPURenderTarget::Create() {
     WGPUTextureDescriptor colorDesc{};
     colorDesc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
     colorDesc.dimension     = WGPUTextureDimension_2D;
-    colorDesc.size          = { (uint32_t)_width, (uint32_t)_height, 1 };
+    colorDesc.size          = { static_cast<uint32_t>(_width), static_cast<uint32_t>(_height), 1 };
     colorDesc.format        = _hdr ? WGPUTextureFormat_RGBA16Float : WGPUTextureFormat_RGBA8Unorm;
     colorDesc.mipLevelCount = 1;
     colorDesc.sampleCount   = 1;
@@ -28,7 +28,7 @@ void GPURenderTarget::Create() {
         WGPUTextureDescriptor depthDesc{};
         depthDesc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
         depthDesc.dimension     = WGPUTextureDimension_2D;
-        depthDesc.size          = { (uint32_t)_width, (uint32_t)_height, 1 };
+        depthDesc.size          = { static_cast<uint32_t>(_width), static_cast<uint32_t>(_height), 1 };
         depthDesc.format        = WGPUTextureFormat_Depth32Float;
         depthDesc.mipLevelCount = 1;
         depthDesc.sampleCount   = 1;

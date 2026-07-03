@@ -1,4 +1,5 @@
 #include "physics_server.hpp"
+#include <algorithm>
 #include "LinearMath/btThreads.h"
 #include "bullet_task_scheduler.hpp"
 #include "game_object.hpp"
@@ -38,17 +39,10 @@ PhysicsServer::PhysicsServer() {
 }
 
 PhysicsServer::~PhysicsServer() {
-    // It's important to set the task scheduler to null before deleting the world
-    // and other resources, to prevent it from being used during destruction.
+    // It's important to set the task scheduler to null before the world and
+    // other resources are destroyed (which happens automatically, in reverse
+    // declaration order, right after this body runs).
     btSetTaskScheduler(nullptr);
-
-    delete _world;
-    delete _debugDrawer;
-
-    delete _solver;
-    delete _broadphase;
-    delete _dispatcher;
-    delete _config;
 }
 
 void PhysicsServer::Init(Application* app) {
@@ -63,23 +57,23 @@ void PhysicsServer::Init(Application* app) {
         scheduler ? scheduler->getNumThreads() : 0);
     spdlog::info("[Physics] JobSystem threads: {}", JobSystem::Get()->GetThreadCount());
 
-    _config = new btDefaultCollisionConfiguration();
+    _config = std::make_unique<btDefaultCollisionConfiguration>();
     // Use multithreaded dispatcher if thread safe
 #ifdef BT_THREADSAFE
-    _dispatcher = new btCollisionDispatcherMt(_config, JobSystem::Get()->GetThreadCount());
+    _dispatcher = std::make_unique<btCollisionDispatcherMt>(_config.get(), JobSystem::Get()->GetThreadCount());
 #else
-    _dispatcher = new btCollisionDispatcher(_config);
+    _dispatcher = std::make_unique<btCollisionDispatcher>(_config.get());
 #endif
-    _broadphase = new btDbvtBroadphase();
+    _broadphase = std::make_unique<btDbvtBroadphase>();
 
     // Use parallel solver
-    _solver = new btSequentialImpulseConstraintSolverMt();
+    _solver = std::make_unique<btSequentialImpulseConstraintSolverMt>();
 
-    _world = new btDiscreteDynamicsWorld(_dispatcher, _broadphase, _solver, _config);
+    _world = std::make_unique<btDiscreteDynamicsWorld>(_dispatcher.get(), _broadphase.get(), _solver.get(), _config.get());
     SetGravity(glm::vec3(0, -GRAVITY, 0));
 
-    _debugDrawer = new PhysicsDebugDrawer();
-    _world->setDebugDrawer(_debugDrawer);
+    _debugDrawer = std::make_unique<PhysicsDebugDrawer>();
+    _world->setDebugDrawer(_debugDrawer.get());
     _debugDrawer->setDebugMode(1);
 
     _timeAccum = 0.0f;
@@ -137,20 +131,23 @@ void PhysicsServer::DrawImGui(float dt) {
 }
 
 void PhysicsServer::Reset() {
-    for (auto impostor : _impostors) {
-        _world->removeRigidBody(impostor->_rigidbody);
-        delete impostor;
+    // Components are owned by their GameObjects (which unregister themselves
+    // via OnDetach on destruction); here we only detach whatever is left from
+    // the simulation, we never delete the components.
+    for (auto* impostor : _impostors) {
+        _world->removeRigidBody(impostor->_rigidbody.get());
     }
     _impostors.clear();
 }
 
 void PhysicsServer::AddRigidbody(RigidbodyComponent* impostor) {
-    _world->addRigidBody(impostor->_rigidbody);
+    _world->addRigidBody(impostor->_rigidbody.get());
     _impostors.push_back(impostor);
 }
 
 void PhysicsServer::RemoveRigidbody(RigidbodyComponent* impostor) {
-    _world->removeRigidBody(impostor->_rigidbody);
+    _world->removeRigidBody(impostor->_rigidbody.get());
+    _impostors.erase(std::remove(_impostors.begin(), _impostors.end(), impostor), _impostors.end());
 }
 
 ColliderID PhysicsServer::CreateCollider(const Shape& shape) {
@@ -178,12 +175,11 @@ ColliderID PhysicsServer::CreateCollider(const Shape& shape) {
     default:
         throw std::runtime_error("Invalid shape type");
     }
-    _colliders[_nextColliderID] = col;
+    _colliders[_nextColliderID] = std::unique_ptr<btCollisionShape>(col);
     return _nextColliderID++;
 }
 
 void PhysicsServer::DestroyCollider(ColliderID col) {
-    delete _colliders[col];
     _colliders.erase(col);
 }
 

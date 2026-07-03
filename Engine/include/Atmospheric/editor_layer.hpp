@@ -3,6 +3,7 @@
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
 #include <glad/glad.h>
 #endif
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -29,8 +30,8 @@ public:
     void SetVisible(bool show) { _showImGui = show; }
 
 private:
-    Application* _app;
-    bool _showImGui;
+    Application* _app = nullptr;
+    bool _showImGui = true;
     bool _showSystemInfo = false;
     bool _showAppView = true;
     bool _showEngineView = true;
@@ -38,7 +39,7 @@ private:
 
     void DrawSystemInfo();
     void DrawAppView();
-    void DrawEntityNode(GameObject* entity, const std::vector<GameObject*>& all);
+    void DrawEntityNode(GameObject* entity, const std::vector<std::unique_ptr<GameObject>>& all);
     void DrawEntityInspector(GameObject* entity);
     void DrawEngineView();
     void ToggleRecording();

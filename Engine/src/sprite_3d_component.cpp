@@ -297,6 +297,9 @@ void Sprite3DComponent::OnAttach() {
 }
 
 void Sprite3DComponent::OnDetach() {
+    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
+        gameObject->GetApp()->GetGraphicsServer()->UnregisterCanvasDrawable(this);
+    }
 }
 
 Sprite3DComponent& Sprite3DComponent::SetSize(const glm::vec2& size) {

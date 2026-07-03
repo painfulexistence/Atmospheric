@@ -311,15 +311,15 @@ public:
 
     // GL-specific: GBuffer
     struct GBuffer {
-        GLuint id;
-        GLuint positionRT;
-        GLuint normalRT;
-        GLuint albedoRT;
-        GLuint materialRT;
-        GLuint depthRT;
+        GLuint id = 0;
+        GLuint positionRT = 0;
+        GLuint normalRT = 0;
+        GLuint albedoRT = 0;
+        GLuint materialRT = 0;
+        GLuint depthRT = 0;
     } gBuffer;
 
-    GLuint shadowFBO;
+    GLuint shadowFBO = 0;
     GLuint canvasVAO, canvasVBO;  // GL-specific: legacy canvas geometry
 
     // Screen-quad VAO shared by post-process passes (bloom, composite, etc.)

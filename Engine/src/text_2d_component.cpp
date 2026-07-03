@@ -48,7 +48,9 @@ void Text2DComponent::OnAttach() {
 }
 
 void Text2DComponent::OnDetach() {
-    // Unregister canvas drawable if needed
+    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
+        gameObject->GetApp()->GetGraphicsServer()->UnregisterCanvasDrawable(this);
+    }
 }
 
 void Text2DComponent::Draw(BatchRenderer2D* renderer) {

@@ -31,8 +31,8 @@ struct FrameData {
         this->deltaTime = deltaTime;
     };
     uint64_t number;
-    float time;
-    float deltaTime;
+    float time = 0.0f;
+    float deltaTime = 0.0f;
 };
 
 struct AppConfig {
@@ -104,9 +104,10 @@ public:
         return _defaultGameObject;
     }
 
+    // Takes ownership of a heap-allocated layer (callers pass `new T(...)`).
     void PushLayer(Layer* layer);
 
-    inline const std::vector<GameObject*>& GetEntities() const {
+    inline const std::vector<std::unique_ptr<GameObject>>& GetEntities() const {
         return _entities;
     }
     inline GraphicsServer* GetGraphicsServer() {
@@ -247,11 +248,12 @@ private:
     std::string _editorSceneError;
     std::string _lastLoadedScene;
     bool _sceneReady = false;
-    std::vector<GameObject*> _entities;
+    // Sole owner of all game objects; observers hold raw GameObject*.
+    std::vector<std::unique_ptr<GameObject>> _entities;
     EntityID _nextEntityID = 0;
     GameObject* _defaultGameObject = nullptr;
 
-    std::vector<Layer*> _layers;
+    std::vector<std::unique_ptr<Layer>> _layers;
     std::vector<std::function<void()>> _spawnQueue;
     GameObject* _selectedEntity = nullptr;
 #ifndef NDEBUG

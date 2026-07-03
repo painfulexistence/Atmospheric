@@ -27,7 +27,7 @@ struct CanvasVertex {
     glm::vec2 position;
     glm::vec2 texCoord;
     glm::vec4 color;
-    int texIndex;
+    int texIndex = 0;
     CanvasLayer layer;
 };
 
@@ -114,6 +114,8 @@ public:
 
     void UnregisterCamera(CameraComponent* camera);
     void UnregisterLight(LightComponent* light);
+    void UnregisterMesh(MeshComponent* mesh);
+    void UnregisterCanvasDrawable(CanvasDrawable* drawable);
 
     // ===== Render Target Management =====
 
@@ -179,7 +181,7 @@ public:
     glm::vec2 MeasureText(FontHandle fontID, const std::string& text, float scale = 1.0f);
     float GetFontLineHeight(FontHandle fontID, float scale = 1.0f);
 
-    Renderer* renderer = nullptr;
+    std::unique_ptr<Renderer> renderer;
 
 private:
     std::stack<RenderTarget*> _renderTargetStack;

@@ -42,6 +42,6 @@ public:
     void GetData(const std::string& key, sol::table& data);
 
 private:
-    Application* _app;
+    Application* _app = nullptr;
     sol::state _env;
 };

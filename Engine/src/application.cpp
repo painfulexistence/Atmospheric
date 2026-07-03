@@ -382,10 +382,6 @@ void Application::RegisterComponents() {
           return new Text2DComponent(o, props);
       });
 
-    ComponentFactory::Register("TextComponent",
-      [](GameObject* o, Deserializer& d) -> Component* {
-          return ComponentFactory::Create("Text2DComponent", o, d);
-      });
 
     // ── Text3DComponent ─────────────────────────────────────────────────────────
     ComponentFactory::Register("Text3DComponent",
@@ -528,13 +524,12 @@ Application::~Application() {
     ENGINE_LOG("Exiting...");
     _window->DeinitImGui();
 
-    for (const auto& go : _entities)
-        delete go;
+    _entities.clear();
 
-    for (auto* layer : _layers) {
+    for (const auto& layer : _layers) {
         layer->OnDetach();
-        delete layer;
     }
+    _layers.clear();
 }
 
 void Application::Run() {
@@ -555,7 +550,7 @@ void Application::Run() {
     ENGINE_LOG("Subsystems initialized.");
 
     auto windowSize = _window->GetLogicalSize();
-    RmlUiManager::Get()->Initialize(windowSize.width, windowSize.height, graphics.renderer);
+    RmlUiManager::Get()->Initialize(windowSize.width, windowSize.height, graphics.renderer.get());
 
     _transition.Init();
 
@@ -586,7 +581,7 @@ void Application::Run() {
 }
 
 void Application::PushLayer(Layer* layer) {
-    _layers.push_back(layer);
+    _layers.push_back(std::unique_ptr<Layer>(layer));
     layer->OnAttach();
 }
 
@@ -666,7 +661,7 @@ static EasingType ParseEasingType(const std::string& easingStr) {
     return EasingType::Linear;
 }
 
-static Action* ParseAction(const nlohmann::json& val) {
+static std::unique_ptr<Action> ParseAction(const nlohmann::json& val) {
     if (!val.is_object()) return nullptr;
 
     std::string type = val.value("type", "");
@@ -676,13 +671,13 @@ static Action* ParseAction(const nlohmann::json& val) {
 
     if (type == "MoveTo") {
         glm::vec3 pos = ParseVec3(val.value("position", nlohmann::json::array()), glm::vec3(0.0f));
-        auto* action = new MoveTo(duration, pos);
+        auto action = std::make_unique<MoveTo>(duration, pos);
         action->SetEasing(easing);
         return action;
     }
     else if (type == "MoveBy") {
         glm::vec3 delta = ParseVec3(val.value("deltaPosition", nlohmann::json::array()), glm::vec3(0.0f));
-        auto* action = new MoveBy(duration, delta);
+        auto action = std::make_unique<MoveBy>(duration, delta);
         action->SetEasing(easing);
         return action;
     }
@@ -693,7 +688,7 @@ static Action* ParseAction(const nlohmann::json& val) {
             rot.y = val["rotation"].size() >= 2 ? glm::radians(val["rotation"][1].get<float>()) : 0.0f;
             rot.z = val["rotation"].size() >= 3 ? glm::radians(val["rotation"][2].get<float>()) : 0.0f;
         }
-        auto* action = new RotateTo(duration, rot);
+        auto action = std::make_unique<RotateTo>(duration, rot);
         action->SetEasing(easing);
         return action;
     }
@@ -704,25 +699,25 @@ static Action* ParseAction(const nlohmann::json& val) {
             delta.y = val["deltaRotation"].size() >= 2 ? glm::radians(val["deltaRotation"][1].get<float>()) : 0.0f;
             delta.z = val["deltaRotation"].size() >= 3 ? glm::radians(val["deltaRotation"][2].get<float>()) : 0.0f;
         }
-        auto* action = new RotateBy(duration, delta);
+        auto action = std::make_unique<RotateBy>(duration, delta);
         action->SetEasing(easing);
         return action;
     }
     else if (type == "ScaleTo") {
         glm::vec3 scale = ParseVec3(val.value("scale", nlohmann::json::array()), glm::vec3(1.0f));
-        auto* action = new ScaleTo(duration, scale);
+        auto action = std::make_unique<ScaleTo>(duration, scale);
         action->SetEasing(easing);
         return action;
     }
     else if (type == "ColorTo") {
         glm::vec4 color = ParseVec4(val.value("color", nlohmann::json::array()), glm::vec4(1.0f));
-        auto* action = new ColorTo(duration, color);
+        auto action = std::make_unique<ColorTo>(duration, color);
         action->SetEasing(easing);
         return action;
     }
     else if (type == "FadeTo") {
         float alpha = val.value("alpha", 1.0f);
-        auto* action = new FadeTo(duration, alpha);
+        auto action = std::make_unique<FadeTo>(duration, alpha);
         action->SetEasing(easing);
         return action;
     }
@@ -730,33 +725,30 @@ static Action* ParseAction(const nlohmann::json& val) {
         std::vector<FiniteTimeAction*> seqActions;
         if (val.contains("actions") && val["actions"].is_array()) {
             for (const auto& actVal : val["actions"]) {
-                Action* parsed = ParseAction(actVal);
+                auto parsed = ParseAction(actVal);
                 if (parsed) {
-                    FiniteTimeAction* fta = dynamic_cast<FiniteTimeAction*>(parsed);
-                    if (fta) {
+                    if (auto* fta = dynamic_cast<FiniteTimeAction*>(parsed.get())) {
+                        parsed.release();// Sequence takes ownership below
                         seqActions.push_back(fta);
                     } else {
                         spdlog::warn("ParseAction: Sequence only supports FiniteTimeActions. Action ignored.");
-                        delete parsed;
                     }
                 }
             }
         }
         if (!seqActions.empty()) {
-            return new Sequence(seqActions);
+            return std::make_unique<Sequence>(seqActions);
         }
     }
     else if (type == "RepeatForever") {
         if (val.contains("action")) {
-            Action* parsed = ParseAction(val["action"]);
+            auto parsed = ParseAction(val["action"]);
             if (parsed) {
-                ActionInterval* interval = dynamic_cast<ActionInterval*>(parsed);
-                if (interval) {
-                    return new RepeatForever(interval);
-                } else {
-                    spdlog::warn("ParseAction: RepeatForever only supports ActionIntervals. Action ignored.");
-                    delete parsed;
+                if (auto* interval = dynamic_cast<ActionInterval*>(parsed.get())) {
+                    parsed.release();// RepeatForever takes ownership
+                    return std::make_unique<RepeatForever>(interval);
                 }
+                spdlog::warn("ParseAction: RepeatForever only supports ActionIntervals. Action ignored.");
             }
         }
     }
@@ -794,7 +786,7 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
                     auto* mgr = go->GetComponent<ActionManager>();
                     if (mgr && compVal.contains("actions") && compVal["actions"].is_array()) {
                         for (const auto& actionVal : compVal["actions"]) {
-                            if (Action* a = ParseAction(actionVal)) mgr->RunAction(a);
+                            if (auto a = ParseAction(actionVal)) mgr->RunAction(std::move(a));
                         }
                     }
                 }
@@ -1086,15 +1078,8 @@ void Application::ReloadScene() {
 void Application::LoadEditorScene(const uint8_t* data, size_t len)
 {
     // Mirror GoScene's entity-clearing logic without requiring a scene file.
-    for (auto* e : _entities) {
-        if (e != _defaultGameObject) delete e;
-    }
-    _entities.clear();
-    _nextEntityID = 0;
-    if (_defaultGameObject) {
-        _entities.push_back(_defaultGameObject);
-        _nextEntityID = 1;
-    }
+    std::erase_if(_entities, [this](const std::unique_ptr<GameObject>& e) { return e.get() != _defaultGameObject; });
+    _nextEntityID = _defaultGameObject ? 1 : 0;
 
     graphics.cameras.clear();
     graphics.directionalLights.clear();
@@ -1122,9 +1107,9 @@ void Application::UnloadScene(const std::string& name)
 
     // Find the scene container (direct child of __root__ with this name).
     GameObject* container = nullptr;
-    for (auto* e : _entities) {
-        if (e != _defaultGameObject && e->parent == _defaultGameObject && e->GetName() == name) {
-            container = e;
+    for (const auto& e : _entities) {
+        if (e.get() != _defaultGameObject && e->parent == _defaultGameObject && e->GetName() == name) {
+            container = e.get();
             break;
         }
     }
@@ -1136,16 +1121,15 @@ void Application::UnloadScene(const std::string& name)
     while (!stack.empty()) {
         auto* node = stack.back(); stack.pop_back();
         toRemove.insert(node);
-        for (auto* e : _entities) {
-            if (e->parent == node) stack.push_back(e);
+        for (const auto& e : _entities) {
+            if (e->parent == node) stack.push_back(e.get());
         }
     }
 
-    _entities.erase(
-        std::remove_if(_entities.begin(), _entities.end(),
-            [&toRemove](GameObject* e) { return toRemove.count(e) > 0; }),
-        _entities.end());
-    for (auto* e : toRemove) delete e;
+    // Erasing destroys the objects; each GameObject detaches its components
+    // (unregistering them from the graphics/physics servers) as it dies.
+    std::erase_if(_entities,
+                  [&toRemove](const std::unique_ptr<GameObject>& e) { return toRemove.count(e.get()) > 0; });
 
     // Free GPU/CPU assets that were first loaded by this scene.
     // Must come after GameObjects are deleted so no component holds a dangling ref.
@@ -1162,8 +1146,8 @@ void Application::ClearScenes()
     // Collect names of all direct children of __root__ first to avoid
     // iterator invalidation inside UnloadScene.
     std::vector<std::string> names;
-    for (auto* e : _entities) {
-        if (e != _defaultGameObject && e->parent == _defaultGameObject)
+    for (const auto& e : _entities) {
+        if (e.get() != _defaultGameObject && e->parent == _defaultGameObject)
             names.push_back(e->GetName());
     }
     for (const auto& n : names) UnloadScene(n);
@@ -1221,8 +1205,8 @@ std::string Application::GetLoadedScenes() const
 {
     nlohmann::json arr = nlohmann::json::array();
     if (_defaultGameObject) {
-        for (auto* e : _entities) {
-            if (e != _defaultGameObject && e->parent == _defaultGameObject)
+        for (const auto& e : _entities) {
+            if (e.get() != _defaultGameObject && e->parent == _defaultGameObject)
                 arr.push_back(e->GetName());
         }
     }
@@ -1287,13 +1271,13 @@ void Application::Update(const FrameData& props) {
     ENGINE_LOG(fmt::format("Update costs {} ms", (GetWindowTime() - time) * 1000));
 #endif
 
-    for (auto layer : _layers) {
+    for (const auto& layer : _layers) {
         layer->OnUpdate(dt);
     }
 
     float time = GetWindowTime();
 
-    for (auto go : _entities) {
+    for (const auto& go : _entities) {
         auto impostor = go->GetComponent<RigidbodyComponent>();
         if (impostor == nullptr) continue;
         if (impostor->IsKinematic()) continue;
@@ -1308,7 +1292,7 @@ void Application::Render(const FrameData& props) {
     float dt = props.deltaTime;
     float time = GetWindowTime();
 
-    for (auto* layer : _layers) {
+    for (const auto& layer : _layers) {
         layer->OnRender(dt);
     }
 
@@ -1335,7 +1319,7 @@ void Application::UpdateAutoCapture() {
         _capPhaseStart = now;// lazy init: anchor to the first rendered frame
     float elapsed = now - _capPhaseStart;
 
-    Renderer* renderer = graphics.renderer;
+    Renderer* renderer = graphics.renderer.get();
 
     auto ensureParentDir = [](const std::string& path) {
         std::error_code ec;
@@ -1453,17 +1437,19 @@ void Application::SetWindowTitle(const std::string& title) {
 }
 
 GameObject* Application::CreateGameObject(glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) {
-    auto e = new GameObject(this, position, rotation, scale);
+    auto owned = std::make_unique<GameObject>(this, position, rotation, scale);
+    auto* e = owned.get();
     e->SetName(fmt::format("entity #{}", _nextEntityID++));
-    _entities.push_back(e);
+    _entities.push_back(std::move(owned));
     return e;
 }
 
 GameObject* Application::CreateGameObject(glm::vec2 position, float angle) {
-    auto e =
-      new GameObject(this, glm::vec3(position.x, position.y, 0.0f), glm::vec3(0.0f, 0.0f, angle), glm::vec3(1.0f));
+    auto owned = std::make_unique<GameObject>(
+      this, glm::vec3(position.x, position.y, 0.0f), glm::vec3(0.0f, 0.0f, angle), glm::vec3(1.0f));
+    auto* e = owned.get();
     e->SetName(fmt::format("entity #{}", _nextEntityID++));
-    _entities.push_back(e);
+    _entities.push_back(std::move(owned));
     return e;
 }
 
@@ -1485,7 +1471,7 @@ void printMemoryStats() {
         return -1;
     });
     if (jsHeapBytes >= 0) {
-        jsHeapSizeMB = (double)jsHeapBytes / mb;
+        jsHeapSizeMB = static_cast<double>(jsHeapBytes) / mb;
     }
 
     printf("========== Memory Stats ==========\n");

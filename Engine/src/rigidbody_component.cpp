@@ -39,8 +39,8 @@ RigidbodyComponent::RigidbodyComponent(
     t.setOrigin(btVector3(position.x, position.y, position.z));
     t.setRotation(btQuaternion(rotation.x, rotation.y, rotation.z, 1.0f));
 
-    auto motionState = new btDefaultMotionState(t);
-    _rigidbody = new btRigidBody(btScalar(mass), motionState, shape, btVector3(1, 1, 1));
+    _motionState = std::make_unique<btDefaultMotionState>(t);
+    _rigidbody = std::make_unique<btRigidBody>(btScalar(mass), _motionState.get(), shape, btVector3(1, 1, 1));
     _rigidbody->setLinearFactor(btVector3(linearFactor.x, linearFactor.y, linearFactor.z));
     _rigidbody->setAngularFactor(btVector3(angularFactor.x, angularFactor.y, angularFactor.z));
     _rigidbody->setFriction(2.0f);
@@ -60,8 +60,8 @@ RigidbodyComponent::RigidbodyComponent(GameObject* gameObject, const RigidbodyPr
     t.setOrigin(btVector3(position.x, position.y, position.z));
     t.setRotation(btQuaternion(rotation.x, rotation.y, rotation.z, 1.0f));
 
-    auto motionState = new btDefaultMotionState(t);
-    _rigidbody = new btRigidBody(btScalar(props.mass), motionState, props.shape, btVector3(1, 1, 1));
+    _motionState = std::make_unique<btDefaultMotionState>(t);
+    _rigidbody = std::make_unique<btRigidBody>(btScalar(props.mass), _motionState.get(), props.shape, btVector3(1, 1, 1));
     _rigidbody->setLinearFactor(btVector3(props.linearFactor.x, props.linearFactor.y, props.linearFactor.z));
     _rigidbody->setAngularFactor(btVector3(props.angularFactor.x, props.angularFactor.y, props.angularFactor.z));
     if (!props.useGravity) {
@@ -81,10 +81,7 @@ RigidbodyComponent::RigidbodyComponent(GameObject* gameObject, const RigidbodyPr
     _rigidbody->setUserPointer(gameObject);
 }
 
-RigidbodyComponent::~RigidbodyComponent(){
-    // TODO: Check if bullet objects are destoryed by the destructor in btDynamicsWorld class
-    // delete this->_rigidbody;
-};
+RigidbodyComponent::~RigidbodyComponent() = default;
 
 std::string RigidbodyComponent::GetName() const {
     return std::string("Physics");

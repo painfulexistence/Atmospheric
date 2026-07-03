@@ -4,6 +4,7 @@
 #include "bullet_linear_math.hpp"
 #include "component.hpp"
 #include "globals.hpp"
+#include <memory>
 
 struct RigidbodyProps {
     float mass = 1.0f;
@@ -71,6 +72,10 @@ public:
     bool IsKinematic() const;
 
 private:
-    btRigidBody* _rigidbody;
+    // The component owns its Bullet objects; btRigidBody does not delete its
+    // motion state, so we hold that separately. OnDetach removes the body
+    // from the world before either is destroyed.
+    std::unique_ptr<btDefaultMotionState> _motionState;
+    std::unique_ptr<btRigidBody> _rigidbody;
     friend class PhysicsServer;
 };

@@ -1,6 +1,7 @@
 #pragma once
 #include "globals.hpp"
 #include <map>
+#include <memory>
 
 class Application;
 class TransformComponent;
@@ -32,8 +33,8 @@ public:
     ~GameObject();
 
     template<typename T> T* GetComponent() const {
-        for (auto* component : _components) {
-            if (T* cast = dynamic_cast<T*>(component)) {
+        for (const auto& component : _components) {
+            if (T* cast = dynamic_cast<T*>(component.get())) {
                 return cast;
             }
         }
@@ -41,18 +42,21 @@ public:
     }
     // Component* GetComponent(std::string name) const;
     template<typename T, typename... Args> Component* AddComponent(Args&&... args) {
-        T* component = new T(this, std::forward<Args>(args)...);
-        _components.push_back(component);
+        auto owned = std::make_unique<T>(this, std::forward<Args>(args)...);
+        T* component = owned.get();
+        _components.push_back(std::move(owned));
         component->gameObject = this;
         component->OnAttach();
         return component;
     }
+    // Takes ownership of a heap-allocated component (callers pass `new T(...)`).
     void AddComponent(Component* component);
+    // Detaches and destroys the component; the pointer is invalid afterwards.
     void RemoveComponent(Component* component);
 
     // Read-only access to all attached components (used by the editor to drive
     // each component's DrawImGui generically).
-    const std::vector<Component*>& GetComponents() const {
+    const std::vector<std::unique_ptr<Component>>& GetComponents() const {
         return _components;
     }
 
@@ -118,7 +122,9 @@ public:
 
 private:
     std::string _name = " ";
-    std::vector<Component*> _components;
+    // Sole owner of attached components; ~GameObject detaches each one first
+    // so components unregister from server-side registries before dying.
+    std::vector<std::unique_ptr<Component>> _components;
     // std::map<std::string, Component*> _namedComponents;
     Application* _app = nullptr;
     TransformComponent* _transform = nullptr;

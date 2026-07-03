@@ -85,10 +85,11 @@ void LuaApplication::InitializeLua() {
     packagePath += ";./assets/?.lua;./assets/?/init.lua";
     packagePath += ";./?.lua;./?/init.lua";
 
-    // Add resolved fallback paths next
-    std::string baseScripts = FileSystem::Get().ResolvePath("assets/scripts");
-    packagePath += ";" + baseScripts + "/?.lua";
-    packagePath += ";" + baseScripts + "/?/init.lua";
+    // Add resolved fallback paths next (only if the directory exists)
+    if (auto baseScripts = FileSystem::Get().ResolvePath("assets/scripts")) {
+        packagePath += ";" + *baseScripts + "/?.lua";
+        packagePath += ";" + *baseScripts + "/?/init.lua";
+    }
     _lua["package"]["path"] = packagePath;
 
     ENGINE_LOG("Lua environment initialized");
@@ -145,9 +146,8 @@ void LuaApplication::LoadUserScripts() {
 #endif
         {
             // Fall back to resolved virtual paths (cache, MEMFS, or g_basePath on native)
-            std::string resolved = FileSystem::Get().ResolvePath(path);
-            if (FileSystem::Get().Exists(resolved)) {
-                targetPath = resolved;
+            if (auto resolved = FileSystem::Get().ResolvePath(path)) {
+                targetPath = *resolved;
                 exists = true;
             }
         }

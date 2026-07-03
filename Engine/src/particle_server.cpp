@@ -19,7 +19,7 @@ namespace Atmospheric {
         if (this->graphics_server == nullptr) {
             throw std::runtime_error("Invalid graphics server provided to ParticleServer.");
         }
-        this->renderer = this->graphics_server->renderer;
+        this->renderer = this->graphics_server->renderer.get();
         if (this->renderer == nullptr) {
             throw std::runtime_error("Renderer is not initialized in GraphicsServer.");
         }

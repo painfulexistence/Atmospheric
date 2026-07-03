@@ -8,9 +8,9 @@ class GameObject;
 
 struct SceneNode {
     std::string name;
-    SceneNode* parent;
+    SceneNode* parent = nullptr;
     std::vector<SceneNode*> children;
-    GameObject* gameObject;
+    GameObject* gameObject = nullptr;
 
     void AddChild(SceneNode* node);
 
@@ -26,5 +26,5 @@ public:
     }
 
 private:
-    SceneNode* root;
+    SceneNode* root = nullptr;
 };

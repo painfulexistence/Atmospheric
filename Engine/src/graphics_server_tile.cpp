@@ -39,7 +39,7 @@ void GraphicsServer::SubmitUVQuad(float cx, float cy, float w, float h,
     glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(cx, cy, 0.0f));
     transform = glm::scale(transform, glm::vec3(w, h, 1.0f));
 
-    uint32_t startIdx = (uint32_t)cmd.vertices.size();
+    uint32_t startIdx = static_cast<uint32_t>(cmd.vertices.size());
     for (int i = 0; i < 4; i++) {
         BatchVertex v;
         v.position = glm::vec3(transform * localCorners[i]);
@@ -64,8 +64,8 @@ void GraphicsServer::DrawTile(float x, float y, float w, float h,
     float cx = x + w * 0.5f;
     float cy = y + h * 0.5f;
 
-    glm::vec2 uvMin = glm::vec2((float)tileCol,     (float)tileRow)     / tilesetDims;
-    glm::vec2 uvMax = glm::vec2((float)(tileCol+1), (float)(tileRow+1)) / tilesetDims;
+    glm::vec2 uvMin = glm::vec2(static_cast<float>(tileCol),     static_cast<float>(tileRow))     / tilesetDims;
+    glm::vec2 uvMax = glm::vec2(static_cast<float>(tileCol+1), static_cast<float>(tileRow+1)) / tilesetDims;
 
     SubmitUVQuad(cx, cy, w, h, texID, uvMin, uvMax, color);
 }

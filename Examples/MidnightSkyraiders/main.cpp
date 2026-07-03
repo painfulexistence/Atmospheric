@@ -188,8 +188,8 @@ class MidnightSkyraiders : public Application {
         // The title sprite is instantiated from assets/scenes/main.json. Grab a
         // reference to it so updateTitle can hide it once the player starts.
         titleObj = nullptr;
-        for (auto* e : GetEntities()) {
-            if (e->GetName() == "Title") { titleObj = e; break; }
+        for (const auto& e : GetEntities()) {
+            if (e->GetName() == "Title") { titleObj = e.get(); break; }
         }
     }
 
@@ -287,7 +287,7 @@ class MidnightSkyraiders : public Application {
     void spawnWave() {
         director->OnWaveSpawned();
         int   wave = director->WaveCount();
-        int   idx  = (int)(rnd() * 23);
+        int   idx  = static_cast<int>(rnd() * 23);
         float ox   = (rnd() - 0.5f) * 30.0f;
         float oy   = (rnd() - 0.5f) * 30.0f;
 

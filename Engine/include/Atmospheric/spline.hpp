@@ -44,8 +44,8 @@ public:
     // pair of control points forms one segment of equal t-width.
     T Sample(float t) const {
         assert(_points.size() >= 2 && "Spline needs at least 2 points");
-        int seg;
-        float lt;
+        int seg = 0;
+        float lt = 0.0f;
         _Segment(t, seg, lt);
         return _CatmullRom(
             _Point(seg - 1), _Point(seg),
@@ -56,8 +56,8 @@ public:
     // Not normalized — call glm::normalize() if you need a unit direction.
     T SampleTangent(float t) const {
         assert(_points.size() >= 2 && "Spline needs at least 2 points");
-        int seg;
-        float lt;
+        int seg = 0;
+        float lt = 0.0f;
         _Segment(t, seg, lt);
         return _CatmullRomDerivative(
             _Point(seg - 1), _Point(seg),

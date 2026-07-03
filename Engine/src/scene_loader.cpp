@@ -42,9 +42,15 @@ SceneLoadResult SceneLoader::Load(const std::string& filename, const glm::vec3& 
 SceneLoadResult SceneLoader::Load(const std::string& filename, const SceneLoadConfig& config) {
     spdlog::info("SceneLoader: Loading CSB file '{}'...", filename);
 
-    const std::string path = FileSystem::Get().ResolvePath(filename);
-
     SceneLoadResult result;
+    auto resolvedOpt = FileSystem::Get().ResolvePath(filename);
+    if (!resolvedOpt) {
+        result.error = "File not found: " + filename;
+        spdlog::error("SceneLoader: {}", result.error);
+        return result;
+    }
+    const std::string path = *resolvedOpt;
+
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         result.error = "Failed to open file: " + path;

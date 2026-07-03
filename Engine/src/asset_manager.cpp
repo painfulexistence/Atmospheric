@@ -149,10 +149,8 @@ void AssetManager::Clear() {
     _textureCache.clear();
     _nextTextureID = 0;
 
-    // Shaders may have nullptr slots (RemoveMaterial/RemoveShader leaves holes).
-    for (auto* shader : shaders) {
-        if (shader) delete shader;
-    }
+    // Shaders may have nullptr slots (RemoveMaterial/RemoveShader leaves
+    // holes); unique_ptr destructors handle occupied and empty slots alike.
     shaders.clear();
     _shaderCache.clear();
     _nextShaderID = 0;
@@ -166,10 +164,7 @@ void AssetManager::Clear() {
     _ownedMeshIDs.clear();
     _nextMeshID = 1;
 
-    // Materials may have nullptr slots.
-    for (auto* material : materials) {
-        if (material) delete material;
-    }
+    // Materials may have nullptr slots; unique_ptr handles cleanup either way.
     materials.clear();
     _materialCache.clear();
     _nextMaterialID = 0;
@@ -193,10 +188,9 @@ void AssetManager::ClearSceneAssets() {
             it = _textureCache.erase(it);
     }
 
-    // Shaders: delete only scene shaders (indices >= _defaultShaderCount).
-    // Slots may be nullptr if RemoveMaterial/UnloadSceneAssets nulled them.
-    for (uint32_t i = _defaultShaderCount; i < (uint32_t)shaders.size(); ++i)
-        if (shaders[i]) delete shaders[i];
+    // Shaders: release only scene shaders (indices >= _defaultShaderCount).
+    // Slots may be nullptr if RemoveMaterial/UnloadSceneAssets nulled them;
+    // resize destroys the tail via unique_ptr either way.
     shaders.resize(_defaultShaderCount);
     // Rebuild shader cache to only contain default shaders.
     for (auto it = _shaderCache.begin(); it != _shaderCache.end(); )
@@ -204,7 +198,6 @@ void AssetManager::ClearSceneAssets() {
     _nextShaderID = _defaultShaderCount;
 
     // Materials and meshes are always scene-specific (slots may be nullptr).
-    for (auto* m : materials) if (m) delete m;
     materials.clear();
     _materialCache.clear();
     _nextMaterialID = 0;
@@ -226,13 +219,12 @@ void AssetManager::ClearSceneAssets() {
 void AssetManager::RemoveMaterial(Material* mat) {
     if (!mat) return;
     for (auto it = _materialCache.begin(); it != _materialCache.end(); ++it) {
-        if (it->second < materials.size() && materials[it->second] == mat) {
-            materials[it->second] = nullptr;
+        if (it->second < materials.size() && materials[it->second].get() == mat) {
+            materials[it->second].reset();// destroys the material, keeps the slot
             _materialCache.erase(it);
             break;
         }
     }
-    delete mat;
 }
 
 
@@ -287,8 +279,7 @@ void AssetManager::UnloadSceneAssets(const std::string& sceneName) {
             if (shaderIt == _shaderCache.end()) continue;
             uint32_t idx = shaderIt->second;
             if (idx < shaders.size()) {
-                delete shaders[idx];
-                shaders[idx] = nullptr;
+                shaders[idx].reset();
             }
             _shaderCache.erase(shaderIt);
         }
@@ -303,8 +294,7 @@ void AssetManager::UnloadSceneAssets(const std::string& sceneName) {
             if (matIt == _materialCache.end()) continue;
             uint32_t idx = matIt->second;
             if (idx < materials.size()) {
-                delete materials[idx];
-                materials[idx] = nullptr;
+                materials[idx].reset();
             }
             _materialCache.erase(matIt);
         }
@@ -336,7 +326,7 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
     }
 
     int width, height, numChannels;
-    if (!stbi_info_from_memory(fileData.data(), (int)fileData.size(), &width, &height, &numChannels)) {
+    if (!stbi_info_from_memory(fileData.data(), static_cast<int>(fileData.size()), &width, &height, &numChannels)) {
         Console::Get()->Warn(fmt::format("stbi_info_from_memory: Failed to read image metadata at '{}'", path));
         return nullptr;
     }
@@ -358,7 +348,7 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
     }
 
     stbi_set_flip_vertically_on_load(true);
-    uint8_t* data = stbi_load_from_memory(fileData.data(), (int)fileData.size(), &width, &height, &numChannels, desiredChannels);
+    uint8_t* data = stbi_load_from_memory(fileData.data(), static_cast<int>(fileData.size()), &width, &height, &numChannels, desiredChannels);
     if (data) {
         auto image = std::make_shared<Image>(width, height, desiredChannels, data);
         stbi_image_free(data);
@@ -428,7 +418,7 @@ void AssetManager::LoadDefaultShaders() {
                   { "post_sobel",        { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_sobel.frag"         } },
                   { "post_edges",        { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_edges.frag"         } },
                   { "post_vignette",     { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_vignette.frag"      } } });
-    _defaultShaderCount = (uint32_t)shaders.size();
+    _defaultShaderCount = static_cast<uint32_t>(shaders.size());
 }
 
 void AssetManager::LoadShaders(const std::unordered_map<std::string, ShaderProgramProps>& shaderDefs) {
@@ -442,28 +432,29 @@ ShaderProgram* AssetManager::CreateShader(const std::string& name, const ShaderP
     auto it = _shaderCache.find(name);
     if (it != _shaderCache.end()) {
         ENGINE_LOG("Shader '{}' already exists, returning existing shader", name);
-        return shaders[it->second];
+        return shaders[it->second].get();
     }
 
-    auto* shader = new GLShaderProgram(props);
-    shaders.push_back(shader);
+    auto shader = std::make_unique<GLShaderProgram>(props);
+    auto* ptr = shader.get();
+    shaders.push_back(std::move(shader));
     _shaderCache[name] = _nextShaderID++;
 
     ENGINE_LOG("Shader '{}' loaded", name);
-    return shader;
+    return ptr;
 }
 
 ShaderProgram* AssetManager::GetShader(const std::string& name) const {
     auto it = _shaderCache.find(name);
     if (it != _shaderCache.end()) {
-        return shaders[it->second];
+        return shaders[it->second].get();
     }
     throw std::runtime_error(fmt::format("Shader '{}' not found", name));
 }
 
 ShaderProgram* AssetManager::GetShaderByID(uint32_t id) const {
     if (id < shaders.size()) {
-        return shaders[id];
+        return shaders[id].get();
     }
     throw std::runtime_error(fmt::format("Shader ID {} out of range", id));
 }
@@ -479,7 +470,7 @@ void AssetManager::ReloadShaders() {
 
 void AssetManager::LoadMaterials(const std::vector<MaterialProps>& materialDefs) {
     for (const auto& props : materialDefs) {
-        materials.push_back(new Material(props));
+        materials.push_back(std::make_unique<Material>(props));
     }
 }
 
@@ -491,31 +482,35 @@ Material* AssetManager::CreateMaterial(const std::string& name, const MaterialPr
         return GetMaterialByID(it->second);
     }
 
-    auto* material = new Material(props);
-    materials.push_back(material);
+    auto material = std::make_unique<Material>(props);
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
     _materialCache[name] = _nextMaterialID++;
-    return material;
+    return ptr;
 }
 
 Material* AssetManager::CreateMaterial(const MaterialProps& props) {
-    auto* material = new Material(props);
-    materials.push_back(material);
+    auto material = std::make_unique<Material>(props);
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
     _materialCache["unnamed_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
-    return material;
+    return ptr;
 }
 
 WaterMaterial* AssetManager::CreateWaterMaterial() {
-    auto* mat = new WaterMaterial();
-    materials.push_back(mat);
+    auto material = std::make_unique<WaterMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
     _materialCache["water_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
-    return mat;
+    return ptr;
 }
 
 TerrainMaterial* AssetManager::CreateTerrainMaterial() {
-    auto* mat = new TerrainMaterial();
-    materials.push_back(mat);
+    auto material = std::make_unique<TerrainMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
     _materialCache["terrain_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
-    return mat;
+    return ptr;
 }
 
 Material* AssetManager::GetMaterial(const std::string& name) const {
@@ -528,7 +523,7 @@ Material* AssetManager::GetMaterial(const std::string& name) const {
 
 Material* AssetManager::GetMaterialByID(uint32_t id) const {
     if (id < materials.size()) {
-        return materials[id];
+        return materials[id].get();
     }
     throw std::runtime_error(fmt::format("Material ID {} out of range", id));
 }
@@ -581,8 +576,8 @@ static std::string RedirectToKTX2(const std::string& path) {
 #endif
 
 void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
-    int oldCount = (int)textures.size();
-    int newCount = (int)paths.size();
+    int oldCount = static_cast<int>(textures.size());
+    int newCount = static_cast<int>(paths.size());
 
     // Reserve final slots so ordering matches input path ordering.
     textures.resize(oldCount + newCount, 0u);
@@ -624,7 +619,7 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
 
     // ── Parallel CPU image decode for regular (non-KTX2) textures
     std::vector<std::shared_ptr<Image>> images(regularPaths.size());
-    for (int j = 0; j < (int)regularPaths.size(); j++) {
+    for (int j = 0; j < static_cast<int>(regularPaths.size()); j++) {
         auto path  = regularPaths[j];
         auto image = &images[j];
         JobSystem::Get()->Execute([this, path, image](int /*threadID*/) { *image = LoadImage(path); });
@@ -633,9 +628,9 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
 
     // ── Batch generate GL texture objects for regular images
     std::vector<GLuint> regularTexIDs(regularPaths.size());
-    glGenTextures((GLsizei)regularPaths.size(), regularTexIDs.data());
+    glGenTextures(static_cast<GLsizei>(regularPaths.size()), regularTexIDs.data());
 
-    for (int j = 0; j < (int)regularPaths.size(); j++) {
+    for (int j = 0; j < static_cast<int>(regularPaths.size()); j++) {
         int i      = regularIndices[j];
         auto& img  = images[j];
         GLuint texID = regularTexIDs[j];
@@ -673,8 +668,8 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
             throw std::runtime_error(fmt::format("Unknown texture format at {}\n", regularPaths[j]));
         }
         glGenerateMipmap(GL_TEXTURE_2D);
-        _textureCache[regularPaths[j]] = { texID, (uint32_t)img->width, (uint32_t)img->height,
-                                           (size_t)img->width * img->height * img->channelCount };
+        _textureCache[regularPaths[j]] = { texID, static_cast<uint32_t>(img->width), static_cast<uint32_t>(img->height),
+                                           static_cast<size_t>(img->width) * img->height * img->channelCount };
     }
 }
 
@@ -748,8 +743,8 @@ TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>&
     }
     glGenerateMipmap(GL_TEXTURE_2D);
 
-    size_t bytes = (size_t)image->width * image->height * image->channelCount;
-    _textureCache["unnamed_" + std::to_string(_nextTextureID++)] = { texID, (uint32_t)image->width, (uint32_t)image->height, bytes };
+    size_t bytes = static_cast<size_t>(image->width) * image->height * image->channelCount;
+    _textureCache["unnamed_" + std::to_string(_nextTextureID++)] = { texID, static_cast<uint32_t>(image->width), static_cast<uint32_t>(image->height), bytes };
     textures.push_back(texID);
     return TextureHandle(texID);
 }
@@ -827,7 +822,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
 
     // ── Parse KTX2 container ─────────────────────────────────────────────────
     basist::ktx2_transcoder ktx2Dec;
-    if (!ktx2Dec.init(fileData.data(), (uint32_t)fileData.size()))
+    if (!ktx2Dec.init(fileData.data(), static_cast<uint32_t>(fileData.size())))
         throw std::runtime_error(fmt::format("Failed to parse KTX2 header: {}", path));
 
     // ── Choose transcoding target based on GL extension availability ─────────
@@ -871,7 +866,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
     if (levels > 1) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, (GLint)(levels - 1));
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(levels - 1));
     } else {
         // Single level in the KTX2 — warn the user and use bilinear.
         ENGINE_LOG("KTX2 '{}' has no pre-generated mips; encoding with -mipmap is recommended", path);
@@ -898,11 +893,11 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         }
 
         // Level dimensions (clamped to 1 for very small mips).
-        GLsizei w = (GLsizei)std::max(1u, baseWidth  >> level);
-        GLsizei h = (GLsizei)std::max(1u, baseHeight >> level);
+        GLsizei w = static_cast<GLsizei>(std::max(1u, baseWidth  >> level));
+        GLsizei h = static_cast<GLsizei>(std::max(1u, baseHeight >> level));
 
-        glCompressedTexImage2D(GL_TEXTURE_2D, (GLint)level, glFmt,
-                               w, h, 0, (GLsizei)bufferSize, buf.data());
+        glCompressedTexImage2D(GL_TEXTURE_2D, static_cast<GLint>(level), glFmt,
+                               w, h, 0, static_cast<GLsizei>(bufferSize), buf.data());
     }
 
     ENGINE_LOG("Loaded KTX2 texture '{}' ({}×{}, {} mips, {})",
@@ -915,7 +910,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         for (uint32_t level = 0; level < levels; ++level) {
             basist::ktx2_image_level_info info;
             if (ktx2Dec.get_image_level_info(info, level, 0, 0))
-                totalBytes += (size_t)info.m_total_blocks * bytesPerBlk;
+                totalBytes += static_cast<size_t>(info.m_total_blocks) * bytesPerBlk;
         }
         *out = { texID, baseWidth, baseHeight, totalBytes };
     }
@@ -987,21 +982,21 @@ MeshHandle AssetManager::CreatePlaneMeshSubdivided(const std::string& name,
             float fx = -hw + width  * x / n;
             float fz = -hh + height * z / n;
             verts.push_back({ { fx, 0.0f, fz },
-                              { (float)x / n, (float)z / n },
+                              { static_cast<float>(x) / n, static_cast<float>(z) / n },
                               { 0.0f, 1.0f, 0.0f } });
         }
     }
     for (int z = 0; z < n; ++z) {
         for (int x = 0; x < n; ++x) {
-            uint16_t i0 = (uint16_t)( z      * (n + 1) + x    );
-            uint16_t i1 = (uint16_t)( z      * (n + 1) + x + 1);
-            uint16_t i2 = (uint16_t)((z + 1) * (n + 1) + x    );
-            uint16_t i3 = (uint16_t)((z + 1) * (n + 1) + x + 1);
+            uint16_t i0 = static_cast<uint16_t>( z      * (n + 1) + x    );
+            uint16_t i1 = static_cast<uint16_t>( z      * (n + 1) + x + 1);
+            uint16_t i2 = static_cast<uint16_t>((z + 1) * (n + 1) + x    );
+            uint16_t i3 = static_cast<uint16_t>((z + 1) * (n + 1) + x + 1);
             tris.insert(tris.end(), { i0, i2, i1, i1, i2, i3 });
         }
     }
 
-    auto mesh = new Mesh(MeshType::PRIM);
+    auto* mesh = new Mesh(MeshType::PRIM);
     mesh->Initialize(verts, tris);
     return CreateMesh(name, mesh);
 }
@@ -1017,7 +1012,7 @@ MeshHandle AssetManager::CreateSphereMesh(const std::string& name, float radius,
 MeshHandle AssetManager::CreateCapsuleMesh(const std::string& name, float radius, float height) {
     // TODO: Implement capsule mesh generation
     ENGINE_LOG("Capsule mesh '{}' created (generation not yet implemented)", name);
-    auto mesh = new Mesh();
+    auto* mesh = new Mesh();
     if (_materialCache.find("Default") != _materialCache.end()) {
         mesh->SetMaterial(GetMaterial("Default"));
     }
@@ -1329,6 +1324,6 @@ TextureHandle AssetManager::CreateHeightmapTexture(
     glBindTexture(GL_TEXTURE_2D, 0);
 
     textures.push_back(texID);
-    _textureCache[name] = { texID, (uint32_t)width, (uint32_t)height, (size_t)(width * height) };
+    _textureCache[name] = { texID, static_cast<uint32_t>(width), static_cast<uint32_t>(height), static_cast<size_t>(width * height) };
     return TextureHandle(texID);
 }

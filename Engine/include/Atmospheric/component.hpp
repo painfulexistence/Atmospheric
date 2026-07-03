@@ -46,12 +46,12 @@ struct TransformData {
 };
 
 struct RigidbodyComponentData {
-    bool isActive;
+    bool isActive = false;
     const RigidbodyComponent* current;
 };
 
 struct GeometryData {
-    bool isActive;
+    bool isActive = false;
     const Geometry* current;
 };
 

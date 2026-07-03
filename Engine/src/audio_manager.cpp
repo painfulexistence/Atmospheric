@@ -303,7 +303,7 @@ void AudioManager::Reset() {
 
 MusicID AudioManager::LoadMusic(const char* filename) {
     MusicID id = nextMusicId++;
-    std::string path = FileSystem::Get().ResolvePath(filename);
+    std::string path = FileSystem::Get().ResolvePath(filename).value_or(filename);
     musicPaths[id] = path;
     musicVolumes[id] = 1.0f;
     
@@ -395,7 +395,7 @@ bool AudioManager::IsMusicPlaying(MusicID id) {
 
 SoundID AudioManager::LoadSound(const char* filename) {
     SoundID id = nextSoundId++;
-    std::string path = FileSystem::Get().ResolvePath(filename);
+    std::string path = FileSystem::Get().ResolvePath(filename).value_or(filename);
     soundPaths[id] = path;
     soundVolumes[id] = 1.0f;
     
@@ -439,7 +439,7 @@ void AudioManager::PlaySoundVariation(SoundID id, float pitchVariation, float vo
     
     float vol = baseVol;
     if (volumeVariation > 0.0f) {
-        float r = ((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f;
+        float r = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 2.0f - 1.0f;
         vol = baseVol + r * volumeVariation;
         if (vol < 0.0f) vol = 0.0f;
         if (vol > 1.0f) vol = 1.0f;
@@ -447,7 +447,7 @@ void AudioManager::PlaySoundVariation(SoundID id, float pitchVariation, float vo
     
     double pitch = 1.0;
     if (pitchVariation > 0.0f) {
-        float r = ((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f;
+        float r = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 2.0f - 1.0f;
         pitch = 1.0 + r * pitchVariation;
         if (pitch < 0.1) pitch = 0.1;
     }
@@ -619,7 +619,7 @@ void AudioManager::Reset() {
 
 MusicID AudioManager::LoadMusic(const char* filename) {
     MusicID id = nextMusicId;
-    std::string path = FileSystem::Get().ResolvePath(filename);
+    std::string path = FileSystem::Get().ResolvePath(filename).value_or(filename);
     musics[id] = ::LoadMusicStream(path.c_str());
     nextMusicId++;
     return id;
@@ -673,7 +673,7 @@ bool AudioManager::IsMusicPlaying(MusicID id) {
 
 SoundID AudioManager::LoadSound(const char* filename) {
     SoundID id = nextSoundId;
-    std::string path = FileSystem::Get().ResolvePath(filename);
+    std::string path = FileSystem::Get().ResolvePath(filename).value_or(filename);
     sounds[id] = ::LoadSound(path.c_str());
     nextSoundId++;
     return id;

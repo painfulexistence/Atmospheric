@@ -21,6 +21,7 @@
 
 #include <filesystem>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <cstdio>
@@ -125,8 +126,10 @@ bool FileSystem::IsCached(const std::string& path) const {
     return g_cache.count(normPath) != 0;
 }
 
-std::string FileSystem::ResolvePath(const std::string& path) const {
-    return NormalizePath(path);
+std::optional<std::string> FileSystem::ResolvePath(const std::string& path) const {
+    std::string normPath = NormalizePath(path);
+    if (!Exists(normPath)) return std::nullopt;
+    return normPath;
 }
 
 void FileSystem::EvictCache(const std::string& path) {
@@ -372,7 +375,7 @@ void EM_OnSuccess(emscripten_fetch_t* f) {
     if (!bytes.empty()) {
         // Optionally mirror to MEMFS for text-format assets
         if (ctx->writeToMemFS) {
-            fs_js_write_memfs(ctx->path.c_str(), bytes.data(), (int)bytes.size());
+            fs_js_write_memfs(ctx->path.c_str(), bytes.data(), static_cast<int>(bytes.size()));
             RegisterMemFSEntry(ctx->path);
             ENGINE_LOG("[FileSystem] MEMFS + cache: '{}' ({} bytes)", ctx->path, f->numBytes);
         } else {

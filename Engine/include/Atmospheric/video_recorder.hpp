@@ -138,7 +138,7 @@ public:
             auto elapsed = std::chrono::steady_clock::now() - m_recordingStart;
             auto secs    = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
             ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-                               "REC  %02d:%02d", (int)(secs / 60), (int)(secs % 60));
+                               "REC  %02d:%02d", static_cast<int>(secs / 60), static_cast<int>(secs % 60));
         }
         if (!m_status.empty())
             ImGui::TextDisabled("%s", m_status.c_str());
@@ -147,8 +147,8 @@ public:
 private:
     struct RawFrame {
         std::vector<uint8_t> pixels;
-        uint32_t width;
-        uint32_t height;
+        uint32_t width = 0;
+        uint32_t height = 0;
         double timestamp; // seconds since recording started (wall-clock)
         bool bottomUp = false; // true when coming from PBO; encodeFrame uses negative stride
     };

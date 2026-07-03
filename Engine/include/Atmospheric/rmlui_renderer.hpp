@@ -40,9 +40,9 @@ private:
     Renderer* m_Renderer;
 
     struct TextureData {
-        GLuint id;
-        int width;
-        int height;
+        GLuint id = 0;
+        int width = 0;
+        int height = 0;
     };
 
     struct CompiledGeometry {

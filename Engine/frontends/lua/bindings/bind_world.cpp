@@ -172,9 +172,9 @@ void BindWorldAPI(sol::state& lua, LuaApplication* app)
 
     // Find GameObject by name
     world["find"] = [app](const std::string& name) -> GameObject* {
-        for (auto* entity : app->GetEntities()) {
+        for (const auto& entity : app->GetEntities()) {
             if (entity->GetName() == name) {
-                return entity;
+                return entity.get();
             }
         }
         return nullptr;
@@ -182,7 +182,11 @@ void BindWorldAPI(sol::state& lua, LuaApplication* app)
 
     // Get all entities
     world["getAll"] = [app]() -> std::vector<GameObject*> {
-        return app->GetEntities();
+        // Lua receives non-owning observer pointers; Application owns the objects.
+        std::vector<GameObject*> out;
+        out.reserve(app->GetEntities().size());
+        for (const auto& entity : app->GetEntities()) out.push_back(entity.get());
+        return out;
     };
 
     // ===== Scene API =====

@@ -38,7 +38,7 @@ void EditorLayer::ToggleRecording() {
         cfg.captureAudio    = (_app->GetAudioManager() != nullptr);
         cfg.audioSampleRate = 44100;
         cfg.audioChannels   = 2;
-        recorder->startRecording(_app->GetGraphicsServer()->renderer, cfg);
+        recorder->startRecording(_app->GetGraphicsServer()->renderer.get(), cfg);
     }
 }
 
@@ -127,14 +127,14 @@ void EditorLayer::DrawAppView() {
         ImGui::BeginChild("Scene", ImVec2(200, 400), true);
         const auto& entities = _app->GetEntities();
         int rootCount = 0;
-        for (auto* e : entities) if (!e->parent) ++rootCount;
-        ImGui::Text("Scene (%d / %d)", rootCount, (int)entities.size());
+        for (const auto& e : entities) if (!e->parent) ++rootCount;
+        ImGui::Text("Scene (%d / %d)", rootCount, static_cast<int>(entities.size()));
         if (ImGui::Button("Reload Scene")) {
             _app->ReloadScene();
         }
         ImGui::Separator();
-        for (auto* entity : entities) {
-            if (!entity->parent) DrawEntityNode(entity, entities);
+        for (const auto& entity : entities) {
+            if (!entity->parent) DrawEntityNode(entity.get(), entities);
         }
         ImGui::EndChild();
 
@@ -151,9 +151,9 @@ void EditorLayer::DrawAppView() {
     ImGui::End();
 }
 
-void EditorLayer::DrawEntityNode(GameObject* entity, const std::vector<GameObject*>& all) {
+void EditorLayer::DrawEntityNode(GameObject* entity, const std::vector<std::unique_ptr<GameObject>>& all) {
     bool hasChildren = false;
-    for (auto* e : all) {
+    for (const auto& e : all) {
         if (e->parent == entity) { hasChildren = true; break; }
     }
 
@@ -166,8 +166,8 @@ void EditorLayer::DrawEntityNode(GameObject* entity, const std::vector<GameObjec
 
     if (hasChildren) {
         if (open) {
-            for (auto* e : all) {
-                if (e->parent == entity) DrawEntityNode(e, all);
+            for (const auto& e : all) {
+                if (e->parent == entity) DrawEntityNode(e.get(), all);
             }
             ImGui::TreePop();
         }
@@ -176,7 +176,7 @@ void EditorLayer::DrawEntityNode(GameObject* entity, const std::vector<GameObjec
 
 void EditorLayer::DrawEntityInspector(GameObject* entity) {
     ImGui::Text("Name: %s", entity->GetName().c_str());
-    for (auto* comp : entity->GetComponents()) {
+    for (const auto& comp : entity->GetComponents()) {
         if (ImGui::CollapsingHeader(comp->GetName().c_str()))
             comp->DrawImGui();
     }

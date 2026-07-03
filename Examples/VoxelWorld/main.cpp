@@ -33,7 +33,7 @@ class VoxelWorldApp : public Application {
         auto* worldObj = CreateGameObject();
         worldObj->AddComponent<VoxelWorldComponent>(/*seed=*/1337);
 
-        Renderer* renderer = GetGraphicsServer()->renderer;
+        Renderer* renderer = GetGraphicsServer()->renderer.get();
         if (auto* bloom = renderer->GetPass<BloomPass>()) {
             bloom->enabled       = true;
             bloom->threshold     = 0.6f;

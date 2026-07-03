@@ -33,10 +33,10 @@ public:
     }
     bool Seek(Rml::FileHandle fh, long offset, int origin) override {
         auto* s = reinterpret_cast<State*>(fh);
-        long base = (origin == SEEK_SET) ? 0 : (origin == SEEK_END) ? (long)s->data.size() : (long)s->pos;
+        long base = (origin == SEEK_SET) ? 0 : (origin == SEEK_END) ? static_cast<long>(s->data.size()) : static_cast<long>(s->pos);
         long newPos = base + offset;
-        if (newPos < 0 || newPos > (long)s->data.size()) return false;
-        s->pos = (size_t)newPos;
+        if (newPos < 0 || newPos > static_cast<long>(s->data.size())) return false;
+        s->pos = static_cast<size_t>(newPos);
         return true;
     }
     size_t Tell(Rml::FileHandle fh) override {

@@ -63,10 +63,10 @@ public:
     void SetSize(float size);
 
 private:
-    float _fov;
-    float _aspectRatio;
-    float _nearZ;
-    float _farZ;
+    float _fov = 45.0f;
+    float _aspectRatio = 1.0f;
+    float _nearZ = 0.1f;
+    float _farZ = 1000.0f;
     float _orthoWidth = 10.0f;
     float _orthoHeight = 10.0f;
     bool _isOrthographic = false;

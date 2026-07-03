@@ -36,7 +36,6 @@ GraphicsServer::GraphicsServer() {
 GraphicsServer::~GraphicsServer() {
     if (renderer) {
         renderer->Cleanup();
-        delete renderer;
     }
 }
 
@@ -115,7 +114,7 @@ void GraphicsServer::Init(Application* app) {
     glEnable(GL_MULTISAMPLE);
 #endif
 
-    renderer = new Renderer();
+    renderer = std::make_unique<Renderer>();
     renderer->Init(width, height);
     window->AddFramebufferResizeCallback([this](int newWidth, int newHeight) {
         renderer->Resize(newWidth, newHeight);
@@ -238,7 +237,7 @@ void GraphicsServer::DrawImGui(float dt) {
             if (ImGui::Combo("Post Effect", &effectIdx, effectNames, 8))
                 pp->postEffect = (PostEffect)effectIdx;
         }
-        ImGui::Text("Opaque Queue Size: %d", (int)renderer->GetOpaqueQueue().size());
+        ImGui::Text("Opaque Queue Size: %d", static_cast<int>(renderer->GetOpaqueQueue().size()));
 
 #ifdef AE_GPU_TIMER_ENABLED
         ImGui::Separator();
@@ -314,15 +313,15 @@ void GraphicsServer::DrawImGui(float dt) {
             }
             ImGui::Separator();
             if (ImGui::TreeNode(fmt::format("Scene Color RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)(uint32_t)(renderer->sceneRT ? renderer->sceneRT->GetTextureID() : 0), ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)static_cast<uint32_t>(renderer->sceneRT ? renderer->sceneRT->GetTextureID() : 0), ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("Scene Depth RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)(uint32_t)(renderer->sceneRT ? renderer->sceneRT->GetDepthTextureID() : 0), ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)static_cast<uint32_t>(renderer->sceneRT ? renderer->sceneRT->GetDepthTextureID() : 0), ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("MSAA Resolve RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)(uint32_t)(renderer->msaaResolveRT ? renderer->msaaResolveRT->GetTextureID() : 0), ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)static_cast<uint32_t>(renderer->msaaResolveRT ? renderer->msaaResolveRT->GetTextureID() : 0), ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Position RT").c_str())) {
@@ -364,14 +363,15 @@ void GraphicsServer::DrawImGui(float dt) {
         }
         if (ImGui::TreeNode("Materials")) {
             auto& assetManager = AssetManager::Get();
-            for (auto m : assetManager.GetMaterials()) {
+            for (const auto& m : assetManager.GetMaterials()) {
+                if (!m) continue;// slot emptied by RemoveMaterial/UnloadSceneAssets
                 if (ImGui::TreeNode("Mat")) {
-                    ImGui::Text("Base Map ID: %d", (int)m->baseMap);
-                    ImGui::Text("Normal Map ID: %d", (int)m->normalMap);
-                    ImGui::Text("AO Map ID: %d", (int)m->aoMap);
-                    ImGui::Text("Roughness Map ID: %d", (int)m->roughnessMap);
-                    ImGui::Text("Metallic Map ID: %d", (int)m->metallicMap);
-                    ImGui::Text("Height Map ID: %d", (int)m->heightMap);
+                    ImGui::Text("Base Map ID: %d", static_cast<int>(m->baseMap));
+                    ImGui::Text("Normal Map ID: %d", static_cast<int>(m->normalMap));
+                    ImGui::Text("AO Map ID: %d", static_cast<int>(m->aoMap));
+                    ImGui::Text("Roughness Map ID: %d", static_cast<int>(m->roughnessMap));
+                    ImGui::Text("Metallic Map ID: %d", static_cast<int>(m->metallicMap));
+                    ImGui::Text("Height Map ID: %d", static_cast<int>(m->heightMap));
                     ImGui::Text("Ambient: %.3f, %.3f, %.3f", m->ambient.x, m->ambient.y, m->ambient.z);
                     ImGui::Text("Diffuse: %.3f, %.3f, %.3f", m->diffuse.x, m->diffuse.y, m->diffuse.z);
                     ImGui::Text("Specular: %.3f, %.3f, %.3f", m->specular.x, m->specular.y, m->specular.z);
@@ -512,6 +512,20 @@ void GraphicsServer::UnregisterLight(LightComponent* light) {
         if (it != directionalLights.end()) {
             directionalLights.erase(it);
         }
+    }
+}
+
+void GraphicsServer::UnregisterMesh(MeshComponent* mesh) {
+    auto it = std::find(renderables.begin(), renderables.end(), mesh);
+    if (it != renderables.end()) {
+        renderables.erase(it);
+    }
+}
+
+void GraphicsServer::UnregisterCanvasDrawable(CanvasDrawable* drawable) {
+    auto it = std::find(canvasDrawables.begin(), canvasDrawables.end(), drawable);
+    if (it != canvasDrawables.end()) {
+        canvasDrawables.erase(it);
     }
 }
 
