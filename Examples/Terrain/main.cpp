@@ -1,6 +1,6 @@
 #include "Atmospheric.hpp"
 
-class ProceduralTerrainDemo : public Application {
+class TerrainDemo : public Application {
     using Application::Application;
 
     CameraComponent* _cam = nullptr;
@@ -10,35 +10,20 @@ class ProceduralTerrainDemo : public Application {
     bool  _slow        = false;
     bool  _wireframe   = false;
 
+    GameObject* _proceduralTerrain = nullptr;
+    GameObject* _heightmapTerrain  = nullptr;
+    bool        _showProcedural    = true;
+
     void OnInit() override {
         GoScene("main", [this]{ OnLoad(); });
     }
 
-    void OnLoad() override {
-        // To use an image-based heightmap instead of procedural noise:
-        // Uncomment the ImageHeightField section below and comment out the NoiseHeightField section.
-
-        _cam   = mainCamera;
-        _camGO = _cam->gameObject;
-        _camGO->SetPosition(glm::vec3(0.0f, 64.0f, 0.0f));
-
-        // Option A: Image-based HeightField (using hand-drawn test_heightmap)
-        // auto hf = std::make_shared<ImageHeightField>("assets/textures/test_heightmap.jpg");
-
-        // Option B: Procedural Noise HeightField (Default)
-        auto hf = std::make_shared<NoiseHeightField>(NoiseHeightFieldParams{
-            .resolution = 256,
-            .seed       = 42,
-            .frequency  = 0.004f,
-            .octaves    = 8,
-            .lacunarity = 2.0f,
-            .gain       = 0.5f,
-        });
-
-        const float worldSize  = 1024.0f;
+    GameObject* CreateTerrain(const std::string& name, const std::shared_ptr<HeightField>& hf) {
+        const float worldSize   = 1024.0f;
         const float heightScale = 64.0f;
 
         auto* terrain = CreateGameObject(glm::vec3(0.0f, -10.0f, 0.0f));
+        terrain->SetName(name);
         terrain->AddComponent<TerrainMeshComponent>(
             GetGraphicsServer(), hf,
             TerrainMeshProps{
@@ -57,8 +42,32 @@ class ProceduralTerrainDemo : public Application {
                 .maxHeight   =  64.0f,
             }
         );
+        return terrain;
+    }
 
-        console.Info("ProceduralTerrain loaded. WASD move, Arrow keys look, Z slow, SPACE wireframe, ESC quit.");
+    void OnLoad() override {
+        _cam   = mainCamera;
+        _camGO = _cam->gameObject;
+        _camGO->SetPosition(glm::vec3(0.0f, 64.0f, 0.0f));
+
+        // Procedural Noise HeightField
+        _proceduralTerrain = CreateTerrain("ProceduralTerrain", std::make_shared<NoiseHeightField>(NoiseHeightFieldParams{
+            .resolution = 256,
+            .seed       = 42,
+            .frequency  = 0.004f,
+            .octaves    = 8,
+            .lacunarity = 2.0f,
+            .gain       = 0.5f,
+        }));
+
+        // Image-based HeightField (hand-drawn test heightmap)
+        _heightmapTerrain = CreateTerrain("HeightmapTerrain",
+            std::make_shared<ImageHeightField>("assets/textures/test_heightmap.jpg"));
+
+        _proceduralTerrain->SetActive(_showProcedural);
+        _heightmapTerrain->SetActive(!_showProcedural);
+
+        console.Info("Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, T wireframe, ESC quit.");
     }
 
     void OnUpdate(float dt, float /*time*/) override {
@@ -81,7 +90,14 @@ class ProceduralTerrainDemo : public Application {
         if (input.IsKeyDown(Key::F)) pos.y -= speed;
         _camGO->SetPosition(pos);
 
-        if (input.IsKeyPressed(Key::SPACE)) {
+        if (input.IsKeyPressed(Key::SPACE) || input.IsMouseButtonPressed()) {
+            _showProcedural = !_showProcedural;
+            _proceduralTerrain->SetActive(_showProcedural);
+            _heightmapTerrain->SetActive(!_showProcedural);
+            console.Info(_showProcedural ? "Switched to procedural noise terrain"
+                                         : "Switched to heightmap terrain");
+        }
+        if (input.IsKeyPressed(Key::T)) {
             _wireframe = !_wireframe;
             GetGraphicsServer()->renderer->EnableWireframe(_wireframe);
         }
@@ -90,7 +106,7 @@ class ProceduralTerrainDemo : public Application {
 };
 
 int main(int argc, char* argv[]) {
-    ProceduralTerrainDemo game({
+    TerrainDemo game({
         .useDefaultTextures = true,
         .useDefaultShaders  = true,
     });

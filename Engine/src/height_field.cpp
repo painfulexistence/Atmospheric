@@ -33,25 +33,30 @@ float ImageHeightField::Sample(int xi, int zi) const {
 // ----------------------------------------------------------------------------
 
 NoiseHeightField::NoiseHeightField(const NoiseHeightFieldParams& p)
-    : _resolution(p.resolution) {
-    FastNoiseLite noise;
-    noise.SetSeed(p.seed);
-    noise.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
-    noise.SetFrequency(p.frequency);
-    noise.SetFractalType(FastNoiseLite::FractalType_FBm);
-    noise.SetFractalOctaves(p.octaves);
-    noise.SetFractalLacunarity(p.lacunarity);
-    noise.SetFractalGain(p.gain);
+    : _params(p) {
+    Regenerate();
+}
 
-    _grid.resize(_resolution * _resolution);
-    for (int z = 0; z < _resolution; ++z) {
-        for (int x = 0; x < _resolution; ++x) {
+void NoiseHeightField::Regenerate() {
+    FastNoiseLite noise;
+    noise.SetSeed(_params.seed);
+    noise.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
+    noise.SetFrequency(_params.frequency);
+    noise.SetFractalType(FastNoiseLite::FractalType_FBm);
+    noise.SetFractalOctaves(_params.octaves);
+    noise.SetFractalLacunarity(_params.lacunarity);
+    noise.SetFractalGain(_params.gain);
+
+    const int res = _params.resolution;
+    _grid.resize(res * res);
+    for (int z = 0; z < res; ++z) {
+        for (int x = 0; x < res; ++x) {
             float v = noise.GetNoise((float)x, (float)z);
-            _grid[z * _resolution + x] = (v + 1.0f) * 0.5f;  // map [-1,1] → [0,1]
+            _grid[z * res + x] = (v + 1.0f) * 0.5f;  // map [-1,1] → [0,1]
         }
     }
 }
 
 float NoiseHeightField::Sample(int xi, int zi) const {
-    return _grid[zi * _resolution + xi];
+    return _grid[zi * _params.resolution + xi];
 }
