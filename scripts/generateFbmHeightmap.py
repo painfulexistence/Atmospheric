@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate the Terrain example's procedural 16-bit test heightmap.
 
-This regenerates ``Examples/Terrain/assets/textures/test_heightmap_16bit.r16``,
+This regenerates ``Examples/Terrain/assets/textures/test_heightmap.r16``,
 a 512x512 little-endian uint16 headerless heightmap (the .r16 RAW format that
 WorldCreator / Gaea also export) used by the Terrain example to demonstrate the
 16-bit height pipeline.
@@ -14,7 +14,7 @@ generated noise, the output carries no third-party rights; treat it as public
 domain (CC0), no attribution required.
 
 Usage:
-    python3 scripts/generateTestHeightmap.py [output_path]
+    python3 scripts/generateFbmHeightmap.py [output_path]
 
 Requires: numpy
 """

@@ -146,7 +146,7 @@ class TerrainDemo : public Application {
         // Image-based HeightField. 16-bit sources (16-bit PNG, .r16/.raw,
         // .r32) keep full precision end-to-end; 8-bit images also work.
         _heightmapTerrain = CreateTerrain("HeightmapTerrain",
-            std::make_shared<ImageHeightField>("assets/textures/test_heightmap_16bit.r16"));
+            std::make_shared<ImageHeightField>("assets/textures/test_heightmap.r16"));
 
         // ── Using WorldCreator / Gaea exports ────────────────────────────────
         // 1. Export the heightmap as 16-bit PNG or RAW (.r16/.r32), square.
