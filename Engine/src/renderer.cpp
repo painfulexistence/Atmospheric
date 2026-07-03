@@ -1509,25 +1509,20 @@ void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
     glClearColor(renderer.clearColor.x, renderer.clearColor.y, renderer.clearColor.z, renderer.clearColor.w);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    const char* shaderName = "hdr";
-    switch (postEffect) {
-        case PostEffect::CRT:          shaderName = "post_crt";           break;
-        case PostEffect::VHS:          shaderName = "post_vhs";           break;
-        case PostEffect::ColorGrading: shaderName = "post_color_grading"; break;
-        case PostEffect::Posterize:    shaderName = "post_posterize";     break;
-        case PostEffect::Sobel:        shaderName = "post_sobel";         break;
-        case PostEffect::Edges:        shaderName = "post_edges";         break;
-        case PostEffect::Vignette:     shaderName = "post_vignette";      break;
-        default: break;
-    }
-
-    auto shader = ctx->GetShader(shaderName);
+    auto shader = ctx->GetShader("post_composite");
     shader->Activate();
-    shader->SetUniform(std::string("color_map_unit"), (int)0);
-    shader->SetUniform(std::string("exposure"),       tonemapEnabled ? exposure : 1.0f);
-    shader->SetUniform(std::string("u_time"),         renderer.frameTime);
-    shader->SetUniform(std::string("u_ca_enabled"),   (int)caEnabled);
-    shader->SetUniform(std::string("u_ca_strength"),  caStrength);
+    shader->SetUniform(std::string("color_map_unit"),      (int)0);
+    shader->SetUniform(std::string("exposure"),            tonemapEnabled ? exposure : 1.0f);
+    shader->SetUniform(std::string("u_time"),              renderer.frameTime);
+    shader->SetUniform(std::string("u_ca_enabled"),        (int)caEnabled);
+    shader->SetUniform(std::string("u_ca_strength"),       caStrength);
+    shader->SetUniform(std::string("u_crt_enabled"),       (int)crtEnabled);
+    shader->SetUniform(std::string("u_vhs_enabled"),       (int)vhsEnabled);
+    shader->SetUniform(std::string("u_grading_enabled"),   (int)gradingEnabled);
+    shader->SetUniform(std::string("u_posterize_enabled"), (int)posterizeEnabled);
+    shader->SetUniform(std::string("u_sobel_enabled"),     (int)sobelEnabled);
+    shader->SetUniform(std::string("u_edges_enabled"),     (int)edgesEnabled);
+    shader->SetUniform(std::string("u_vignette_enabled"),  (int)vignetteEnabled);
 
     renderer.screenBuffer->Draw(enc, PrimitiveTopology::TriangleStrip);
 

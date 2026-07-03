@@ -392,8 +392,8 @@ void AssetManager::LoadDefaultShaders() {
                     { .vert = "assets/shaders/depth_cubemap.vert", .frag = "assets/shaders/depth_cubemap.frag" },
                   },
                   {
-                    "hdr",
-                    { .vert = "assets/shaders/hdr.vert", .frag = "assets/shaders/hdr.frag" },
+                    "post_composite",
+                    { .vert = "assets/shaders/hdr.vert", .frag = "assets/shaders/post_composite.frag" },
                   },
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
                   {
@@ -420,14 +420,7 @@ void AssetManager::LoadDefaultShaders() {
                   { "bloom_threshold", { .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_threshold.frag" } },
                   { "bloom_downsample",{ .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_downsample.frag" } },
                   { "bloom_upsample",  { .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_upsample.frag" } },
-                  { "bloom_composite",    { .vert = "assets/shaders/bloom.vert",  .frag = "assets/shaders/bloom_composite.frag"    } },
-                  { "post_crt",          { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_crt.frag"           } },
-                  { "post_vhs",          { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_vhs.frag"           } },
-                  { "post_color_grading",{ .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_color_grading.frag" } },
-                  { "post_posterize",    { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_posterize.frag"     } },
-                  { "post_sobel",        { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_sobel.frag"         } },
-                  { "post_edges",        { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_edges.frag"         } },
-                  { "post_vignette",     { .vert = "assets/shaders/hdr.vert",   .frag = "assets/shaders/post_vignette.frag"      } } });
+                  { "bloom_composite",    { .vert = "assets/shaders/bloom.vert",  .frag = "assets/shaders/bloom_composite.frag"    } } });
     _defaultShaderCount = (uint32_t)shaders.size();
 }
 
