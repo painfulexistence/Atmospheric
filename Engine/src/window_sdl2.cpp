@@ -150,6 +150,9 @@ Window::~Window() {
     SDL_GL_DeleteContext(SDL_GL_GetCurrentContext());
     SDL_DestroyWindow(static_cast<SDL_Window*>(_internal));
     SDL_Quit();
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
 void Window::Init() {

@@ -15,6 +15,9 @@ ConsoleSubsystem::ConsoleSubsystem() {
 }
 
 ConsoleSubsystem::~ConsoleSubsystem() {
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
 void ConsoleSubsystem::Init(Application* app) {

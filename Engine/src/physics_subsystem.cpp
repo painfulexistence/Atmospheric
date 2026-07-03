@@ -43,6 +43,9 @@ PhysicsSubsystem::~PhysicsSubsystem() {
     // other resources are destroyed (which happens automatically, in reverse
     // declaration order, right after this body runs).
     btSetTaskScheduler(nullptr);
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
 void PhysicsSubsystem::Init(Application* app) {

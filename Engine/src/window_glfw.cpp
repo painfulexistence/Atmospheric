@@ -173,6 +173,9 @@ Window::Window(WindowProps props) {
 Window::~Window() {
     glfwDestroyWindow(static_cast<GLFWwindow*>(_internal));
     glfwTerminate();
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
 void Window::Init() {

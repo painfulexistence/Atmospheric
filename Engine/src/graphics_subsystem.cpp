@@ -37,6 +37,9 @@ GraphicsSubsystem::~GraphicsSubsystem() {
     if (renderer) {
         renderer->Cleanup();
     }
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
 void GraphicsSubsystem::Init(Application* app) {

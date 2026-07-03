@@ -23,7 +23,9 @@ ScriptSubsystem::ScriptSubsystem()
 
 ScriptSubsystem::~ScriptSubsystem()
 {
-
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
 void ScriptSubsystem::Init(Application* app)

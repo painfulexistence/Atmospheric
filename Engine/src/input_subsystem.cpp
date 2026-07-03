@@ -63,7 +63,9 @@ InputSubsystem::InputSubsystem()
 
 InputSubsystem::~InputSubsystem()
 {
-
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
 void InputSubsystem::Init(Application* app)
