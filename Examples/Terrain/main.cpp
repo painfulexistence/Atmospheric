@@ -184,7 +184,12 @@ class TerrainDemo : public Application {
         ApplyProcedural(_showProcedural);
         ApplyPalette(_paletteIndex);
 
+#if !defined(__EMSCRIPTEN__)
         console.Info("Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, ESC quit.");
+#else
+        // Wireframe (glPolygonMode) is unavailable on WebGL, so the I key is omitted.
+        console.Info("Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, ESC quit.");
+#endif
     }
 
     void OnUpdate(float dt, float /*time*/) override {
@@ -216,10 +221,12 @@ class TerrainDemo : public Application {
         if (input.IsKeyPressed(Key::P)) {
             ApplyPalette(_paletteIndex + 1);
         }
+#if !defined(__EMSCRIPTEN__)
         if (input.IsKeyPressed(Key::I)) {
             _wireframe = !_wireframe;
             GetGraphicsServer()->renderer->EnableWireframe(_wireframe);
         }
+#endif
         if (input.IsKeyPressed(Key::ESCAPE)) Quit();
     }
 };

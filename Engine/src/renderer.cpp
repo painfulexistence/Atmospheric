@@ -1502,6 +1502,9 @@ void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
     auto size = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, size.width, size.height);
     glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // fullscreen composite quad — never wireframe
+#endif
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, renderer.msaaResolveRT->GetTextureID());
@@ -1547,6 +1550,9 @@ void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* en
     glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // UI geometry — never wireframe
+#endif
 
     // RmlUi context dimensions are in logical pixels, so projection must match.
     auto logicalSize = Window::Get()->GetLogicalSize();
