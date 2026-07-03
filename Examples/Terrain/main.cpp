@@ -115,6 +115,13 @@ class TerrainDemo : public Application {
         }
         _hud->Show();
 
+#if defined(__EMSCRIPTEN__)
+        // Wireframe (glPolygonMode) is unavailable on WebGL — hide its hint.
+        // The I-key handler stays active but is a harmless no-op on the web.
+        if (auto* hint = _hud->GetElementById("hint_wireframe"))
+            hint->SetProperty("display", "none");
+#endif
+
         _selMode    = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("mode_select"));
         _selPalette = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("palette_select"));
 
