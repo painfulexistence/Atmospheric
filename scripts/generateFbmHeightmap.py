@@ -64,7 +64,7 @@ def default_output_path():
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(
         repo_root, "Examples", "Terrain", "assets", "textures",
-        "test_heightmap_16bit.r16",
+        "test_heightmap.r16",
     )
 
 
