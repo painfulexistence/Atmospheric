@@ -1,5 +1,6 @@
 #include "asset_manager.hpp"
 #include <algorithm>
+#include <cassert>
 #include <unordered_set>
 #include <nlohmann/json.hpp>
 #include "console_subsystem.hpp"
@@ -109,31 +110,21 @@ GLenum BasisToGLFormat(basist::transcoder_texture_format fmt) {
 
 AssetManager* AssetManager::instance = nullptr;
 
-AssetManager& AssetManager::Get() {
-    if (!instance) {
-        instance = new AssetManager();
-    }
-    return *instance;
+AssetManager::AssetManager() {
+    assert(!instance && "AssetManager is a single-instance service owned by Application");
+    instance = this;
 }
 
 AssetManager::~AssetManager() {
     Clear();
-}
-
-void AssetManager::Init() {
-#ifdef AE_USE_BASIS_UNIVERSAL
-    if (!_basisuInitialized) {
-        basist::basisu_transcoder_init();
-        _basisuInitialized = true;
-        ENGINE_LOG("Basis Universal transcoder initialized (KTX2 support active)");
+    if (instance == this) {
+        instance = nullptr;
     }
-#endif
-    ENGINE_LOG("AssetManager initialized");
 }
 
-void AssetManager::Shutdown() {
-    Clear();
-    ENGINE_LOG("AssetManager shutdown");
+AssetManager& AssetManager::Get() {
+    assert(instance && "AssetManager is owned by Application — construct the Application first");
+    return *instance;
 }
 
 void AssetManager::Clear() {

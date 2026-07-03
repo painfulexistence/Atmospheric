@@ -235,6 +235,8 @@ Application::Application(AppConfig config) : _config(config) {
     _window->Init();
     _window->InitImGui();
 
+    _assetManager = std::make_unique<AssetManager>();
+
     PushLayer(new GameLayer(this));
 #ifndef NDEBUG
     auto* editorLayer = new EditorLayer(this);

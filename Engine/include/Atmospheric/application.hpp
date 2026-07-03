@@ -22,6 +22,7 @@ class Window;
 class GameObject;
 class EditorLayer;
 class VideoRecorder;
+class AssetManager;
 struct SceneBlueprint;
 
 struct FrameData {
@@ -239,6 +240,10 @@ private:
     AppConfig _config;
 
     std::shared_ptr<Window> _window = nullptr;
+    // Engine-scoped services owned here so teardown is deterministic. Their
+    // static Get() is a non-owning locator into these members. Declared after
+    // _window: destroyed before it, while the GL context is still alive.
+    std::unique_ptr<AssetManager> _assetManager;
     std::vector<std::shared_ptr<Subsystem>> _subsystems;
     bool _initialized = false;
 

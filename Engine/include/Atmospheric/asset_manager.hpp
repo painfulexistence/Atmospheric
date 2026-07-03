@@ -37,12 +37,18 @@ struct Texture2D {
     size_t   bytes  = 0;
 };
 
+// Owned by Application (see Application's service members); Get() is a
+// non-owning locator into that instance. Construction order relative to the
+// Window matters: the destructor releases GL textures, so Application declares
+// its AssetManager member after _window (destroyed while the context lives).
 class AssetManager {
 public:
-    static AssetManager& Get();
+    AssetManager();
+    ~AssetManager();
+    AssetManager(const AssetManager&) = delete;
+    AssetManager& operator=(const AssetManager&) = delete;
 
-    void Init();
-    void Shutdown();
+    static AssetManager& Get();
 
     // ========== CPU Resource Management ==========
     std::shared_ptr<Image> LoadImage(const std::string& path);
@@ -137,9 +143,6 @@ public:
     void ClearSceneAssets();  // Clears scene assets only, preserving defaults.
 
 private:
-    AssetManager() = default;
-    ~AssetManager();
-
     static AssetManager* instance;
 
     // Images
