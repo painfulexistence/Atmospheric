@@ -88,22 +88,26 @@ public:
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
-// Chromatic aberration is not in here -- it composites with tonemap via the
-// caEnabled/caStrength uniforms on PostProcessPass instead of its own shader.
-enum class PostEffect { None, CRT, VHS, ColorGrading, Posterize, Sobel, Edges, Vignette };
-
-// Final composite blit: ACES tonemapping + optional chromatic aberration.
+// Final composite blit: single post_composite shader pass. Every effect is an
+// independent toggle, applied in a fixed order (see post_composite.frag):
+// UV distortion -> CA fetch -> tonemap -> LDR stylize -> gamma encode.
 class PostProcessPass : public RenderPass {
 public:
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
-    bool       tonemapEnabled = true;
-    float      exposure       = 0.5f;
+    bool  tonemapEnabled = true;
+    float exposure       = 0.5f;
 
-    bool       caEnabled  = false;
-    float      caStrength = 0.005f;
+    bool  caEnabled  = false;
+    float caStrength = 0.005f;
 
-    PostEffect postEffect = PostEffect::None;
+    bool  crtEnabled       = false;
+    bool  vhsEnabled       = false;
+    bool  gradingEnabled   = false;
+    bool  posterizeEnabled = false;
+    bool  sobelEnabled     = false;
+    bool  edgesEnabled     = false;
+    bool  vignetteEnabled  = false;
 };
 
 // TODO: rename this
