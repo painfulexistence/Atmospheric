@@ -1,4 +1,19 @@
 #include "Atmospheric.hpp"
+#include "Atmospheric/rmlui_manager.hpp"
+#include <RmlUi/Core.h>
+#include <array>
+#include <functional>
+#include <memory>
+
+// Minimal RmlUi click listener that forwards to a std::function. Instances are
+// owned by the app (must outlive the elements they're attached to).
+class ClickListener : public Rml::EventListener {
+public:
+    explicit ClickListener(std::function<void()> cb) : _cb(std::move(cb)) {}
+    void ProcessEvent(Rml::Event& /*event*/) override { if (_cb) _cb(); }
+private:
+    std::function<void()> _cb;
+};
 
 class TerrainDemo : public Application {
     using Application::Application;
@@ -16,18 +31,52 @@ class TerrainDemo : public Application {
     int         _paletteIndex      = 0;  // 0-5; 0 = default warm pink/gold
 
     static constexpr int PALETTE_COUNT = 6;
+    static constexpr std::array<const char*, PALETTE_COUNT> PALETTE_NAMES = {
+        "1 - Warm Pink/Gold", "2 - Cool Blue/Purple", "3 - Earthy Green",
+        "4 - Forest",         "5 - Soft Cool",        "6 - Vivid Mint/Coral"
+    };
+
+    // HUD (RmlUi)
+    Rml::ElementDocument* _hud = nullptr;
+    Rml::Element*         _elModeToggle   = nullptr;
+    Rml::Element*         _elPaletteDD     = nullptr;
+    Rml::Element*         _elPaletteLabel  = nullptr;
+    Rml::Element*         _elPaletteItems[PALETTE_COUNT] = {};
+    bool                  _ddOpen = false;
+    std::vector<std::unique_ptr<ClickListener>> _listeners;
 
     void OnInit() override {
         GoScene("main", [this]{ OnLoad(); });
     }
 
-    void SetPalette(int index) {
+    // ── State application (keeps terrain + HUD in sync) ──────────────────────
+    void ApplyProcedural(bool procedural) {
+        _showProcedural = procedural;
+        if (_proceduralTerrain) _proceduralTerrain->SetActive(procedural);
+        if (_heightmapTerrain)  _heightmapTerrain->SetActive(!procedural);
+        if (_elModeToggle)
+            _elModeToggle->SetInnerRML(procedural ? "Mode: Procedural" : "Mode: Heightmap");
+        console.Info(procedural ? "Switched to procedural noise terrain"
+                                : "Switched to heightmap terrain");
+    }
+
+    void ApplyPalette(int index) {
+        _paletteIndex = ((index % PALETTE_COUNT) + PALETTE_COUNT) % PALETTE_COUNT;
         for (auto* go : { _proceduralTerrain, _heightmapTerrain }) {
             if (!go) continue;
             if (auto* tm = go->GetComponent<TerrainMeshComponent>())
                 if (auto* mat = tm->GetTerrainMaterial())
-                    mat->paletteIndex = index;
+                    mat->paletteIndex = _paletteIndex;
         }
+        if (_elPaletteLabel) _elPaletteLabel->SetInnerRML(PALETTE_NAMES[_paletteIndex]);
+        for (int i = 0; i < PALETTE_COUNT; ++i)
+            if (_elPaletteItems[i]) _elPaletteItems[i]->SetClass("sel", i == _paletteIndex);
+        console.Info(std::string("Terrain palette ") + PALETTE_NAMES[_paletteIndex]);
+    }
+
+    void SetDropdownOpen(bool open) {
+        _ddOpen = open;
+        if (_elPaletteDD) _elPaletteDD->SetClass("open", open);
     }
 
     GameObject* CreateTerrain(const std::string& name, const std::shared_ptr<HeightField>& hf) {
@@ -55,6 +104,40 @@ class TerrainDemo : public Application {
             }
         );
         return terrain;
+    }
+
+    // Attach a click listener to an element by id; the listener is owned by _listeners.
+    void OnClick(const char* id, std::function<void()> cb) {
+        Rml::Element* el = _hud ? _hud->GetElementById(id) : nullptr;
+        if (!el) return;
+        auto listener = std::make_unique<ClickListener>(std::move(cb));
+        el->AddEventListener("click", listener.get());
+        _listeners.push_back(std::move(listener));
+    }
+
+    void SetupHUD() {
+        _hud = RmlUiManager::Get()->LoadDocument("assets/ui/terrain_hud.rml");
+        if (!_hud) {
+            console.Warn("Terrain HUD failed to load; keyboard controls still work.");
+            return;
+        }
+        _hud->Show();
+
+        _elModeToggle   = _hud->GetElementById("mode_toggle");
+        _elPaletteDD    = _hud->GetElementById("palette_dd");
+        _elPaletteLabel = _hud->GetElementById("palette_label");
+        for (int i = 0; i < PALETTE_COUNT; ++i)
+            _elPaletteItems[i] = _hud->GetElementById("pal" + std::to_string(i));
+
+        // Wire interactions.
+        OnClick("mode_toggle",     [this]{ ApplyProcedural(!_showProcedural); });
+        OnClick("palette_current", [this]{ SetDropdownOpen(!_ddOpen); });
+        for (int i = 0; i < PALETTE_COUNT; ++i) {
+            OnClick(("pal" + std::to_string(i)).c_str(), [this, i]{
+                ApplyPalette(i);
+                SetDropdownOpen(false);
+            });
+        }
     }
 
     void OnLoad() override {
@@ -109,8 +192,9 @@ class TerrainDemo : public Application {
         //                               .minHeight = -200.0f, .maxHeight = 200.0f,
         //                               .resolution = 256 /* decimated physics grid */ });
 
-        _proceduralTerrain->SetActive(_showProcedural);
-        _heightmapTerrain->SetActive(!_showProcedural);
+        SetupHUD();
+        ApplyProcedural(_showProcedural);
+        ApplyPalette(_paletteIndex);
 
         console.Info("Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, ESC quit.");
     }
@@ -135,17 +219,14 @@ class TerrainDemo : public Application {
         if (input.IsKeyDown(Key::F)) pos.y -= speed;
         _camGO->SetPosition(pos);
 
-        if (input.IsKeyPressed(Key::SPACE) || input.IsMouseButtonPressed()) {
-            _showProcedural = !_showProcedural;
-            _proceduralTerrain->SetActive(_showProcedural);
-            _heightmapTerrain->SetActive(!_showProcedural);
-            console.Info(_showProcedural ? "Switched to procedural noise terrain"
-                                         : "Switched to heightmap terrain");
+        // LMB switches terrain only when not clicking the HUD (the HUD handles
+        // its own clicks via RmlUi event listeners).
+        bool worldClick = input.IsMouseButtonPressed() && !input.IsMouseOverUI();
+        if (input.IsKeyPressed(Key::SPACE) || worldClick) {
+            ApplyProcedural(!_showProcedural);
         }
         if (input.IsKeyPressed(Key::P)) {
-            _paletteIndex = (_paletteIndex + 1) % PALETTE_COUNT;
-            SetPalette(_paletteIndex);
-            console.Info("Terrain palette " + std::to_string(_paletteIndex + 1));
+            ApplyPalette(_paletteIndex + 1);
         }
         if (input.IsKeyPressed(Key::I)) {
             _wireframe = !_wireframe;

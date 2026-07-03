@@ -1,0 +1,31 @@
+<rml>
+<head>
+    <title>terrain_hud</title>
+    <link type="text/rcss" href="terrain_hud.rcss"/>
+</head>
+<body id="terrain_hud">
+    <div id="panel">
+        <div class="title">Terrain</div>
+
+        <div id="mode_toggle" class="btn">Mode: Procedural</div>
+
+        <div class="label">Palette</div>
+        <div id="palette_dd" class="dropdown">
+            <div id="palette_current" class="dd_current">
+                <span id="palette_label">1 - Warm Pink/Gold</span>
+                <span class="caret">&#9662;</span>
+            </div>
+            <div class="dd_list">
+                <div class="dd_item" id="pal0">1 - Warm Pink/Gold</div>
+                <div class="dd_item" id="pal1">2 - Cool Blue/Purple</div>
+                <div class="dd_item" id="pal2">3 - Earthy Green</div>
+                <div class="dd_item" id="pal3">4 - Forest</div>
+                <div class="dd_item" id="pal4">5 - Soft Cool</div>
+                <div class="dd_item" id="pal5">6 - Vivid Mint/Coral</div>
+            </div>
+        </div>
+
+        <div class="hint">SPACE/LMB switch &#8226; P palette &#8226; I wireframe</div>
+    </div>
+</body>
+</rml>

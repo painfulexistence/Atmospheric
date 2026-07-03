@@ -1,6 +1,7 @@
 #include "input.hpp"
 #include "window.hpp"
 #include "application.hpp"
+#include "rmlui_manager.hpp"
 
 static std::string GetKeyName(Key key) {
     switch (key) {
@@ -93,6 +94,22 @@ void Input::Process(float dt)
     }
     _prevMouseDown = _mouseDown;
     _mouseDown = Window::Get()->GetMouseButtonState();
+
+    // Forward the mouse to RmlUi so HUD documents receive hover/click events.
+    // ProcessMouseMove returns true when the cursor is NOT over any interactive
+    // element, which we invert into _mouseOverUi for world-input gating.
+    // NOTE: coordinates are framebuffer pixels; on HiDPI displays these differ
+    // from RmlUi's logical px (see RmlUiManager::OnResize TODO).
+    if (RmlUiManager::Get()->IsInitialized()) {
+        auto* rml = RmlUiManager::Get();
+        glm::vec2 mp = Window::Get()->GetMousePosition();
+        _mouseOverUi = !rml->ProcessMouseMove((int)mp.x, (int)mp.y, 0);
+        if (_mouseDown && !_prevMouseDown) rml->ProcessMouseButtonDown(0, 0);
+        if (!_mouseDown && _prevMouseDown) rml->ProcessMouseButtonUp(0, 0);
+    } else {
+        _mouseOverUi = false;
+    }
+
     uint64_t currentClock = _app->GetClock();
     while (!_keyPressHistory.empty() && (currentClock - _keyPressHistory.front().time) > KEY_EVENT_LIFETIME) {
         _keyPressHistory.pop_front();
