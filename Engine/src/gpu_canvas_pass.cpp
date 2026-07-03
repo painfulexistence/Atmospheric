@@ -2,10 +2,11 @@
 #include "gpu_canvas_pass.hpp"
 #include "gpu_pipeline.hpp"
 #include "gfx_factory.hpp"
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 GPUCanvasPass::~GPUCanvasPass() {
-    for (auto& [id, bg] : _texBGCache) wgpuBindGroupRelease(bg);
+    for (auto& [id, entry] : _texBGCache) wgpuBindGroupRelease(entry.bg);
     if (_uniformBG)  wgpuBindGroupRelease(_uniformBG);
     if (_uniformBGL) wgpuBindGroupLayoutRelease(_uniformBGL);
     if (_texBGL)     wgpuBindGroupLayoutRelease(_texBGL);
@@ -142,17 +143,26 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
 }
 
 WGPUBindGroup GPUCanvasPass::_getOrCreateTexBG(uint32_t texID) {
-    auto it = _texBGCache.find(texID);
-    if (it != _texBGCache.end()) return it->second;
-
+    // The synthetic ID is stable across GfxFactory::UpdateTexture2D resizes,
+    // but the WGPUTexture underneath is NOT (WebGPU texture storage is
+    // immutable — resize recreates it). Re-resolve the texture every call and
+    // rebuild the bind group when it changed, or we'd sample a dead texture
+    // (VideoPlayer's 1x1 placeholder → first-frame resize).
     WGPUTexture rawTex = (texID == 0) ? _whiteTex : GfxFactory::GetWGPUTexture(texID);
     if (!rawTex) rawTex = _whiteTex;
+
+    auto it = _texBGCache.find(texID);
+    if (it != _texBGCache.end()) {
+        if (it->second.tex == rawTex) return it->second.bg;
+        wgpuBindGroupRelease(it->second.bg);
+        _texBGCache.erase(it);
+    }
 
     WGPUBindGroup bg = GpuBindGroupBuilder(_device, _texBGL)
         .texture(0, rawTex)
         .sampler(1, _sampler)
         .build();
-    _texBGCache[texID] = bg;
+    _texBGCache[texID] = { bg, rawTex };
     return bg;
 }
 
@@ -168,6 +178,18 @@ void GPUCanvasPass::Render(CommandEncoder* enc,
         WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
         if (!dev) return;
         _init(dev, q, WGPUTextureFormat_RGBA16Float, sceneSampleCount); // sceneRT's HDR format
+    }
+
+    // GL-convention projections put NDC z in [-1,1]; WebGPU clips outside
+    // [0,1]. A 2D-preset ortho camera (near=-100, far=1000) lands z=0 sprites
+    // at ndc z≈-0.82 — visible under GL, clipped entirely under WebGPU. Remap
+    // z for the variants that don't depth-test; the depth-tested variant must
+    // stay in the same convention as the 3D passes that wrote sceneRT's depth.
+    glm::mat4 vp = viewProj;
+    if (!depthTest) {
+        const glm::mat4 z01 = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.5f))
+                            * glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 0.5f));
+        vp = z01 * viewProj;
     }
 
     if (commands.empty()) return;
@@ -220,7 +242,7 @@ void GPUCanvasPass::Render(CommandEncoder* enc,
     const uint32_t slot       = toSwapchain ? 2u : depthTest ? 1u : 0u;
     const uint32_t uniformOff = slot * UNIFORM_SLOT_STRIDE;
     wgpuQueueWriteBuffer(_queue, _uniformBuf, uniformOff,
-                         glm::value_ptr(viewProj), 64);
+                         glm::value_ptr(vp), 64);
     wgpuQueueWriteBuffer(_queue, _vertexBufs[slot], 0,
                          _verts.data(), _verts.size() * sizeof(float));
     wgpuQueueWriteBuffer(_queue, _indexBufs[slot], 0,

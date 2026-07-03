@@ -106,7 +106,11 @@ private:
     // fallback texture/sampler for meshes with no base map under WebGPU.
     WGPUTexture _whiteTex = nullptr;
     WGPUSampler _sampler  = nullptr;
-    std::unordered_map<uint32_t, WGPUBindGroup> _texBGCache;
+    // `tex` records the WGPUTexture each bind group was built from so the
+    // cache self-invalidates when GfxFactory::UpdateTexture2D recreates the
+    // texture under the same synthetic ID (see GPUCanvasPass::CachedTexBG).
+    struct CachedTexBG { WGPUBindGroup bg = nullptr; WGPUTexture tex = nullptr; };
+    std::unordered_map<uint32_t, CachedTexBG> _texBGCache;
 
     // Shadow-map bind group (group 2): rebuilt only when the view published
     // by ShadowPass on the Renderer changes.

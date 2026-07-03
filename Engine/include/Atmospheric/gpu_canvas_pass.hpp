@@ -121,6 +121,13 @@ struct VOut {
     std::vector<float>    _verts;
     std::vector<uint32_t> _indices;
 
-    std::unordered_map<uint32_t, WGPUBindGroup> _texBGCache;
+    // Cached per-texture bind groups. `tex` records the WGPUTexture the bind
+    // group was built from so the cache self-invalidates when
+    // GfxFactory::UpdateTexture2D recreates the texture under the same ID.
+    struct CachedTexBG {
+        WGPUBindGroup bg  = nullptr;
+        WGPUTexture   tex = nullptr; // non-owning
+    };
+    std::unordered_map<uint32_t, CachedTexBG> _texBGCache;
 };
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__

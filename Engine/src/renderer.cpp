@@ -987,7 +987,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 ForwardOpaquePass::~ForwardOpaquePass() {
-    for (auto& [id, bg] : _texBGCache) wgpuBindGroupRelease(bg);
+    for (auto& [id, entry] : _texBGCache) wgpuBindGroupRelease(entry.bg);
     if (_uniformBG)       wgpuBindGroupRelease(_uniformBG);
     if (_uniformBGL)      wgpuBindGroupLayoutRelease(_uniformBGL);
     if (_texBGL)          wgpuBindGroupLayoutRelease(_texBGL);
@@ -1093,17 +1093,23 @@ void ForwardOpaquePass::_ensureDrawCapacity(uint32_t drawCount) {
 }
 
 WGPUBindGroup ForwardOpaquePass::_getOrCreateTexBG(uint32_t texID) {
-    auto it = _texBGCache.find(texID);
-    if (it != _texBGCache.end()) return it->second;
-
+    // Re-resolve every call: UpdateTexture2D recreates the WGPUTexture on
+    // resize while keeping the same synthetic ID (see GPUCanvasPass).
     WGPUTexture rawTex = (texID == 0) ? _whiteTex : GfxFactory::GetWGPUTexture(texID);
     if (!rawTex) rawTex = _whiteTex;
+
+    auto it = _texBGCache.find(texID);
+    if (it != _texBGCache.end()) {
+        if (it->second.tex == rawTex) return it->second.bg;
+        wgpuBindGroupRelease(it->second.bg);
+        _texBGCache.erase(it);
+    }
 
     WGPUBindGroup bg = GpuBindGroupBuilder(_gpuDevice, _texBGL)
         .texture(0, rawTex)
         .sampler(1, _sampler)
         .build();
-    _texBGCache[texID] = bg;
+    _texBGCache[texID] = { bg, rawTex };
     return bg;
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
