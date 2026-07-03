@@ -521,6 +521,10 @@ void AudioSubsystem::StopAll() {
 
 #else // !__EMSCRIPTEN__
 
+// Non-owning bridge to the Application-owned VideoRecorder. raudio's C
+// callback API has no userdata parameter, so a file-scope static is the only
+// channel; attach/detach keep it symmetric with the processor registration,
+// and detach always runs before the recorder is destroyed (stopRecording).
 static VideoRecorder* s_captureRecorder = nullptr;
 static void audioCaptureCallback(void* buffer, unsigned int frames) {
     if (s_captureRecorder)
