@@ -1,6 +1,6 @@
 #include "frustum.hpp"
 
-Frustum::Frustum(glm::mat4 viewingMatrix) {
+Frustum::Frustum(const glm::mat4& viewingMatrix) {
     // NOTES:
     // https://www.gamedevs.org/uploads/fast-extraction-viewing-frustum-planes-from-world-view-projection-matrix.pdf
     const float* mat = glm::value_ptr(viewingMatrix);

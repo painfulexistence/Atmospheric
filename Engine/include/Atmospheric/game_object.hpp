@@ -1,5 +1,6 @@
 #pragma once
 #include "globals.hpp"
+#include <concepts>
 #include <map>
 #include <memory>
 
@@ -32,7 +33,7 @@ public:
     );
     ~GameObject();
 
-    template<typename T> T* GetComponent() const {
+    template<std::derived_from<Component> T> [[nodiscard]] T* GetComponent() const {
         for (const auto& component : _components) {
             if (T* cast = dynamic_cast<T*>(component.get())) {
                 return cast;
@@ -41,7 +42,7 @@ public:
         return nullptr;
     }
     // Component* GetComponent(std::string name) const;
-    template<typename T, typename... Args> Component* AddComponent(Args&&... args) {
+    template<std::derived_from<Component> T, typename... Args> Component* AddComponent(Args&&... args) {
         auto owned = std::make_unique<T>(this, std::forward<Args>(args)...);
         T* component = owned.get();
         _components.push_back(std::move(owned));
@@ -78,12 +79,12 @@ public:
     // 0.0f, glm::vec3 linearFactor = glm::vec3(1.0f), glm::vec3 angularFactor = glm::vec3(1.0f));
 
     glm::mat4 GetLocalTransform() const;
-    void SetLocalTransform(glm::mat4 xform);
+    void SetLocalTransform(const glm::mat4& xform);
 
     glm::mat4 GetObjectTransform() const;
-    void SetObjectTransform(glm::mat4 xform);
+    void SetObjectTransform(const glm::mat4& xform);
 
-    void SyncObjectTransform(glm::mat4 xform);
+    void SyncObjectTransform(const glm::mat4& xform);
 
     glm::vec3 GetPosition() const;
     glm::vec3 GetRotation() const;// radians
@@ -101,16 +102,16 @@ public:
     glm::vec3 GetVelocity();
     void SetVelocity(glm::vec3 value);
 
-    inline void SetActive(bool value) {
+    void SetActive(bool value) {
         isActive = value;
     }
 
     void SetPhysicsActivated(bool value);
 
-    inline const std::string& GetName() {
+    const std::string& GetName() const {
         return _name;
     }
-    inline void SetName(const std::string& name) {
+    void SetName(const std::string& name) {
         _name = name;
     }
 

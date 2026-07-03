@@ -107,33 +107,33 @@ public:
     // Takes ownership of a heap-allocated layer (callers pass `new T(...)`).
     void PushLayer(Layer* layer);
 
-    inline const std::vector<std::unique_ptr<GameObject>>& GetEntities() const {
+    const std::vector<std::unique_ptr<GameObject>>& GetEntities() const {
         return _entities;
     }
-    inline GraphicsSubsystem* GetGraphicsSubsystem() {
+    GraphicsSubsystem* GetGraphicsSubsystem() {
         return &graphics;
     }
-    inline PhysicsSubsystem* GetPhysicsSubsystem() {
+    PhysicsSubsystem* GetPhysicsSubsystem() {
         return &physics;
     }
-    inline Physics2DSubsystem* GetPhysics2DSubsystem() {
+    Physics2DSubsystem* GetPhysics2DSubsystem() {
         return &physics2D;
     }
-    inline ConsoleSubsystem* GetConsole() {
+    ConsoleSubsystem* GetConsole() {
         return &console;
     }
-    inline InputSubsystem* GetInput() {
+    InputSubsystem* GetInput() {
         return &input;
     }
-    inline CameraComponent* GetMainCamera() {
+    CameraComponent* GetMainCamera() {
         return mainCamera;
     }
-    inline AudioSubsystem* GetAudioSubsystem() {
+    AudioSubsystem* GetAudioSubsystem() {
         return &audio;
     }
     // Shared video recorder. Drives both the automated capture sequence and the
     // manual F2 toggle in EditorLayer; both operate on this single instance.
-    inline VideoRecorder* GetRecorder() {
+    VideoRecorder* GetRecorder() {
         return _recorder.get();
     }
 

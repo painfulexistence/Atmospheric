@@ -55,9 +55,9 @@ public:
     Material* GetMaterialByID(uint32_t id) const;
     // Handle-based access: handles are stable references that survive scene
     // unloads (they resolve to nullptr instead of dangling).
-    MaterialHandle GetMaterialHandle(const std::string& name) const;// INVALID if absent
-    MaterialHandle GetMaterialHandle(const Material* material) const;// INVALID if absent
-    Material* ResolveMaterial(MaterialHandle handle) const;// nullptr if invalid or unloaded
+    [[nodiscard]] MaterialHandle GetMaterialHandle(const std::string& name) const;// INVALID if absent
+    [[nodiscard]] MaterialHandle GetMaterialHandle(const Material* material) const;// INVALID if absent
+    [[nodiscard]] Material* ResolveMaterial(MaterialHandle handle) const;// nullptr if invalid or unloaded
     void LoadMaterials(const std::vector<MaterialProps>& materialDefs);
 
     ShaderProgram* CreateShader(const std::string& name, const ShaderProgramProps& props);
@@ -66,8 +66,8 @@ public:
     // Handle-based access for references held across frames: handles survive
     // scene unloads (they resolve to nullptr instead of dangling). Transient
     // per-pass lookups can keep using GetShader.
-    ShaderHandle GetShaderHandle(const std::string& name) const;// INVALID if absent
-    ShaderProgram* ResolveShader(ShaderHandle handle) const;// nullptr if invalid or unloaded
+    [[nodiscard]] ShaderHandle GetShaderHandle(const std::string& name) const;// INVALID if absent
+    [[nodiscard]] ShaderProgram* ResolveShader(ShaderHandle handle) const;// nullptr if invalid or unloaded
     void LoadDefaultShaders();
     void LoadShaders(const std::unordered_map<std::string, ShaderProgramProps>& shaderDefs);
     void ReloadShaders();

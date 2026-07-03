@@ -136,7 +136,7 @@ glm::mat4 GameObject::GetLocalTransform() const {
     return _transform->GetLocalTransform();
 }
 
-void GameObject::SetLocalTransform(glm::mat4 xform) {
+void GameObject::SetLocalTransform(const glm::mat4& xform) {
     _transform->SetLocalTransform(xform);
 }
 
@@ -144,14 +144,14 @@ glm::mat4 GameObject::GetObjectTransform() const {
     return _transform->GetWorldTransform();
 }
 
-void GameObject::SetObjectTransform(glm::mat4 xform) {
+void GameObject::SetObjectTransform(const glm::mat4& xform) {
     _transform->SetWorldTransform(xform);
 
     RigidbodyComponent* rb = GetComponent<RigidbodyComponent>();
     if (rb) rb->SetWorldTransform(_transform->GetPosition(), _transform->GetRotation());
 }
 
-void GameObject::SyncObjectTransform(glm::mat4 xform) {
+void GameObject::SyncObjectTransform(const glm::mat4& xform) {
     _transform->SyncWorldTransform(xform);
 }
 

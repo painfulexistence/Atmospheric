@@ -1129,7 +1129,7 @@ void Application::UnloadScene(const std::string& name)
     // Erasing destroys the objects; each GameObject detaches its components
     // (unregistering them from the graphics/physics servers) as it dies.
     std::erase_if(_entities,
-                  [&toRemove](const std::unique_ptr<GameObject>& e) { return toRemove.count(e.get()) > 0; });
+                  [&toRemove](const std::unique_ptr<GameObject>& e) { return toRemove.contains(e.get()); });
 
     // Free GPU/CPU assets that were first loaded by this scene.
     // Must come after GameObjects are deleted so no component holds a dangling ref.

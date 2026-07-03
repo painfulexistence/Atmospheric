@@ -123,7 +123,7 @@ static void ClearMemFSEntries();
 bool FileSystem::IsCached(const std::string& path) const {
     std::string normPath = NormalizePath(path);
     std::lock_guard<std::mutex> lk(g_cacheMutex);
-    return g_cache.count(normPath) != 0;
+    return g_cache.contains(normPath);
 }
 
 std::optional<std::string> FileSystem::ResolvePath(const std::string& path) const {
@@ -300,8 +300,7 @@ static bool NeedsMemFS(const std::string& path) {
     };
     for (const char* ext : kTextExts) {
         size_t elen = strlen(ext);
-        if (path.size() >= elen &&
-            path.compare(path.size() - elen, elen, ext) == 0)
+        if (path.ends_with(ext))
             return true;
     }
     return false;
@@ -464,7 +463,7 @@ void FileSystem::Prefetch(const std::vector<std::string>& paths,
         std::lock_guard<std::mutex> lk(g_cacheMutex);
         for (const auto& p : paths) {
             std::string normPath = NormalizePath(p);
-            if (g_cache.count(normPath)) continue;
+            if (g_cache.contains(normPath)) continue;
 
             // Try reading from MEMFS (populated via --preload-file)
             auto bytes = ReadFromDisk(normPath);

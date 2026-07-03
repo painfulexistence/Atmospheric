@@ -47,7 +47,7 @@ public:
     static Component* Create(const std::string& typeName, GameObject* owner, Deserializer& d);
 
     static bool Has(const std::string& typeName) {
-        return GetRegistry().count(typeName) > 0;
+        return GetRegistry().contains(typeName);
     }
 
 private:

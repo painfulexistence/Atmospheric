@@ -40,5 +40,5 @@ bool Tilemap2D::IsSolidWorld(float wx, float wy) const {
     int row = static_cast<int>(wy / _data.tileSize);
     if (col >= _data.width || row >= _data.height) return true;
     int tileIdx = _data.tiles[row * _data.width + col];
-    return _data.solid.count(tileIdx) > 0;
+    return _data.solid.contains(tileIdx);
 }

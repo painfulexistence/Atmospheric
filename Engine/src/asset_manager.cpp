@@ -182,7 +182,7 @@ void AssetManager::ClearSceneAssets() {
     // Remove scene texture cache entries (keep default texture entries by glID).
     std::unordered_set<GLuint> defaultIDs(defaultTextures.begin(), defaultTextures.end());
     for (auto it = _textureCache.begin(); it != _textureCache.end(); ) {
-        if (defaultIDs.count(it->second.glID))
+        if (defaultIDs.contains(it->second.glID))
             ++it;
         else
             it = _textureCache.erase(it);
@@ -252,7 +252,7 @@ void AssetManager::UnloadSceneAssets(const std::string& sceneName) {
     nlohmann::json j;
     try {
         j = nlohmann::json::parse(it->second);
-    } catch (...) {
+    } catch (const nlohmann::json::exception&) {
         _sceneJsons.erase(it);
         return;
     }
@@ -628,7 +628,7 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
 #if defined(AE_USE_BASIS_UNIVERSAL) && defined(__EMSCRIPTEN__)
         path = RedirectToKTX2(path);
 #endif
-        if (path.size() >= 5 && path.compare(path.size() - 5, 5, ".ktx2") == 0) {
+        if (path.ends_with(".ktx2")) {
 #ifdef AE_USE_BASIS_UNIVERSAL
             auto cached = _textureCache.find(path);
             if (cached != _textureCache.end()) {
@@ -723,7 +723,7 @@ TextureHandle AssetManager::CreateTexture(const std::string& path) {
 
 #ifdef AE_USE_BASIS_UNIVERSAL
     // Route .ktx2 files to the GPU-compressed loader.
-    if (redirectedPath.size() >= 5 && redirectedPath.compare(redirectedPath.size() - 5, 5, ".ktx2") == 0) {
+    if (redirectedPath.ends_with(".ktx2")) {
         Texture2D tex2d;
         GLuint texID = LoadKTX2Texture(redirectedPath, &tex2d);
         textures.push_back(texID);
@@ -1113,7 +1113,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     );
 
     bool result;
-    if (path.size() >= 4 && path.compare(path.size() - 4, 4, ".glb") == 0) {
+    if (path.ends_with(".glb")) {
         result = loader.LoadBinaryFromFile(&model, &err, &warn, path);
     } else {
         result = loader.LoadASCIIFromFile(&model, &err, &warn, path);
@@ -1245,7 +1245,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
 
     for (const auto& srcMesh : model.meshes) {
         for (const auto& prim : srcMesh.primitives) {
-            if (!prim.attributes.count("POSITION")) continue;
+            if (!prim.attributes.contains("POSITION")) continue;
 
             const size_t vertBase  = allVerts.size();
             const auto&  posAcc    = model.accessors[prim.attributes.at("POSITION")];
@@ -1263,16 +1263,16 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
             auto positions = readFloat3(posAcc);
 
             std::vector<glm::vec3> normals(vertCount, glm::vec3(0.f, 1.f, 0.f));
-            if (prim.attributes.count("NORMAL"))
+            if (prim.attributes.contains("NORMAL"))
                 normals = readFloat3(model.accessors[prim.attributes.at("NORMAL")]);
 
             std::vector<glm::vec2> uvs(vertCount, glm::vec2(0.f));
-            if (prim.attributes.count("TEXCOORD_0"))
+            if (prim.attributes.contains("TEXCOORD_0"))
                 uvs = readTexcoord(model.accessors[prim.attributes.at("TEXCOORD_0")]);
 
             // GLTF TANGENT is vec4: xyz = tangent direction, w = bitangent handedness.
             std::vector<glm::vec4> tangents4(vertCount, glm::vec4(1.f, 0.f, 0.f, 1.f));
-            if (prim.attributes.count("TANGENT"))
+            if (prim.attributes.contains("TANGENT"))
                 tangents4 = readFloat4(model.accessors[prim.attributes.at("TANGENT")]);
 
             for (size_t i = 0; i < vertCount; ++i) {
