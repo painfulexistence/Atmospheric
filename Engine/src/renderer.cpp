@@ -265,9 +265,20 @@ void Renderer::SortAndBucket(const glm::vec3& cameraPos) {
     _commandList.clear();
 }
 
+// Resolves a mesh's material handle; draws that lost their material (e.g.
+// after a scene unload) fall back to default-constructed material state
+// instead of dereferencing a dangling pointer.
+static Material* ResolveMaterialOrFallback(MaterialHandle handle) {
+    if (Material* mat = AssetManager::Get().ResolveMaterial(handle)) {
+        return mat;
+    }
+    static Material fallback{ MaterialProps{} };
+    return &fallback;
+}
+
 uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& cameraPos) {
     Mesh* meshPtr = AssetManager::Get().GetMeshPtr(cmd.mesh);
-    Material* mat = meshPtr ? meshPtr->GetMaterial() : nullptr;
+    Material* mat = meshPtr ? AssetManager::Get().ResolveMaterial(meshPtr->GetMaterial()) : nullptr;
     if (!mat) return 0;
 
     // Calculate depth (distance from camera)
@@ -277,8 +288,9 @@ uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& c
     // Get render queue
     int renderQueue = mat->GetFinalRenderQueue();
 
-    // Get material and mesh IDs for batching
-    uint32_t materialID = reinterpret_cast<uintptr_t>(mat) & 0xFFFF;
+    // Get material and mesh IDs for batching; handle IDs are stable across
+    // runs, unlike the pointer bits used before.
+    uint32_t materialID = meshPtr->GetMaterial().id & 0xFFFF;
     uint32_t meshID = cmd.mesh.id & 0xFFFF;
 
     // Generate 64-bit sort key
@@ -311,7 +323,7 @@ void Renderer::SortTransparent() {
 void Renderer::BucketCommands(const glm::vec3& cameraPos) {
     for (const auto& cmd : _commandList) {
         Mesh* meshPtr = AssetManager::Get().GetMeshPtr(cmd.mesh);
-        Material* mat = meshPtr ? meshPtr->GetMaterial() : nullptr;
+        Material* mat = meshPtr ? AssetManager::Get().ResolveMaterial(meshPtr->GetMaterial()) : nullptr;
         if (!mat) continue;
 
         int queue = mat->GetFinalRenderQueue();
@@ -686,10 +698,12 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
 
         if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
+        Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
-        if (mesh->GetMaterial()->cullFaceEnabled)
+        if (material->cullFaceEnabled)
             glEnable(GL_CULL_FACE);
         else
             glDisable(GL_CULL_FACE);
@@ -702,7 +716,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             for (const auto& inst : instances) {
                 depthShader->SetUniform(std::string("World"), inst.modelMatrix);
                 glDrawElements(
-                  GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
+                  GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
                 );
             }
 #else
@@ -712,7 +726,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
 
             // Instanced Draw
             glDrawElementsInstanced(
-              GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+              GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
             );
 #endif
         }
@@ -753,10 +767,12 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
 
                 if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
+                Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+
                 glEnable(GL_DEPTH_TEST);
                 glDepthFunc(GL_LESS);
 
-                if (mesh->GetMaterial()->cullFaceEnabled)
+                if (material->cullFaceEnabled)
                     glEnable(GL_CULL_FACE);
                 else
                     glDisable(GL_CULL_FACE);
@@ -769,7 +785,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
                     for (const auto& inst : instances) {
                         depthCubemapShader->SetUniform(std::string("World"), inst.modelMatrix);
                         glDrawElements(
-                          GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
+                          GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
                         );
                     }
 #else
@@ -781,7 +797,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
 
                     // Instanced Draw
                     glDrawElementsInstanced(
-                      GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+                      GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
                     );
 #endif
                 }
@@ -838,19 +854,21 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
         if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
+        Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+
         AE_GL_PROBE(renderer, fmt::format("Opaque pass: batch entry (type={})", static_cast<int>(mesh->type)));
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
-        if (renderer.wireframeEnabled || mesh->GetMaterial()->polygonMode == PolygonMode::Line)
+        if (renderer.wireframeEnabled || material->polygonMode == PolygonMode::Line)
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         else
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 #endif
 
-        if (mesh->GetMaterial()->cullFaceEnabled)
+        if (material->cullFaceEnabled)
             glEnable(GL_CULL_FACE);
         else
             glDisable(GL_CULL_FACE);
@@ -868,16 +886,16 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             terrainShader->SetUniform(std::string("main_light.cast_shadow"), mainLight->castShadow ? 1 : 0);
             terrainShader->SetUniform(std::string("main_light.ProjectionView"), mainLight->GetProjectionViewMatrix(0));
 
-            terrainShader->SetUniform(std::string("surf_params.diffuse"), mesh->GetMaterial()->diffuse);
-            terrainShader->SetUniform(std::string("surf_params.specular"), mesh->GetMaterial()->specular);
-            terrainShader->SetUniform(std::string("surf_params.ambient"), mesh->GetMaterial()->ambient);
-            terrainShader->SetUniform(std::string("surf_params.shininess"), mesh->GetMaterial()->shininess);
+            terrainShader->SetUniform(std::string("surf_params.diffuse"), material->diffuse);
+            terrainShader->SetUniform(std::string("surf_params.specular"), material->specular);
+            terrainShader->SetUniform(std::string("surf_params.ambient"), material->ambient);
+            terrainShader->SetUniform(std::string("surf_params.shininess"), material->shininess);
 
-            auto* tm = dynamic_cast<TerrainMaterial*>(mesh->GetMaterial());
+            auto* tm = dynamic_cast<TerrainMaterial*>(material);
             terrainShader->SetUniform(std::string("tessellation_factor"), tm ? tm->tessellationFactor : 16.0f);
             terrainShader->SetUniform(std::string("height_scale"),         tm ? tm->heightScale        : 32.0f);
             glActiveTexture(GL_TEXTURE7);
-            TextureHandle heightMap = mesh->GetMaterial()->heightMap;
+            TextureHandle heightMap = material->heightMap;
             if (heightMap.IsValid() && static_cast<uint32_t>(heightMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(heightMap));
             } else {
@@ -959,15 +977,15 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             colorShader->SetUniform(std::string("omni_shadow_map_unit"), static_cast<int>(UNI_SHADOW_MAP_COUNT));
             colorShader->SetUniform(std::string("ProjectionView"), projectionView);
             // Surface parameters
-            colorShader->SetUniform(std::string("surf_params.diffuse"), mesh->GetMaterial()->diffuse);
-            colorShader->SetUniform(std::string("surf_params.specular"), mesh->GetMaterial()->specular);
-            colorShader->SetUniform(std::string("surf_params.ambient"), mesh->GetMaterial()->ambient);
-            colorShader->SetUniform(std::string("surf_params.shininess"), mesh->GetMaterial()->shininess);
+            colorShader->SetUniform(std::string("surf_params.diffuse"), material->diffuse);
+            colorShader->SetUniform(std::string("surf_params.specular"), material->specular);
+            colorShader->SetUniform(std::string("surf_params.ambient"), material->ambient);
+            colorShader->SetUniform(std::string("surf_params.shininess"), material->shininess);
 
             // Material textures - dynamically bound to Units 2-6
             // Base Map (Unit 2)
             glActiveTexture(GL_TEXTURE2);
-            TextureHandle baseMap = mesh->GetMaterial()->baseMap;
+            TextureHandle baseMap = material->baseMap;
             if (baseMap.IsValid() && static_cast<uint32_t>(baseMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(baseMap));
             } else if (assetManager.GetDefaultTextures().size() > 0) {
@@ -979,7 +997,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
             // Normal Map (Unit 3)
             glActiveTexture(GL_TEXTURE3);
-            TextureHandle normalMap = mesh->GetMaterial()->normalMap;
+            TextureHandle normalMap = material->normalMap;
             if (normalMap.IsValid() && static_cast<uint32_t>(normalMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(normalMap));
             } else if (assetManager.GetDefaultTextures().size() > 1) {
@@ -991,7 +1009,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
             // AO Map (Unit 4)
             glActiveTexture(GL_TEXTURE4);
-            TextureHandle aoMap = mesh->GetMaterial()->aoMap;
+            TextureHandle aoMap = material->aoMap;
             if (aoMap.IsValid() && static_cast<uint32_t>(aoMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(aoMap));
             } else if (assetManager.GetDefaultTextures().size() > 2) {
@@ -1003,7 +1021,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
             // Roughness Map (Unit 5)
             glActiveTexture(GL_TEXTURE5);
-            TextureHandle roughnessMap = mesh->GetMaterial()->roughnessMap;
+            TextureHandle roughnessMap = material->roughnessMap;
             if (roughnessMap.IsValid() && static_cast<uint32_t>(roughnessMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(roughnessMap));
             } else if (assetManager.GetDefaultTextures().size() > 3) {
@@ -1015,7 +1033,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
             // Metallic Map (Unit 6)
             glActiveTexture(GL_TEXTURE6);
-            TextureHandle metallicMap = mesh->GetMaterial()->metallicMap;
+            TextureHandle metallicMap = material->metallicMap;
             if (metallicMap.IsValid() && static_cast<uint32_t>(metallicMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(metallicMap));
             } else if (assetManager.GetDefaultTextures().size() > 4) {
@@ -1034,7 +1052,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             for (const auto& inst : instances) {
                 colorShader->SetUniform(std::string("World"), inst.modelMatrix);
                 glDrawElements(
-                  GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
+                  GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
                 );
                 AE_GL_PROBE(renderer, "Opaque pass: PRIM-GLES after glDrawElements");
             }
@@ -1046,7 +1064,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                 );
                 AE_GL_PROBE(renderer, "Opaque pass: PRIM after upload instance VBO");
                 glDrawElementsInstanced(
-                  GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+                  GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
                 );
                 AE_GL_PROBE(renderer, "Opaque pass: PRIM after instanced draw");
             }
@@ -1106,10 +1124,12 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
 
         if (!mesh || !mesh->initialized) throw std::runtime_error("Mesh uninitialized!");
 
+        Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
-        if (mesh->GetMaterial()->cullFaceEnabled)
+        if (material->cullFaceEnabled)
             glEnable(GL_CULL_FACE);
         else
             glDisable(GL_CULL_FACE);
@@ -1133,7 +1153,7 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
             // Material textures - dynamically bound to Units 2-6
             // Base Map (Unit 2)
             glActiveTexture(GL_TEXTURE2);
-            TextureHandle baseMap = mesh->GetMaterial()->baseMap;
+            TextureHandle baseMap = material->baseMap;
             if (baseMap.IsValid() && static_cast<uint32_t>(baseMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(baseMap));
             } else if (assetManager.GetDefaultTextures().size() > 0) {
@@ -1145,7 +1165,7 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
 
             // Normal Map (Unit 3)
             glActiveTexture(GL_TEXTURE3);
-            TextureHandle normalMap = mesh->GetMaterial()->normalMap;
+            TextureHandle normalMap = material->normalMap;
             if (normalMap.IsValid() && static_cast<uint32_t>(normalMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(normalMap));
             } else if (assetManager.GetDefaultTextures().size() > 1) {
@@ -1157,7 +1177,7 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
 
             // AO Map (Unit 4)
             glActiveTexture(GL_TEXTURE4);
-            TextureHandle aoMap = mesh->GetMaterial()->aoMap;
+            TextureHandle aoMap = material->aoMap;
             if (aoMap.IsValid() && static_cast<uint32_t>(aoMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(aoMap));
             } else if (assetManager.GetDefaultTextures().size() > 2) {
@@ -1169,7 +1189,7 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
 
             // Roughness Map (Unit 5)
             glActiveTexture(GL_TEXTURE5);
-            TextureHandle roughnessMap = mesh->GetMaterial()->roughnessMap;
+            TextureHandle roughnessMap = material->roughnessMap;
             if (roughnessMap.IsValid() && static_cast<uint32_t>(roughnessMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(roughnessMap));
             } else if (assetManager.GetDefaultTextures().size() > 3) {
@@ -1181,7 +1201,7 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
 
             // Metallic Map (Unit 6)
             glActiveTexture(GL_TEXTURE6);
-            TextureHandle metallicMap = mesh->GetMaterial()->metallicMap;
+            TextureHandle metallicMap = material->metallicMap;
             if (metallicMap.IsValid() && static_cast<uint32_t>(metallicMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(metallicMap));
             } else if (assetManager.GetDefaultTextures().size() > 4) {
@@ -1198,7 +1218,7 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
                   GL_ARRAY_BUFFER, instances.size() * sizeof(InstanceData), instances.data(), GL_DYNAMIC_DRAW
                 );
                 glDrawElementsInstanced(
-                  GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+                  GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
                 );
             }
             glBindVertexArray(0);

@@ -42,6 +42,6 @@ TerrainMeshComponent::TerrainMeshComponent(
         terrainMat->heightMap = hmap;
     }
 
-    if (meshPtr) meshPtr->SetMaterial(terrainMat);
+    if (meshPtr) meshPtr->SetMaterial(am.GetMaterialHandle(terrainMat));
     owner->AddComponent<MeshComponent>(_mesh);
 }

@@ -58,7 +58,7 @@ class HelloWorld : public Application {
         // The mesh is still procedural, but its material ("cubeMat") is now
         // declared in assets/scenes/main.json and looked up by name here.
         auto cubeMesh = AssetManager::Get().CreateCubeMesh("CubeMesh", 1.0f);
-        AssetManager::Get().GetMeshPtr(cubeMesh)->SetMaterial(AssetManager::Get().GetMaterial("cubeMat"));
+        AssetManager::Get().GetMeshPtr(cubeMesh)->SetMaterial(AssetManager::Get().GetMaterialHandle("cubeMat"));
 
         auto* cube = CreateGameObject(glm::vec3(0.0f, 5.0f, 0.0f));
         cube->AddComponent<MeshComponent>(cubeMesh);

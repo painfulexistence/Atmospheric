@@ -72,8 +72,6 @@ public:
 
     std::unique_ptr<Mesh> debugLineMesh;
     std::unique_ptr<Mesh> canvasMesh;
-    ShaderProgram* debugShader  = nullptr;
-    ShaderProgram* canvasShader = nullptr;
 
     GraphicsSubsystem();
     ~GraphicsSubsystem();

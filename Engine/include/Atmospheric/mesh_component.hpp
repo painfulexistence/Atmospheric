@@ -24,11 +24,12 @@ public:
 
     void SetMesh(MeshHandle mesh);
 
+    // Resolves the override handle, falling back to the mesh's own material.
     Material* GetMaterial() const;
 
-    void SetMaterial(Material* material);
+    void SetMaterial(MaterialHandle material);
 
 private:
     MeshHandle _mesh;
-    Material* _material = nullptr;
+    MaterialHandle _material;
 };

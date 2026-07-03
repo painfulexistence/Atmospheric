@@ -72,11 +72,11 @@ public:
         _bounds = bounds;
     }
 
-    Material* GetMaterial() const {
+    MaterialHandle GetMaterial() const {
         return _material;
     }
 
-    void SetMaterial(Material* material) {
+    void SetMaterial(MaterialHandle material) {
         _material = material;
     };
 
@@ -97,7 +97,9 @@ private:
     GLenum _primitiveType = GL_TRIANGLES;
     std::array<glm::vec3, 8> _bounds;
 
-    Material* _material = nullptr;
+    // Stable reference into AssetManager's material table; never dangles
+    // (resolves to nullptr after the material is unloaded).
+    MaterialHandle _material;
     btCollisionShape* _shape = nullptr;
 
     // New RenderMesh-based storage (used by Update methods)

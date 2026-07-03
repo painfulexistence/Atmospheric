@@ -528,6 +528,27 @@ Material* AssetManager::GetMaterialByID(uint32_t id) const {
     throw std::runtime_error(fmt::format("Material ID {} out of range", id));
 }
 
+// Handles are 1-based (0 is MaterialHandle::INVALID); slot index = id - 1.
+
+MaterialHandle AssetManager::GetMaterialHandle(const std::string& name) const {
+    auto it = _materialCache.find(name);
+    return it != _materialCache.end() ? MaterialHandle(it->second + 1) : MaterialHandle{};
+}
+
+MaterialHandle AssetManager::GetMaterialHandle(const Material* material) const {
+    if (!material) return {};
+    for (uint32_t i = 0; i < materials.size(); ++i) {
+        if (materials[i].get() == material) return MaterialHandle(i + 1);
+    }
+    return {};
+}
+
+Material* AssetManager::ResolveMaterial(MaterialHandle handle) const {
+    if (!handle.IsValid()) return nullptr;
+    uint32_t index = handle.id - 1;
+    return index < materials.size() ? materials[index].get() : nullptr;
+}
+
 // ============================================================================
 // GPU Texture Management
 // ============================================================================
@@ -954,7 +975,7 @@ void AssetManager::UnregisterMesh(MeshHandle handle) {
 MeshHandle AssetManager::CreateCubeMesh(const std::string& name, float size) {
     auto mesh = MeshBuilder::CreateCube(size);
     if (_materialCache.find("Default") != _materialCache.end()) {
-        mesh->SetMaterial(GetMaterial("Default"));
+        mesh->SetMaterial(GetMaterialHandle("Default"));
     }
     return CreateMesh(name, mesh);
 }
@@ -962,7 +983,7 @@ MeshHandle AssetManager::CreateCubeMesh(const std::string& name, float size) {
 MeshHandle AssetManager::CreatePlaneMesh(const std::string& name, float width, float height) {
     auto mesh = MeshBuilder::CreatePlane(width, height);
     if (_materialCache.find("Default") != _materialCache.end()) {
-        mesh->SetMaterial(GetMaterial("Default"));
+        mesh->SetMaterial(GetMaterialHandle("Default"));
     }
     return CreateMesh(name, mesh);
 }
@@ -1004,7 +1025,7 @@ MeshHandle AssetManager::CreatePlaneMeshSubdivided(const std::string& name,
 MeshHandle AssetManager::CreateSphereMesh(const std::string& name, float radius, int division) {
     auto mesh = MeshBuilder::CreateSphere(radius, division);
     if (_materialCache.find("Default") != _materialCache.end()) {
-        mesh->SetMaterial(GetMaterial("Default"));
+        mesh->SetMaterial(GetMaterialHandle("Default"));
     }
     return CreateMesh(name, mesh);
 }
@@ -1014,7 +1035,7 @@ MeshHandle AssetManager::CreateCapsuleMesh(const std::string& name, float radius
     ENGINE_LOG("Capsule mesh '{}' created (generation not yet implemented)", name);
     auto* mesh = new Mesh();
     if (_materialCache.find("Default") != _materialCache.end()) {
-        mesh->SetMaterial(GetMaterial("Default"));
+        mesh->SetMaterial(GetMaterialHandle("Default"));
     }
     return CreateMesh(name, mesh);
 }
@@ -1022,7 +1043,7 @@ MeshHandle AssetManager::CreateCapsuleMesh(const std::string& name, float radius
 MeshHandle AssetManager::CreateTerrainMesh(const std::string& name, float worldSize, int resolution) {
     auto mesh = MeshBuilder::CreateTerrain(worldSize, resolution);
     if (_materialCache.find("Default") != _materialCache.end()) {
-        mesh->SetMaterial(GetMaterial("Default"));
+        mesh->SetMaterial(GetMaterialHandle("Default"));
     }
     return CreateMesh(name, mesh);
 }
@@ -1294,7 +1315,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
 
     auto* mesh = new Mesh(MeshType::PRIM);
     mesh->Initialize(allVerts, allIndices);
-    if (material) mesh->SetMaterial(material);
+    if (material) mesh->SetMaterial(GetMaterialHandle(material));
 
     ENGINE_LOG("LoadGLTF '{}': {} verts, {} indices", path, allVerts.size(), allIndices.size());
     return CreateMesh(path, mesh);

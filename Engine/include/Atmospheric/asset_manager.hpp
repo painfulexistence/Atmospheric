@@ -53,6 +53,11 @@ public:
     TerrainMaterial* CreateTerrainMaterial();
     Material* GetMaterial(const std::string& name) const;
     Material* GetMaterialByID(uint32_t id) const;
+    // Handle-based access: handles are stable references that survive scene
+    // unloads (they resolve to nullptr instead of dangling).
+    MaterialHandle GetMaterialHandle(const std::string& name) const;// INVALID if absent
+    MaterialHandle GetMaterialHandle(const Material* material) const;// INVALID if absent
+    Material* ResolveMaterial(MaterialHandle handle) const;// nullptr if invalid or unloaded
     void LoadMaterials(const std::vector<MaterialProps>& materialDefs);
 
     ShaderProgram* CreateShader(const std::string& name, const ShaderProgramProps& props);

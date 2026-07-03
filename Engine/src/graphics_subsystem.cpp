@@ -126,8 +126,6 @@ void GraphicsSubsystem::Init(Application* app) {
     canvasMesh = std::make_unique<Mesh>(MeshType::CANVAS);
     canvasMesh->updateFreq = UpdateFrequency::Dynamic;
 
-    try { debugShader = AssetManager::Get().GetShader("debug_line"); } catch (...) { debugShader = nullptr; }
-    try { canvasShader = AssetManager::Get().GetShader("canvas"); }     catch (...) { canvasShader = nullptr; }
 }
 
 void GraphicsSubsystem::Process(float dt) {

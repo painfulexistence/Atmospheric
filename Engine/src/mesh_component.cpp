@@ -38,14 +38,15 @@ void MeshComponent::SetMesh(MeshHandle mesh) {
 }
 
 Material* MeshComponent::GetMaterial() const {
-    if (_material) {
-        return _material;
+    auto& assets = AssetManager::Get();
+    if (Material* mat = assets.ResolveMaterial(_material)) {
+        return mat;
     }
-    Mesh* meshPtr = AssetManager::Get().GetMeshPtr(_mesh);
-    return meshPtr ? meshPtr->GetMaterial() : nullptr;
+    Mesh* meshPtr = assets.GetMeshPtr(_mesh);
+    return meshPtr ? assets.ResolveMaterial(meshPtr->GetMaterial()) : nullptr;
 }
 
-void MeshComponent::SetMaterial(Material* material) {
+void MeshComponent::SetMaterial(MaterialHandle material) {
     _material = material;
 }
 

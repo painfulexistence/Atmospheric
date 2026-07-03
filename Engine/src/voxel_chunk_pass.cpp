@@ -266,10 +266,10 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
         Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
         if (!mesh) continue;
 
-        Material* mat = mesh->GetMaterial();
+        Material* mat = AssetManager::Get().ResolveMaterial(mesh->GetMaterial());
         if (!mat || mat->renderQueue != RenderQueue::Transparent) continue;
 
-        auto* wm = dynamic_cast<WaterMaterial*>(mesh->GetMaterial());
+        auto* wm = dynamic_cast<WaterMaterial*>(AssetManager::Get().ResolveMaterial(mesh->GetMaterial()));
         shader->SetUniform("u_waterLine",    wm ? wm->waterLine       : 32.0f);
         shader->SetUniform("u_waveStrength", wm ? wm->waveStrength    :  0.1f);
         shader->SetUniform("u_waveSpeed",    wm ? wm->waveSpeed       :  1.0f);

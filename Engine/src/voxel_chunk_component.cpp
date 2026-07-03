@@ -6,14 +6,18 @@
 #include <algorithm>
 #include <cstring>
 
-// Shared opaque material for all voxel chunks — no textures, just signals Opaque queue
-static Material* s_voxelMaterial = nullptr;
-static Material* GetVoxelMaterial() {
-    if (!s_voxelMaterial) {
-        s_voxelMaterial = new Material(MaterialProps{});
-        s_voxelMaterial->renderQueue = RenderQueue::Opaque;
+// Shared opaque material for all voxel chunks — no textures, just signals the
+// Opaque queue. Registered in (and owned by) the AssetManager under a
+// reserved name; re-created on demand after asset clears.
+static MaterialHandle GetVoxelMaterial() {
+    auto& assets = AssetManager::Get();
+    MaterialHandle handle = assets.GetMaterialHandle("__voxel");
+    if (!handle.IsValid()) {
+        Material* mat = assets.CreateMaterial("__voxel", MaterialProps{});
+        mat->renderQueue = RenderQueue::Opaque;
+        handle = assets.GetMaterialHandle("__voxel");
     }
-    return s_voxelMaterial;
+    return handle;
 }
 
 VoxelChunkComponent::VoxelChunkComponent(GameObject* owner, GraphicsSubsystem* gfx, glm::ivec3 chunkPos)
