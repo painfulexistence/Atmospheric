@@ -20,7 +20,7 @@ WGPUDevice        GfxFactory::_wgpuDevice      = nullptr;
 WGPUQueue         GfxFactory::_wgpuQueue        = nullptr;
 WGPUSurface       GfxFactory::_surface          = nullptr;
 WGPUTextureFormat GfxFactory::_swapchainFormat  = WGPUTextureFormat_BGRA8Unorm;
-std::unordered_map<uint32_t, WGPUTexture> GfxFactory::_gpuTextures;
+std::unordered_map<uint32_t, GfxFactory::GpuTexEntry> GfxFactory::_gpuTextures;
 uint32_t          GfxFactory::_nextTexID        = 1;
 #elif !defined(__EMSCRIPTEN__)
 SDL_Window* GfxFactory::_sdlWindow = nullptr;
@@ -205,7 +205,7 @@ void GfxFactory::Init(SDL_Window* sdlWindow) {
 // ── Shutdown ─────────────────────────────────────────────────────────────────
 void GfxFactory::Shutdown() {
 #if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
-    for (auto& [id, tex] : _gpuTextures) wgpuTextureRelease(tex);
+    for (auto& [id, entry] : _gpuTextures) wgpuTextureRelease(entry.tex);
     _gpuTextures.clear();
     if (_surface)    { wgpuSurfaceRelease(_surface);    _surface    = nullptr; }
     if (_wgpuDevice) { wgpuDeviceRelease(_wgpuDevice);  _wgpuDevice = nullptr; }
@@ -216,7 +216,7 @@ void GfxFactory::Shutdown() {
 }
 
 // ── Cross-backend texture upload ─────────────────────────────────────────────
-uint32_t GfxFactory::UploadTexture2D(const uint8_t* pixels, int w, int h) {
+uint32_t GfxFactory::UploadTexture2D(const uint8_t* pixels, int w, int h, TextureFilter filter) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (_backend == GfxBackend::WebGPU && _wgpuDevice) {
         uint32_t id = _nextTexID++;
@@ -240,16 +240,17 @@ uint32_t GfxFactory::UploadTexture2D(const uint8_t* pixels, int w, int h) {
         wgpuQueueWriteTexture(_wgpuQueue, &dst, pixels,
                                static_cast<size_t>(w) * h * 4, &layout, &extent);
 
-        _gpuTextures[id] = tex;
+        _gpuTextures[id] = { tex, filter };
         return id;
     }
 #endif
-    // OpenGL / WebGL path
+    // OpenGL / WebGL path — filter is baked into the texture object.
+    const GLint glFilter = (filter == TextureFilter::Nearest) ? GL_NEAREST : GL_LINEAR;
     GLuint texID;
     glGenTextures(1, &texID);
     glBindTexture(GL_TEXTURE_2D, texID);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, glFilter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, glFilter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0,
@@ -258,13 +259,21 @@ uint32_t GfxFactory::UploadTexture2D(const uint8_t* pixels, int w, int h) {
     return static_cast<uint32_t>(texID);
 }
 
+TextureFilter GfxFactory::GetTextureFilter(uint32_t id) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    auto it = _gpuTextures.find(id);
+    if (it != _gpuTextures.end()) return it->second.filter;
+#endif
+    return TextureFilter::Linear;
+}
+
 void GfxFactory::UpdateTexture2D(uint32_t id, const uint8_t* pixels, int w, int h) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (_backend == GfxBackend::WebGPU && _wgpuDevice) {
         auto it = _gpuTextures.find(id);
         if (it == _gpuTextures.end()) return;
 
-        WGPUTexture tex = it->second;
+        WGPUTexture tex = it->second.tex;
         if (wgpuTextureGetWidth(tex) != static_cast<uint32_t>(w) ||
             wgpuTextureGetHeight(tex) != static_cast<uint32_t>(h)) {
             // WGPUTexture storage is immutable — release and recreate under
@@ -279,7 +288,7 @@ void GfxFactory::UpdateTexture2D(uint32_t id, const uint8_t* pixels, int w, int 
             td.mipLevelCount = 1;
             td.sampleCount   = 1;
             tex = wgpuDeviceCreateTexture(_wgpuDevice, &td);
-            it->second = tex;
+            it->second.tex = tex; // filter hint preserved
         }
 
         WGPUTexelCopyTextureInfo dst{};
@@ -304,7 +313,7 @@ void GfxFactory::UpdateTexture2D(uint32_t id, const uint8_t* pixels, int w, int 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 WGPUTexture GfxFactory::GetWGPUTexture(uint32_t id) {
     auto it = _gpuTextures.find(id);
-    return (it != _gpuTextures.end()) ? it->second : nullptr;
+    return (it != _gpuTextures.end()) ? it->second.tex : nullptr;
 }
 
 uint32_t GfxFactory::UploadCompressedTexture2D(
@@ -343,7 +352,8 @@ uint32_t GfxFactory::UploadCompressedTexture2D(
     WGPUExtent3D extent{ static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
     wgpuQueueWriteTexture(_wgpuQueue, &dst, data, dataSize, &layout, &extent);
 
-    _gpuTextures[id] = tex;
+    // Compressed textures are photographic/material maps → Linear.
+    _gpuTextures[id] = { tex, TextureFilter::Linear };
     return id;
 }
 #endif
@@ -353,7 +363,7 @@ void GfxFactory::ReleaseTexture(uint32_t id) {
     if (_backend == GfxBackend::WebGPU) {
         auto it = _gpuTextures.find(id);
         if (it != _gpuTextures.end()) {
-            wgpuTextureRelease(it->second);
+            wgpuTextureRelease(it->second.tex);
             _gpuTextures.erase(it);
         }
         return;

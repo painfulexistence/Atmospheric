@@ -99,8 +99,10 @@ class NoitaLikeGame : public Application {
         fontID = graphics.LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
         pixels.assign(size_t(SandWorld::W) * SandWorld::H, 0);
+        // Falling-sand grid: crisp per-cell pixels when scaled up → Nearest.
         gridTex = GfxFactory::UploadTexture2D(
-            reinterpret_cast<const uint8_t*>(pixels.data()), SandWorld::W, SandWorld::H);
+            reinterpret_cast<const uint8_t*>(pixels.data()), SandWorld::W, SandWorld::H,
+            TextureFilter::Nearest);
 
         hud = RmlUiManager::Get()->LoadDocument("assets/ui/hud.rml");
         if (hud) {

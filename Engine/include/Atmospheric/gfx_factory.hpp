@@ -56,7 +56,16 @@ public:
     //   WebGPU  path: creates a WGPUTexture, stores it internally, returns
     //                 a synthetic ID usable with GetWGPUTexture().
     // pixels must be RGBA8 (4 bytes per pixel, w*h pixels).
-    static uint32_t  UploadTexture2D(const uint8_t* pixels, int w, int h);
+    // `filter` records how the texture should be sampled (see TextureFilter):
+    // on GL it's applied via glTexParameteri; on WebGPU it's remembered so
+    // GPUCanvasPass can bind a matching sampler. Defaults to Linear.
+    static uint32_t  UploadTexture2D(const uint8_t* pixels, int w, int h,
+                                     TextureFilter filter = TextureFilter::Linear);
+
+    // Filter hint recorded for a texture at upload time. Returns Linear for
+    // unknown IDs. Consulted by GPUCanvasPass to pick its sampler; on GL the
+    // filter is already baked into the texture, so callers rarely need this.
+    static TextureFilter GetTextureFilter(uint32_t id);
 
     // Cross-backend update of an existing texture's pixel contents. id must
     // have come from UploadTexture2D(). pixels must be RGBA8 (4 bytes per
@@ -106,7 +115,8 @@ private:
     static WGPUQueue         _wgpuQueue;
     static WGPUSurface       _surface;
     static WGPUTextureFormat _swapchainFormat;
-    static std::unordered_map<uint32_t, WGPUTexture> _gpuTextures;
+    struct GpuTexEntry { WGPUTexture tex = nullptr; TextureFilter filter = TextureFilter::Linear; };
+    static std::unordered_map<uint32_t, GpuTexEntry> _gpuTextures;
     static uint32_t          _nextTexID;
 #elif !defined(__EMSCRIPTEN__)
     static SDL_Window* _sdlWindow;

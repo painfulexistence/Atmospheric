@@ -115,7 +115,11 @@ struct VOut {
     WGPUBuffer          _indexBufs[UNIFORM_SLOT_COUNT]  = {};
     WGPUBuffer          _uniformBuf = nullptr;
     WGPUBindGroup       _uniformBG  = nullptr;
-    WGPUSampler         _sampler    = nullptr;
+    // Two samplers so each texture is sampled with the filter it was uploaded
+    // with (GfxFactory::GetTextureFilter) — GL bakes the filter per texture,
+    // this restores that on WebGPU where the filter lives on the sampler.
+    WGPUSampler         _samplerLinear  = nullptr;
+    WGPUSampler         _samplerNearest = nullptr;
     WGPUTexture         _whiteTex   = nullptr;
 
     std::vector<float>    _verts;

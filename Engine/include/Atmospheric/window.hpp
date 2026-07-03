@@ -36,6 +36,14 @@ enum class TextureCompressionFormat {
     ASTC4x4, // Mobile (newer Android GPUs)
 };
 
+// Minification/magnification filter hint for a 2D texture.
+//   Linear:  smooth — fonts, photos, video (default; most 2D content)
+//   Nearest: crisp texels — pixel-art / grid content
+// On GL this is baked into the texture object (glTexParameteri). On WebGPU
+// the filter lives on the sampler, so GfxFactory records the hint per texture
+// and GPUCanvasPass selects a matching sampler (see GfxFactory::UploadTexture2D).
+enum class TextureFilter { Linear, Nearest };
+
 enum class KeyState { PRESSED, RELEASED, HELD, UNKNOWN };
 
 enum class Key {

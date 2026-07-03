@@ -19,7 +19,8 @@ GPUCanvasPass::~GPUCanvasPass() {
         if (_indexBufs[s])  wgpuBufferRelease(_indexBufs[s]);
     }
     if (_whiteTex)   wgpuTextureRelease(_whiteTex);
-    if (_sampler)    wgpuSamplerRelease(_sampler);
+    if (_samplerLinear)  wgpuSamplerRelease(_samplerLinear);
+    if (_samplerNearest) wgpuSamplerRelease(_samplerNearest);
 }
 
 void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format, uint32_t sceneSampleCount) {
@@ -54,19 +55,18 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
         _uniformBuf = wgpuDeviceCreateBuffer(device, &d);
     }
 
-    // ── Sampler ────────────────────────────────────────────────────────────
-    // Linear filtering: the canvas draws fonts, sprites and (heavily minified)
-    // video, all of which alias badly under Nearest — the pre-refactor GL
-    // VideoPlayer used GL_LINEAR for exactly this reason. NOTE: GL sets the
-    // filter per-texture (glTexParameteri), so a pixel-art example could pick
-    // Nearest per texture; here one shared sampler serves the whole canvas, so
-    // Linear is the better global default. A per-texture filter hint on
-    // GfxFactory would let both coexist (TODO).
+    // ── Samplers ─────────────────────────────────────────────────────────────
+    // One per filter mode; _getOrCreateTexBG picks per texture based on the
+    // filter it was uploaded with, mirroring GL's per-texture glTexParameteri.
     {
         WGPUSamplerDescriptor d = gpuSamplerDesc();
         d.minFilter = WGPUFilterMode_Linear;
         d.magFilter = WGPUFilterMode_Linear;
-        _sampler = wgpuDeviceCreateSampler(device, &d);
+        _samplerLinear = wgpuDeviceCreateSampler(device, &d);
+    }
+    {
+        WGPUSamplerDescriptor d = gpuSamplerDesc(); // defaults: Nearest
+        _samplerNearest = wgpuDeviceCreateSampler(device, &d);
     }
 
     // ── White 1×1 texture ──────────────────────────────────────────────────
@@ -165,9 +165,13 @@ WGPUBindGroup GPUCanvasPass::_getOrCreateTexBG(uint32_t texID) {
         _texBGCache.erase(it);
     }
 
+    // Filter per texture, like GL's per-object glTexParameteri (texID 0 is the
+    // 1x1 white sentinel — filter is irrelevant, use linear).
+    WGPUSampler samp = (texID != 0 && GfxFactory::GetTextureFilter(texID) == TextureFilter::Nearest)
+                       ? _samplerNearest : _samplerLinear;
     WGPUBindGroup bg = GpuBindGroupBuilder(_device, _texBGL)
         .texture(0, rawTex)
-        .sampler(1, _sampler)
+        .sampler(1, samp)
         .build();
     _texBGCache[texID] = { bg, rawTex };
     return bg;
