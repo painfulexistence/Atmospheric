@@ -41,11 +41,16 @@ struct NoiseHeightFieldParams {
 class NoiseHeightField : public HeightField {
 public:
     explicit NoiseHeightField(const NoiseHeightFieldParams& params = {});
-    int   Width()  const override { return _resolution; }
-    int   Depth()  const override { return _resolution; }
+    int   Width()  const override { return _params.resolution; }
+    int   Depth()  const override { return _params.resolution; }
     float Sample(int xi, int zi) const override;
     const std::vector<float>& Grid() const override { return _grid; }
+
+    // Mutable so the editor (TerrainMeshComponent::DrawImGui) can tweak
+    // seed/frequency/etc. in place; call Regenerate() to rebuild the grid.
+    NoiseHeightFieldParams& Params() { return _params; }
+    void Regenerate();
 private:
-    int               _resolution;
-    std::vector<float> _grid;
+    NoiseHeightFieldParams _params;
+    std::vector<float>     _grid;
 };

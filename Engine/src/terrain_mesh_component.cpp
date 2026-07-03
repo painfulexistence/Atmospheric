@@ -5,13 +5,14 @@
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_component.hpp"
+#include "imgui.h"
 
 TerrainMeshComponent::TerrainMeshComponent(
     GameObject*                         owner,
     GraphicsServer*                     /*graphics*/,
     const std::shared_ptr<HeightField>& heightField,
     const TerrainMeshProps&             props
-) {
+) : _heightField(heightField) {
     gameObject = owner;
 
     auto& am = AssetManager::Get();
@@ -40,8 +41,33 @@ TerrainMeshComponent::TerrainMeshComponent(
             heightField->Depth()
         );
         terrainMat->heightMap = hmap;
+        _heightMap = hmap;
     }
 
+    _material = terrainMat;
     if (meshPtr) meshPtr->SetMaterial(terrainMat);
     owner->AddComponent<MeshComponent>(_mesh);
+}
+
+void TerrainMeshComponent::DrawImGui() {
+    if (_material) {
+        ImGui::DragFloat("Height Scale", &_material->heightScale, 0.5f, 0.0f, 256.0f);
+        ImGui::DragFloat("Tessellation", &_material->tessellationFactor, 0.5f, 1.0f, 64.0f);
+    }
+
+    auto* noise = dynamic_cast<NoiseHeightField*>(_heightField.get());
+    if (!noise) return;
+
+    auto& p = noise->Params();
+    ImGui::SeparatorText("Noise");
+    ImGui::InputInt("Seed",        &p.seed);
+    ImGui::DragFloat("Frequency",  &p.frequency, 0.0005f, 0.0001f, 0.1f, "%.4f");
+    ImGui::DragInt("Octaves",      &p.octaves, 1, 1, 12);
+    ImGui::DragFloat("Lacunarity", &p.lacunarity, 0.05f, 1.0f, 4.0f);
+    ImGui::DragFloat("Gain",       &p.gain, 0.01f, 0.0f, 1.0f);
+    if (ImGui::Button("Regenerate")) {
+        noise->Regenerate();
+        AssetManager::Get().UpdateHeightmapTexture(
+            _heightMap, noise->Grid(), noise->Width(), noise->Depth());
+    }
 }

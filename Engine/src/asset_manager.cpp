@@ -1332,3 +1332,19 @@ TextureHandle AssetManager::CreateHeightmapTexture(
     _textureCache[name] = { texID, (uint32_t)width, (uint32_t)height, (size_t)(width * height) };
     return TextureHandle(texID);
 }
+
+void AssetManager::UpdateHeightmapTexture(
+    TextureHandle handle, const std::vector<float>& grid, int width, int height
+) {
+    if (!handle.IsValid()) return;
+
+    std::vector<uint8_t> bytes(width * height);
+    for (int i = 0; i < width * height; ++i)
+        bytes[i] = static_cast<uint8_t>(std::clamp(grid[i] * 255.0f, 0.0f, 255.0f));
+
+    glBindTexture(GL_TEXTURE_2D, handle.id);
+    // Full re-specification: handles resolution changes as well as data updates.
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, bytes.data());
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}

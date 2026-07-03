@@ -7,6 +7,7 @@ class GraphicsServer;
 class HeightField;
 class Material;
 class Mesh;
+class TerrainMaterial;
 
 struct TerrainMeshProps {
     float     worldSize          = 1024.0f;
@@ -33,9 +34,15 @@ public:
     std::string GetName() const override { return "TerrainMesh"; }
     void OnAttach() override {}
     void OnDetach() override {}
+    // Exposes heightScale/tessellation and, for NoiseHeightField sources, the
+    // noise parameters (seed, frequency, ...) with a Regenerate button.
+    void DrawImGui() override;
 
     MeshHandle GetMesh() const { return _mesh; }
 
 private:
-    MeshHandle _mesh;
+    MeshHandle                   _mesh;
+    std::shared_ptr<HeightField> _heightField;
+    TerrainMaterial*             _material  = nullptr;
+    TextureHandle                _heightMap;
 };

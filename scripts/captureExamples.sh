@@ -39,7 +39,7 @@ CONFIG="${CONFIG:-}"
 if [[ "$MODE" == "screenshot" ]]; then EXT=png; else EXT=mp4; fi
 
 # Keep in sync with Examples/CMakeLists.txt (MazeFPS is disabled there).
-DEFAULT_EXAMPLES="HelloWorld SceneLoader Physics2D RPG CardBattle VoxelWorld ProceduralTerrain MidnightSkyraiders MultiplayerSandbox VideoPlayer LuaScripting"
+DEFAULT_EXAMPLES="HelloWorld SceneLoader Physics2D RPG CardBattle VoxelWorld Terrain MidnightSkyraiders MultiplayerSandbox VideoPlayer LuaScripting"
 EXAMPLES="${EXAMPLES:-$DEFAULT_EXAMPLES}"
 
 # Locate an example's executable across single-config (build/<Name>/<Name>) and
