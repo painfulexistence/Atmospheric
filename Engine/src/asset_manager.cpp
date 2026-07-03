@@ -459,6 +459,19 @@ ShaderProgram* AssetManager::GetShaderByID(uint32_t id) const {
     throw std::runtime_error(fmt::format("Shader ID {} out of range", id));
 }
 
+// Handles are 1-based (0 is ShaderHandle::INVALID); slot index = id - 1.
+
+ShaderHandle AssetManager::GetShaderHandle(const std::string& name) const {
+    auto it = _shaderCache.find(name);
+    return it != _shaderCache.end() ? ShaderHandle(it->second + 1) : ShaderHandle{};
+}
+
+ShaderProgram* AssetManager::ResolveShader(ShaderHandle handle) const {
+    if (!handle.IsValid()) return nullptr;
+    uint32_t index = handle.id - 1;
+    return index < shaders.size() ? shaders[index].get() : nullptr;
+}
+
 void AssetManager::ReloadShaders() {
     // TODO: Implement shader hot reloading
     ENGINE_LOG("Shader reloading not yet implemented");

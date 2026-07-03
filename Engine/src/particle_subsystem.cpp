@@ -54,7 +54,7 @@ namespace Atmospheric {
             sim_props.feedbackVaryings = { "out_position", "out_velocity", "out_color", "out_life",
                                            "out_size",     "out_pad0",     "out_pad1" };
             assets.CreateShader("particle_sim", sim_props);
-            simulation_shader = assets.GetShader("particle_sim");
+            simulation_shader = assets.GetShaderHandle("particle_sim");
 
             // Drawing Shader
             // Assuming Particle.vert and Particle.frag are already loaded or can be loaded.
@@ -62,7 +62,7 @@ namespace Atmospheric {
             draw_props.vert = "shaders/Particle.vert";
             draw_props.frag = "shaders/Particle.frag";
             assets.CreateShader("particle_draw", draw_props);
-            drawing_shader = assets.GetShader("particle_draw");
+            drawing_shader = assets.GetShaderHandle("particle_draw");
 
         } catch (const std::exception& e) {
             ConsoleSubsystem::Get()->Error(fmt::format("Failed to create particle shaders: {}", e.what()));
@@ -172,16 +172,17 @@ namespace Atmospheric {
     };
 
     void ParticleSubsystem::Simulate(float deltaTime) {
-        if (emitters.empty() || !simulation_shader) return;
+        ShaderProgram* simShader = AssetManager::Get().ResolveShader(simulation_shader);
+        if (emitters.empty() || !simShader) return;
 
-        simulation_shader->Activate();
+        simShader->Activate();
         renderer->BeginTransformFeedbackPass();
 
         for (auto* emitter : emitters) {
             SimUniforms uniforms = { .attractorPos = emitter->attractor, .deltaTime = deltaTime };
             // A bit of a hack to set uniforms without a proper UBO system
-            simulation_shader->SetUniform("attractorPos", uniforms.attractorPos);
-            simulation_shader->SetUniform("deltaTime", uniforms.deltaTime);
+            simShader->SetUniform("attractorPos", uniforms.attractorPos);
+            simShader->SetUniform("deltaTime", uniforms.deltaTime);
 
             glBindVertexArray(emitter->GetVAO());
             glBindBuffer(GL_ARRAY_BUFFER, emitter->GetCurrentSourceVBO());
@@ -192,15 +193,16 @@ namespace Atmospheric {
 
         renderer->EndTransformFeedbackPass();
         glBindVertexArray(0);
-        simulation_shader->Deactivate();
+        simShader->Deactivate();
     }
 
     void ParticleSubsystem::Draw(const CameraInfo& camInfo) {
-        if (emitters.empty() || !drawing_shader) return;
+        ShaderProgram* drawShader = AssetManager::Get().ResolveShader(drawing_shader);
+        if (emitters.empty() || !drawShader) return;
 
-        drawing_shader->Activate();
-        drawing_shader->SetUniform("cam_pos", camInfo.position);
-        drawing_shader->SetUniform("ProjectionView", camInfo.projection * camInfo.view);
+        drawShader->Activate();
+        drawShader->SetUniform("cam_pos", camInfo.position);
+        drawShader->SetUniform("ProjectionView", camInfo.projection * camInfo.view);
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE);// Additive blending
@@ -247,6 +249,6 @@ namespace Atmospheric {
         glBindVertexArray(0);
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
-        drawing_shader->Deactivate();
+        drawShader->Deactivate();
     }
 }// namespace Atmospheric

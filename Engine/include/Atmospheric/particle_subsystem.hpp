@@ -49,8 +49,11 @@ namespace Atmospheric {
         Renderer* renderer = nullptr;
         std::vector<ParticleEmitterComponent*> emitters;
 
-        ShaderProgram* simulation_shader = nullptr;
-        ShaderProgram* drawing_shader = nullptr;
+        // Stable references; the shaders are scene-tier assets that can be
+        // destroyed on scene switches, so we resolve per use instead of
+        // caching pointers.
+        ShaderHandle simulation_shader;
+        ShaderHandle drawing_shader;
 
         MeshHandle quad_mesh;
 

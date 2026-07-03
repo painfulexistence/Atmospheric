@@ -63,6 +63,11 @@ public:
     ShaderProgram* CreateShader(const std::string& name, const ShaderProgramProps& props);
     ShaderProgram* GetShader(const std::string& name) const;
     ShaderProgram* GetShaderByID(uint32_t id) const;
+    // Handle-based access for references held across frames: handles survive
+    // scene unloads (they resolve to nullptr instead of dangling). Transient
+    // per-pass lookups can keep using GetShader.
+    ShaderHandle GetShaderHandle(const std::string& name) const;// INVALID if absent
+    ShaderProgram* ResolveShader(ShaderHandle handle) const;// nullptr if invalid or unloaded
     void LoadDefaultShaders();
     void LoadShaders(const std::unordered_map<std::string, ShaderProgramProps>& shaderDefs);
     void ReloadShaders();
