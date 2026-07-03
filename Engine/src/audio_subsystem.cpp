@@ -3,6 +3,10 @@
 #include "file_system.hpp"
 #include "fmt/format.h"
 #include "imgui.h"
+#include <stdexcept>
+
+// Defined once for both platform builds (the ctors/dtors below are branched).
+AudioSubsystem* AudioSubsystem::_instance = nullptr;
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -19,6 +23,9 @@ static float RandBipolar() {
 }
 
 AudioSubsystem::AudioSubsystem(void) {
+    if (_instance != nullptr) throw std::runtime_error("AudioSubsystem is already initialized!");
+    _instance = this;
+
     // Initialize Web Audio context and global window.AudioManager
     EM_ASM({
         if (!window.AudioManager) {
@@ -238,6 +245,9 @@ AudioSubsystem::AudioSubsystem(void) {
 
 AudioSubsystem::~AudioSubsystem(void) {
     Reset();
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
 void AudioSubsystem::Init(Application* app) {
@@ -548,6 +558,8 @@ void AudioSubsystem::detachVideoRecorder() {
 }
 
 AudioSubsystem::AudioSubsystem(void) {
+    if (_instance != nullptr) throw std::runtime_error("AudioSubsystem is already initialized!");
+    _instance = this;
     ::InitAudioDevice();
 }
 
@@ -559,6 +571,9 @@ AudioSubsystem::~AudioSubsystem(void) {
         ::UnloadSound(sound);
     }
     ::CloseAudioDevice();
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
 void AudioSubsystem::Init(Application* app) {

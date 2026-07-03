@@ -15,6 +15,12 @@ public:
     AudioSubsystem();
     ~AudioSubsystem();
 
+    // Non-owning locator into the Application-owned instance (see sibling
+    // subsystems). Set in the constructor, cleared in the destructor.
+    static AudioSubsystem* Get() {
+        return _instance;
+    }
+
     void Init(Application* app) override;
     void Process(float dt) override;
     void DrawImGui(float dt) override;
@@ -69,4 +75,7 @@ public:
 
     SoundID nextSoundId = 1;
     MusicID nextMusicId = 1;
+
+private:
+    static AudioSubsystem* _instance;
 };
