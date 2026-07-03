@@ -431,19 +431,7 @@ if(EMSCRIPTEN)
     target_compile_options(AtmosphericEngine PUBLIC -pthread)
     if(AE_USE_WEBGPU)
         target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_WEBGPU)
-        # --use-port=<path> (local port) instead of the bare "emdawnwebgpu" name:
-        # the bare name triggers emscripten's "remote port" auto-download from
-        # GitHub Releases, which is not reachable from this build environment.
-        # external/emdawnwebgpu_pkg is a locally-assembled package (vendored)
-        # produced by running Dawn's own generator/dawn_json_generator.py
-        # against src/dawn/dawn.json, plus emscripten's gen_struct_info.py —
-        # the same steps Dawn's CMakeLists.txt performs to build the official
-        # release zip. See https://dawn.googlesource.com/dawn/+/refs/heads/main/src/emdawnwebgpu/README.md
-        set(AE_EMDAWNWEBGPU_PKG "${CMAKE_CURRENT_SOURCE_DIR}/external/emdawnwebgpu_pkg/emdawnwebgpu.port.py")
-        # --use-port=emdawnwebgpu must appear in both compile and link flags:
-        #   compile: adds the webgpu/ include path so <webgpu/webgpu.h> resolves
-        #   link:    links the emdawnwebgpu JS/WASM glue
-        target_compile_options(AtmosphericEngine PUBLIC --use-port=${AE_EMDAWNWEBGPU_PKG})
+        target_compile_options(AtmosphericEngine PUBLIC --use-port=emdawnwebgpu)
         # The actual backend is chosen at runtime by GfxFactory::Init():
         #   - browser exposes navigator.gpu → attempts WebGPU
         #   - WebGPU unavailable or device creation fails → falls back to WebGL 2
@@ -454,7 +442,7 @@ if(EMSCRIPTEN)
         # TODO: switch ImGui backend to imgui_impl_wgpu once WebGPU path is stable.
         target_link_options(AtmosphericEngine INTERFACE
             -sWASM=1 -O3 -sUSE_GLFW=3
-            --use-port=${AE_EMDAWNWEBGPU_PKG}
+            --use-port=emdawnwebgpu
             -sASYNCIFY=1
             -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
             -sFETCH=1
