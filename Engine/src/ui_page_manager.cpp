@@ -1,17 +1,17 @@
 #include "ui_page_manager.hpp"
 #include "rmlui_manager.hpp"
+#include <cassert>
 #include <spdlog/spdlog.h>
 
 UIPageManager* UIPageManager::s_instance = nullptr;
 
 UIPageManager* UIPageManager::Get() {
-    if (!s_instance) {
-        s_instance = new UIPageManager();
-    }
+    assert(s_instance && "UIPageManager is owned by Application — construct the Application first");
     return s_instance;
 }
 
 UIPageManager::UIPageManager() {
+    assert(!s_instance && "UIPageManager is a single-instance service owned by Application");
     s_instance = this;
 }
 

@@ -24,6 +24,7 @@ class EditorLayer;
 class VideoRecorder;
 class AssetManager;
 class RmlUiManager;
+class UIPageManager;
 struct SceneBlueprint;
 
 struct FrameData {
@@ -246,6 +247,7 @@ private:
     // _window: destroyed before it, while the GL context is still alive.
     std::unique_ptr<AssetManager> _assetManager;
     std::unique_ptr<RmlUiManager> _rmlUi;
+    std::unique_ptr<UIPageManager> _uiPages;// dies before _rmlUi (closes documents through it)
     std::vector<std::shared_ptr<Subsystem>> _subsystems;
     bool _initialized = false;
 

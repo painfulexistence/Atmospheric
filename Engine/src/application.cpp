@@ -28,6 +28,7 @@
 #include "sprite_component.hpp"
 #include "text_2d_component.hpp"
 #include "text_3d_component.hpp"
+#include "ui_page_manager.hpp"
 #include "action_manager.hpp"
 #include "action.hpp"
 #include "file_system.hpp"
@@ -237,6 +238,7 @@ Application::Application(AppConfig config) : _config(config) {
 
     _assetManager = std::make_unique<AssetManager>();
     _rmlUi = std::make_unique<RmlUiManager>();
+    _uiPages = std::make_unique<UIPageManager>();
 
     PushLayer(new GameLayer(this));
 #ifndef NDEBUG
