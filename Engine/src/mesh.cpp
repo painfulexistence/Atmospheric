@@ -40,7 +40,7 @@ Mesh::~Mesh() {
     glDeleteBuffers(1, &ebo);
     glDeleteBuffers(1, &ibo);
     glDeleteVertexArrays(1, &vao);
-    // delete collisionShape; // FIXME: Should delete collisionShape somewhere else before the pointer is out of scope
+    // _shape (unique_ptr<btCollisionShape>) frees itself here.
 }
 
 // Terrain mesh initialization
@@ -118,7 +118,7 @@ void Mesh::SetShapeLocalScaling(glm::vec3 localScaling) {
 }
 
 void Mesh::AddCapsuleShape(float radius, float height) {
-    _shape = new btCapsuleShape(radius, height);
+    _shape = std::make_unique<btCapsuleShape>(radius, height);
 }
 
 void Mesh::Update(const std::vector<VoxelVertex>& vertices) {

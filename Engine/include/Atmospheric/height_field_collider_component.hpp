@@ -30,6 +30,8 @@ public:
         const std::shared_ptr<HeightField>& heightField,
         const HeightFieldColliderProps&     props = {}
     );
+    // Out-of-line so unique_ptr<btCollisionShape> sees the complete type.
+    ~HeightFieldColliderComponent() override;
 
     std::string GetName() const override { return "HeightFieldCollider"; }
     void OnAttach() override {}
@@ -46,5 +48,5 @@ private:
     float               _heightScale = 32.0f;
     int                 _width = 0, _depth = 0;  // collider grid resolution
     std::vector<float>  _scaledGrid;   // kept alive for Bullet
-    btCollisionShape*   _shape = nullptr;
+    std::unique_ptr<btCollisionShape> _shape;
 };

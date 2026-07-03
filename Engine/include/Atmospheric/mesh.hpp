@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -80,12 +81,14 @@ public:
         _material = material;
     };
 
-    btCollisionShape* GetShape() {
-        return _shape;
+    // Non-owning observer; the Mesh owns the shape.
+    btCollisionShape* GetShape() const {
+        return _shape.get();
     }
 
+    // Takes ownership of a heap-allocated shape (callers pass `new btXxxShape(...)`).
     void SetShape(btCollisionShape* shape) {
-        _shape = shape;
+        _shape.reset(shape);
     }
 
     void SetShapeLocalScaling(glm::vec3 localScaling);
@@ -100,7 +103,7 @@ private:
     // Stable reference into AssetManager's material table; never dangles
     // (resolves to nullptr after the material is unloaded).
     MaterialHandle _material;
-    btCollisionShape* _shape = nullptr;
+    std::unique_ptr<btCollisionShape> _shape;
 
     // New RenderMesh-based storage (used by Update methods)
     RenderMeshHandle _renderMeshHandle;

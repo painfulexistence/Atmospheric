@@ -18,7 +18,7 @@ HeightFieldColliderComponent::HeightFieldColliderComponent(
     _scaledGrid.resize((size_t)_width * _depth);
     SyncFromHeightField();
 
-    _shape = new btHeightfieldTerrainShape(
+    _shape = std::make_unique<btHeightfieldTerrainShape>(
         _width, _depth,
         _scaledGrid.data(),
         1.0f,                       // heightScale parameter (data is pre-scaled)
@@ -47,11 +47,17 @@ HeightFieldColliderComponent::HeightFieldColliderComponent(
         .mass        = props.mass,
         .friction    = props.friction,
         .restitution = props.restitution,
-        .shape       = _shape,
+        .shape       = _shape.get(),
         .useGravity  = false,
     }));
     rb->SetWorldTransform(pos, owner->GetRotation());
 }
+
+// The rigidbody sibling only observes _shape (btRigidBody does not own its
+// collision shape), and it is removed from the physics world in
+// RigidbodyComponent::OnDetach before any component is destroyed, so freeing
+// the shape here is safe.
+HeightFieldColliderComponent::~HeightFieldColliderComponent() = default;
 
 void HeightFieldColliderComponent::SyncFromHeightField() {
     // Bilinear resample so the collider resolution is independent of the
