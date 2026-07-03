@@ -524,13 +524,12 @@ Application::~Application() {
     ENGINE_LOG("Exiting...");
     _window->DeinitImGui();
 
-    for (const auto& go : _entities)
-        delete go;
+    _entities.clear();
 
-    for (auto* layer : _layers) {
+    for (const auto& layer : _layers) {
         layer->OnDetach();
-        delete layer;
     }
+    _layers.clear();
 }
 
 void Application::Run() {
@@ -582,7 +581,7 @@ void Application::Run() {
 }
 
 void Application::PushLayer(Layer* layer) {
-    _layers.push_back(layer);
+    _layers.push_back(std::unique_ptr<Layer>(layer));
     layer->OnAttach();
 }
 
@@ -1082,15 +1081,8 @@ void Application::ReloadScene() {
 void Application::LoadEditorScene(const uint8_t* data, size_t len)
 {
     // Mirror GoScene's entity-clearing logic without requiring a scene file.
-    for (auto* e : _entities) {
-        if (e != _defaultGameObject) delete e;
-    }
-    _entities.clear();
-    _nextEntityID = 0;
-    if (_defaultGameObject) {
-        _entities.push_back(_defaultGameObject);
-        _nextEntityID = 1;
-    }
+    std::erase_if(_entities, [this](const std::unique_ptr<GameObject>& e) { return e.get() != _defaultGameObject; });
+    _nextEntityID = _defaultGameObject ? 1 : 0;
 
     graphics.cameras.clear();
     graphics.directionalLights.clear();
@@ -1118,9 +1110,9 @@ void Application::UnloadScene(const std::string& name)
 
     // Find the scene container (direct child of __root__ with this name).
     GameObject* container = nullptr;
-    for (auto* e : _entities) {
-        if (e != _defaultGameObject && e->parent == _defaultGameObject && e->GetName() == name) {
-            container = e;
+    for (const auto& e : _entities) {
+        if (e.get() != _defaultGameObject && e->parent == _defaultGameObject && e->GetName() == name) {
+            container = e.get();
             break;
         }
     }
@@ -1132,16 +1124,15 @@ void Application::UnloadScene(const std::string& name)
     while (!stack.empty()) {
         auto* node = stack.back(); stack.pop_back();
         toRemove.insert(node);
-        for (auto* e : _entities) {
-            if (e->parent == node) stack.push_back(e);
+        for (const auto& e : _entities) {
+            if (e->parent == node) stack.push_back(e.get());
         }
     }
 
-    _entities.erase(
-        std::remove_if(_entities.begin(), _entities.end(),
-            [&toRemove](GameObject* e) { return toRemove.count(e) > 0; }),
-        _entities.end());
-    for (auto* e : toRemove) delete e;
+    // Erasing destroys the objects; each GameObject detaches its components
+    // (unregistering them from the graphics/physics servers) as it dies.
+    std::erase_if(_entities,
+                  [&toRemove](const std::unique_ptr<GameObject>& e) { return toRemove.count(e.get()) > 0; });
 
     // Free GPU/CPU assets that were first loaded by this scene.
     // Must come after GameObjects are deleted so no component holds a dangling ref.
@@ -1158,8 +1149,8 @@ void Application::ClearScenes()
     // Collect names of all direct children of __root__ first to avoid
     // iterator invalidation inside UnloadScene.
     std::vector<std::string> names;
-    for (auto* e : _entities) {
-        if (e != _defaultGameObject && e->parent == _defaultGameObject)
+    for (const auto& e : _entities) {
+        if (e.get() != _defaultGameObject && e->parent == _defaultGameObject)
             names.push_back(e->GetName());
     }
     for (const auto& n : names) UnloadScene(n);
@@ -1217,8 +1208,8 @@ std::string Application::GetLoadedScenes() const
 {
     nlohmann::json arr = nlohmann::json::array();
     if (_defaultGameObject) {
-        for (auto* e : _entities) {
-            if (e != _defaultGameObject && e->parent == _defaultGameObject)
+        for (const auto& e : _entities) {
+            if (e.get() != _defaultGameObject && e->parent == _defaultGameObject)
                 arr.push_back(e->GetName());
         }
     }
@@ -1283,13 +1274,13 @@ void Application::Update(const FrameData& props) {
     ENGINE_LOG(fmt::format("Update costs {} ms", (GetWindowTime() - time) * 1000));
 #endif
 
-    for (auto layer : _layers) {
+    for (const auto& layer : _layers) {
         layer->OnUpdate(dt);
     }
 
     float time = GetWindowTime();
 
-    for (auto go : _entities) {
+    for (const auto& go : _entities) {
         auto impostor = go->GetComponent<RigidbodyComponent>();
         if (impostor == nullptr) continue;
         if (impostor->IsKinematic()) continue;
@@ -1304,7 +1295,7 @@ void Application::Render(const FrameData& props) {
     float dt = props.deltaTime;
     float time = GetWindowTime();
 
-    for (auto* layer : _layers) {
+    for (const auto& layer : _layers) {
         layer->OnRender(dt);
     }
 
@@ -1449,17 +1440,19 @@ void Application::SetWindowTitle(const std::string& title) {
 }
 
 GameObject* Application::CreateGameObject(glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) {
-    auto e = new GameObject(this, position, rotation, scale);
+    auto owned = std::make_unique<GameObject>(this, position, rotation, scale);
+    auto* e = owned.get();
     e->SetName(fmt::format("entity #{}", _nextEntityID++));
-    _entities.push_back(e);
+    _entities.push_back(std::move(owned));
     return e;
 }
 
 GameObject* Application::CreateGameObject(glm::vec2 position, float angle) {
-    auto e =
-      new GameObject(this, glm::vec3(position.x, position.y, 0.0f), glm::vec3(0.0f, 0.0f, angle), glm::vec3(1.0f));
+    auto owned = std::make_unique<GameObject>(
+      this, glm::vec3(position.x, position.y, 0.0f), glm::vec3(0.0f, 0.0f, angle), glm::vec3(1.0f));
+    auto* e = owned.get();
     e->SetName(fmt::format("entity #{}", _nextEntityID++));
-    _entities.push_back(e);
+    _entities.push_back(std::move(owned));
     return e;
 }
 

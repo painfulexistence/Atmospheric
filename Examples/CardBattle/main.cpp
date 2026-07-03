@@ -113,7 +113,7 @@ class CardBattleGame : public Application {
     void OnLoad() override {
         _font = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
-        for (auto* go : GetEntities()) {
+        for (const auto& go : GetEntities()) {
             if (go->GetName() == "BattleManager") {
                 _mgr = go->GetComponent<BattleManagerComponent>();
                 break;

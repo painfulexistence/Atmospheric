@@ -3,6 +3,7 @@
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
 #include <glad/glad.h>
 #endif
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -38,7 +39,7 @@ private:
 
     void DrawSystemInfo();
     void DrawAppView();
-    void DrawEntityNode(GameObject* entity, const std::vector<GameObject*>& all);
+    void DrawEntityNode(GameObject* entity, const std::vector<std::unique_ptr<GameObject>>& all);
     void DrawEntityInspector(GameObject* entity);
     void DrawEngineView();
     void ToggleRecording();

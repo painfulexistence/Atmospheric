@@ -188,8 +188,8 @@ class MidnightSkyraiders : public Application {
         // The title sprite is instantiated from assets/scenes/main.json. Grab a
         // reference to it so updateTitle can hide it once the player starts.
         titleObj = nullptr;
-        for (auto* e : GetEntities()) {
-            if (e->GetName() == "Title") { titleObj = e; break; }
+        for (const auto& e : GetEntities()) {
+            if (e->GetName() == "Title") { titleObj = e.get(); break; }
         }
     }
 
