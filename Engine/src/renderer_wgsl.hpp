@@ -165,7 +165,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 )";
 
 // ── PostProcessPass ──────────────────────────────────────────────────────────
-constexpr uint64_t POST_UNIFORM_SIZE = 32; // exposure, caEnabled, caStrength, effect, time + 3 pad
+constexpr uint64_t POST_UNIFORM_SIZE = 48; // exposure,caEn,caStr,time + crt,vhs,grading,posterize + sobel,edges,vignette,pad
 
 // Fullscreen-triangle vertex shader + the full set of post effects ported from
 // default_assets/shaders/: hdr.frag (default tonemap + chromatic aberration),
@@ -175,15 +175,26 @@ constexpr uint64_t POST_UNIFORM_SIZE = 32; // exposure, caEnabled, caStrength, e
 // (uni.effect comes from a uniform buffer), so textureSample inside the
 // branches is valid WGSL.
 static const char* POSTPROCESS_WGSL = R"(
+// Unified post-process stack — faithful WGSL port of
+// default_assets/shaders/post_composite.frag. Every effect is an independent
+// toggle (0/1 float) applied in the same fixed order as the GL shader:
+//   VHS distort -> CRT barrel -> CA/CRT channel fetch -> gamma -> Sobel(HDR)
+//   -> tonemap -> Edges -> grading -> posterize -> vignette -> VHS vig/stripe
+//   -> CRT scanline -> gamma encode. Toggles come from a uniform buffer, so
+//   the branches are uniform control flow (textureSample inside them is legal).
 struct Uniforms {
     exposure:   f32,
     caEnabled:  f32,
     caStrength: f32,
-    effect:     f32, // PostEffect enum: 0=None 1=CRT 2=VHS 3=ColorGrading 4=Posterize 5=Sobel 6=Edges 7=Vignette
     time:       f32,
-    _pad0:      f32,
-    _pad1:      f32,
-    _pad2:      f32,
+    crt:        f32,
+    vhs:        f32,
+    grading:    f32,
+    posterize:  f32,
+    sobel:      f32,
+    edges:      f32,
+    vignette:   f32,
+    _pad:       f32,
 };
 @group(0) @binding(0) var<uniform> uni: Uniforms;
 @group(1) @binding(0) var tex:  texture_2d<f32>;
@@ -206,97 +217,28 @@ struct VOut {
 const GAMMA: f32     = 2.2;
 const INV_GAMMA: f32 = 1.0 / 2.2;
 
-fn uncharted2(x: vec3<f32>) -> vec3<f32> {
-    let A = 0.15; let B = 0.50; let C = 0.10; let D = 0.20; let E = 0.02; let F = 0.30;
-    return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F)) - E/F;
-}
-
-// hdr.frag: double-gamma-wrapped exposure tonemap + optional per-channel
-// chromatic-aberration UV offsets.
-fn fxNone(uv: vec2<f32>) -> vec3<f32> {
-    var hdrColor: vec3<f32>;
-    if (uni.caEnabled > 0.5) {
-        let du = (uv.x - 0.5) * (uv.x - 0.5) * uni.caStrength;
-        let dv = (uv.y - 0.5) * (uv.y - 0.5) * uni.caStrength;
-        let r = textureSample(tex, samp, vec2<f32>(uv.x - 2.0 * du, uv.y + 4.0 * dv)).r;
-        let g = textureSample(tex, samp, vec2<f32>(uv.x + 1.0 * du, uv.y - 1.0 * dv)).g;
-        let b = textureSample(tex, samp, vec2<f32>(uv.x + 5.0 * du, uv.y - 3.0 * dv)).b;
-        hdrColor = vec3<f32>(r, g, b);
-    } else {
-        hdrColor = textureSample(tex, samp, uv).rgb;
-    }
-    hdrColor = pow(hdrColor, vec3<f32>(GAMMA));
-    let toneMapped = vec3<f32>(1.0) - exp(-hdrColor * uni.exposure);
-    return pow(toneMapped, vec3<f32>(INV_GAMMA));
-}
-
-fn fxCRT(uvIn: vec2<f32>) -> vec3<f32> {
-    var uv = (uvIn - 0.5) * 2.0;
-    let offset = abs(uv.yx) * vec2<f32>(0.2, 0.25);
-    uv += uv * offset * offset;
-    uv = uv * 0.5 + 0.5;
-    let inside = f32(uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0);
-
-    var col: vec3<f32>;
-    col.r = textureSample(tex, samp, uv + vec2<f32>(0.001, 0.0)).r;
-    col.g = textureSample(tex, samp, uv).g;
-    col.b = textureSample(tex, samp, uv - vec2<f32>(0.001, 0.0)).b;
-
-    col += sin(uv.y * 800.0 + uni.time * 10.0) * 0.04;
-
-    col  = pow(max(col, vec3<f32>(0.0)), vec3<f32>(GAMMA));
-    col *= uni.exposure * 0.66;
-    col  = pow(col, vec3<f32>(INV_GAMMA));
-    return col * inside;
-}
-
-fn vhsOnOff(a: f32, b: f32, c: f32) -> f32 {
+fn onOff(a: f32, b: f32, c: f32) -> f32 {
     return step(c, sin(uni.time + a * cos(uni.time * b)));
 }
 
-fn fxVHS(uvIn: vec2<f32>) -> vec3<f32> {
-    // screenDistort
+fn vhsScreenDistort(uvIn: vec2<f32>) -> vec2<f32> {
     var uv = uvIn - 0.5;
     uv = uv * 1.2 * (1.0/1.2 + 2.0*uv.x*uv.x*uv.y*uv.y);
-    uv += 0.5;
-    var look = uv;
+    return uv + 0.5;
+}
 
-    let dy = look.y - (uni.time/4.0 - floor(uni.time/4.0));
-    let window = 1.0 / (1.0 + 20.0 * dy * dy);
-    look.x += sin(look.y*10.0 + uni.time)/50.0 * vhsOnOff(4.0,4.0,0.3) * (1.0+cos(uni.time*80.0)) * window;
-    let vShift = 0.4 * vhsOnOff(2.0,3.0,0.9) *
+fn vhsTracking(uvIn: vec2<f32>) -> vec2<f32> {
+    var look = uvIn;
+    let m = uni.time/4.0 - floor(uni.time/4.0);
+    let window = 1.0 / (1.0 + 20.0*(look.y - m)*(look.y - m));
+    look.x += sin(look.y*10.0 + uni.time)/50.0 * onOff(4.0,4.0,0.3) * (1.0+cos(uni.time*80.0)) * window;
+    let vShift = 0.4 * onOff(2.0,3.0,0.9) *
                  (sin(uni.time)*sin(uni.time*20.0) + (0.5+0.1*sin(uni.time*200.0)*cos(uni.time)));
     look.y = fract(look.y + vShift);
-
-    let vigAmt   = 3.0 + 0.3*sin(uni.time + 5.0*cos(uni.time*5.0));
-    let vignette = (1.0 - vigAmt*(uv.y-0.5)*(uv.y-0.5)) *
-                   (1.0 - vigAmt*(uv.x-0.5)*(uv.x-0.5));
-
-    var col = textureSample(tex, samp, look).rgb;
-    col  = pow(col, vec3<f32>(GAMMA));
-    col *= uni.exposure;
-    col  = uncharted2(col);
-    col *= vignette;
-    col *= (12.0 + fract(uv.y*30.0 + uni.time)) / 13.0;
-    col  = pow(max(col, vec3<f32>(0.0)), vec3<f32>(INV_GAMMA));
-    return col;
+    return look;
 }
 
-fn fxColorGrading(uv: vec2<f32>) -> vec3<f32> {
-    let c = textureSample(tex, samp, uv).rgb;
-    return vec3<f32>(
-        dot(c, vec3<f32>(0.393, 0.769, 0.189)),
-        dot(c, vec3<f32>(0.349, 0.686, 0.168)),
-        dot(c, vec3<f32>(0.272, 0.534, 0.131))
-    );
-}
-
-fn fxPosterize(uv: vec2<f32>) -> vec3<f32> {
-    let c = textureSample(tex, samp, uv).rgb;
-    return floor(c * 5.0) / 5.0;
-}
-
-fn fxSobel(uv: vec2<f32>) -> vec3<f32> {
+fn sobelMagnitude(uv: vec2<f32>) -> f32 {
     let ts = 1.0 / vec2<f32>(textureDimensions(tex));
     let tl = length(textureSample(tex, samp, uv + vec2<f32>(-ts.x,  ts.y)).rgb);
     let t  = length(textureSample(tex, samp, uv + vec2<f32>( 0.0,   ts.y)).rgb);
@@ -308,17 +250,10 @@ fn fxSobel(uv: vec2<f32>) -> vec3<f32> {
     let br = length(textureSample(tex, samp, uv + vec2<f32>( ts.x, -ts.y)).rgb);
     let gx = -tl + tr - 2.0*l + 2.0*r - bl + br;
     let gy = -tl - 2.0*t - tr + bl + 2.0*b + br;
-    let edge = smoothstep(0.1, 0.5, sqrt(gx*gx + gy*gy));
-
-    var col = textureSample(tex, samp, uv).rgb;
-    col  = pow(col, vec3<f32>(GAMMA));
-    col *= uni.exposure;
-    let edgeStrength = 1.0 - smoothstep(2.0, 4.0, length(col));
-    col = mix(col, vec3<f32>(0.1), edge * edgeStrength);
-    return pow(col, vec3<f32>(INV_GAMMA));
+    return sqrt(gx*gx + gy*gy);
 }
 
-fn fxEdges(uv: vec2<f32>) -> vec3<f32> {
+fn edgeGradient(uv: vec2<f32>) -> vec3<f32> {
     let ts = 1.0 / vec2<f32>(textureDimensions(tex));
     let h = textureSample(tex, samp, uv + vec2<f32>(ts.x, 0.0)) -
             textureSample(tex, samp, uv - vec2<f32>(ts.x, 0.0));
@@ -327,31 +262,89 @@ fn fxEdges(uv: vec2<f32>) -> vec3<f32> {
     return sqrt((h * h + v * v).rgb);
 }
 
-fn fxVignette(uvIn: vec2<f32>) -> vec3<f32> {
-    let uv = uvIn * 2.0 - 1.0;
-    let vignette = 1.0 - dot(uv, uv) * 0.7;
-
-    var col = textureSample(tex, samp, uvIn).rgb;
-    col  = pow(col, vec3<f32>(GAMMA));
-    col *= uni.exposure;
-    col  = uncharted2(col);
-    col *= vignette;
-    return pow(max(col, vec3<f32>(0.0)), vec3<f32>(INV_GAMMA));
+fn sepia(c: vec3<f32>) -> vec3<f32> {
+    return vec3<f32>(
+        dot(c, vec3<f32>(0.393, 0.769, 0.189)),
+        dot(c, vec3<f32>(0.349, 0.686, 0.168)),
+        dot(c, vec3<f32>(0.272, 0.534, 0.131))
+    );
 }
 
 @fragment fn fs(in: VOut) -> @location(0) vec4<f32> {
-    var result: vec3<f32>;
-    switch (i32(uni.effect)) {
-        case 1:  { result = fxCRT(in.uv); }
-        case 2:  { result = fxVHS(in.uv); }
-        case 3:  { result = fxColorGrading(in.uv); }
-        case 4:  { result = fxPosterize(in.uv); }
-        case 5:  { result = fxSobel(in.uv); }
-        case 6:  { result = fxEdges(in.uv); }
-        case 7:  { result = fxVignette(in.uv); }
-        default: { result = fxNone(in.uv); }
+    var uv = in.uv;
+
+    // VHS: screen curvature + tracking wobble
+    var vhsVignette = 1.0;
+    var vhsStripe   = 1.0;
+    if (uni.vhs > 0.5) {
+        uv = vhsScreenDistort(uv);
+        let vigAmt = 3.0 + 0.3*sin(uni.time + 5.0*cos(uni.time*5.0));
+        vhsVignette = (1.0 - vigAmt*(uv.y-0.5)*(uv.y-0.5)) *
+                      (1.0 - vigAmt*(uv.x-0.5)*(uv.x-0.5));
+        vhsStripe   = (12.0 + fract(uv.y*30.0 + uni.time)) / 13.0;
+        uv = vhsTracking(uv);
     }
-    return vec4<f32>(result, 1.0);
+
+    // CRT barrel distortion
+    var offScreen = false;
+    if (uni.crt > 0.5) {
+        var c = (uv - 0.5) * 2.0;
+        let offset = abs(c.yx) * vec2<f32>(0.2, 0.25);
+        c += c * offset * offset;
+        uv = c * 0.5 + 0.5;
+        offScreen = uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0;
+    }
+
+    // Channel fetch (CA + CRT phosphor share the 3-tap path)
+    var col: vec3<f32>;
+    if (uni.caEnabled > 0.5 || uni.crt > 0.5) {
+        var rOff = vec2<f32>(0.0);
+        var gOff = vec2<f32>(0.0);
+        var bOff = vec2<f32>(0.0);
+        if (uni.caEnabled > 0.5) {
+            let du = (uv.x - 0.5) * (uv.x - 0.5) * uni.caStrength;
+            let dv = (uv.y - 0.5) * (uv.y - 0.5) * uni.caStrength;
+            rOff += vec2<f32>(-2.0 * du,  4.0 * dv);
+            gOff += vec2<f32>( 1.0 * du, -1.0 * dv);
+            bOff += vec2<f32>( 5.0 * du, -3.0 * dv);
+        }
+        if (uni.crt > 0.5) {
+            rOff += vec2<f32>( 0.001, 0.0);
+            bOff += vec2<f32>(-0.001, 0.0);
+        }
+        col = vec3<f32>(
+            textureSample(tex, samp, uv + rOff).r,
+            textureSample(tex, samp, uv + gOff).g,
+            textureSample(tex, samp, uv + bOff).b);
+    } else {
+        col = textureSample(tex, samp, uv).rgb;
+    }
+
+    col = pow(col, vec3<f32>(GAMMA));
+
+    // Sobel in HDR domain
+    if (uni.sobel > 0.5) {
+        let brightness    = length(col * uni.exposure);
+        let edge_strength = 1.0 - smoothstep(2.0, 4.0, brightness);
+        let edge          = smoothstep(0.1, 0.5, sobelMagnitude(uv));
+        col = mix(col, vec3<f32>(0.1), edge * edge_strength);
+    }
+
+    var ldr = vec3<f32>(1.0) - exp(-col * uni.exposure);
+
+    if (uni.edges > 0.5)     { ldr = edgeGradient(uv); }
+    if (uni.grading > 0.5)   { ldr = sepia(ldr); }
+    if (uni.posterize > 0.5) { ldr = floor(ldr * 5.0) / 5.0; }
+    if (uni.vignette > 0.5) {
+        let c = in.uv * 2.0 - 1.0;
+        ldr *= 1.0 - dot(c, c) * 0.7;
+    }
+    ldr *= vhsVignette * vhsStripe;
+    if (uni.crt > 0.5) { ldr += sin(uv.y*800.0 + uni.time*10.0) * 0.04; }
+
+    ldr = pow(max(ldr, vec3<f32>(0.0)), vec3<f32>(INV_GAMMA));
+    if (offScreen) { return vec4<f32>(0.0, 0.0, 0.0, 1.0); }
+    return vec4<f32>(ldr, 1.0);
 }
 )";
 

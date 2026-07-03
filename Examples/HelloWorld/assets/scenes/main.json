@@ -1,5 +1,85 @@
 {
   "name": "main",
   "textures": [],
-  "shaders": []
+  "shaders": [],
+  "materials": {
+    "cubeMat": {
+      "diffuse": [1.0, 1.0, 1.0],
+      "specular": [0.296648, 0.296648, 0.296648],
+      "ambient": [0.25, 0.20725, 0.20725],
+      "shininess": 0.088
+    }
+  },
+  "entities": [
+    {
+      "name": "MainCamera",
+      "position": [-10.0, 5.0, 0.0],
+      "components": [
+        { "type": "CameraComponent" }
+      ]
+    },
+    {
+      "name": "WorldSprite_Red",
+      "position": [-3.0, 2.0, 3.0],
+      "components": [
+        { "type": "SpriteComponent", "size": [1.0, 1.0], "pivot": [0.5, 0.5], "color": [1.0, 0.3, 0.3, 0.8], "layer": "LAYER_WORLD" },
+        { "type": "OscillatorComponent", "axis": [0.0, 1.0, 0.0], "amp": 0.5, "freq": 2.0, "phase": 0.0 }
+      ]
+    },
+    {
+      "name": "WorldSprite_Green",
+      "position": [-1.0, 2.0, 3.0],
+      "components": [
+        { "type": "SpriteComponent", "size": [1.0, 1.0], "pivot": [0.5, 0.5], "color": [0.3, 1.0, 0.3, 0.8], "layer": "LAYER_WORLD" },
+        { "type": "OscillatorComponent", "axis": [0.0, 1.0, 0.0], "amp": 0.5, "freq": 2.0, "phase": 0.5 }
+      ]
+    },
+    {
+      "name": "WorldSprite_Blue",
+      "position": [1.0, 2.0, 3.0],
+      "components": [
+        { "type": "SpriteComponent", "size": [1.0, 1.0], "pivot": [0.5, 0.5], "color": [0.3, 0.3, 1.0, 0.8], "layer": "LAYER_WORLD" },
+        { "type": "OscillatorComponent", "axis": [0.0, 1.0, 0.0], "amp": 0.5, "freq": 2.0, "phase": 1.0 }
+      ]
+    },
+    {
+      "name": "WorldSprite_Yellow",
+      "position": [3.0, 2.0, 3.0],
+      "components": [
+        { "type": "SpriteComponent", "size": [1.0, 1.0], "pivot": [0.5, 0.5], "color": [1.0, 1.0, 0.3, 0.8], "layer": "LAYER_WORLD" },
+        { "type": "OscillatorComponent", "axis": [0.0, 1.0, 0.0], "amp": 0.5, "freq": 2.0, "phase": 1.5 }
+      ]
+    },
+    {
+      "name": "Sprite2D_Orange",
+      "position": [20.0, 20.0, 0.0],
+      "components": [
+        { "type": "SpriteComponent", "size": [50.0, 50.0], "pivot": [0.0, 0.0], "color": [1.0, 0.5, 0.0, 0.9], "layer": "LAYER_WORLD_2D" },
+        { "type": "SpritePulseComponent", "min": 0.4, "max": 1.0, "freq": 3.0, "phase": 0.0 }
+      ]
+    },
+    {
+      "name": "Sprite2D_Purple",
+      "position": [90.0, 20.0, 0.0],
+      "components": [
+        { "type": "SpriteComponent", "size": [50.0, 50.0], "pivot": [0.0, 0.0], "color": [0.5, 0.0, 1.0, 0.9], "layer": "LAYER_WORLD_2D" },
+        { "type": "SpritePulseComponent", "min": 0.4, "max": 1.0, "freq": 3.0, "phase": 1.0 }
+      ]
+    },
+    {
+      "name": "Sprite2D_Cyan",
+      "position": [160.0, 20.0, 0.0],
+      "components": [
+        { "type": "SpriteComponent", "size": [50.0, 50.0], "pivot": [0.0, 0.0], "color": [0.0, 1.0, 1.0, 0.9], "layer": "LAYER_WORLD_2D" },
+        { "type": "SpritePulseComponent", "min": 0.4, "max": 1.0, "freq": 3.0, "phase": 2.0 }
+      ]
+    },
+    {
+      "name": "HUD",
+      "position": [50.0, 100.0, 0.0],
+      "components": [
+        { "type": "Text2DComponent", "text": "Hello World from JSON!", "fontPath": "assets/fonts/NotoSans-SemiBold.ttf", "fontSize": 32.0, "layer": "LAYER_WORLD_2D" }
+      ]
+    }
+  ]
 }

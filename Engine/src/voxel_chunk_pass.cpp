@@ -210,6 +210,9 @@ void SunPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* e
 
     glDisable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // billboard quad — never wireframe
+#endif
 
     // Simple quad: two triangles from the skybox cube's first face vertices
     // Use a minimal inline quad VAO via screenQuadVAO trick — draw a unit quad
@@ -336,6 +339,9 @@ void SkyboxPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
     glDepthFunc(GL_LEQUAL);
     glDepthMask(GL_FALSE);
     glDisable(GL_CULL_FACE);
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // fullscreen gradient — never wireframe
+#endif
 
     glBindVertexArray(renderer.gl.skyboxVAO);
     glDrawArrays(GL_TRIANGLES, 0, 36);
@@ -520,6 +526,11 @@ void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEnc
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
+    // Opt into wireframe explicitly; don't rely on GL_LINE leaking from
+    // ForwardOpaquePass, since upstream passes now reset polygon mode themselves.
+    glPolygonMode(GL_FRONT_AND_BACK, renderer.wireframeEnabled ? GL_LINE : GL_FILL);
+#endif
 
     for (const auto& sortable : queue) {
         const auto& cmd = sortable.cmd;
@@ -733,6 +744,10 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(GL_FALSE);
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
+    // Opt into wireframe explicitly rather than inheriting leaked polygon mode.
+    glPolygonMode(GL_FRONT_AND_BACK, renderer.wireframeEnabled ? GL_LINE : GL_FILL);
+#endif
 
     for (const auto& s : queue) {
         const auto& cmd = s.cmd;
@@ -1061,6 +1076,9 @@ void BloomPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
 
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // fullscreen quads — never wireframe
+#endif
 
     // 1. Threshold pass → mip[0]
     {

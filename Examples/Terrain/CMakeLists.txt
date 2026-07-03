@@ -1,4 +1,4 @@
-set(GAME_NAME ProceduralTerrain)
+set(GAME_NAME Terrain)
 
 find_package(glm CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
@@ -42,7 +42,13 @@ if(EMSCRIPTEN)
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
             ${EM_PRELOAD_STAGING_DIR}/scenes
         COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/textures
+            ${EM_PRELOAD_STAGING_DIR}/textures
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/ui
+            ${EM_PRELOAD_STAGING_DIR}/ui
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/ui
             ${EM_PRELOAD_STAGING_DIR}/ui
         COMMENT "Staging Emscripten preload assets for ${GAME_NAME}"
     )
@@ -56,6 +62,7 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/textures@assets/textures"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/ui@assets/ui"
     )
 
