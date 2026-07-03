@@ -6,6 +6,12 @@ body {
     height: 100%;
 }
 
+/* RmlUi defaults <div> to display:inline (unlike HTML), so text rows would
+   run together on one line. Restore block behaviour. */
+div {
+    display: block;
+}
+
 #panel {
     position: absolute;
     top: 12dp;
