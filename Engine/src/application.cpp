@@ -661,7 +661,7 @@ static EasingType ParseEasingType(const std::string& easingStr) {
     return EasingType::Linear;
 }
 
-static Action* ParseAction(const nlohmann::json& val) {
+static std::unique_ptr<Action> ParseAction(const nlohmann::json& val) {
     if (!val.is_object()) return nullptr;
 
     std::string type = val.value("type", "");
@@ -671,13 +671,13 @@ static Action* ParseAction(const nlohmann::json& val) {
 
     if (type == "MoveTo") {
         glm::vec3 pos = ParseVec3(val.value("position", nlohmann::json::array()), glm::vec3(0.0f));
-        auto* action = new MoveTo(duration, pos);
+        auto action = std::make_unique<MoveTo>(duration, pos);
         action->SetEasing(easing);
         return action;
     }
     else if (type == "MoveBy") {
         glm::vec3 delta = ParseVec3(val.value("deltaPosition", nlohmann::json::array()), glm::vec3(0.0f));
-        auto* action = new MoveBy(duration, delta);
+        auto action = std::make_unique<MoveBy>(duration, delta);
         action->SetEasing(easing);
         return action;
     }
@@ -688,7 +688,7 @@ static Action* ParseAction(const nlohmann::json& val) {
             rot.y = val["rotation"].size() >= 2 ? glm::radians(val["rotation"][1].get<float>()) : 0.0f;
             rot.z = val["rotation"].size() >= 3 ? glm::radians(val["rotation"][2].get<float>()) : 0.0f;
         }
-        auto* action = new RotateTo(duration, rot);
+        auto action = std::make_unique<RotateTo>(duration, rot);
         action->SetEasing(easing);
         return action;
     }
@@ -699,25 +699,25 @@ static Action* ParseAction(const nlohmann::json& val) {
             delta.y = val["deltaRotation"].size() >= 2 ? glm::radians(val["deltaRotation"][1].get<float>()) : 0.0f;
             delta.z = val["deltaRotation"].size() >= 3 ? glm::radians(val["deltaRotation"][2].get<float>()) : 0.0f;
         }
-        auto* action = new RotateBy(duration, delta);
+        auto action = std::make_unique<RotateBy>(duration, delta);
         action->SetEasing(easing);
         return action;
     }
     else if (type == "ScaleTo") {
         glm::vec3 scale = ParseVec3(val.value("scale", nlohmann::json::array()), glm::vec3(1.0f));
-        auto* action = new ScaleTo(duration, scale);
+        auto action = std::make_unique<ScaleTo>(duration, scale);
         action->SetEasing(easing);
         return action;
     }
     else if (type == "ColorTo") {
         glm::vec4 color = ParseVec4(val.value("color", nlohmann::json::array()), glm::vec4(1.0f));
-        auto* action = new ColorTo(duration, color);
+        auto action = std::make_unique<ColorTo>(duration, color);
         action->SetEasing(easing);
         return action;
     }
     else if (type == "FadeTo") {
         float alpha = val.value("alpha", 1.0f);
-        auto* action = new FadeTo(duration, alpha);
+        auto action = std::make_unique<FadeTo>(duration, alpha);
         action->SetEasing(easing);
         return action;
     }
@@ -725,33 +725,30 @@ static Action* ParseAction(const nlohmann::json& val) {
         std::vector<FiniteTimeAction*> seqActions;
         if (val.contains("actions") && val["actions"].is_array()) {
             for (const auto& actVal : val["actions"]) {
-                Action* parsed = ParseAction(actVal);
+                auto parsed = ParseAction(actVal);
                 if (parsed) {
-                    FiniteTimeAction* fta = dynamic_cast<FiniteTimeAction*>(parsed);
-                    if (fta) {
+                    if (auto* fta = dynamic_cast<FiniteTimeAction*>(parsed.get())) {
+                        parsed.release();// Sequence takes ownership below
                         seqActions.push_back(fta);
                     } else {
                         spdlog::warn("ParseAction: Sequence only supports FiniteTimeActions. Action ignored.");
-                        delete parsed;
                     }
                 }
             }
         }
         if (!seqActions.empty()) {
-            return new Sequence(seqActions);
+            return std::make_unique<Sequence>(seqActions);
         }
     }
     else if (type == "RepeatForever") {
         if (val.contains("action")) {
-            Action* parsed = ParseAction(val["action"]);
+            auto parsed = ParseAction(val["action"]);
             if (parsed) {
-                ActionInterval* interval = dynamic_cast<ActionInterval*>(parsed);
-                if (interval) {
-                    return new RepeatForever(interval);
-                } else {
-                    spdlog::warn("ParseAction: RepeatForever only supports ActionIntervals. Action ignored.");
-                    delete parsed;
+                if (auto* interval = dynamic_cast<ActionInterval*>(parsed.get())) {
+                    parsed.release();// RepeatForever takes ownership
+                    return std::make_unique<RepeatForever>(interval);
                 }
+                spdlog::warn("ParseAction: RepeatForever only supports ActionIntervals. Action ignored.");
             }
         }
     }
@@ -789,7 +786,7 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
                     auto* mgr = go->GetComponent<ActionManager>();
                     if (mgr && compVal.contains("actions") && compVal["actions"].is_array()) {
                         for (const auto& actionVal : compVal["actions"]) {
-                            if (Action* a = ParseAction(actionVal)) mgr->RunAction(a);
+                            if (auto a = ParseAction(actionVal)) mgr->RunAction(std::move(a));
                         }
                     }
                 }

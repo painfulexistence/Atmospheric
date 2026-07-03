@@ -5,6 +5,7 @@
 #include <functional>
 #include <glm/glm.hpp>
 #include <string>
+#include <memory>
 #include <vector>
 
 class GameObject;
@@ -195,8 +196,8 @@ private:
 
 class Sequence : public ActionInterval {
 public:
+    // Takes ownership of every action in the list (callers pass `new T(...)`).
     Sequence(const std::vector<FiniteTimeAction*>& actions);
-    ~Sequence();
 
     void StartWithTarget(GameObject* target) override;
     void Update(float t) override;
@@ -204,9 +205,9 @@ public:
     bool IsDone() const override;
 
 private:
-    std::vector<FiniteTimeAction*> _actions;
+    std::vector<std::unique_ptr<FiniteTimeAction>> _actions;
     int _currentActionIndex = 0;
-    FiniteTimeAction* _currentAction = nullptr;
+    FiniteTimeAction* _currentAction = nullptr;// observes _actions[_currentActionIndex]
 };
 
 class CallFunc : public FiniteTimeAction {
@@ -225,8 +226,8 @@ private:
 
 class RepeatForever : public Action {
 public:
+    // Takes ownership of the inner action.
     RepeatForever(ActionInterval* action);
-    ~RepeatForever();
 
     void StartWithTarget(GameObject* target) override;
     void Step(float dt) override;
@@ -235,7 +236,7 @@ public:
     }
 
 private:
-    ActionInterval* _innerAction = nullptr;
+    std::unique_ptr<ActionInterval> _innerAction;
 };
 
 // Animation Action
@@ -243,11 +244,14 @@ struct AnimationClip;// Forward decl
 class Animate : public ActionInterval {
 public:
     Animate(const AnimationClip& clip);
+    ~Animate();// out-of-line: AnimationClip is only forward-declared here
+
     void StartWithTarget(GameObject* target) override;
     void Update(float t) override;
 
 private:
-    const AnimationClip* _clip;// We store a copy or pointer? Pointer is unsafe if clip is temporary.
+    // Owned copy of the clip (the source may be temporary).
+    std::unique_ptr<AnimationClip> _clip;// We store a copy or pointer? Pointer is unsafe if clip is temporary.
     // Actually, AnimationClip is usually a resource. Let's store a copy for safety or assume resource manager.
     // For now, let's assume we pass a copy to the constructor but store it internally.
     // Wait, AnimationClip struct was defined in animator_2d.hpp. We need to move it or include it.
