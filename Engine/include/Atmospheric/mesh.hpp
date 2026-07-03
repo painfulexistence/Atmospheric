@@ -31,11 +31,11 @@ class Mesh {
 public:
     MeshType type;
     UpdateFrequency updateFreq = UpdateFrequency::Static;
-    size_t vertCount;
-    size_t triCount;
+    size_t vertCount = 0;
+    size_t triCount = 0;
     bool initialized = false;
-    GLuint vao;
-    GLuint ibo;
+    GLuint vao = 0;
+    GLuint ibo = 0;
 
     Mesh(MeshType type = MeshType::PRIM);
     ~Mesh();
@@ -97,8 +97,8 @@ private:
     GLenum _primitiveType = GL_TRIANGLES;
     std::array<glm::vec3, 8> _bounds;
 
-    Material* _material;
-    btCollisionShape* _shape;
+    Material* _material = nullptr;
+    btCollisionShape* _shape = nullptr;
 
     // New RenderMesh-based storage (used by Update methods)
     RenderMeshHandle _renderMeshHandle;

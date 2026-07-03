@@ -31,8 +31,8 @@ struct FrameData {
         this->deltaTime = deltaTime;
     };
     uint64_t number;
-    float time;
-    float deltaTime;
+    float time = 0.0f;
+    float deltaTime = 0.0f;
 };
 
 struct AppConfig {

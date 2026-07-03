@@ -38,7 +38,7 @@ void EditorLayer::ToggleRecording() {
         cfg.captureAudio    = (_app->GetAudioManager() != nullptr);
         cfg.audioSampleRate = 44100;
         cfg.audioChannels   = 2;
-        recorder->startRecording(_app->GetGraphicsServer()->renderer, cfg);
+        recorder->startRecording(_app->GetGraphicsServer()->renderer.get(), cfg);
     }
 }
 

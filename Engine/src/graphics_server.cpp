@@ -36,7 +36,6 @@ GraphicsServer::GraphicsServer() {
 GraphicsServer::~GraphicsServer() {
     if (renderer) {
         renderer->Cleanup();
-        delete renderer;
     }
 }
 
@@ -115,7 +114,7 @@ void GraphicsServer::Init(Application* app) {
     glEnable(GL_MULTISAMPLE);
 #endif
 
-    renderer = new Renderer();
+    renderer = std::make_unique<Renderer>();
     renderer->Init(width, height);
     window->AddFramebufferResizeCallback([this](int newWidth, int newHeight) {
         renderer->Resize(newWidth, newHeight);

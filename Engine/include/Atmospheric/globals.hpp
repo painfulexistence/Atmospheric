@@ -196,22 +196,22 @@ struct CubeShapeData {
 };
 
 struct SphereShapeData {
-    float radius;
+    float radius = 0.0f;
 };
 
 struct CapsuleShapeData {
-    float radius;
-    float height;
+    float radius = 0.0f;
+    float height = 0.0f;
 };
 
 struct CylinderShapeData {
-    float radius;
-    float height;
+    float radius = 0.0f;
+    float height = 0.0f;
 };
 
 struct ConeShapeData {
-    float radius;
-    float height;
+    float radius = 0.0f;
+    float height = 0.0f;
 };
 
 struct Shape {

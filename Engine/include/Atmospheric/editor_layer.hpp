@@ -29,8 +29,8 @@ public:
     void SetVisible(bool show) { _showImGui = show; }
 
 private:
-    Application* _app;
-    bool _showImGui;
+    Application* _app = nullptr;
+    bool _showImGui = true;
     bool _showSystemInfo = false;
     bool _showAppView = true;
     bool _showEngineView = true;

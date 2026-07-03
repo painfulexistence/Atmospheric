@@ -147,8 +147,8 @@ public:
 private:
     struct RawFrame {
         std::vector<uint8_t> pixels;
-        uint32_t width;
-        uint32_t height;
+        uint32_t width = 0;
+        uint32_t height = 0;
         double timestamp; // seconds since recording started (wall-clock)
         bool bottomUp = false; // true when coming from PBO; encodeFrame uses negative stride
     };

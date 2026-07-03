@@ -83,7 +83,7 @@ public:
     }
 
 protected:
-    float _duration;
+    float _duration = 0.0f;
 };
 
 class ActionInterval : public FiniteTimeAction {
@@ -104,8 +104,8 @@ public:
     virtual void Update(float t) = 0;// t is 0.0 to 1.0 (after easing applied)
 
 protected:
-    float _elapsed;
-    bool _firstTick;
+    float _elapsed = 0.0f;
+    bool _firstTick = true;
     EasingType _easing;
 };
 
@@ -189,8 +189,8 @@ public:
     void Update(float t) override;
 
 private:
-    float _endAlpha;
-    float _startAlpha;
+    float _endAlpha = 0.0f;
+    float _startAlpha = 0.0f;
 };
 
 class Sequence : public ActionInterval {
@@ -205,8 +205,8 @@ public:
 
 private:
     std::vector<FiniteTimeAction*> _actions;
-    int _currentActionIndex;
-    FiniteTimeAction* _currentAction;
+    int _currentActionIndex = 0;
+    FiniteTimeAction* _currentAction = nullptr;
 };
 
 class CallFunc : public FiniteTimeAction {
@@ -235,7 +235,7 @@ public:
     }
 
 private:
-    ActionInterval* _innerAction;
+    ActionInterval* _innerAction = nullptr;
 };
 
 // Animation Action
@@ -258,6 +258,6 @@ private:
     // animator_2d.hpp and include it. I'll include "animator_2d.hpp" for the structs.
 
     std::vector<float> _splitTimes;
-    int _currentFrame;
+    int _currentFrame = 0;
     SpriteComponent* _sprite = nullptr;
 };

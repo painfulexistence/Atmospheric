@@ -551,7 +551,7 @@ void Application::Run() {
     ENGINE_LOG("Subsystems initialized.");
 
     auto windowSize = _window->GetLogicalSize();
-    RmlUiManager::Get()->Initialize(windowSize.width, windowSize.height, graphics.renderer);
+    RmlUiManager::Get()->Initialize(windowSize.width, windowSize.height, graphics.renderer.get());
 
     _transition.Init();
 
@@ -1331,7 +1331,7 @@ void Application::UpdateAutoCapture() {
         _capPhaseStart = now;// lazy init: anchor to the first rendered frame
     float elapsed = now - _capPhaseStart;
 
-    Renderer* renderer = graphics.renderer;
+    Renderer* renderer = graphics.renderer.get();
 
     auto ensureParentDir = [](const std::string& path) {
         std::error_code ec;

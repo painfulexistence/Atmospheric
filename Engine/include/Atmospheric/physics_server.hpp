@@ -12,9 +12,9 @@ enum class PhysicsDebugMode {
 struct RaycastHit {
     glm::vec3 point;
     glm::vec3 normal;
-    GameObject* gameObject;
-    float hitDistance;
-    float hitFraction;
+    GameObject* gameObject = nullptr;
+    float hitDistance = 0.0f;
+    float hitFraction = 0.0f;
 };
 
 class btCollisionConfiguration;
@@ -74,7 +74,7 @@ private:
     std::unique_ptr<BulletTaskScheduler> _taskScheduler;
     std::unordered_map<ColliderID, std::unique_ptr<btCollisionShape>> _colliders;
     std::vector<RigidbodyComponent*> _impostors;
-    float _timeAccum;
+    float _timeAccum = 0.0f;
 
     bool _debugUIEnabled = false;
     ColliderID _nextColliderID = 0;
