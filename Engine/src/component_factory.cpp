@@ -18,3 +18,14 @@ Component* ComponentFactory::Create(const std::string& typeName, GameObject* own
     spdlog::warn("[ComponentFactory] Unknown component type: '{}' — skipping", typeName);
     return nullptr;
 }
+
+void ComponentFactory::Alias(const std::string& aliasName, const std::string& targetName) {
+    auto& reg = GetRegistry();
+    auto it = reg.find(targetName);
+    if (it == reg.end()) {
+        spdlog::warn("[ComponentFactory] Alias target '{}' not registered — alias '{}' skipped", targetName,
+                     aliasName);
+        return;
+    }
+    reg[aliasName] = it->second;
+}
