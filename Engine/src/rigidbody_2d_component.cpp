@@ -108,7 +108,7 @@ void Rigidbody2DComponent::CreateShape() {
                 points.push_back({ vMeters.x, vMeters.y });
             }
 
-            b2Hull hull = b2ComputeHull(points.data(), (int32_t)points.size());
+            b2Hull hull = b2ComputeHull(points.data(), static_cast<int32_t>(points.size()));
             b2Polygon poly = b2MakePolygon(&hull, 0.0f);
             b2CreatePolygonShape(_bodyId, &shapeDef, &poly);
         }

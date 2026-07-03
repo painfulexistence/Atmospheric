@@ -46,7 +46,7 @@ TerrainMeshComponent::TerrainMeshComponent(
     if (!props.normalMapPath.empty()) terrainMat->normalMap = loadTex(props.normalMapPath);
     if (!props.aoMapPath.empty())     terrainMat->aoMap     = loadTex(props.aoMapPath);
     if (!props.splatMapPath.empty())  terrainMat->splatMap  = loadTex(props.splatMapPath);
-    terrainMat->layerCount = std::min((int)props.layers.size(), TerrainMaterial::MAX_LAYERS);
+    terrainMat->layerCount = std::min(static_cast<int>(props.layers.size()), TerrainMaterial::MAX_LAYERS);
     for (int i = 0; i < terrainMat->layerCount; ++i) {
         terrainMat->layers[i].albedoMap = loadTex(props.layers[i].albedoPath);
         terrainMat->layers[i].normalMap = loadTex(props.layers[i].normalPath);

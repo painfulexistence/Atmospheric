@@ -1328,7 +1328,7 @@ static void UploadHeightmapPixels(const std::vector<float>& grid, int width, int
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, width, height, 0, GL_RED, GL_FLOAT, grid.data());
 #else
-    const size_t count = (size_t)width * height;
+    const size_t count = static_cast<size_t>(width) * height;
     std::vector<uint16_t> texels(count);
     for (size_t i = 0; i < count; ++i)
         texels[i] = static_cast<uint16_t>(std::clamp(grid[i], 0.0f, 1.0f) * 65535.0f);

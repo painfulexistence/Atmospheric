@@ -15,7 +15,7 @@ HeightFieldColliderComponent::HeightFieldColliderComponent(
 
     _width = props.resolution > 0 ? props.resolution : heightField->Width();
     _depth = props.resolution > 0 ? props.resolution : heightField->Depth();
-    _scaledGrid.resize((size_t)_width * _depth);
+    _scaledGrid.resize(static_cast<size_t>(_width) * _depth);
     SyncFromHeightField();
 
     _shape = std::make_unique<btHeightfieldTerrainShape>(
@@ -72,7 +72,7 @@ void HeightFieldColliderComponent::SyncFromHeightField() {
         const float v = _depth > 1 ? z / float(_depth - 1) : 0.0f;
         for (int x = 0; x < _width; ++x) {
             const float u = _width > 1 ? x / float(_width - 1) : 0.0f;
-            _scaledGrid[(size_t)z * _width + x] = _heightField->SampleNormalized(u, v) * _heightScale;
+            _scaledGrid[static_cast<size_t>(z) * _width + x] = _heightField->SampleNormalized(u, v) * _heightScale;
         }
     }
 }

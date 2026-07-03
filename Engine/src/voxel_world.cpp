@@ -16,7 +16,7 @@
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 static int WorldToChunkCoord(float w) {
-    return (int)std::floor(w / VoxelChunkComponent::SIZE);
+    return static_cast<int>(std::floor(w / VoxelChunkComponent::SIZE));
 }
 
 // ── public ───────────────────────────────────────────────────────────────────
@@ -136,9 +136,9 @@ void VoxelWorld::SubmitRenderCommands(Renderer* renderer,
 }
 
 uint8_t VoxelWorld::GetVoxel(int wx, int wy, int wz) const {
-    int cx = (int)std::floor((float)wx / VoxelChunkComponent::SIZE);
-    int cy = (int)std::floor((float)wy / VoxelChunkComponent::SIZE);
-    int cz = (int)std::floor((float)wz / VoxelChunkComponent::SIZE);
+    int cx = static_cast<int>(std::floor(static_cast<float>(wx) / VoxelChunkComponent::SIZE));
+    int cy = static_cast<int>(std::floor(static_cast<float>(wy) / VoxelChunkComponent::SIZE));
+    int cz = static_cast<int>(std::floor(static_cast<float>(wz) / VoxelChunkComponent::SIZE));
     int lx = wx - cx * VoxelChunkComponent::SIZE;
     int ly = wy - cy * VoxelChunkComponent::SIZE;
     int lz = wz - cz * VoxelChunkComponent::SIZE;
@@ -147,9 +147,9 @@ uint8_t VoxelWorld::GetVoxel(int wx, int wy, int wz) const {
 }
 
 void VoxelWorld::SetVoxel(int wx, int wy, int wz, uint8_t type) {
-    int cx = (int)std::floor((float)wx / VoxelChunkComponent::SIZE);
-    int cy = (int)std::floor((float)wy / VoxelChunkComponent::SIZE);
-    int cz = (int)std::floor((float)wz / VoxelChunkComponent::SIZE);
+    int cx = static_cast<int>(std::floor(static_cast<float>(wx) / VoxelChunkComponent::SIZE));
+    int cy = static_cast<int>(std::floor(static_cast<float>(wy) / VoxelChunkComponent::SIZE));
+    int cz = static_cast<int>(std::floor(static_cast<float>(wz) / VoxelChunkComponent::SIZE));
     int lx = wx - cx * VoxelChunkComponent::SIZE;
     int ly = wy - cy * VoxelChunkComponent::SIZE;
     int lz = wz - cz * VoxelChunkComponent::SIZE;
@@ -172,7 +172,7 @@ VoxelChunkComponent* VoxelWorld::AcquireSlot(glm::ivec3 pos) {
         return slot;
     }
     // Pool is empty — allocate a new GameObject + component.
-    glm::vec3 worldPos = glm::vec3(pos) * (float)VoxelChunkComponent::SIZE;
+    glm::vec3 worldPos = glm::vec3(pos) * static_cast<float>(VoxelChunkComponent::SIZE);
     GameObject* go = _app->CreateGameObject(worldPos);
     go->SetName("VoxelChunk_" + std::to_string(pos.x) + "_" +
                 std::to_string(pos.y) + "_" + std::to_string(pos.z));

@@ -161,7 +161,7 @@ void EditorLayer::DrawEntityNode(GameObject* entity, const std::vector<std::uniq
     if (entity == _selectedEntity) flags |= ImGuiTreeNodeFlags_Selected;
     if (!hasChildren) flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 
-    bool open = ImGui::TreeNodeEx((void*)entity, flags, "%s", entity->GetName().c_str());
+    bool open = ImGui::TreeNodeEx(static_cast<void*>(entity), flags, "%s", entity->GetName().c_str());
     if (ImGui::IsItemClicked()) _selectedEntity = entity;
 
     if (hasChildren) {

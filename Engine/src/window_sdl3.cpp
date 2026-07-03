@@ -267,7 +267,7 @@ void Window::Init() {
 }
 
 void* Window::GetProcAddress() {
-    return (void*)SDL_GL_GetProcAddress;
+    return reinterpret_cast<void*>(SDL_GL_GetProcAddress);
 }
 
 void Window::InitImGui() {

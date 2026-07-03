@@ -16,7 +16,7 @@ float HeightField::SampleNormalized(float u, float v) const {
     const int w = Width(), d = Depth();
     const float x = std::clamp(u, 0.0f, 1.0f) * float(w - 1);
     const float z = std::clamp(v, 0.0f, 1.0f) * float(d - 1);
-    const int   x0 = (int)x, z0 = (int)z;
+    const int   x0 = static_cast<int>(x), z0 = static_cast<int>(z);
     const int   x1 = std::min(x0 + 1, w - 1), z1 = std::min(z0 + 1, d - 1);
     const float fx = x - float(x0), fz = z - float(z0);
     const float top    = Sample(x0, z0) * (1.0f - fx) + Sample(x1, z0) * fx;
@@ -59,8 +59,8 @@ ImageHeightField::ImageHeightField(const std::string& path) {
 // Headerless square little-endian uint16 (Gaea .r16 / WorldCreator RAW export).
 void ImageHeightField::LoadRaw16(const std::vector<unsigned char>& bytes, const std::string& path) {
     const size_t count = bytes.size() / sizeof(uint16_t);
-    const int    side  = (int)std::lround(std::sqrt((double)count));
-    if (count == 0 || (size_t)side * side * sizeof(uint16_t) != bytes.size())
+    const int    side  = static_cast<int>(std::lround(std::sqrt(static_cast<double>(count))));
+    if (count == 0 || static_cast<size_t>(side) * side * sizeof(uint16_t) != bytes.size())
         throw std::runtime_error("ImageHeightField: '" + path + "' is not a square 16-bit RAW heightmap");
 
     _width = _depth = side;
@@ -70,8 +70,8 @@ void ImageHeightField::LoadRaw16(const std::vector<unsigned char>& bytes, const 
     for (int z = 0; z < side; ++z) {
         for (int x = 0; x < side; ++x) {
             uint16_t v;
-            std::memcpy(&v, &bytes[((size_t)z * side + x) * sizeof(uint16_t)], sizeof(uint16_t));
-            _grid[(size_t)(side - 1 - z) * side + x] = v / 65535.0f;
+            std::memcpy(&v, &bytes[(static_cast<size_t>(z) * side + x) * sizeof(uint16_t)], sizeof(uint16_t));
+            _grid[static_cast<size_t>(side - 1 - z) * side + x] = v / 65535.0f;
         }
     }
 }
@@ -79,8 +79,8 @@ void ImageHeightField::LoadRaw16(const std::vector<unsigned char>& bytes, const 
 // Headerless square little-endian float32 in [0,1] (Gaea .r32 export).
 void ImageHeightField::LoadRaw32(const std::vector<unsigned char>& bytes, const std::string& path) {
     const size_t count = bytes.size() / sizeof(float);
-    const int    side  = (int)std::lround(std::sqrt((double)count));
-    if (count == 0 || (size_t)side * side * sizeof(float) != bytes.size())
+    const int    side  = static_cast<int>(std::lround(std::sqrt(static_cast<double>(count))));
+    if (count == 0 || static_cast<size_t>(side) * side * sizeof(float) != bytes.size())
         throw std::runtime_error("ImageHeightField: '" + path + "' is not a square 32-bit RAW heightmap");
 
     _width = _depth = side;
@@ -88,8 +88,8 @@ void ImageHeightField::LoadRaw32(const std::vector<unsigned char>& bytes, const 
     for (int z = 0; z < side; ++z) {
         for (int x = 0; x < side; ++x) {
             float v;
-            std::memcpy(&v, &bytes[((size_t)z * side + x) * sizeof(float)], sizeof(float));
-            _grid[(size_t)(side - 1 - z) * side + x] = std::clamp(v, 0.0f, 1.0f);
+            std::memcpy(&v, &bytes[(static_cast<size_t>(z) * side + x) * sizeof(float)], sizeof(float));
+            _grid[static_cast<size_t>(side - 1 - z) * side + x] = std::clamp(v, 0.0f, 1.0f);
         }
     }
 }
@@ -98,7 +98,7 @@ void ImageHeightField::LoadRaw32(const std::vector<unsigned char>& bytes, const 
 // carries 16-bit data (16-bit PNG), otherwise falls back to 8-bit.
 void ImageHeightField::LoadStb(const std::vector<unsigned char>& bytes, const std::string& path) {
     const auto* data = bytes.data();
-    const int   len  = (int)bytes.size();
+    const int   len  = static_cast<int>(bytes.size());
     int w = 0, h = 0, ch = 0;
 
     stbi_set_flip_vertically_on_load(true);
@@ -107,7 +107,7 @@ void ImageHeightField::LoadStb(const std::vector<unsigned char>& bytes, const st
         if (!pixels)
             throw std::runtime_error("ImageHeightField: cannot decode 16-bit image: " + path);
         _width = w; _depth = h;
-        _grid.resize((size_t)w * h);
+        _grid.resize(static_cast<size_t>(w) * h);
         for (size_t i = 0; i < _grid.size(); ++i)
             _grid[i] = pixels[i] / 65535.0f;
         stbi_image_free(pixels);
@@ -116,7 +116,7 @@ void ImageHeightField::LoadStb(const std::vector<unsigned char>& bytes, const st
         if (!pixels)
             throw std::runtime_error("ImageHeightField: cannot decode image: " + path);
         _width = w; _depth = h;
-        _grid.resize((size_t)w * h);
+        _grid.resize(static_cast<size_t>(w) * h);
         for (size_t i = 0; i < _grid.size(); ++i)
             _grid[i] = pixels[i] / 255.0f;
         stbi_image_free(pixels);
@@ -124,7 +124,7 @@ void ImageHeightField::LoadStb(const std::vector<unsigned char>& bytes, const st
 }
 
 float ImageHeightField::Sample(int xi, int zi) const {
-    return _grid[(size_t)zi * _width + xi];
+    return _grid[static_cast<size_t>(zi) * _width + xi];
 }
 
 // ----------------------------------------------------------------------------
@@ -157,5 +157,5 @@ void NoiseHeightField::Regenerate() {
 }
 
 float NoiseHeightField::Sample(int xi, int zi) const {
-    return _grid[(size_t)zi * _params.resolution + xi];
+    return _grid[static_cast<size_t>(zi) * _params.resolution + xi];
 }

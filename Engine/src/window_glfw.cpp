@@ -260,7 +260,7 @@ void Window::Init() {
 }
 
 void* Window::GetProcAddress() {
-    return (void*)glfwGetProcAddress;
+    return reinterpret_cast<void*>(glfwGetProcAddress);
 }
 
 bool Window::IsWebGPUAvailable() {

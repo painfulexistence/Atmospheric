@@ -161,9 +161,9 @@ void Renderer::Init(int width, int height) {
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
         glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), nullptr);
         glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
         glBindVertexArray(0);
     }
 
@@ -624,10 +624,10 @@ void Renderer::CreateCanvasVAO() {
 
     glBindVertexArray(canvasVAO);
     glBindBuffer(GL_ARRAY_BUFFER, canvasVBO);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)offsetof(CanvasVertex, texCoord));
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)offsetof(CanvasVertex, color));
-    glVertexAttribIPointer(3, 1, GL_INT, sizeof(CanvasVertex), (void*)offsetof(CanvasVertex, texIndex));
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), nullptr);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(offsetof(CanvasVertex, texCoord)));
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(offsetof(CanvasVertex, color)));
+    glVertexAttribIPointer(3, 1, GL_INT, sizeof(CanvasVertex), reinterpret_cast<void*>(offsetof(CanvasVertex, texIndex)));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
