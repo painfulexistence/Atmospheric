@@ -82,10 +82,11 @@ Shader::Shader(const std::string& path, ShaderType type) {
         GLint maxLength = 0;
         glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &maxLength);
 
-        GLchar* log = new GLchar[maxLength];
-        glGetShaderInfoLog(shader, maxLength, &maxLength, log);
+        std::string log(maxLength, '\0');
+        glGetShaderInfoLog(shader, maxLength, &maxLength, log.data());
+        log.resize(maxLength);// drop the trailing '\0' GL didn't write into
 
-        throw std::runtime_error(fmt::format("Shader error: {}\n", (char*)log));
+        throw std::runtime_error(fmt::format("Shader error: {}\n", log));
     }
 }
 
