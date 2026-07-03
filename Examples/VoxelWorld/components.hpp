@@ -72,7 +72,7 @@ public:
         glm::mat4 viewProj = _camera->GetProjectionMatrix() * _camera->GetViewMatrix();
         _world.Update(dt, pos);
         _world.SubmitRenderCommands(
-            gameObject->GetApp()->GetGraphicsSubsystem()->renderer, viewProj, pos
+            gameObject->GetApp()->GetGraphicsSubsystem()->renderer.get(), viewProj, pos
         );
 
         // Slide the water plane with the camera so it always covers the visible area.
