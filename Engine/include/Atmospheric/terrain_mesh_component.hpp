@@ -1,10 +1,10 @@
 #pragma once
 #include "component.hpp"
 #include "globals.hpp"
+#include "height_field.hpp"
 #include <memory>
 
 class GraphicsServer;
-class HeightField;
 class Material;
 class Mesh;
 class TerrainMaterial;
@@ -35,7 +35,8 @@ public:
     void OnAttach() override {}
     void OnDetach() override {}
     // Exposes heightScale/tessellation and, for NoiseHeightField sources, the
-    // noise parameters (seed, frequency, ...) with a Regenerate button.
+    // noise parameters (seed, frequency, ...). Edits regenerate the height
+    // grid, the GPU heightmap, and any sibling HeightFieldColliderComponent.
     void DrawImGui() override;
 
     MeshHandle GetMesh() const { return _mesh; }
@@ -45,4 +46,5 @@ private:
     std::shared_ptr<HeightField> _heightField;
     TerrainMaterial*             _material  = nullptr;
     TextureHandle                _heightMap;
+    NoiseHeightFieldParams       _appliedParams;  // last params baked to GPU/collider
 };

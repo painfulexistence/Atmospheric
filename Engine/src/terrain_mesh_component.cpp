@@ -2,6 +2,7 @@
 #include "asset_manager.hpp"
 #include "game_object.hpp"
 #include "height_field.hpp"
+#include "height_field_collider_component.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_component.hpp"
@@ -47,6 +48,9 @@ TerrainMeshComponent::TerrainMeshComponent(
     _material = terrainMat;
     if (meshPtr) meshPtr->SetMaterial(terrainMat);
     owner->AddComponent<MeshComponent>(_mesh);
+
+    if (auto* noise = dynamic_cast<NoiseHeightField*>(_heightField.get()))
+        _appliedParams = noise->Params();
 }
 
 void TerrainMeshComponent::DrawImGui() {
@@ -65,9 +69,15 @@ void TerrainMeshComponent::DrawImGui() {
     ImGui::DragInt("Octaves",      &p.octaves, 1, 1, 12);
     ImGui::DragFloat("Lacunarity", &p.lacunarity, 0.05f, 1.0f, 4.0f);
     ImGui::DragFloat("Gain",       &p.gain, 0.01f, 0.0f, 1.0f);
-    if (ImGui::Button("Regenerate")) {
+
+    // Auto-apply edits, but only once the user releases the drag / leaves the
+    // field — regenerating 256x256 FBm on every changed frame would stutter.
+    if (p != _appliedParams && !ImGui::IsAnyItemActive()) {
         noise->Regenerate();
         AssetManager::Get().UpdateHeightmapTexture(
             _heightMap, noise->Grid(), noise->Width(), noise->Depth());
+        if (auto* collider = gameObject->GetComponent<HeightFieldColliderComponent>())
+            collider->SyncFromHeightField();
+        _appliedParams = p;
     }
 }

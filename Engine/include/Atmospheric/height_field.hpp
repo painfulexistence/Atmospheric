@@ -35,6 +35,8 @@ struct NoiseHeightFieldParams {
     int   octaves    = 8;
     float lacunarity = 2.0f;
     float gain       = 0.5f;
+
+    bool operator==(const NoiseHeightFieldParams&) const = default;
 };
 
 // Procedural OpenSimplex2 FBm — same noise algorithm as VoxelWorld terrain.

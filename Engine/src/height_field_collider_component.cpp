@@ -2,6 +2,7 @@
 #include "bullet_collision.hpp"
 #include "bullet_dynamics.hpp"
 #include "bullet_linear_math.hpp"
+#include "console.hpp"
 #include "game_object.hpp"
 #include "height_field.hpp"
 #include "rigidbody_component.hpp"
@@ -10,7 +11,7 @@ HeightFieldColliderComponent::HeightFieldColliderComponent(
     GameObject*                         owner,
     const std::shared_ptr<HeightField>& heightField,
     const HeightFieldColliderProps&     props
-) {
+) : _heightField(heightField), _heightScale(props.heightScale) {
     gameObject = owner;
 
     const int w = heightField->Width();
@@ -53,4 +54,18 @@ HeightFieldColliderComponent::HeightFieldColliderComponent(
         .useGravity  = false,
     }));
     rb->SetWorldTransform(pos, owner->GetRotation());
+}
+
+void HeightFieldColliderComponent::SyncFromHeightField() {
+    const int n = _heightField->Width() * _heightField->Depth();
+    if (n != (int)_scaledGrid.size()) {
+        // btHeightfieldTerrainShape stores its dimensions at construction;
+        // a resolution change would require rebuilding the shape + rigidbody.
+        ENGINE_LOG("HeightFieldCollider: resolution changed ({} -> {}), collider not updated",
+                   _scaledGrid.size(), n);
+        return;
+    }
+    const auto& src = _heightField->Grid();
+    for (int i = 0; i < n; ++i)
+        _scaledGrid[i] = src[i] * _heightScale;
 }

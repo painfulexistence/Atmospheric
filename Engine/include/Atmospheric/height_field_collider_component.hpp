@@ -31,7 +31,14 @@ public:
     void OnAttach() override {}
     void OnDetach() override {}
 
+    // Refill the scaled grid from the (regenerated) HeightField. Bullet reads
+    // the raw grid pointer on every query, so updating the values in place is
+    // enough — as long as the resolution didn't change.
+    void SyncFromHeightField();
+
 private:
+    std::shared_ptr<HeightField> _heightField;
+    float               _heightScale = 32.0f;
     std::vector<float>  _scaledGrid;   // kept alive for Bullet
     btCollisionShape*   _shape = nullptr;
 };
