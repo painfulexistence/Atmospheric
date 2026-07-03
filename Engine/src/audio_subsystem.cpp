@@ -6,9 +6,17 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
-#include <cstdlib>
+#include <random>
 #include <string>
 #include <vector>
+
+// Uniform random float in [-1, 1] for pitch/volume variation. A properly
+// seeded PRNG rather than rand(), which is low-quality and shares global state.
+static float RandBipolar() {
+    static std::mt19937 rng{ std::random_device{}() };
+    static std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    return dist(rng);
+}
 
 AudioSubsystem::AudioSubsystem(void) {
     // Initialize Web Audio context and global window.AudioManager
@@ -439,16 +447,14 @@ void AudioSubsystem::PlaySoundVariation(SoundID id, float pitchVariation, float 
     
     float vol = baseVol;
     if (volumeVariation > 0.0f) {
-        float r = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 2.0f - 1.0f;
-        vol = baseVol + r * volumeVariation;
+        vol = baseVol + RandBipolar() * volumeVariation;
         if (vol < 0.0f) vol = 0.0f;
         if (vol > 1.0f) vol = 1.0f;
     }
-    
+
     double pitch = 1.0;
     if (pitchVariation > 0.0f) {
-        float r = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX)) * 2.0f - 1.0f;
-        pitch = 1.0 + r * pitchVariation;
+        pitch = 1.0 + RandBipolar() * pitchVariation;
         if (pitch < 0.1) pitch = 0.1;
     }
 
