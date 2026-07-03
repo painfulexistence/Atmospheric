@@ -1,7 +1,7 @@
 #include "camera_component.hpp"
 #include "game_object.hpp"
 #include "application.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 
 static const float maxVAngle = PI / 2.0f - 0.01f;
 static const float minVAngle = -PI / 2.0f + 0.01f;
@@ -47,14 +47,14 @@ void CameraComponent::DrawImGui() {
 }
 
 void CameraComponent::OnAttach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
-        gameObject->GetApp()->GetGraphicsServer()->RegisterCamera(this);
+    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsSubsystem()) {
+        gameObject->GetApp()->GetGraphicsSubsystem()->RegisterCamera(this);
     }
 }
 
 void CameraComponent::OnDetach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
-        gameObject->GetApp()->GetGraphicsServer()->UnregisterCamera(this);
+    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsSubsystem()) {
+        gameObject->GetApp()->GetGraphicsSubsystem()->UnregisterCamera(this);
     }
 }
 

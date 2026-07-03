@@ -2,7 +2,7 @@
 #include "application.hpp"
 #include "component.hpp"
 #include "game_object.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include "imgui.h"
 #include "video_recorder.hpp"
 #include "window.hpp"
@@ -35,10 +35,10 @@ void EditorLayer::ToggleRecording() {
                       std::localtime(&t));
         VideoRecorder::Config cfg;
         cfg.outputPath      = name;
-        cfg.captureAudio    = (_app->GetAudioManager() != nullptr);
+        cfg.captureAudio    = (_app->GetAudioSubsystem() != nullptr);
         cfg.audioSampleRate = 44100;
         cfg.audioChannels   = 2;
-        recorder->startRecording(_app->GetGraphicsServer()->renderer.get(), cfg);
+        recorder->startRecording(_app->GetGraphicsSubsystem()->renderer.get(), cfg);
     }
 }
 
@@ -188,12 +188,12 @@ void EditorLayer::DrawEngineView() {
         float dt = 1.0f / ImGui::GetIO().Framerate;
         _app->GetConsole()->DrawImGui(dt);
         _app->GetInput()->DrawImGui(dt);
-        _app->GetGraphicsServer()->DrawImGui(dt);
-        _app->GetPhysicsServer()->DrawImGui(dt);
+        _app->GetGraphicsSubsystem()->DrawImGui(dt);
+        _app->GetPhysicsSubsystem()->DrawImGui(dt);
 #ifndef __EMSCRIPTEN__
-        _app->GetAudioManager()->DrawImGui(dt);
+        _app->GetAudioSubsystem()->DrawImGui(dt);
         if (ImGui::CollapsingHeader("Recording (F2)")) {
-            _app->GetRecorder()->drawImGui(*_app->GetGraphicsServer()->renderer);
+            _app->GetRecorder()->drawImGui(*_app->GetGraphicsSubsystem()->renderer);
         }
 #endif
     }

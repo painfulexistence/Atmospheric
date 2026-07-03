@@ -1,6 +1,6 @@
 #include "batch_renderer_2d.hpp"
 #include "asset_manager.hpp"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "globals.hpp" // provides glad on native, GLES3/gl3.h on Emscripten
 #include "shader.hpp"
 #include <array>
@@ -107,12 +107,12 @@ void BatchRenderer2D::Init() {
     try {
         auto shader = AssetManager::Get().GetShader("canvas");
         if (!shader) {
-            Console::Get()->Error("BatchRenderer2D::Init: 'canvas' shader not found!");
+            ConsoleSubsystem::Get()->Error("BatchRenderer2D::Init: 'canvas' shader not found!");
         } else {
-            Console::Get()->Info("BatchRenderer2D::Init: 'canvas' shader loaded successfully.");
+            ConsoleSubsystem::Get()->Info("BatchRenderer2D::Init: 'canvas' shader loaded successfully.");
         }
     } catch (const std::exception& e) {
-        Console::Get()->Error(fmt::format("BatchRenderer2D::Init: Exception loading shader: {}", e.what()));
+        ConsoleSubsystem::Get()->Error(fmt::format("BatchRenderer2D::Init: Exception loading shader: {}", e.what()));
     }
 
     glBindVertexArray(0);// Unbind VAO to avoid state leakage
@@ -147,14 +147,14 @@ void BatchRenderer2D::BeginBatch(const glm::mat4& viewProj, BlendMode blendMode)
     // Check for errors after Activate
     GLenum err;
     while ((err = glGetError()) != GL_NO_ERROR) {
-        Console::Get()->Error(fmt::format("BatchRenderer2D::BeginScene (Activate): {}", err));
+        ConsoleSubsystem::Get()->Error(fmt::format("BatchRenderer2D::BeginScene (Activate): {}", err));
     }
 
     m_Data->TextureShader->SetUniform("Projection", viewProj);
 
     // Check for errors after SetUniform
     while ((err = glGetError()) != GL_NO_ERROR) {
-        Console::Get()->Error(fmt::format("BatchRenderer2D::BeginScene (SetUniform): {}", err));
+        ConsoleSubsystem::Get()->Error(fmt::format("BatchRenderer2D::BeginScene (SetUniform): {}", err));
     }
 
     // Set blend mode
@@ -227,7 +227,7 @@ void BatchRenderer2D::Flush() {
     // Check for errors
     GLenum err;
     while ((err = glGetError()) != GL_NO_ERROR) {
-        Console::Get()->Error(fmt::format("BatchRenderer2D::Flush: {}", err));
+        ConsoleSubsystem::Get()->Error(fmt::format("BatchRenderer2D::Flush: {}", err));
     }
 
     m_Data->Stats.drawCalls++;

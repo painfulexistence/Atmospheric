@@ -11,7 +11,7 @@ set(SOURCES
     ${LUA_FRONTEND_DIR}/lua_application.cpp
     ${LUA_FRONTEND_DIR}/scriptable_component.cpp
     ${LUA_FRONTEND_DIR}/bindings/bind_core.cpp
-    ${LUA_FRONTEND_DIR}/bindings/bind_input.cpp
+    ${LUA_FRONTEND_DIR}/bindings/bind_input_subsystem.cpp
     ${LUA_FRONTEND_DIR}/bindings/bind_world.cpp
     ${LUA_FRONTEND_DIR}/bindings/bind_graphics.cpp
     ${LUA_FRONTEND_DIR}/bindings/bind_physics.cpp

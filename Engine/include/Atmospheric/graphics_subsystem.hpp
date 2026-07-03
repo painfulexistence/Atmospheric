@@ -9,7 +9,7 @@
 #include "render_target.hpp"
 #include "sun_component.hpp"
 #include "vertex.hpp"
-#include "server.hpp"
+#include "subsystem.hpp"
 #include "shader.hpp"
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
@@ -49,12 +49,12 @@ class CameraComponent;
 class LightComponent;
 class BatchRenderer2D;
 
-class GraphicsServer : public Server {
+class GraphicsSubsystem : public Subsystem {
 private:
-    static GraphicsServer* _instance;
+    static GraphicsSubsystem* _instance;
 
 public:
-    static GraphicsServer* Get() {
+    static GraphicsSubsystem* Get() {
         return _instance;
     }
     std::vector<GLuint> canvasTextures;
@@ -75,8 +75,8 @@ public:
     ShaderProgram* debugShader  = nullptr;
     ShaderProgram* canvasShader = nullptr;
 
-    GraphicsServer();
-    ~GraphicsServer();
+    GraphicsSubsystem();
+    ~GraphicsSubsystem();
 
     void Init(Application* app) override;
     void Process(float dt) override;

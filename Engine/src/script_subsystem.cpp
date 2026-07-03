@@ -1,4 +1,4 @@
-#include "script.hpp"
+#include "script_subsystem.hpp"
 #include "material.hpp"
 #include "light_component.hpp"
 #include "camera_component.hpp"
@@ -9,26 +9,26 @@
 #include "application.hpp"
 #include <string>
 
-Script* Script::_instance = nullptr;
+ScriptSubsystem* ScriptSubsystem::_instance = nullptr;
 
-Script::Script()
+ScriptSubsystem::ScriptSubsystem()
 {
     if (_instance != nullptr)
-        throw std::runtime_error("Script is already initialized!");
+        throw std::runtime_error("ScriptSubsystem is already initialized!");
 
     _env = sol::state();
 
     _instance = this;
 }
 
-Script::~Script()
+ScriptSubsystem::~ScriptSubsystem()
 {
 
 }
 
-void Script::Init(Application* app)
+void ScriptSubsystem::Init(Application* app)
 {
-    Server::Init(app);
+    Subsystem::Init(app);
 
     _env.open_libraries();
     Source("./assets/config.lua");
@@ -38,24 +38,24 @@ void Script::Init(Application* app)
     Run("init()");
 }
 
-void Script::Process(float dt)
+void ScriptSubsystem::Process(float dt)
 {
     sol::protected_function updateFunc = _env["update"];
     if (updateFunc.valid()) {
         auto result = updateFunc(dt);
         if (!result.valid()) {
             sol::error err = result;
-            fmt::print(stderr, "[Script] Error in Lua update callback: {}\n", err.what());
+            fmt::print(stderr, "[ScriptSubsystem] Error in Lua update callback: {}\n", err.what());
         }
     }
 }
 
-void Script::Bind(const std::string& func)
+void ScriptSubsystem::Bind(const std::string& func)
 {
 
 }
 
-void Script::Source(const std::string& filename)
+void ScriptSubsystem::Source(const std::string& filename)
 {
     auto resolvedOpt = FileSystem::Get().ResolvePath(filename);
     if (!resolvedOpt) {
@@ -71,7 +71,7 @@ void Script::Source(const std::string& filename)
     }
 }
 
-void Script::Run(const std::string& script)
+void ScriptSubsystem::Run(const std::string& script)
 {
     sol::protected_function_result result = _env.script(script, sol::script_pass_on_error);
     if (!result.valid()) {
@@ -81,17 +81,17 @@ void Script::Run(const std::string& script)
     }
 }
 
-void Script::Print(const std::string& msg)
+void ScriptSubsystem::Print(const std::string& msg)
 {
-    Run(fmt::format("print('[Script] {}')", msg));
+    Run(fmt::format("print('[ScriptSubsystem] {}')", msg));
 }
 
-sol::table Script::GetData(const std::string& key)
+sol::table ScriptSubsystem::GetData(const std::string& key)
 {
     return this->_env.globals()[key];
 }
 
-void Script::LoadScene(int index)
+void ScriptSubsystem::LoadScene(int index)
 {
     sol::table data = GetData("scenes");
     if (!data.valid()) return;
@@ -237,7 +237,7 @@ void Script::LoadScene(int index)
     }
 }
 
-void Script::GetData(const std::string& key, sol::table& data)
+void ScriptSubsystem::GetData(const std::string& key, sol::table& data)
 {
     data = this->_env.globals()[key];
 }

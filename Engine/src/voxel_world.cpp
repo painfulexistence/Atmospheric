@@ -3,7 +3,7 @@
 #include "application.hpp"
 #include "asset_manager.hpp"
 #include "game_object.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include "frustum.hpp"
 #include "light_component.hpp"
 #include "sun_component.hpp"
@@ -23,7 +23,7 @@ static int WorldToChunkCoord(float w) {
 
 void VoxelWorld::Init(Application* app, int seed, GameObject* root) {
     _app  = app;
-    _gfx  = app->GetGraphicsServer();
+    _gfx  = app->GetGraphicsSubsystem();
     _seed = seed;
     _root = root;
 

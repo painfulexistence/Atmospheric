@@ -3,7 +3,7 @@
 #include "batch_renderer_2d.hpp"
 #include "canvas_drawable.hpp"
 #include "game_object.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include "renderer.hpp"
 #include "imgui.h"
 
@@ -32,19 +32,19 @@ void SpriteComponent::DrawImGui() {
     if (ImGui::DragFloat2("Size",  &size.x,  0.001f, 9999.999f)) SetSize(size);
     if (ImGui::DragFloat2("Pivot", &pivot.x, 0.0f,   1.0f))      SetPivot(pivot);
     if (ImGui::ColorEdit4("Color", &color.r))                     SetColor(color);
-    auto* graphics = gameObject->GetApp()->GetGraphicsServer();
+    auto* graphics = gameObject->GetApp()->GetGraphicsSubsystem();
     int minTex = 0, maxTex = static_cast<int>(graphics->canvasTextures.size() - 1);
     if (ImGui::SliderInt("Texture ID", &textureVal, minTex, maxTex))
         SetTexture(textureVal);
 }
 
 void SpriteComponent::OnAttach() {
-    gameObject->GetApp()->GetGraphicsServer()->RegisterCanvasDrawable(this);
+    gameObject->GetApp()->GetGraphicsSubsystem()->RegisterCanvasDrawable(this);
 }
 
 void SpriteComponent::OnDetach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
-        gameObject->GetApp()->GetGraphicsServer()->UnregisterCanvasDrawable(this);
+    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsSubsystem()) {
+        gameObject->GetApp()->GetGraphicsSubsystem()->UnregisterCanvasDrawable(this);
     }
 }
 

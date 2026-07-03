@@ -1,4 +1,4 @@
-#include "input.hpp"
+#include "input_subsystem.hpp"
 #include "window.hpp"
 #include "application.hpp"
 
@@ -51,24 +51,24 @@ static std::string GetKeyName(Key key) {
     }
 }
 
-Input* Input::_instance = nullptr;
+InputSubsystem* InputSubsystem::_instance = nullptr;
 
-Input::Input()
+InputSubsystem::InputSubsystem()
 {
     if (_instance != nullptr)
-        throw std::runtime_error("Input is already initialized!");
+        throw std::runtime_error("InputSubsystem is already initialized!");
 
     _instance = this;
 }
 
-Input::~Input()
+InputSubsystem::~InputSubsystem()
 {
 
 }
 
-void Input::Init(Application* app)
+void InputSubsystem::Init(Application* app)
 {
-    Server::Init(app);
+    Subsystem::Init(app);
 
     for (int k = static_cast<int>(FIRST_KEY); k <= static_cast<int>(LAST_KEY); ++k) {
         auto key = static_cast<Key>(k);
@@ -84,7 +84,7 @@ void Input::Init(Application* app)
     });
 }
 
-void Input::Process(float dt)
+void InputSubsystem::Process(float dt)
 {
     for (int k = static_cast<int>(FIRST_KEY); k <= static_cast<int>(LAST_KEY); ++k) {
         auto key = static_cast<Key>(k);
@@ -99,7 +99,7 @@ void Input::Process(float dt)
     }
 }
 
-void Input::DrawImGui(float dt)
+void InputSubsystem::DrawImGui(float dt)
 {
     if (ImGui::CollapsingHeader("Input", ImGuiTreeNodeFlags_DefaultOpen)) {
         std::string recentKeys = "Recent keys:\n";
@@ -110,37 +110,37 @@ void Input::DrawImGui(float dt)
     }
 }
 
-bool Input::IsKeyDown(Key key)
+bool InputSubsystem::IsKeyDown(Key key)
 {
     return _keyStates[key] == KeyState::PRESSED;
 }
 
-bool Input::IsKeyUp(Key key)
+bool InputSubsystem::IsKeyUp(Key key)
 {
     return _keyStates[key] == KeyState::RELEASED;
 }
 
-bool Input::IsKeyPressed(Key key)
+bool InputSubsystem::IsKeyPressed(Key key)
 {
     return _keyStates[key] == KeyState::PRESSED && _prevKeyStates[key] == KeyState::RELEASED;
 }
 
-bool Input::IsKeyReleased(Key key)
+bool InputSubsystem::IsKeyReleased(Key key)
 {
     return _keyStates[key] == KeyState::RELEASED && _prevKeyStates[key] == KeyState::PRESSED;
 }
 
-bool Input::IsMouseButtonDown()
+bool InputSubsystem::IsMouseButtonDown()
 {
     return _mouseDown;
 }
 
-bool Input::IsMouseButtonPressed()
+bool InputSubsystem::IsMouseButtonPressed()
 {
     return _mouseDown && !_prevMouseDown;
 }
 
-glm::vec2 Input::GetMousePosition() // In pixel coordinate
+glm::vec2 InputSubsystem::GetMousePosition() // In pixel coordinate
 {
     return Window::Get()->GetMousePosition();
 };

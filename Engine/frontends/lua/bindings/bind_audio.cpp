@@ -1,7 +1,7 @@
 #include "../lua_application.hpp"
-#include "Atmospheric/audio_manager.hpp"
+#include "Atmospheric/audio_subsystem.hpp"
 
-void BindAudioAPI(sol::state& lua, AudioManager* audio)
+void BindAudioAPI(sol::state& lua, AudioSubsystem* audio)
 {
     sol::table atmos = lua["atmos"];
     sol::table audioTable = atmos.create("audio");

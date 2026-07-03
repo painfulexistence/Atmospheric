@@ -1,11 +1,11 @@
 #include "../lua_application.hpp"
-#include "Atmospheric/graphics_server.hpp"
+#include "Atmospheric/graphics_subsystem.hpp"
 #include "Atmospheric/renderer.hpp"
 
 // Keep track of current draw color
 static glm::vec4 s_CurrentColor = glm::vec4(1.0f);
 
-void BindGraphicsAPI(sol::state& lua, GraphicsServer* graphics) {
+void BindGraphicsAPI(sol::state& lua, GraphicsSubsystem* graphics) {
     sol::table atmos = lua["atmos"];
     sol::table gfx = atmos.create("graphics");
 

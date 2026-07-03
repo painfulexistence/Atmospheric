@@ -2,8 +2,8 @@
 #include <algorithm>
 #include "application.hpp"
 #include "component.hpp"
-#include "graphics_server.hpp"
-#include "physics_server.hpp"
+#include "graphics_subsystem.hpp"
+#include "physics_subsystem.hpp"
 #include "rigidbody_component.hpp"
 #include "sprite_component.hpp"
 #include "transform_component.hpp"
@@ -81,7 +81,7 @@ GameObject* GameObject::AddCamera(const CameraProps& props) {
 // Shortcut 1 for adding renderable component
 GameObject* GameObject::AddMesh(const std::string& meshName) {
     if (_app) {
-        auto graphics = _app->GetGraphicsServer();
+        auto graphics = _app->GetGraphicsSubsystem();
         if (graphics) {
             auto mesh = graphics->GetMesh(meshName);
             AddMesh(mesh);

@@ -1,5 +1,5 @@
 #include "../lua_application.hpp"
-#include "Atmospheric/physics_server.hpp"
+#include "Atmospheric/physics_subsystem.hpp"
 #include "Atmospheric/rigidbody_component.hpp"
 
 void BindPhysicsAPI(sol::state& lua, LuaApplication* app) {
@@ -9,7 +9,7 @@ void BindPhysicsAPI(sol::state& lua, LuaApplication* app) {
     // ===== Raycast =====
     physics["raycast"] = [&lua](const glm::vec3& from, const glm::vec3& to) -> sol::object {
         RaycastHit hit;
-        if (PhysicsServer::Get()->Raycast(from, to, hit)) {
+        if (PhysicsSubsystem::Get()->Raycast(from, to, hit)) {
             sol::table result = lua.create_table();
             result["point"] = hit.point;
             result["normal"] = hit.normal;
@@ -21,7 +21,7 @@ void BindPhysicsAPI(sol::state& lua, LuaApplication* app) {
     };
 
     // Set global gravity
-    physics["setGravity"] = [](const glm::vec3& gravity) { PhysicsServer::Get()->SetGravity(gravity); };
+    physics["setGravity"] = [](const glm::vec3& gravity) { PhysicsSubsystem::Get()->SetGravity(gravity); };
 
     // ===== RigidbodyComponent usertype =====
     lua.new_usertype<RigidbodyComponent>(

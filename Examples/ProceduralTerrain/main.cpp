@@ -40,7 +40,7 @@ class ProceduralTerrainDemo : public Application {
 
         auto* terrain = CreateGameObject(glm::vec3(0.0f, -10.0f, 0.0f));
         terrain->AddComponent<TerrainMeshComponent>(
-            GetGraphicsServer(), hf,
+            GetGraphicsSubsystem(), hf,
             TerrainMeshProps{
                 .worldSize          = worldSize,
                 .resolution         = 256,
@@ -83,7 +83,7 @@ class ProceduralTerrainDemo : public Application {
 
         if (input.IsKeyPressed(Key::SPACE)) {
             _wireframe = !_wireframe;
-            GetGraphicsServer()->renderer->EnableWireframe(_wireframe);
+            GetGraphicsSubsystem()->renderer->EnableWireframe(_wireframe);
         }
         if (input.IsKeyPressed(Key::ESCAPE)) Quit();
     }

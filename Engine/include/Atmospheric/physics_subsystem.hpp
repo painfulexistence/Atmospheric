@@ -1,6 +1,6 @@
 #pragma once
 #include "globals.hpp"
-#include "server.hpp"
+#include "subsystem.hpp"
 
 class GameObject;
 
@@ -30,19 +30,19 @@ class BulletTaskScheduler;
 
 using ColliderID = uint32_t;
 
-class PhysicsServer : public Server
+class PhysicsSubsystem : public Subsystem
 {
 private:
-    static PhysicsServer* _instance;
+    static PhysicsSubsystem* _instance;
 
 public:
-    static PhysicsServer* Get()
+    static PhysicsSubsystem* Get()
     {
         return _instance;
     }
 
-    PhysicsServer();
-    ~PhysicsServer();
+    PhysicsSubsystem();
+    ~PhysicsSubsystem();
 
     void Init(Application* app) override;
     void Process(float dt) override;

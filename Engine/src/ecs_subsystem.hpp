@@ -1,6 +1,6 @@
 #pragma once
 #include "globals.hpp"
-#include "server.hpp"
+#include "subsystem.hpp"
 
 struct Transform;
 
@@ -8,16 +8,16 @@ struct Geometry;
 
 struct Impostor;
 
-struct Script;
+struct ScriptSubsystem;
 
 class EnttRegistry;
 
-class ECSServer : public Server
+class ECSSubsystem : public Subsystem
 {
 public:
-    ECSServer();
+    ECSSubsystem();
 
-    ~ECSServer();
+    ~ECSSubsystem();
 
     void Process(float dt) override;
 

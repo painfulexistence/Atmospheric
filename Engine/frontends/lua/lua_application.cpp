@@ -6,11 +6,11 @@
 
 // Forward declarations for binding functions
 void BindCoreTypes(sol::state& lua);
-void BindInputAPI(sol::state& lua, Input* input);
+void BindInputAPI(sol::state& lua, InputSubsystem* input);
 void BindWorldAPI(sol::state& lua, LuaApplication* app);
-void BindGraphicsAPI(sol::state& lua, GraphicsServer* graphics);
+void BindGraphicsAPI(sol::state& lua, GraphicsSubsystem* graphics);
 void BindPhysicsAPI(sol::state& lua, LuaApplication* app);
-void BindAudioAPI(sol::state& lua, AudioManager* audio);
+void BindAudioAPI(sol::state& lua, AudioSubsystem* audio);
 
 LuaApplication::LuaApplication(AppConfig config) : Application(config) {
 }
@@ -102,20 +102,20 @@ void LuaApplication::BindEngineAPIs() {
     // Bind core types (vec2, vec3, etc.)
     BindCoreTypes(_lua);
 
-    // Bind Input API
+    // Bind input API
     BindInputAPI(_lua, GetInput());
 
     // Bind World/Scene API
     BindWorldAPI(_lua, this);
 
     // Bind Graphics API
-    BindGraphicsAPI(_lua, GetGraphicsServer());
+    BindGraphicsAPI(_lua, GetGraphicsSubsystem());
 
     // Bind Physics API
     BindPhysicsAPI(_lua, this);
 
     // Bind Audio API
-    BindAudioAPI(_lua, GetAudioManager());
+    BindAudioAPI(_lua, GetAudioSubsystem());
 
     // Bind application-level functions
     atmos["quit"] = [this]() { Quit(); };

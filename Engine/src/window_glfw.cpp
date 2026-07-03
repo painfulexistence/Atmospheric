@@ -6,7 +6,7 @@
 #endif
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_opengl3.h"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "gfx_factory.hpp"
 
 static int convertToGlfwKey(Key key) {

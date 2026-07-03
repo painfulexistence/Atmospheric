@@ -1,7 +1,7 @@
 #include "voxel_chunk_component.hpp"
 #include "asset_manager.hpp"
 #include "game_object.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include "material.hpp"
 #include <algorithm>
 #include <cstring>
@@ -16,7 +16,7 @@ static Material* GetVoxelMaterial() {
     return s_voxelMaterial;
 }
 
-VoxelChunkComponent::VoxelChunkComponent(GameObject* owner, GraphicsServer* gfx, glm::ivec3 chunkPos)
+VoxelChunkComponent::VoxelChunkComponent(GameObject* owner, GraphicsSubsystem* gfx, glm::ivec3 chunkPos)
     : _gfx(gfx), _chunkPos(chunkPos)
 {
     gameObject = owner;

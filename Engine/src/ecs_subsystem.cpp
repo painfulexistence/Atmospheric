@@ -1,38 +1,38 @@
-#include "ecs_server.hpp"
+#include "ecs_subsystem.hpp"
 #include "entt_registry.hpp"
 #include "impostor.hpp"
 #include "camera_component.hpp"
 #include "mesh_component.hpp"
 #include "mesh.hpp"
 
-ECSServer::ECSServer()
+ECSSubsystem::ECSSubsystem()
 {
 
 }
 
-ECSServer::~ECSServer()
+ECSSubsystem::~ECSSubsystem()
 {
 
 }
 
-void ECSServer::Process(float dt)
+void ECSSubsystem::Process(float dt)
 {
 
 }
 
-uint64_t ECSServer::Create()
+uint64_t ECSSubsystem::Create()
 {
     uint64_t eid = this->_registry->Create();
     //this->_registry->Emplace<Geometry>(eid, glm::vec3(0, 0, 0), glm::vec3(0, 0, 0), glm::vec3(1, 1, 1));
     return eid;
 }
 
-void ECSServer::Destroy(uint64_t eid)
+void ECSSubsystem::Destroy(uint64_t eid)
 {
     this->_registry->Destroy(eid);
 }
 
-void ECSServer::SyncTransformWithPhysics()
+void ECSSubsystem::SyncTransformWithPhysics()
 {
     auto view = this->_registry->Data().view<Geometry&, Impostor&, Camera&>();
     view.each([this](entt::entity ent, Mesh& mesh, Impostor& impostor, Camera& camera) {
@@ -41,7 +41,7 @@ void ECSServer::SyncTransformWithPhysics()
     });
 }
 
-template<class Component, class ComponentProps> void ECSServer::AddComponent(uint64_t eid, const ComponentProps& props)
+template<class Component, class ComponentProps> void ECSSubsystem::AddComponent(uint64_t eid, const ComponentProps& props)
 {
     this->_registry->Emplace<Component>(eid, props);
 }

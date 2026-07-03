@@ -111,7 +111,7 @@ class CardBattleGame : public Application {
     }
 
     void OnLoad() override {
-        _font = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
+        _font = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
         for (const auto& go : GetEntities()) {
             if (go->GetName() == "BattleManager") {
@@ -250,7 +250,7 @@ class CardBattleGame : public Application {
     //  rendering
     // ========================================================================
     void render() {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         g->DrawQuad(W * 0.5f, H * 0.5f, W, H, 0, COL_BG);
 
         drawTopBar();
@@ -272,7 +272,7 @@ class CardBattleGame : public Application {
     }
 
     void drawTopBar() {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         std::string s = fmt::format("Encounter {} / {}",
                                     _mgr->encounterIndex() + 1, _mgr->encounterCount());
         g->DrawText(_font, s, 20, 18, 0.65f, COL_WHITE);
@@ -281,13 +281,13 @@ class CardBattleGame : public Application {
     }
 
     void drawPanel(Rect r, vec4 bg, vec4 border) {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         g->DrawQuad(r.x + r.w * 0.5f, r.y + r.h * 0.5f, r.w, r.h, 0, bg);
         g->DrawRect(r.x, r.y, r.w, r.h, border);
     }
 
     void drawBar(float x, float y, float w, float h, int cur, int max, vec4 fill) {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         g->DrawQuad(x + w * 0.5f, y + h * 0.5f, w, h, 0, COL_HP_BG);
         float ratio = max > 0 ? std::clamp(static_cast<float>(cur) / max, 0.0f, 1.0f) : 0.0f;
         float fw = (w - 2) * ratio;
@@ -295,7 +295,7 @@ class CardBattleGame : public Application {
     }
 
     void drawTextCentered(const std::string& t, float cx, float y, float scale, vec4 col) {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         vec2 sz = g->MeasureText(_font, t, scale);
         g->DrawText(_font, t, cx - sz.x * 0.5f, y, scale, col);
     }
@@ -316,7 +316,7 @@ class CardBattleGame : public Application {
     }
 
     void drawCombatantCommon(CombatantComponent* c, Rect r, vec4 boxColor) {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         drawPanel(r, boxColor, COL_BORDER);
 
         // damage flash overlay
@@ -362,7 +362,7 @@ class CardBattleGame : public Application {
         int sel = _mgr->selectedTarget();
         bool selected = (sel >= 0 && sel < static_cast<int>(enemies.size()) && enemies[sel] == e);
         if (selected) {
-            auto* g = GraphicsServer::Get();
+            auto* g = GraphicsSubsystem::Get();
             g->DrawRect(r.x - 3, r.y - 3, r.w + 6, r.h + 6, COL_SELECT);
             g->DrawRect(r.x - 4, r.y - 4, r.w + 8, r.h + 8, COL_SELECT);
         }
@@ -386,7 +386,7 @@ class CardBattleGame : public Application {
     }
 
     void drawHand() {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         const auto& hand = _mgr->deck()->Hand();
         int energy = _mgr->energy()->Energy();
 
@@ -437,7 +437,7 @@ class CardBattleGame : public Application {
 
     void drawWrapped(const std::string& text, float x, float y, float maxW,
                      float scale, vec4 col) {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         std::istringstream iss(text);
         std::string word, line;
         float lh = 16.0f;
@@ -457,7 +457,7 @@ class CardBattleGame : public Application {
     }
 
     void drawEnergyAndButtons() {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
 
         // energy orb
         g->DrawCircle(70, H - 90, 34, vec4(0.20f,0.35f,0.55f,1));
@@ -481,7 +481,7 @@ class CardBattleGame : public Application {
     }
 
     void drawLog() {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         const auto& log = _mgr->log();
         float y = 78;
         for (const auto& line : log) {
@@ -491,13 +491,13 @@ class CardBattleGame : public Application {
     }
 
     void drawBanner(const std::string& text, vec4 col) {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         g->DrawQuad(W * 0.5f, H * 0.42f, W, 70, 0, vec4(0,0,0,0.55f));
         drawTextCentered(text, W * 0.5f, H * 0.42f - 16, 1.1f, col);
     }
 
     void drawReward() {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         g->DrawQuad(W * 0.5f, H * 0.5f, W, H, 0, vec4(0,0,0,0.65f));
         drawTextCentered("Choose a card to add to your deck", W * 0.5f, 140, 0.8f, COL_SELECT);
 
@@ -535,7 +535,7 @@ class CardBattleGame : public Application {
     }
 
     void drawEndScreen(const std::string& text, vec4 col) {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         g->DrawQuad(W * 0.5f, H * 0.5f, W, H, 0, vec4(0,0,0,0.7f));
         drawTextCentered(text, W * 0.5f, H * 0.5f - 40, 1.6f, col);
         drawTextCentered("Press R to start a new run", W * 0.5f, H * 0.5f + 30, 0.6f, COL_WHITE);

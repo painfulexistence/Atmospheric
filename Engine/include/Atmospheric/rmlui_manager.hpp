@@ -44,9 +44,9 @@ public:
         return m_context;
     }
 
-    // Input handling - to be called from the input system
-    void ProcessKeyDown(Rml::Input::KeyIdentifier key, int key_modifier);
-    void ProcessKeyUp(Rml::Input::KeyIdentifier key, int key_modifier);
+    // Input handling - to be called from the input subsystem
+    void ProcessKeyDown(Rml::InputSubsystem::KeyIdentifier key, int key_modifier);
+    void ProcessKeyUp(Rml::InputSubsystem::KeyIdentifier key, int key_modifier);
     void ProcessTextInput(Rml::Character character);
     void ProcessMouseMove(int x, int y, int key_modifier);
     void ProcessMouseButtonDown(int button_index, int key_modifier);

@@ -1,7 +1,7 @@
 #include "renderer.hpp"
 #include "asset_manager.hpp"
 #include "camera_component.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include "light_component.hpp"
 #include "sun_component.hpp"
 #include "mesh.hpp"
@@ -21,7 +21,7 @@ static void DrawScreenQuadVAO(GLuint vao) {
 // ============================================================================
 //  SunPass  (billboard quad at light direction, HDR gold for bloom glow)
 // ============================================================================
-void SunPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
+void SunPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
     if (renderer.skyboxVAO == 0) return; // skybox cube doubles as bounding check
 
     ShaderProgram* shader = AssetManager::Get().GetShader("sun");
@@ -110,7 +110,7 @@ void SunPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /
 // ============================================================================
 //  SkyboxPass  (gradient sky, rendered at depth = 1)
 // ============================================================================
-void SkyboxPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
+void SkyboxPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
     if (renderer.skyboxVAO == 0) return;
 
     ShaderProgram* shader = AssetManager::Get().GetShader("skybox");
@@ -151,7 +151,7 @@ void SkyboxPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 // ============================================================================
 //  VoxelChunkPass
 // ============================================================================
-void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
+void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
     const auto& queue = renderer.GetOpaqueQueue();
     if (queue.empty()) return;
 
@@ -211,7 +211,7 @@ void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEnc
 // ============================================================================
 //  WaterPass
 // ============================================================================
-void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
+void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
     const auto& queue = renderer.GetTransparentQueue();
     if (queue.empty()) return;
 
@@ -350,7 +350,7 @@ void BloomPass::InitMips(int w, int h) {
     _initialized = true;
 }
 
-void BloomPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
+void BloomPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* /*enc*/) {
     if (!enabled)                     return;
     if (!renderer.msaaResolveRT)      return;
     if (renderer.screenQuadVAO == 0)  return;

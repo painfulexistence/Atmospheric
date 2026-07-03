@@ -25,7 +25,7 @@ void GameLayer::OnRender(float dt) {
     RmlUiManager::Get()->Render();
 
     // Render the frame (executes all passes including UI)
-    _app->GetGraphicsServer()->Render(_app->GetMainCamera(), dt);
+    _app->GetGraphicsSubsystem()->Render(_app->GetMainCamera(), dt);
     // Nevertheless, glFinish() can force the GPU process all the commands synchronously.
     // glFinish();
 }

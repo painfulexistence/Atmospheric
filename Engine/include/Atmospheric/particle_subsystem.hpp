@@ -5,7 +5,7 @@
 #include <vector>
 
 // Forward declarations
-class GraphicsServer;
+class GraphicsSubsystem;
 class Renderer;
 class ShaderProgram;
 class Mesh;
@@ -18,17 +18,17 @@ namespace Atmospheric {
     };
     class ParticleEmitterComponent;
 
-    class ParticleServer {
+    class ParticleSubsystem {
     public:
-        static ParticleServer& GetInstance() {
-            static ParticleServer instance;
+        static ParticleSubsystem& GetInstance() {
+            static ParticleSubsystem instance;
             return instance;
         }
 
-        ParticleServer(const ParticleServer&) = delete;
-        void operator=(const ParticleServer&) = delete;
+        ParticleSubsystem(const ParticleSubsystem&) = delete;
+        void operator=(const ParticleSubsystem&) = delete;
 
-        void Init(GraphicsServer* graphicsServer);
+        void Init(GraphicsSubsystem* graphicsServer);
         void Shutdown();
 
         void Register(ParticleEmitterComponent* emitter);
@@ -42,10 +42,10 @@ namespace Atmospheric {
         void Draw(const CameraInfo& camInfo);
 
     private:
-        ParticleServer() = default;
-        ~ParticleServer() = default;
+        ParticleSubsystem() = default;
+        ~ParticleSubsystem() = default;
 
-        GraphicsServer* graphics_server = nullptr;
+        GraphicsSubsystem* graphics_server = nullptr;
         Renderer* renderer = nullptr;
         std::vector<ParticleEmitterComponent*> emitters;
 

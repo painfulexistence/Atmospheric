@@ -300,7 +300,7 @@ void SceneLoader::ParseAnimations(
             }
 
             if (!parsed) {
-                Console::Get()->Warn(fmt::format(
+                ConsoleSubsystem::Get()->Warn(fmt::format(
                   "SceneLoader: RotationSkew timeline found on '{}' but frames contain no IntFrame data.",
                   target->GetName()
                 ));
@@ -683,7 +683,7 @@ Text2DProps SceneLoader::CreateTextProps(
         if (textOptions->fontName()) {
             std::string fontPath = textOptions->fontName()->c_str();
             if (!fontPath.empty()) {
-                props.font = GraphicsServer::Get()->LoadFont(fontPath, props.fontSize);
+                props.font = GraphicsSubsystem::Get()->LoadFont(fontPath, props.fontSize);
             }
         }
 

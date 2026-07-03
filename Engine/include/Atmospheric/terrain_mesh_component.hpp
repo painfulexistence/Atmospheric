@@ -3,7 +3,7 @@
 #include "globals.hpp"
 #include <memory>
 
-class GraphicsServer;
+class GraphicsSubsystem;
 class HeightField;
 class Material;
 class Mesh;
@@ -24,7 +24,7 @@ class TerrainMeshComponent : public Component {
 public:
     TerrainMeshComponent(
         GameObject*                         owner,
-        GraphicsServer*                     graphics,
+        GraphicsSubsystem*                     graphics,
         const std::shared_ptr<HeightField>& heightField,
         const TerrainMeshProps&             props
     );

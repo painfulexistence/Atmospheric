@@ -1,4 +1,4 @@
-#include "physics_server.hpp"
+#include "physics_subsystem.hpp"
 #include <algorithm>
 #include "LinearMath/btThreads.h"
 #include "bullet_task_scheduler.hpp"
@@ -30,23 +30,23 @@ public:
     }
 };
 
-PhysicsServer* PhysicsServer::_instance = nullptr;
+PhysicsSubsystem* PhysicsSubsystem::_instance = nullptr;
 
-PhysicsServer::PhysicsServer() {
+PhysicsSubsystem::PhysicsSubsystem() {
     if (_instance != nullptr) throw std::runtime_error("Physics server is already initialized!");
 
     _instance = this;
 }
 
-PhysicsServer::~PhysicsServer() {
+PhysicsSubsystem::~PhysicsSubsystem() {
     // It's important to set the task scheduler to null before the world and
     // other resources are destroyed (which happens automatically, in reverse
     // declaration order, right after this body runs).
     btSetTaskScheduler(nullptr);
 }
 
-void PhysicsServer::Init(Application* app) {
-    Server::Init(app);
+void PhysicsSubsystem::Init(Application* app) {
+    Subsystem::Init(app);
 
     // Create and set the custom task scheduler
     _taskScheduler = std::make_unique<BulletTaskScheduler>(*JobSystem::Get());
@@ -79,9 +79,9 @@ void PhysicsServer::Init(Application* app) {
     _timeAccum = 0.0f;
 }
 
-void PhysicsServer::Process(float dt) {
+void PhysicsSubsystem::Process(float dt) {
 #ifdef TRACY_ENABLE
-    ZoneScopedN("PhysicsServer::Process");
+    ZoneScopedN("PhysicsSubsystem::Process");
 #endif
     _timeAccum += dt;
     while (_timeAccum >= FIXED_TIME_STEP) {
@@ -112,7 +112,7 @@ void PhysicsServer::Process(float dt) {
     }
 }
 
-void PhysicsServer::DrawImGui(float dt) {
+void PhysicsSubsystem::DrawImGui(float dt) {
     if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Text("Number of manifolds: %d", _dispatcher->getNumManifolds());
         if (ImGui::Button("Debug UI")) {
@@ -130,7 +130,7 @@ void PhysicsServer::DrawImGui(float dt) {
     }
 }
 
-void PhysicsServer::Reset() {
+void PhysicsSubsystem::Reset() {
     // Components are owned by their GameObjects (which unregister themselves
     // via OnDetach on destruction); here we only detach whatever is left from
     // the simulation, we never delete the components.
@@ -140,17 +140,17 @@ void PhysicsServer::Reset() {
     _impostors.clear();
 }
 
-void PhysicsServer::AddRigidbody(RigidbodyComponent* impostor) {
+void PhysicsSubsystem::AddRigidbody(RigidbodyComponent* impostor) {
     _world->addRigidBody(impostor->_rigidbody.get());
     _impostors.push_back(impostor);
 }
 
-void PhysicsServer::RemoveRigidbody(RigidbodyComponent* impostor) {
+void PhysicsSubsystem::RemoveRigidbody(RigidbodyComponent* impostor) {
     _world->removeRigidBody(impostor->_rigidbody.get());
     _impostors.erase(std::remove(_impostors.begin(), _impostors.end(), impostor), _impostors.end());
 }
 
-ColliderID PhysicsServer::CreateCollider(const Shape& shape) {
+ColliderID PhysicsSubsystem::CreateCollider(const Shape& shape) {
     btCollisionShape* col = nullptr;
     switch (shape.type) {
     case ShapeType::Cube:
@@ -179,11 +179,11 @@ ColliderID PhysicsServer::CreateCollider(const Shape& shape) {
     return _nextColliderID++;
 }
 
-void PhysicsServer::DestroyCollider(ColliderID col) {
+void PhysicsSubsystem::DestroyCollider(ColliderID col) {
     _colliders.erase(col);
 }
 
-bool PhysicsServer::Raycast(const glm::vec3& from, const glm::vec3& to, RaycastHit& hit) {
+bool PhysicsSubsystem::Raycast(const glm::vec3& from, const glm::vec3& to, RaycastHit& hit) {
     btVector3 rayFrom(from.x, from.y, from.z);
     btVector3 rayTo(to.x, to.y, to.z);
 
@@ -203,10 +203,10 @@ bool PhysicsServer::Raycast(const glm::vec3& from, const glm::vec3& to, RaycastH
     }
 }
 
-void PhysicsServer::SetGravity(const glm::vec3& acc) {
+void PhysicsSubsystem::SetGravity(const glm::vec3& acc) {
     _world->setGravity(btVector3(acc.x, acc.y, acc.z));
 }
 
-void PhysicsServer::EnableDebugUI(bool enable) {
+void PhysicsSubsystem::EnableDebugUI(bool enable) {
     _debugUIEnabled = enable;
 }

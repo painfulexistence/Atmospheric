@@ -1,9 +1,9 @@
 #include "lighting_2d.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include <algorithm>
 #include <cmath>
 
-void LightingSystem2D::Apply(GraphicsServer* gfx, int screenW, int screenH) const {
+void LightingSystem2D::Apply(GraphicsSubsystem* gfx, int screenW, int screenH) const {
     // ---------------------------------------------------------------------------
     // 1. Dark ambient overlay
     // ---------------------------------------------------------------------------

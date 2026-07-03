@@ -355,7 +355,7 @@ void Application::RegisterComponents() {
           std::string fontPath = "";
           d.Read("fontPath", fontPath, std::string(""));
           if (!fontPath.empty()) {
-              props.font = GraphicsServer::Get()->LoadFont(fontPath, props.fontSize);
+              props.font = GraphicsSubsystem::Get()->LoadFont(fontPath, props.fontSize);
           } else {
               int fontVal = 0;
               d.Read("font", fontVal, 0);
@@ -395,7 +395,7 @@ void Application::RegisterComponents() {
           std::string fontPath = "";
           d.Read("fontPath", fontPath, std::string(""));
           if (!fontPath.empty()) {
-              props.font = GraphicsServer::Get()->LoadFont(fontPath, props.fontSize);
+              props.font = GraphicsSubsystem::Get()->LoadFont(fontPath, props.fontSize);
           } else {
               int fontVal = 0;
               d.Read("font", fontVal, 0);
@@ -813,7 +813,7 @@ static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::s
     try {
         j = nlohmann::json::parse(jsonContent);
     } catch (const std::exception& e) {
-        Console::Get()->Error(fmt::format("ParseSceneBlueprint: JSON parse error: {}", e.what()));
+        ConsoleSubsystem::Get()->Error(fmt::format("ParseSceneBlueprint: JSON parse error: {}", e.what()));
         if (error) *error = e.what();
         return bp; // bp.name is "" — caller checks this
     }
@@ -879,7 +879,7 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
     // independently of whether this scene declares any textures of its own —
     // materials and meshes rely on the defaults even in texture-less scenes
     // (e.g. HelloWorld's cube).  There is no startup load point for these, unlike
-    // default shaders (loaded once by GraphicsServer).
+    // default shaders (loaded once by GraphicsSubsystem).
     if (_config.useDefaultTextures)
         AssetManager::Get().LoadDefaultTextures();
 

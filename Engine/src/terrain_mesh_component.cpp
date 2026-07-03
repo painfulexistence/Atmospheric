@@ -8,7 +8,7 @@
 
 TerrainMeshComponent::TerrainMeshComponent(
     GameObject*                         owner,
-    GraphicsServer*                     /*graphics*/,
+    GraphicsSubsystem*                     /*graphics*/,
     const std::shared_ptr<HeightField>& heightField,
     const TerrainMeshProps&             props
 ) {

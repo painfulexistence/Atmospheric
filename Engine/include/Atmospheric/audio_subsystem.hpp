@@ -1,5 +1,5 @@
 #pragma once
-#include "server.hpp"
+#include "subsystem.hpp"
 #ifndef __EMSCRIPTEN__
 #include "raudio.h"
 #endif
@@ -10,10 +10,10 @@ using MusicID = uint32_t;
 
 class VideoRecorder;
 
-class AudioManager : public Server {
+class AudioSubsystem : public Subsystem {
 public:
-    AudioManager();
-    ~AudioManager();
+    AudioSubsystem();
+    ~AudioSubsystem();
 
     void Init(Application* app) override;
     void Process(float dt) override;

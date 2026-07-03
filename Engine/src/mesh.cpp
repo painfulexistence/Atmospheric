@@ -1,7 +1,7 @@
 #include "mesh.hpp"
 #include "asset_manager.hpp"
 #include "config.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 
 void PrintVertex(const Vertex& v) {
     fmt::print(
@@ -33,7 +33,7 @@ Mesh::Mesh(MeshType type) : type(type), _material(nullptr), _shape(nullptr) {
 Mesh::~Mesh() {
     // Free GLBuffer if using new system
     if (_renderMeshHandle.IsValid()) {
-        GraphicsServer::Get()->FreeRenderMesh(_renderMeshHandle);
+        GraphicsSubsystem::Get()->FreeRenderMesh(_renderMeshHandle);
     }
 
     glDeleteBuffers(1, &vbo);
@@ -124,13 +124,13 @@ void Mesh::AddCapsuleShape(float radius, float height) {
 void Mesh::Update(const std::vector<VoxelVertex>& vertices) {
     // Allocate GLBuffer on first use
     if (!_renderMeshHandle.IsValid()) {
-        _renderMeshHandle = GraphicsServer::Get()->AllocateRenderMesh(
+        _renderMeshHandle = GraphicsSubsystem::Get()->AllocateRenderMesh(
           VertexFormat::Voxel, updateFreq == UpdateFrequency::Static ? BufferUsage::Static : BufferUsage::Dynamic
         );
     }
 
     // Get Buffer and upload data
-    Buffer* renderMesh = GraphicsServer::Get()->GetRenderMesh(_renderMeshHandle);
+    Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle);
     if (renderMesh) {
         renderMesh->Upload(vertices.data(), vertices.size(), sizeof(VoxelVertex));
         vertCount = vertices.size();

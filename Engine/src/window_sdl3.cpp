@@ -5,7 +5,7 @@
 #endif
 #include "backends/imgui_impl_opengl3.h"
 #include "backends/imgui_impl_sdl3.h"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 
 // Define AE_GL_DEBUG_PROBES at build time to log any sticky GL errors at
 // frame-loop boundaries. Useful for chasing INVALID_OPERATION on GLES3 ports
@@ -13,7 +13,7 @@
 #ifdef AE_GL_DEBUG_PROBES
 #define AE_GL_PROBE(name) \
     do { GLenum _e; while ((_e = glGetError()) != GL_NO_ERROR) \
-        Console::Get()->Error(fmt::format("GL probe [{}]: 0x{:x}", name, _e)); } while (0)
+        ConsoleSubsystem::Get()->Error(fmt::format("GL probe [{}]: 0x{:x}", name, _e)); } while (0)
 #else
 #define AE_GL_PROBE(name) ((void)0)
 #endif

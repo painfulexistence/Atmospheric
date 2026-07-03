@@ -15,7 +15,7 @@
 #include <thread>
 #include <vector>
 
-class AudioManager;
+class AudioSubsystem;
 
 // Records rendered frames to an AV1 video file via FFmpeg, optionally muxing
 // an AAC audio track from caller-supplied PCM.
@@ -59,7 +59,7 @@ public:
         // libaom-av1 → libx264. Set to empty string to use the probe order.
         std::string encoder = "h264_videotoolbox";
         // Enable AAC audio track. Caller must supply PCM via writeAudio().
-        // atmospheric's AudioManager wraps raudio which has no PCM tap, so
+        // atmospheric's AudioSubsystem wraps raudio which has no PCM tap, so
         // audio must be fed manually from wherever the application has the
         // final mixed output (e.g. a custom raudio callback, a mixer thread).
         bool captureAudio = false;
@@ -94,10 +94,10 @@ public:
     // No-op unless captureAudio was true in the Config passed to startRecording().
     void writeAudio(const float* frames, uint32_t frameCount);
 
-    // Wire this recorder to an AudioManager so startRecording/stopRecording
+    // Wire this recorder to an AudioSubsystem so startRecording/stopRecording
     // automatically attach/detach raudio's mixed processor.
     // Call once after construction (e.g. in Application::Run).
-    void setAudioManager(AudioManager* mgr) { m_audioManager = mgr; }
+    void setAudioManager(AudioSubsystem* mgr) { m_audioManager = mgr; }
 
     // Set the directory where timestamped recordings are saved.
     void setBaseOutputDir(const std::string& dir) {
@@ -202,7 +202,7 @@ private:
 
     static constexpr size_t MAX_QUEUE_FRAMES = 16;
 
-    AudioManager* m_audioManager = nullptr;
+    AudioSubsystem* m_audioManager = nullptr;
 
     // ── Audio capture state ──────────────────────────────────────────────────
     bool m_audioActive = false; // true when this session records an audio track

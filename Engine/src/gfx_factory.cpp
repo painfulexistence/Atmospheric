@@ -1,7 +1,7 @@
 #include "gfx_factory.hpp"
 #include "gl_buffer.hpp"
 #include "gl_render_target.hpp"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "globals.hpp"   // glad / GLES3
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
@@ -39,7 +39,7 @@ void GfxFactory::Init() {
     instDesc.requiredLimits       = &instLimits;
     WGPUInstance inst = wgpuCreateInstance(&instDesc);
     if (!inst) {
-        Console::Get()->Warn("[GfxFactory] wgpuCreateInstance failed. Falling back to WebGL 2.");
+        ConsoleSubsystem::Get()->Warn("[GfxFactory] wgpuCreateInstance failed. Falling back to WebGL 2.");
         _backend = GfxBackend::OpenGL;
         return;
     }
@@ -63,7 +63,7 @@ void GfxFactory::Init() {
     wgpuInstanceWaitAny(inst, 1, &adapterWait, UINT64_MAX);
 
     if (!adapter) {
-        Console::Get()->Warn("[GfxFactory] No WebGPU adapter. Falling back to WebGL 2.");
+        ConsoleSubsystem::Get()->Warn("[GfxFactory] No WebGPU adapter. Falling back to WebGL 2.");
         wgpuInstanceRelease(inst);
         _backend = GfxBackend::OpenGL;
         return;
@@ -87,13 +87,13 @@ void GfxFactory::Init() {
     wgpuAdapterRelease(adapter);
 
     if (!device) {
-        Console::Get()->Warn("[GfxFactory] WebGPU device creation failed. Falling back to WebGL 2.");
+        ConsoleSubsystem::Get()->Warn("[GfxFactory] WebGPU device creation failed. Falling back to WebGL 2.");
         wgpuInstanceRelease(inst);
         _backend = GfxBackend::OpenGL;
         return;
     }
 
-    Console::Get()->Info("[GfxFactory] WebGPU adapter and device acquired.");
+    ConsoleSubsystem::Get()->Info("[GfxFactory] WebGPU adapter and device acquired.");
     _backend    = GfxBackend::WebGPU;
     _wgpuDevice = device;
     _wgpuQueue  = wgpuDeviceGetQueue(device);
@@ -108,7 +108,7 @@ void GfxFactory::Init() {
     wgpuInstanceRelease(inst);
 
     if (!_surface) {
-        Console::Get()->Warn("[GfxFactory] wgpuInstanceCreateSurface failed. Falling back to WebGL 2.");
+        ConsoleSubsystem::Get()->Warn("[GfxFactory] wgpuInstanceCreateSurface failed. Falling back to WebGL 2.");
         wgpuDeviceRelease(device);
         _wgpuDevice = nullptr;
         _wgpuQueue  = nullptr;
@@ -129,7 +129,7 @@ void GfxFactory::Init() {
     cfg.alphaMode   = WGPUCompositeAlphaMode_Opaque;
     wgpuSurfaceConfigure(_surface, &cfg);
 
-    Console::Get()->Info("[GfxFactory] WebGPU initialized successfully.");
+    ConsoleSubsystem::Get()->Info("[GfxFactory] WebGPU initialized successfully.");
     return;
 #endif
     _backend = GfxBackend::OpenGL;

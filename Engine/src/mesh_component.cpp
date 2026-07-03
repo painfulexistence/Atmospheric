@@ -18,14 +18,14 @@ std::string MeshComponent::GetName() const {
 }
 
 void MeshComponent::OnAttach() {
-    if (gameObject->GetApp()->GetGraphicsServer()) {
-        gameObject->GetApp()->GetGraphicsServer()->RegisterMesh(this);
+    if (gameObject->GetApp()->GetGraphicsSubsystem()) {
+        gameObject->GetApp()->GetGraphicsSubsystem()->RegisterMesh(this);
     }
 }
 
 void MeshComponent::OnDetach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
-        gameObject->GetApp()->GetGraphicsServer()->UnregisterMesh(this);
+    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsSubsystem()) {
+        gameObject->GetApp()->GetGraphicsSubsystem()->UnregisterMesh(this);
     }
 }
 

@@ -1,11 +1,11 @@
 #include "tilemap_2d.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include <algorithm>
 
 Tilemap2D::Tilemap2D(const Tilemap2DData& data, uint32_t tilesetTexID)
     : _data(data), _tilesetTexID(tilesetTexID) {}
 
-void Tilemap2D::Draw(GraphicsServer* gfx,
+void Tilemap2D::Draw(GraphicsSubsystem* gfx,
                      float camX, float camY,
                      int screenW, int screenH) const {
     const int ts   = _data.tileSize;

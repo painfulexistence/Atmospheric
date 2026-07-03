@@ -6,14 +6,14 @@
 #include "asset_manager.hpp"
 #include "batch_renderer_2d.hpp"
 #include "canvas_drawable.hpp"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "game_object.hpp"
 #include "gfx_factory.hpp"
 #include "gl_buffer.hpp"
 #include "gl_render_target.hpp"
-#include "graphics_server.hpp"
-#include "particle_server.hpp"
-#include "physics_server_2d.hpp"
+#include "graphics_subsystem.hpp"
+#include "particle_subsystem.hpp"
+#include "physics_subsystem_2d.hpp"
 #include "window.hpp"
 #include <algorithm>
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
@@ -106,7 +106,7 @@ void RenderGraph::AddPass(std::unique_ptr<RenderPass> pass) {
     _entries.push_back(std::move(e));
 }
 
-void RenderGraph::Render(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void RenderGraph::Render(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     for (auto& e : _entries) {
 #ifdef AE_GPU_TIMER_ENABLED
         if (gpuProfilingEnabled) e.timer.Begin();
@@ -332,7 +332,7 @@ void Renderer::BucketCommands(const glm::vec3& cameraPos) {
 
 // ... SortOpaque, SortTransparent ...
 
-void Renderer::RenderFrame(GraphicsServer* ctx, float dt) {
+void Renderer::RenderFrame(GraphicsSubsystem* ctx, float dt) {
     ZoneScopedN("Renderer::RenderFrame");
     AE_GL_PROBE(*this, "RenderFrame: entry");
 #if defined(__APPLE__) && TARGET_OS_IOS
@@ -414,7 +414,7 @@ void Renderer::CheckErrors(const std::string& prefix) {
             error = "UNKNOWN";
             break;
         }
-        Console::Get()->Error(fmt::format("{}: {}\n", prefix, error));
+        ConsoleSubsystem::Get()->Error(fmt::format("{}: {}\n", prefix, error));
     }
 }
 
@@ -514,7 +514,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
 
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
-            Console::Get()->Error("Renderer: WebGL resolved depth FBO incomplete!");
+            ConsoleSubsystem::Get()->Error("Renderer: WebGL resolved depth FBO incomplete!");
         }
         glBindFramebuffer(GL_FRAMEBUFFER, finalFBO);
 
@@ -640,7 +640,7 @@ void Renderer::CreateDebugBuffer() {
     debugBuffer->Initialize(VertexFormat::Debug, BufferUsage::Stream);
 }
 
-void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("ShadowPass");
     AE_GL_PROBE(renderer, "Shadow pass: entry");
     glViewport(0, 0, SHADOW_W, SHADOW_H);
@@ -793,7 +793,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
     glBindFramebuffer(GL_FRAMEBUFFER, renderer.finalFBO);
 }
 
-void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("ForwardOpaquePass");
     AE_GL_PROBE(renderer, "Opaque pass: entry");
     auto [width, height] = Window::Get()->GetPhysicalSize();
@@ -1076,7 +1076,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
     renderer.CheckErrors("Opaque pass");
 }
 
-void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("DeferredGeometryPass");
     auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
@@ -1208,7 +1208,7 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
     renderer.CheckErrors("Geometry pass");
 }
 
-void DeferredLightingPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void DeferredLightingPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("DeferredLightingPass");
     auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
@@ -1261,16 +1261,16 @@ void DeferredLightingPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
     renderer.CheckErrors("Lighting pass");
 }
 
-void TransparentPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void TransparentPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("TransparentPass");
     auto& cam = *ctx->GetMainCamera();
     Atmospheric::CameraInfo camInfo = { .view = cam.GetViewMatrix(),
                                         .projection = cam.GetProjectionMatrix(),
                                         .position = cam.GetEyePosition() };
-    Atmospheric::ParticleServer::GetInstance().Draw(camInfo);// TODO: transparent pass
+    Atmospheric::ParticleSubsystem::GetInstance().Draw(camInfo);// TODO: transparent pass
 }
 
-void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void MSAAResolvePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("MSAAResolvePass");
     
     auto [width, height] = Window::Get()->GetPhysicalSize();
@@ -1296,7 +1296,7 @@ void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 }
 
 // WorldCanvasPass: World sprites with depth testing
-void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void WorldCanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("WorldCanvasPass");
 
     // Filter all world-space drawables (3D layers only, below LAYER_WORLD_2D)
@@ -1356,7 +1356,7 @@ void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 }
 
 // CanvasPass: Pure 2D sprites (no depth testing)
-void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void CanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("CanvasPass");
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
@@ -1443,7 +1443,7 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 // Helper to reduce code duplication
 
 
-void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void PostProcessPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("PostProcessPass");
 
     auto size = Window::Get()->GetPhysicalSize();
@@ -1489,7 +1489,7 @@ void Renderer::SubmitCanvasCommand(const BatchDrawCommand& cmd) {
     _canvasQueue.push_back(cmd);
 }
 
-void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void UIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("UIPass");
     auto* batchRenderer = renderer.GetBatchRenderer();
     auto& queue = renderer.GetUIQueue();

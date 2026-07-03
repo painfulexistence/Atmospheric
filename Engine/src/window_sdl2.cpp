@@ -5,7 +5,7 @@
 #endif
 #include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_opengl3.h"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 
 static int convertToSDLKey(Key key) {
     switch (key) {

@@ -314,7 +314,7 @@ public:
 
     void OnTick(float /*dt*/) override {
         if (!_player || !_director) return;
-        auto* gs = gameObject->GetApp()->GetGraphicsServer();
+        auto* gs = gameObject->GetApp()->GetGraphicsSubsystem();
         std::ostringstream oss;
         oss << "Score: " << std::setw(8) << std::setfill('0') << (long long)_director->Score()
             << "  Kills: " << std::setw(4) << std::setfill('0') << _director->Kills()

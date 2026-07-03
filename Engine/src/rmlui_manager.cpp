@@ -214,13 +214,13 @@ void RmlUiManager::HideDocument(const std::string& id) {
 }
 
 // Input handling methods
-void RmlUiManager::ProcessKeyDown(Rml::Input::KeyIdentifier key, int key_modifier) {
+void RmlUiManager::ProcessKeyDown(Rml::InputSubsystem::KeyIdentifier key, int key_modifier) {
     if (m_context) {
         m_context->ProcessKeyDown(key, key_modifier);
     }
 }
 
-void RmlUiManager::ProcessKeyUp(Rml::Input::KeyIdentifier key, int key_modifier) {
+void RmlUiManager::ProcessKeyUp(Rml::InputSubsystem::KeyIdentifier key, int key_modifier) {
     if (m_context) {
         m_context->ProcessKeyUp(key, key_modifier);
     }

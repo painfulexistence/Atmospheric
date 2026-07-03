@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <unordered_set>
 #include <nlohmann/json.hpp>
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "file_system.hpp"
 #include "job_system.hpp"
 #include "material.hpp"
@@ -304,7 +304,7 @@ void AssetManager::UnloadSceneAssets(const std::string& sceneName) {
     // TODO: unload meshes declared in the scene JSON "meshes" array.
 
     _sceneJsons.erase(it);
-    Console::Get()->Info(fmt::format("[AssetManager] Unloaded assets for scene '{}'.", sceneName));
+    ConsoleSubsystem::Get()->Info(fmt::format("[AssetManager] Unloaded assets for scene '{}'.", sceneName));
 }
 
 // ============================================================================
@@ -321,13 +321,13 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
     // Read raw bytes via FileSystem to support transparent web prefetching
     FileSystem::Bytes fileData = FileSystem::Get().ReadSync(path);
     if (fileData.empty()) {
-        Console::Get()->Warn(fmt::format("AssetManager::LoadImage: Failed to read file bytes via FileSystem at '{}'", path));
+        ConsoleSubsystem::Get()->Warn(fmt::format("AssetManager::LoadImage: Failed to read file bytes via FileSystem at '{}'", path));
         return nullptr;
     }
 
     int width, height, numChannels;
     if (!stbi_info_from_memory(fileData.data(), static_cast<int>(fileData.size()), &width, &height, &numChannels)) {
-        Console::Get()->Warn(fmt::format("stbi_info_from_memory: Failed to read image metadata at '{}'", path));
+        ConsoleSubsystem::Get()->Warn(fmt::format("stbi_info_from_memory: Failed to read image metadata at '{}'", path));
         return nullptr;
     }
 
@@ -636,7 +636,7 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
         GLuint texID = regularTexIDs[j];
 
         if (!img) {
-            Console::Get()->Warn(fmt::format("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]));
+            ConsoleSubsystem::Get()->Warn(fmt::format("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]));
             // Re-use the default texture (defaultTextures[0]) as a safe fallback
             textures[oldCount + i] = defaultTextures.empty() ? 0u : defaultTextures[0];
             _textureCache[regularPaths[j]] = { textures[oldCount + i], 0, 0, 0 };
@@ -701,7 +701,7 @@ TextureHandle AssetManager::CreateTexture(const std::string& path) {
     // Regular image (PNG / JPG / etc.) via stb_image.
     auto image = LoadImage(redirectedPath);
     if (!image) {
-        Console::Get()->Warn(fmt::format("AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.", redirectedPath));
+        ConsoleSubsystem::Get()->Warn(fmt::format("AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.", redirectedPath));
         GLuint fallbackTex = defaultTextures.empty() ? 0u : defaultTextures[0];
         _textureCache[redirectedPath] = { fallbackTex, 0, 0, 0 };
         return TextureHandle(fallbackTex);
@@ -711,7 +711,7 @@ TextureHandle AssetManager::CreateTexture(const std::string& path) {
 
 TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>& image) {
     if (!image) {
-        Console::Get()->Warn("AssetManager::CreateTextureFromImage: Null image, returning default fallback texture.");
+        ConsoleSubsystem::Get()->Warn("AssetManager::CreateTextureFromImage: Null image, returning default fallback texture.");
         GLuint fallbackTex = defaultTextures.empty() ? 0u : defaultTextures[0];
         return TextureHandle(fallbackTex);
     }
@@ -1085,8 +1085,8 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
         result = loader.LoadASCIIFromFile(&model, &err, &warn, path);
     }
 
-    if (!warn.empty()) Console::Get()->Warn(fmt::format("LoadGLTF '{}': {}", path, warn));
-    if (!err.empty())  Console::Get()->Warn(fmt::format("LoadGLTF '{}' error: {}", path, err));
+    if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF '{}': {}", path, warn));
+    if (!err.empty())  ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF '{}' error: {}", path, err));
     if (!result || model.meshes.empty()) return MeshHandle{};
 
     // Upload each referenced image to GPU immediately; CPU copy is discarded afterwards.
@@ -1196,7 +1196,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
             break;
         }
         default:
-            Console::Get()->Warn(fmt::format("LoadGLTF: unsupported TEXCOORD component type {}", acc.componentType));
+            ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF: unsupported TEXCOORD component type {}", acc.componentType));
             break;
         }
         return out;
@@ -1218,7 +1218,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
             const size_t vertCount = posAcc.count;
 
             if (vertBase + vertCount > 65535) {
-                Console::Get()->Warn(fmt::format(
+                ConsoleSubsystem::Get()->Warn(fmt::format(
                     "LoadGLTF '{}': vertex count exceeds uint16_t limit, primitive skipped. "
                     "Consider splitting the mesh or upgrading to 32-bit indices.",
                     path
@@ -1274,7 +1274,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
                         allIndices.push_back(static_cast<uint16_t>(vertBase + base[i]));
                     break;
                 default:
-                    Console::Get()->Warn(fmt::format("LoadGLTF: unsupported index component type {}", idxAcc.componentType));
+                    ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF: unsupported index component type {}", idxAcc.componentType));
                     break;
                 }
             } else {
@@ -1288,7 +1288,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     }
 
     if (allVerts.empty()) {
-        Console::Get()->Warn(fmt::format("LoadGLTF: no geometry found in '{}'", path));
+        ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF: no geometry found in '{}'", path));
         return MeshHandle{};
     }
 

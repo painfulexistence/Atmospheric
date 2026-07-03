@@ -1,8 +1,8 @@
-#include "particle_server.hpp"
+#include "particle_subsystem.hpp"
 
 #include "asset_manager.hpp"
-#include "console.hpp"
-#include "graphics_server.hpp"
+#include "console_subsystem.hpp"
+#include "graphics_subsystem.hpp"
 #include "particle_emitter.hpp"
 #include "renderer.hpp"
 #include "rng.hpp"
@@ -14,37 +14,37 @@
 
 namespace Atmospheric {
 
-    void ParticleServer::Init(GraphicsServer* in_graphics_server) {
+    void ParticleSubsystem::Init(GraphicsSubsystem* in_graphics_server) {
         this->graphics_server = in_graphics_server;
         if (this->graphics_server == nullptr) {
-            throw std::runtime_error("Invalid graphics server provided to ParticleServer.");
+            throw std::runtime_error("Invalid graphics server provided to ParticleSubsystem.");
         }
         this->renderer = this->graphics_server->renderer.get();
         if (this->renderer == nullptr) {
-            throw std::runtime_error("Renderer is not initialized in GraphicsServer.");
+            throw std::runtime_error("Renderer is not initialized in GraphicsSubsystem.");
         }
 
         CreateSharedResources();
         CreatePipelines();
-        Console::Get()->Info("Particle Server Initialized");
+        ConsoleSubsystem::Get()->Info("Particle Subsystem Initialized");
     }
 
-    void ParticleServer::Shutdown() {
+    void ParticleSubsystem::Shutdown() {
         // Shaders and meshes are managed by AssetManager, no need to delete here.
         // Emitter components are responsible for releasing their own resources via OnDetach.
         graphics_server = nullptr;
         renderer = nullptr;
     }
 
-    void ParticleServer::Register(ParticleEmitterComponent* emitter) {
+    void ParticleSubsystem::Register(ParticleEmitterComponent* emitter) {
         emitters.push_back(emitter);
     }
 
-    void ParticleServer::Unregister(ParticleEmitterComponent* emitter) {
+    void ParticleSubsystem::Unregister(ParticleEmitterComponent* emitter) {
         emitters.erase(std::remove(emitters.begin(), emitters.end(), emitter), emitters.end());
     }
 
-    void ParticleServer::CreatePipelines() {
+    void ParticleSubsystem::CreatePipelines() {
         AssetManager& assets = AssetManager::Get();
         try {
             // Simulation Shader
@@ -65,7 +65,7 @@ namespace Atmospheric {
             drawing_shader = assets.GetShader("particle_draw");
 
         } catch (const std::exception& e) {
-            Console::Get()->Error(fmt::format("Failed to create particle shaders: {}", e.what()));
+            ConsoleSubsystem::Get()->Error(fmt::format("Failed to create particle shaders: {}", e.what()));
             throw;
         }
     }
@@ -101,7 +101,7 @@ namespace Atmospheric {
         return mesh;
     }
 
-    void ParticleServer::CreateSharedResources() {
+    void ParticleSubsystem::CreateSharedResources() {
         // The quad mesh for drawing particles
         auto& am = AssetManager::Get();
         quad_mesh = am.GetMesh("quad");
@@ -111,7 +111,7 @@ namespace Atmospheric {
         }
     }
 
-    void ParticleServer::CreateEmitterResources(ParticleEmitterComponent* emitter) {
+    void ParticleSubsystem::CreateEmitterResources(ParticleEmitterComponent* emitter) {
         // 1. Create VAO for simulation pass
         glGenVertexArrays(1, &emitter->vao);
 
@@ -157,7 +157,7 @@ namespace Atmospheric {
         glBindVertexArray(0);
     }
 
-    void ParticleServer::ReleaseEmitterResources(ParticleEmitterComponent* emitter) {
+    void ParticleSubsystem::ReleaseEmitterResources(ParticleEmitterComponent* emitter) {
         if (emitter->vao != 0) {
             glDeleteVertexArrays(1, &emitter->vao);
         }
@@ -171,7 +171,7 @@ namespace Atmospheric {
         float deltaTime;
     };
 
-    void ParticleServer::Simulate(float deltaTime) {
+    void ParticleSubsystem::Simulate(float deltaTime) {
         if (emitters.empty() || !simulation_shader) return;
 
         simulation_shader->Activate();
@@ -195,7 +195,7 @@ namespace Atmospheric {
         simulation_shader->Deactivate();
     }
 
-    void ParticleServer::Draw(const CameraInfo& camInfo) {
+    void ParticleSubsystem::Draw(const CameraInfo& camInfo) {
         if (emitters.empty() || !drawing_shader) return;
 
         drawing_shader->Activate();

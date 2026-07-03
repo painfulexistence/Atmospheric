@@ -381,7 +381,7 @@ private:
     }
 
     void DrawBattle() {
-        auto* gfx = gameObject->GetApp()->GetGraphicsServer();
+        auto* gfx = gameObject->GetApp()->GetGraphicsSubsystem();
         const float W = static_cast<float>(_screenW), H = static_cast<float>(_screenH);
         gfx->DrawQuad(W*0.5f, H*0.5f, W, H, 0, glm::vec4(0.08f,0.06f,0.14f,1));
         for (int i=0; i<8; i++)
@@ -423,7 +423,7 @@ private:
         }
     }
 
-    void DrawBattleStats(GraphicsServer* gfx, float W, float H) {
+    void DrawBattleStats(GraphicsSubsystem* gfx, float W, float H) {
         const Stats& s = _player->stats;
         DrawPanel(gfx, 8, H-110, 200, 100);
         gfx->DrawText(_fontID, fmt::format("LV{}", _battle.level),       16, H-106, 0.55f, glm::vec4(1,0.9f,0.5f,1));
@@ -434,7 +434,7 @@ private:
         gfx->DrawText(_fontID, fmt::format("ATK:{} DEF:{}", s.atk, s.def), 16, H-36, 0.5f, glm::vec4(0.8f,0.8f,0.8f,0.9f));
     }
 
-    void DrawBattleMenu(GraphicsServer* gfx, float W, float H) {
+    void DrawBattleMenu(GraphicsSubsystem* gfx, float W, float H) {
         const BattleState& b = _battle;
         if (b.phase == BattlePhase::PlayerMenu) {
             DrawPanel(gfx, W-180, H-130, 170, 120);
@@ -469,7 +469,7 @@ private:
         }
     }
 
-    void DrawBattleLog(GraphicsServer* gfx, float W, float H) {
+    void DrawBattleLog(GraphicsSubsystem* gfx, float W, float H) {
         DrawPanel(gfx, 220, H-130, W-440, 120);
         int shown = std::min(static_cast<int>(_battle.log.size()), 4);
         for (int i=0; i<shown; i++) {
@@ -479,19 +479,19 @@ private:
         }
     }
 
-    void DrawPanel(GraphicsServer* gfx, float x, float y, float w, float h,
+    void DrawPanel(GraphicsSubsystem* gfx, float x, float y, float w, float h,
                    glm::vec4 bg = glm::vec4(0.05f,0.05f,0.12f,0.92f)) {
         gfx->DrawQuad(x+w*0.5f, y+h*0.5f, w, h, 0, bg);
         gfx->DrawRect(x, y, w, h, glm::vec4(0.35f,0.35f,0.55f,0.8f));
     }
-    void DrawHPBar(GraphicsServer* gfx, float x, float y, float w, float h,
+    void DrawHPBar(GraphicsSubsystem* gfx, float x, float y, float w, float h,
                    int hp, int maxHp, glm::vec4 color = glm::vec4(0.2f,0.85f,0.2f,1)) {
         gfx->DrawQuad(x+w*0.5f, y+h*0.5f, w, h, 0, glm::vec4(0.1f,0.1f,0.1f,0.85f));
         float ratio = maxHp>0 ? static_cast<float>(hp)/maxHp : 0;
         float fw = (w-2)*ratio;
         if (fw > 0) gfx->DrawQuad(x+1+fw*0.5f, y+1+(h-2)*0.5f, fw, h-2, 0, color);
     }
-    void DrawMPBar(GraphicsServer* gfx, float x, float y, float w, float h, int mp, int maxMp) {
+    void DrawMPBar(GraphicsSubsystem* gfx, float x, float y, float w, float h, int mp, int maxMp) {
         gfx->DrawQuad(x+w*0.5f, y+h*0.5f, w, h, 0, glm::vec4(0.1f,0.1f,0.1f,0.85f));
         float ratio = maxMp>0 ? static_cast<float>(mp)/maxMp : 0;
         float fw = (w-2)*ratio;

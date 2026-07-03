@@ -17,7 +17,7 @@
 // a captured 'this' pointer.
 
 #include "file_system.hpp"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 
 #include <filesystem>
 #include <mutex>

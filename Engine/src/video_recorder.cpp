@@ -1,5 +1,5 @@
 #include "video_recorder.hpp"
-#include "audio_manager.hpp"
+#include "audio_subsystem.hpp"
 #include <fmt/format.h>
 
 #ifdef AE_HAS_FFMPEG

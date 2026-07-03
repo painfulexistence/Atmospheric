@@ -1,6 +1,6 @@
 #pragma once
 #include "globals.hpp"
-#include "server.hpp"
+#include "subsystem.hpp"
 #include "scene.hpp"
 
 //#define SOL_ALL_SAFETIES_ON 1
@@ -8,20 +8,20 @@
 #include "sol/sol.hpp"
 
 
-class Script : public Server
+class ScriptSubsystem : public Subsystem
 {
 private:
-    static Script* _instance;
+    static ScriptSubsystem* _instance;
 
 public:
-    static Script* Get()
+    static ScriptSubsystem* Get()
     {
         return _instance;
     }
 
-    Script();
+    ScriptSubsystem();
 
-    ~Script();
+    ~ScriptSubsystem();
 
     void Init(Application* app) override;
 

@@ -15,9 +15,9 @@ struct SpriteProps;
 
 class Mesh;
 
-class GraphicsServer;
+class GraphicsSubsystem;
 
-class PhysicsServer;
+class PhysicsSubsystem;
 
 class GameObject {
 public:

@@ -1,16 +1,16 @@
 #pragma once
-#include "audio_manager.hpp"
+#include "audio_subsystem.hpp"
 #include "config.hpp"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "game_object.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include "imgui.h"
-#include "input.hpp"
+#include "input_subsystem.hpp"
 #include "layer.hpp"
-#include "physics_server.hpp"
-#include "physics_server_2d.hpp"
+#include "physics_subsystem.hpp"
+#include "physics_subsystem_2d.hpp"
 
-#include "physics_server_2d.hpp"
+#include "physics_subsystem_2d.hpp"
 #include "scene.hpp"
 #include "scene_transition.hpp"
 
@@ -110,25 +110,25 @@ public:
     inline const std::vector<std::unique_ptr<GameObject>>& GetEntities() const {
         return _entities;
     }
-    inline GraphicsServer* GetGraphicsServer() {
+    inline GraphicsSubsystem* GetGraphicsSubsystem() {
         return &graphics;
     }
-    inline PhysicsServer* GetPhysicsServer() {
+    inline PhysicsSubsystem* GetPhysicsSubsystem() {
         return &physics;
     }
-    inline Physics2DServer* GetPhysics2DServer() {
+    inline Physics2DSubsystem* GetPhysics2DSubsystem() {
         return &physics2D;
     }
-    inline Console* GetConsole() {
+    inline ConsoleSubsystem* GetConsole() {
         return &console;
     }
-    inline Input* GetInput() {
+    inline InputSubsystem* GetInput() {
         return &input;
     }
     inline CameraComponent* GetMainCamera() {
         return mainCamera;
     }
-    inline AudioManager* GetAudioManager() {
+    inline AudioSubsystem* GetAudioSubsystem() {
         return &audio;
     }
     // Shared video recorder. Drives both the automated capture sequence and the
@@ -198,13 +198,13 @@ public:
 
 protected:
     // These subsystems will be game accessible
-    AudioManager audio;
-    PhysicsServer physics;
-    Physics2DServer physics2D;
-    Console console;
-    Input input;
+    AudioSubsystem audio;
+    PhysicsSubsystem physics;
+    Physics2DSubsystem physics2D;
+    ConsoleSubsystem console;
+    InputSubsystem input;
 
-    GraphicsServer graphics;
+    GraphicsSubsystem graphics;
 
     std::vector<Scene> scenes;
     CameraComponent* mainCamera = nullptr;
@@ -220,7 +220,7 @@ protected:
     void SetWindowTitle(const std::string& title);
 
     template<typename T> std::shared_ptr<T> AddSubsystem() {
-        static_assert(std::is_base_of<Server, T>::value, "Type T must be a subclass of Server");
+        static_assert(std::is_base_of<Subsystem, T>::value, "Type T must be a subclass of Subsystem");
         auto subsystem = std::make_shared<T>();
         _subsystems.push_back(subsystem);
         return subsystem;
@@ -239,7 +239,7 @@ private:
     AppConfig _config;
 
     std::shared_ptr<Window> _window = nullptr;
-    std::vector<std::shared_ptr<Server>> _subsystems;
+    std::vector<std::shared_ptr<Subsystem>> _subsystems;
     bool _initialized = false;
 
     uint64_t _clock = 0;

@@ -1,7 +1,7 @@
 #include "light_component.hpp"
 #include "game_object.hpp"
 #include "application.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include "imgui.h"
 
 static glm::vec3 Direction(GLenum face) {
@@ -72,14 +72,14 @@ void LightComponent::DrawImGui() {
 }
 
 void LightComponent::OnAttach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
-        gameObject->GetApp()->GetGraphicsServer()->RegisterLight(this);
+    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsSubsystem()) {
+        gameObject->GetApp()->GetGraphicsSubsystem()->RegisterLight(this);
     }
 }
 
 void LightComponent::OnDetach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
-        gameObject->GetApp()->GetGraphicsServer()->UnregisterLight(this);
+    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsSubsystem()) {
+        gameObject->GetApp()->GetGraphicsSubsystem()->UnregisterLight(this);
     }
 }
 

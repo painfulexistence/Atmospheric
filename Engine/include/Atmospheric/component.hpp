@@ -35,7 +35,7 @@ struct RigidbodyComponent;
 
 struct Geometry;
 
-struct Script;
+struct ScriptSubsystem;
 
 // Note that the pointers are widely used here, because the byte size of the reference type is not fixed and can change
 // by implementations

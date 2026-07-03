@@ -1,6 +1,6 @@
 #include "gl_buffer.hpp"
 #include "vertex.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 
 static GLenum ToGLTopology(PrimitiveTopology topology) {
     switch (topology) {

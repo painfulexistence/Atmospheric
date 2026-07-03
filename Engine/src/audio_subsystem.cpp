@@ -1,4 +1,4 @@
-#include "audio_manager.hpp"
+#include "audio_subsystem.hpp"
 #include "video_recorder.hpp"
 #include "file_system.hpp"
 #include "fmt/format.h"
@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-AudioManager::AudioManager(void) {
+AudioSubsystem::AudioSubsystem(void) {
     // Initialize Web Audio context and global window.AudioManager
     EM_ASM({
         if (!window.AudioManager) {
@@ -228,19 +228,19 @@ AudioManager::AudioManager(void) {
     });
 }
 
-AudioManager::~AudioManager(void) {
+AudioSubsystem::~AudioSubsystem(void) {
     Reset();
 }
 
-void AudioManager::Init(Application* app) {
-    Server::Init(app);
+void AudioSubsystem::Init(Application* app) {
+    Subsystem::Init(app);
 }
 
-void AudioManager::Process(float dt) {
+void AudioSubsystem::Process(float dt) {
     // Web Audio plays asynchronously via the browser, so we don't need manual stream updates.
 }
 
-void AudioManager::DrawImGui(float dt) {
+void AudioSubsystem::DrawImGui(float dt) {
     if (ImGui::CollapsingHeader("Audio", ImGuiTreeNodeFlags_DefaultOpen)) {
         if (ImGui::Button("Stop All")) {
             StopAll();
@@ -279,7 +279,7 @@ void AudioManager::DrawImGui(float dt) {
     }
 }
 
-void AudioManager::Reset() {
+void AudioSubsystem::Reset() {
     StopAll();
     for (auto [id, path] : musicPaths) {
         EM_ASM({
@@ -301,7 +301,7 @@ void AudioManager::Reset() {
     nextSoundId = 1;
 }
 
-MusicID AudioManager::LoadMusic(const char* filename) {
+MusicID AudioSubsystem::LoadMusic(const char* filename) {
     MusicID id = nextMusicId++;
     std::string path = FileSystem::Get().ResolvePath(filename).value_or(filename);
     musicPaths[id] = path;
@@ -309,14 +309,14 @@ MusicID AudioManager::LoadMusic(const char* filename) {
     
     EM_ASM({
         window.AudioManager.load(UTF8ToString($0)).catch(function(err) {
-            console.warn("AudioManager: Load failed for: " + UTF8ToString($0) + " (" + err.message + ")");
+            console.warn("AudioSubsystem: Load failed for: " + UTF8ToString($0) + " (" + err.message + ")");
         });
     }, path.c_str());
     
     return id;
 }
 
-void AudioManager::UnloadMusic(MusicID id) {
+void AudioSubsystem::UnloadMusic(MusicID id) {
     if (musicPaths.count(id) == 0) return;
     StopMusic(id);
     std::string path = musicPaths[id];
@@ -328,7 +328,7 @@ void AudioManager::UnloadMusic(MusicID id) {
     musicVolumes.erase(id);
 }
 
-void AudioManager::PlayMusic(MusicID id) {
+void AudioSubsystem::PlayMusic(MusicID id) {
     if (musicPaths.count(id) == 0) return;
     StopMusic(id);
     std::string path = musicPaths[id];
@@ -341,7 +341,7 @@ void AudioManager::PlayMusic(MusicID id) {
     musicActiveJsIds[id].push_back(jsId);
 }
 
-void AudioManager::StopMusic(MusicID id) {
+void AudioSubsystem::StopMusic(MusicID id) {
     if (musicActiveJsIds.count(id) == 0) return;
     for (int jsId : musicActiveJsIds[id]) {
         EM_ASM({
@@ -351,11 +351,11 @@ void AudioManager::StopMusic(MusicID id) {
     musicActiveJsIds[id].clear();
 }
 
-void AudioManager::SmoothStopMusic(MusicID id) {
+void AudioSubsystem::SmoothStopMusic(MusicID id) {
     StopMusic(id);
 }
 
-void AudioManager::StopAllMusics() {
+void AudioSubsystem::StopAllMusics() {
     EM_ASM({
         window.AudioManager.stopAllMusics();
     });
@@ -364,7 +364,7 @@ void AudioManager::StopAllMusics() {
     }
 }
 
-void AudioManager::SetMusicVolume(MusicID id, float volume) {
+void AudioSubsystem::SetMusicVolume(MusicID id, float volume) {
     if (musicPaths.count(id) == 0) return;
     musicVolumes[id] = volume;
     if (musicActiveJsIds.count(id) > 0) {
@@ -376,7 +376,7 @@ void AudioManager::SetMusicVolume(MusicID id, float volume) {
     }
 }
 
-bool AudioManager::IsMusicPlaying(MusicID id) {
+bool AudioSubsystem::IsMusicPlaying(MusicID id) {
     if (musicPaths.count(id) == 0) return false;
     auto& jsIds = musicActiveJsIds[id];
     for (auto it = jsIds.begin(); it != jsIds.end();) {
@@ -393,7 +393,7 @@ bool AudioManager::IsMusicPlaying(MusicID id) {
     return false;
 }
 
-SoundID AudioManager::LoadSound(const char* filename) {
+SoundID AudioSubsystem::LoadSound(const char* filename) {
     SoundID id = nextSoundId++;
     std::string path = FileSystem::Get().ResolvePath(filename).value_or(filename);
     soundPaths[id] = path;
@@ -401,14 +401,14 @@ SoundID AudioManager::LoadSound(const char* filename) {
     
     EM_ASM({
         window.AudioManager.load(UTF8ToString($0)).catch(function(err) {
-            console.warn("AudioManager: Load failed for: " + UTF8ToString($0) + " (" + err.message + ")");
+            console.warn("AudioSubsystem: Load failed for: " + UTF8ToString($0) + " (" + err.message + ")");
         });
     }, path.c_str());
     
     return id;
 }
 
-void AudioManager::UnloadSound(SoundID id) {
+void AudioSubsystem::UnloadSound(SoundID id) {
     if (soundPaths.count(id) == 0) return;
     StopSound(id);
     std::string path = soundPaths[id];
@@ -420,7 +420,7 @@ void AudioManager::UnloadSound(SoundID id) {
     soundVolumes.erase(id);
 }
 
-void AudioManager::PlaySound(SoundID id) {
+void AudioSubsystem::PlaySound(SoundID id) {
     if (soundPaths.count(id) == 0) return;
     std::string path = soundPaths[id];
     float vol = soundVolumes[id];
@@ -432,7 +432,7 @@ void AudioManager::PlaySound(SoundID id) {
     soundActiveJsIds[id].push_back(jsId);
 }
 
-void AudioManager::PlaySoundVariation(SoundID id, float pitchVariation, float volumeVariation) {
+void AudioSubsystem::PlaySoundVariation(SoundID id, float pitchVariation, float volumeVariation) {
     if (soundPaths.count(id) == 0) return;
     std::string path = soundPaths[id];
     float baseVol = soundVolumes[id];
@@ -459,7 +459,7 @@ void AudioManager::PlaySoundVariation(SoundID id, float pitchVariation, float vo
     soundActiveJsIds[id].push_back(jsId);
 }
 
-void AudioManager::StopSound(SoundID id) {
+void AudioSubsystem::StopSound(SoundID id) {
     if (soundActiveJsIds.count(id) == 0) return;
     for (int jsId : soundActiveJsIds[id]) {
         EM_ASM({
@@ -469,7 +469,7 @@ void AudioManager::StopSound(SoundID id) {
     soundActiveJsIds[id].clear();
 }
 
-void AudioManager::StopAllSounds() {
+void AudioSubsystem::StopAllSounds() {
     EM_ASM({
         window.AudioManager.stopAllSounds();
     });
@@ -478,7 +478,7 @@ void AudioManager::StopAllSounds() {
     }
 }
 
-void AudioManager::SetSoundVolume(SoundID id, float volume) {
+void AudioSubsystem::SetSoundVolume(SoundID id, float volume) {
     if (soundPaths.count(id) == 0) return;
     soundVolumes[id] = volume;
     if (soundActiveJsIds.count(id) > 0) {
@@ -490,7 +490,7 @@ void AudioManager::SetSoundVolume(SoundID id, float volume) {
     }
 }
 
-bool AudioManager::IsSoundPlaying(SoundID id) {
+bool AudioSubsystem::IsSoundPlaying(SoundID id) {
     if (soundPaths.count(id) == 0) return false;
     auto& jsIds = soundActiveJsIds[id];
     for (auto it = jsIds.begin(); it != jsIds.end();) {
@@ -507,7 +507,7 @@ bool AudioManager::IsSoundPlaying(SoundID id) {
     return false;
 }
 
-void AudioManager::StopAll() {
+void AudioSubsystem::StopAll() {
     EM_ASM({
         window.AudioManager.stopAll();
     });
@@ -527,21 +527,21 @@ static void audioCaptureCallback(void* buffer, unsigned int frames) {
         s_captureRecorder->writeAudio(static_cast<const float*>(buffer), frames);
 }
 
-void AudioManager::attachVideoRecorder(VideoRecorder* recorder) {
+void AudioSubsystem::attachVideoRecorder(VideoRecorder* recorder) {
     s_captureRecorder = recorder;
     ::AttachAudioMixedProcessor(audioCaptureCallback);
 }
 
-void AudioManager::detachVideoRecorder() {
+void AudioSubsystem::detachVideoRecorder() {
     ::DetachAudioMixedProcessor(audioCaptureCallback);
     s_captureRecorder = nullptr;
 }
 
-AudioManager::AudioManager(void) {
+AudioSubsystem::AudioSubsystem(void) {
     ::InitAudioDevice();
 }
 
-AudioManager::~AudioManager(void) {
+AudioSubsystem::~AudioSubsystem(void) {
     for (auto [id, music] : musics) {
         ::UnloadMusicStream(music);
     }
@@ -551,17 +551,17 @@ AudioManager::~AudioManager(void) {
     ::CloseAudioDevice();
 }
 
-void AudioManager::Init(Application* app) {
-    Server::Init(app);
+void AudioSubsystem::Init(Application* app) {
+    Subsystem::Init(app);
 }
 
-void AudioManager::Process(float dt) {
+void AudioSubsystem::Process(float dt) {
     for (auto [id, music] : musics) {
         ::UpdateMusicStream(music);
     }
 }
 
-void AudioManager::DrawImGui(float dt) {
+void AudioSubsystem::DrawImGui(float dt) {
     if (ImGui::CollapsingHeader("Audio", ImGuiTreeNodeFlags_DefaultOpen)) {
         if (ImGui::Button("Stop All")) {
             StopAll();
@@ -600,7 +600,7 @@ void AudioManager::DrawImGui(float dt) {
     }
 }
 
-void AudioManager::Reset() {
+void AudioSubsystem::Reset() {
     StopAll();
 
     for (auto [id, music] : musics) {
@@ -617,7 +617,7 @@ void AudioManager::Reset() {
     nextSoundId = 1;
 }
 
-MusicID AudioManager::LoadMusic(const char* filename) {
+MusicID AudioSubsystem::LoadMusic(const char* filename) {
     MusicID id = nextMusicId;
     std::string path = FileSystem::Get().ResolvePath(filename).value_or(filename);
     musics[id] = ::LoadMusicStream(path.c_str());
@@ -625,53 +625,53 @@ MusicID AudioManager::LoadMusic(const char* filename) {
     return id;
 }
 
-void AudioManager::UnloadMusic(MusicID id) {
+void AudioSubsystem::UnloadMusic(MusicID id) {
     ::UnloadMusicStream(musics[id]);
     musics.erase(id);
 }
 
-void AudioManager::PlayMusic(MusicID id) {
+void AudioSubsystem::PlayMusic(MusicID id) {
     if (musics.count(id) == 0) {
         return;
     }
     ::PlayMusicStream(musics[id]);
 }
 
-void AudioManager::StopMusic(MusicID id) {
+void AudioSubsystem::StopMusic(MusicID id) {
     if (musics.count(id) == 0) {
         return;
     }
     ::StopMusicStream(musics[id]);
 }
 
-void AudioManager::SmoothStopMusic(MusicID id) {
+void AudioSubsystem::SmoothStopMusic(MusicID id) {
     if (musics.count(id) == 0) {
         return;
     }
     // TODO: implement smooth stop
 }
 
-void AudioManager::StopAllMusics() {
+void AudioSubsystem::StopAllMusics() {
     for (auto [id, music] : musics) {
         ::StopMusicStream(music);
     }
 }
 
-void AudioManager::SetMusicVolume(MusicID id, float volume) {
+void AudioSubsystem::SetMusicVolume(MusicID id, float volume) {
     if (musics.count(id) == 0) {
         return;
     }
     ::SetMusicVolume(musics[id], volume);
 }
 
-bool AudioManager::IsMusicPlaying(MusicID id) {
+bool AudioSubsystem::IsMusicPlaying(MusicID id) {
     if (musics.count(id) == 0) {
         return false;
     }
     return ::IsMusicStreamPlaying(musics[id]);
 }
 
-SoundID AudioManager::LoadSound(const char* filename) {
+SoundID AudioSubsystem::LoadSound(const char* filename) {
     SoundID id = nextSoundId;
     std::string path = FileSystem::Get().ResolvePath(filename).value_or(filename);
     sounds[id] = ::LoadSound(path.c_str());
@@ -679,19 +679,19 @@ SoundID AudioManager::LoadSound(const char* filename) {
     return id;
 }
 
-void AudioManager::UnloadSound(SoundID id) {
+void AudioSubsystem::UnloadSound(SoundID id) {
     ::UnloadSound(sounds[id]);
     sounds.erase(id);
 }
 
-void AudioManager::PlaySound(SoundID id) {
+void AudioSubsystem::PlaySound(SoundID id) {
     if (sounds.count(id) == 0) {
         return;
     }
     ::PlaySound(sounds[id]);
 }
 
-void AudioManager::PlaySoundVariation(SoundID id, float pitchVariation, float volumeVariation) {
+void AudioSubsystem::PlaySoundVariation(SoundID id, float pitchVariation, float volumeVariation) {
     if (sounds.count(id) == 0) {
         return;
     }
@@ -699,34 +699,34 @@ void AudioManager::PlaySoundVariation(SoundID id, float pitchVariation, float vo
     ::PlaySound(sounds[id]);
 }
 
-void AudioManager::StopSound(SoundID id) {
+void AudioSubsystem::StopSound(SoundID id) {
     if (sounds.count(id) == 0) {
         return;
     }
     ::StopSound(sounds[id]);
 }
 
-void AudioManager::StopAllSounds() {
+void AudioSubsystem::StopAllSounds() {
     for (auto [id, sound] : sounds) {
         ::StopSound(sound);
     }
 }
 
-void AudioManager::SetSoundVolume(SoundID id, float volume) {
+void AudioSubsystem::SetSoundVolume(SoundID id, float volume) {
     if (sounds.count(id) == 0) {
         return;
     }
     ::SetSoundVolume(sounds[id], volume);
 }
 
-bool AudioManager::IsSoundPlaying(SoundID id) {
+bool AudioSubsystem::IsSoundPlaying(SoundID id) {
     if (sounds.count(id) == 0) {
         return false;
     }
     return ::IsSoundPlaying(sounds[id]);
 }
 
-void AudioManager::StopAll() {
+void AudioSubsystem::StopAll() {
     StopAllSounds();
     StopAllMusics();
 }
