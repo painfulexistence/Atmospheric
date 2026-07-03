@@ -98,12 +98,16 @@ void Input::Process(float dt)
     // Forward the mouse to RmlUi so HUD documents receive hover/click events.
     // ProcessMouseMove returns true when the cursor is NOT over any interactive
     // element, which we invert into _mouseOverUi for world-input gating.
-    // NOTE: coordinates are framebuffer pixels; on HiDPI displays these differ
-    // from RmlUi's logical px (see RmlUiManager::OnResize TODO).
+    // The RmlUi context is sized in logical px (Application::Init uses
+    // GetLogicalSize), but GetMousePosition returns physical/framebuffer px, so
+    // divide by the DPI scale — otherwise clicks land at 2x offset on Retina.
     if (RmlUiManager::Get()->IsInitialized()) {
         auto* rml = RmlUiManager::Get();
-        glm::vec2 mp = Window::Get()->GetMousePosition();
-        _mouseOverUi = !rml->ProcessMouseMove((int)mp.x, (int)mp.y, 0);
+        glm::vec2 mp    = Window::Get()->GetMousePosition();
+        glm::vec2 scale = Window::Get()->GetDPI();
+        int lx = scale.x > 0.0f ? (int)(mp.x / scale.x) : (int)mp.x;
+        int ly = scale.y > 0.0f ? (int)(mp.y / scale.y) : (int)mp.y;
+        _mouseOverUi = !rml->ProcessMouseMove(lx, ly, 0);
         if (_mouseDown && !_prevMouseDown) rml->ProcessMouseButtonDown(0, 0);
         if (!_mouseDown && _prevMouseDown) rml->ProcessMouseButtonUp(0, 0);
     } else {

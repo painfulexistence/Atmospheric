@@ -48,6 +48,8 @@ body {
     border-width: 1dp;
     border-color: #38405a;
     cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
 }
 .btn:hover {
     background-color: #2e3550e6;
@@ -60,21 +62,28 @@ body {
 }
 
 .dd_current {
-    padding: 7dp 8dp;
+    position: relative;
+    padding: 7dp 22dp 7dp 8dp;   /* right padding leaves room for the caret */
     color: #e6e6ee;
     background-color: #22283ae6;
     border-radius: 5dp;
     border-width: 1dp;
     border-color: #38405a;
     cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
 }
 .dd_current:hover {
     border-color: #58aaff;
 }
 
+/* Absolutely positioned so it never affects the label's line box (avoids the
+   float-collapse / wrap issues that shifted layout on longer palette names). */
 .caret {
+    position: absolute;
+    top: 7dp;
+    right: 8dp;
     color: #8a8a9a;
-    float: right;
 }
 
 .dd_list {
@@ -95,6 +104,8 @@ body {
     font-size: 13dp;
     color: #b8b8c8;
     cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
 }
 .dd_item:hover {
     background-color: #2a3350e6;
