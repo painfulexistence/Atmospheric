@@ -55,10 +55,17 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     }
 
     // ── Sampler ────────────────────────────────────────────────────────────
-    // gpuSamplerDesc defaults (Nearest, ClampToEdge) are exactly what the
-    // pixel-art canvas wants.
+    // Linear filtering: the canvas draws fonts, sprites and (heavily minified)
+    // video, all of which alias badly under Nearest — the pre-refactor GL
+    // VideoPlayer used GL_LINEAR for exactly this reason. NOTE: GL sets the
+    // filter per-texture (glTexParameteri), so a pixel-art example could pick
+    // Nearest per texture; here one shared sampler serves the whole canvas, so
+    // Linear is the better global default. A per-texture filter hint on
+    // GfxFactory would let both coexist (TODO).
     {
         WGPUSamplerDescriptor d = gpuSamplerDesc();
+        d.minFilter = WGPUFilterMode_Linear;
+        d.magFilter = WGPUFilterMode_Linear;
         _sampler = wgpuDeviceCreateSampler(device, &d);
     }
 
