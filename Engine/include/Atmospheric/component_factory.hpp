@@ -42,11 +42,6 @@ public:
         GetRegistry()[typeName] = std::move(creator);
     }
 
-    // Make aliasName resolve to targetName's creator (targetName must already
-    // be registered).  Use this instead of a creator that calls Create() —
-    // nesting Create() inside a creator attaches the component twice.
-    static void Alias(const std::string& aliasName, const std::string& targetName);
-
     // Create a component of typeName on owner, populating its fields via d.
     // Returns nullptr (and logs a warning) if the type is not registered.
     static Component* Create(const std::string& typeName, GameObject* owner, Deserializer& d);

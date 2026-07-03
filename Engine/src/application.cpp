@@ -382,11 +382,6 @@ void Application::RegisterComponents() {
           return new Text2DComponent(o, props);
       });
 
-    // "TextComponent" is an alias for Text2DComponent. Sharing the creator
-    // (rather than nesting ComponentFactory::Create inside a creator) matters:
-    // Create() attaches the returned component, so a nested Create would have
-    // attached — and owned — the same component twice.
-    ComponentFactory::Alias("TextComponent", "Text2DComponent");
 
     // ── Text3DComponent ─────────────────────────────────────────────────────────
     ComponentFactory::Register("Text3DComponent",
