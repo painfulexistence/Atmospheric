@@ -60,9 +60,42 @@ class TerrainDemo : public Application {
             .gain       = 0.5f,
         }));
 
-        // Image-based HeightField (hand-drawn test heightmap)
+        // Image-based HeightField. 16-bit sources (16-bit PNG, .r16/.raw,
+        // .r32) keep full precision end-to-end; 8-bit images also work.
         _heightmapTerrain = CreateTerrain("HeightmapTerrain",
-            std::make_shared<ImageHeightField>("assets/textures/test_heightmap.jpg"));
+            std::make_shared<ImageHeightField>("assets/textures/test_heightmap_16bit.r16"));
+
+        // ── Using WorldCreator / Gaea exports ────────────────────────────────
+        // 1. Export the heightmap as 16-bit PNG or RAW (.r16/.r32), square.
+        // 2. Set heightScale to the export's height range (in meters) and
+        //    worldSize to its world extent.
+        // 3. Optionally export color/normal/AO/splat maps and pass them via
+        //    TerrainMeshProps:
+        //
+        // auto hf = std::make_shared<ImageHeightField>("assets/textures/gaea_height.r16");
+        // auto* terrain = CreateGameObject(glm::vec3(0.0f, -10.0f, 0.0f));
+        // terrain->AddComponent<TerrainMeshComponent>(
+        //     GetGraphicsServer(), hf,
+        //     TerrainMeshProps{
+        //         .worldSize     = 2048.0f,
+        //         .resolution    = 256,
+        //         .heightScale   = 200.0f,
+        //         .colorMapPath  = "assets/textures/gaea_texture.png",   // Gaea "Texture" node
+        //         .normalMapPath = "assets/textures/gaea_normals.png",   // Gaea "Normals" node
+        //         .aoMapPath     = "assets/textures/gaea_ao.png",
+        //         .splatMapPath  = "assets/textures/gaea_splat.png",     // masks packed into RGBA
+        //         .layers = {
+        //             { .albedoPath = "assets/textures/grass.png", .tiling = 64.0f },
+        //             { .albedoPath = "assets/textures/rock.png",
+        //               .normalPath = "assets/textures/rock_n.png", .tiling = 48.0f },
+        //             { .albedoPath = "assets/textures/snow.png",  .tiling = 64.0f },
+        //         },
+        //     }
+        // );
+        // terrain->AddComponent<HeightFieldColliderComponent>(hf,
+        //     HeightFieldColliderProps{ .worldSize = 2048.0f, .heightScale = 200.0f,
+        //                               .minHeight = -200.0f, .maxHeight = 200.0f,
+        //                               .resolution = 256 /* decimated physics grid */ });
 
         _proceduralTerrain->SetActive(_showProcedural);
         _heightmapTerrain->SetActive(!_showProcedural);

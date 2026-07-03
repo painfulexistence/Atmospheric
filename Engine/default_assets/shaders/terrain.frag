@@ -1,11 +1,72 @@
 #version 410
 
+// Lit terrain surface built around WorldCreator/Gaea export workflows.
+// All maps are optional:
+//   base_map    full-terrain color map (0-1 UV)
+//   normal_map  full-terrain normal map; overrides heightmap-derived normals
+//   ao_map      full-terrain ambient occlusion
+//   splat_map   RGBA weights for up to 4 tiled detail layers
+//   layerN_*    tiled detail albedo / tangent-space normal per layer
+// Fallbacks: layers > base_map > legacy height palette (now lit). Without a
+// splat map, layer weights derive from slope/height (0 = ground, 1 = steep
+// rock, 2 = high snow).
+
+struct SurfaceParams
+{
+    vec3 diffuse;
+    vec3 specular;
+    vec3 ambient;
+    float shininess;
+};
+
+struct DirLight
+{
+    vec3 direction;
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+    float intensity;
+    int cast_shadow;
+    mat4 ProjectionView;
+};
+
+uniform SurfaceParams surf_params;
+uniform DirLight main_light;
+uniform vec3 cam_pos;
+
 uniform sampler2D height_map_unit;
+uniform sampler2D base_map_unit;
+uniform sampler2D normal_map_unit;
+uniform sampler2D ao_map_unit;
+uniform sampler2D splat_map_unit;
+uniform sampler2D layer0_albedo_unit;
+uniform sampler2D layer1_albedo_unit;
+uniform sampler2D layer2_albedo_unit;
+uniform sampler2D layer3_albedo_unit;
+uniform sampler2D layer0_normal_unit;
+uniform sampler2D layer1_normal_unit;
+uniform sampler2D layer2_normal_unit;
+uniform sampler2D layer3_normal_unit;
 
-layout(location = 0) in float height;
+uniform float height_scale;
+uniform float world_size;
+uniform int has_base_map;
+uniform int has_normal_map;
+uniform int has_ao_map;
+uniform int has_splat_map;
+uniform int layer_count;
+uniform float layer_tiling[4];
+uniform float layer_has_normal[4];
 
-out vec4 Color;
+in vec2 frag_uv;
+in vec3 frag_pos;
+in float height;
 
+layout(location = 0) out vec4 Color;
+
+const float gamma = 2.2;
+
+// Legacy debug coloring, kept as the no-maps fallback.
 vec3 palette(float t) {
   vec3 a = vec3(0.80, 0.15, 0.56);
   vec3 b = vec3(0.61, 0.30, 0.12);
@@ -14,8 +75,98 @@ vec3 palette(float t) {
   return a + b * cos(6.28318 * (c * t + d));
 }
 
+// World-space normal from heightmap central differences. Mesh UV maps u -> +X
+// and v -> +Z across world_size, so the derivation matches the displaced
+// geometry exactly.
+vec3 HeightmapNormal(vec2 uv)
+{
+    vec2 ts = 1.0 / vec2(textureSize(height_map_unit, 0));
+    float hl = textureLod(height_map_unit, uv - vec2(ts.x, 0.0), 0.0).r;
+    float hr = textureLod(height_map_unit, uv + vec2(ts.x, 0.0), 0.0).r;
+    float hd = textureLod(height_map_unit, uv - vec2(0.0, ts.y), 0.0).r;
+    float hu = textureLod(height_map_unit, uv + vec2(0.0, ts.y), 0.0).r;
+    float dhdx = (hr - hl) * height_scale / (2.0 * ts.x * world_size);
+    float dhdz = (hu - hd) * height_scale / (2.0 * ts.y * world_size);
+    return normalize(vec3(-dhdx, 1.0, -dhdz));
+}
+
+vec3 TerrainBaseNormal()
+{
+    if (has_normal_map == 1) {
+        // Terrain-plane tangent space (u -> +X, v -> +Z, up -> +Y).
+        vec3 n = texture(normal_map_unit, frag_uv).rgb * 2.0 - 1.0;
+        return normalize(vec3(n.x, n.z, n.y));
+    }
+    return HeightmapNormal(frag_uv);
+}
+
+vec4 LayerWeights(vec3 n, float h)
+{
+    if (has_splat_map == 1) {
+        vec4 w = texture(splat_map_unit, frag_uv);
+        if (layer_count < 4) w.a = 0.0;
+        if (layer_count < 3) w.b = 0.0;
+        if (layer_count < 2) w.g = 0.0;
+        return w / max(w.r + w.g + w.b + w.a, 1e-4);
+    }
+    // Automatic slope/height weights.
+    float slope = 1.0 - n.y;
+    float wRock = layer_count > 1 ? smoothstep(0.2, 0.45, slope) : 0.0;
+    float wSnow = layer_count > 2 ? smoothstep(0.65, 0.8, h) * (1.0 - wRock) : 0.0;
+    float wBase = max(1.0 - wRock - wSnow, 0.0);
+    return vec4(wBase, wRock, wSnow, 0.0);
+}
+
+vec3 BlendLayerAlbedo(vec4 w)
+{
+    vec3 c = vec3(0.0);
+    if (layer_count > 0) c += w.r * pow(texture(layer0_albedo_unit, frag_uv * layer_tiling[0]).rgb, vec3(gamma));
+    if (layer_count > 1) c += w.g * pow(texture(layer1_albedo_unit, frag_uv * layer_tiling[1]).rgb, vec3(gamma));
+    if (layer_count > 2) c += w.b * pow(texture(layer2_albedo_unit, frag_uv * layer_tiling[2]).rgb, vec3(gamma));
+    if (layer_count > 3) c += w.a * pow(texture(layer3_albedo_unit, frag_uv * layer_tiling[3]).rgb, vec3(gamma));
+    return c;
+}
+
+vec3 BlendLayerNormal(vec4 w)
+{
+    vec3 flat_n = vec3(0.0, 0.0, 1.0);
+    vec3 n = vec3(0.0);
+    if (layer_count > 0) n += w.r * (layer_has_normal[0] > 0.5 ? texture(layer0_normal_unit, frag_uv * layer_tiling[0]).rgb * 2.0 - 1.0 : flat_n);
+    if (layer_count > 1) n += w.g * (layer_has_normal[1] > 0.5 ? texture(layer1_normal_unit, frag_uv * layer_tiling[1]).rgb * 2.0 - 1.0 : flat_n);
+    if (layer_count > 2) n += w.b * (layer_has_normal[2] > 0.5 ? texture(layer2_normal_unit, frag_uv * layer_tiling[2]).rgb * 2.0 - 1.0 : flat_n);
+    if (layer_count > 3) n += w.a * (layer_has_normal[3] > 0.5 ? texture(layer3_normal_unit, frag_uv * layer_tiling[3]).rgb * 2.0 - 1.0 : flat_n);
+    return normalize(n + vec3(0.0, 0.0, 1e-4));
+}
+
+// Perturb the base normal by a tangent-space detail normal.
+vec3 PerturbNormal(vec3 N, vec3 detail)
+{
+    vec3 T = normalize(vec3(1.0, 0.0, 0.0) - N * N.x);
+    vec3 B = cross(N, T);
+    return normalize(T * detail.x + B * detail.y + N * detail.z);
+}
+
 void main()
 {
-	vec3 color = palette(height);
-	Color = vec4(color, 1.0);
+    vec3 N = TerrainBaseNormal();
+
+    vec3 albedo;
+    if (layer_count > 0) {
+        vec4 w = LayerWeights(N, height);
+        albedo = BlendLayerAlbedo(w) * surf_params.diffuse;
+        N = PerturbNormal(N, BlendLayerNormal(w));
+    } else if (has_base_map == 1) {
+        albedo = pow(texture(base_map_unit, frag_uv).rgb, vec3(gamma)) * surf_params.diffuse;
+    } else {
+        albedo = palette(height);
+    }
+
+    float ao = has_ao_map == 1 ? texture(ao_map_unit, frag_uv).r : 1.0;
+
+    vec3 lightDir = normalize(-main_light.direction);
+    float ndl = clamp(dot(N, lightDir), 0.0, 1.0);
+    vec3 lit = albedo * main_light.diffuse * ndl;
+    lit += vec3(0.2) * ao * albedo;  // fixed ambient term, matching pbr.frag
+
+    Color = vec4(pow(lit, vec3(1.0 / gamma)), 1.0);
 }

@@ -7,6 +7,7 @@
 #include "mesh.hpp"
 #include "mesh_component.hpp"
 #include "imgui.h"
+#include <algorithm>
 
 TerrainMeshComponent::TerrainMeshComponent(
     GameObject*                         owner,
@@ -23,6 +24,7 @@ TerrainMeshComponent::TerrainMeshComponent(
     TerrainMaterial* terrainMat = am.CreateTerrainMaterial();
     terrainMat->heightScale        = props.heightScale;
     terrainMat->tessellationFactor = props.tessellationFactor;
+    terrainMat->worldSize          = props.worldSize;
 
     // Copy base material props if caller provided a material.
     if (props.material) {
@@ -30,6 +32,25 @@ TerrainMeshComponent::TerrainMeshComponent(
         terrainMat->specular  = props.material->specular;
         terrainMat->ambient   = props.material->ambient;
         terrainMat->shininess = props.material->shininess;
+        terrainMat->baseMap   = props.material->baseMap;
+        terrainMat->normalMap = props.material->normalMap;
+        terrainMat->aoMap     = props.material->aoMap;
+    }
+
+    // Load the optional high-fidelity surface maps (path fields win over any
+    // handles copied from props.material).
+    auto loadTex = [&am](const std::string& p) {
+        return p.empty() ? TextureHandle{} : am.CreateTexture(p);
+    };
+    if (!props.colorMapPath.empty())  terrainMat->baseMap   = loadTex(props.colorMapPath);
+    if (!props.normalMapPath.empty()) terrainMat->normalMap = loadTex(props.normalMapPath);
+    if (!props.aoMapPath.empty())     terrainMat->aoMap     = loadTex(props.aoMapPath);
+    if (!props.splatMapPath.empty())  terrainMat->splatMap  = loadTex(props.splatMapPath);
+    terrainMat->layerCount = std::min((int)props.layers.size(), TerrainMaterial::MAX_LAYERS);
+    for (int i = 0; i < terrainMat->layerCount; ++i) {
+        terrainMat->layers[i].albedoMap = loadTex(props.layers[i].albedoPath);
+        terrainMat->layers[i].normalMap = loadTex(props.layers[i].normalPath);
+        terrainMat->layers[i].tiling    = props.layers[i].tiling;
     }
 
     // Always bake the height grid to a GPU texture so callers don't need to
@@ -57,6 +78,14 @@ void TerrainMeshComponent::DrawImGui() {
     if (_material) {
         ImGui::DragFloat("Height Scale", &_material->heightScale, 0.5f, 0.0f, 256.0f);
         ImGui::DragFloat("Tessellation", &_material->tessellationFactor, 0.5f, 1.0f, 64.0f);
+        if (_material->layerCount > 0) {
+            ImGui::SeparatorText("Layers");
+            for (int i = 0; i < _material->layerCount; ++i) {
+                ImGui::PushID(i);
+                ImGui::DragFloat("Tiling", &_material->layers[i].tiling, 0.5f, 1.0f, 512.0f);
+                ImGui::PopID();
+            }
+        }
     }
 
     auto* noise = dynamic_cast<NoiseHeightField*>(_heightField.get());
