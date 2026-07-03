@@ -1057,7 +1057,12 @@ void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTexture
         .wgsl(FORWARD_OPAQUE_WGSL)
         .bgl({ gpuUniform(0, wgsl_stage::both, FWD_FRAME_UNIFORM_SIZE),
                gpuDynUniform(1, wgsl_stage::both, FWD_DRAW_UNIFORM_SIZE) })
-        .bgl({ gpuTexture(0), gpuSampler(1) })
+        // Group 1 must be vertex-visible too: the terrain pipeline borrows
+        // this BGL and its vertex shader samples the heightmap for
+        // displacement. Fragment-only visibility fails terrain pipeline
+        // creation, and one invalid pipeline poisons the whole frame's
+        // command buffer — nothing presents, black screen.
+        .bgl({ gpuTexture(0, wgsl_stage::both), gpuSampler(1, wgsl_stage::both) })
         .bgl({ gpuDepthTexture(0), gpuCompareSampler(1) })
         .vertex(56, { {WGPUVertexFormat_Float32x3,  0, 0},
                       {WGPUVertexFormat_Float32x2, 12, 1},

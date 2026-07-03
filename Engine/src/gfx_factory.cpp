@@ -320,6 +320,81 @@ WGPUTexture GfxFactory::GetWGPUTexture(uint32_t id) {
     return (it != _gpuTextures.end()) ? it->second.tex : nullptr;
 }
 
+// IEEE 754 float → half. Heights/masks are finite and mostly 0-1, so denorms
+// flush to zero and out-of-range values saturate to ±inf.
+static uint16_t FloatToHalf(float f) {
+    uint32_t x;
+    std::memcpy(&x, &f, sizeof(x));
+    const uint16_t sign = static_cast<uint16_t>((x >> 16) & 0x8000);
+    const int32_t  exp  = static_cast<int32_t>((x >> 23) & 0xFF) - 127 + 15;
+    const uint16_t man  = static_cast<uint16_t>((x >> 13) & 0x3FF);
+    if (exp <= 0)  return sign;                    // underflow → signed zero
+    if (exp >= 31) return sign | 0x7C00;           // overflow → inf
+    return sign | static_cast<uint16_t>(exp << 10) | man;
+}
+
+static WGPUTexture CreateR16FTexture(WGPUDevice device, WGPUQueue queue,
+                                     const float* texels, int w, int h) {
+    WGPUTextureDescriptor td{};
+    td.size          = { static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+    td.format        = WGPUTextureFormat_R16Float;
+    td.usage         = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    td.dimension     = WGPUTextureDimension_2D;
+    td.mipLevelCount = 1;
+    td.sampleCount   = 1;
+    WGPUTexture tex = wgpuDeviceCreateTexture(device, &td);
+
+    std::vector<uint16_t> halves(static_cast<size_t>(w) * h);
+    for (size_t i = 0; i < halves.size(); ++i) halves[i] = FloatToHalf(texels[i]);
+
+    WGPUTexelCopyTextureInfo dst{};
+    dst.texture = tex;
+    dst.aspect  = WGPUTextureAspect_All;
+    WGPUTexelCopyBufferLayout layout{};
+    layout.bytesPerRow  = static_cast<uint32_t>(w) * 2;
+    layout.rowsPerImage = static_cast<uint32_t>(h);
+    WGPUExtent3D extent{ static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+    wgpuQueueWriteTexture(queue, &dst, halves.data(), halves.size() * 2, &layout, &extent);
+    return tex;
+}
+
+uint32_t GfxFactory::UploadTextureR16F(const float* texels, int w, int h) {
+    if (!_wgpuDevice) return 0;
+    uint32_t id = _nextTexID++;
+    _gpuTextures[id] = { CreateR16FTexture(_wgpuDevice, _wgpuQueue, texels, w, h),
+                         TextureFilter::Linear };
+    return id;
+}
+
+void GfxFactory::UpdateTextureR16F(uint32_t id, const float* texels, int w, int h) {
+    if (!_wgpuDevice) return;
+    auto it = _gpuTextures.find(id);
+    if (it == _gpuTextures.end()) return;
+
+    WGPUTexture tex = it->second.tex;
+    if (wgpuTextureGetWidth(tex) != static_cast<uint32_t>(w) ||
+        wgpuTextureGetHeight(tex) != static_cast<uint32_t>(h)) {
+        // Same create-before-release ordering as UpdateTexture2D: handles are
+        // object-table slots, and pointer-compare bind-group caches must see
+        // a new value on resize.
+        WGPUTexture newTex = CreateR16FTexture(_wgpuDevice, _wgpuQueue, texels, w, h);
+        wgpuTextureRelease(tex);
+        it->second.tex = newTex;
+        return;
+    }
+
+    std::vector<uint16_t> halves(static_cast<size_t>(w) * h);
+    for (size_t i = 0; i < halves.size(); ++i) halves[i] = FloatToHalf(texels[i]);
+    WGPUTexelCopyTextureInfo dst{};
+    dst.texture = tex;
+    dst.aspect  = WGPUTextureAspect_All;
+    WGPUTexelCopyBufferLayout layout{};
+    layout.bytesPerRow  = static_cast<uint32_t>(w) * 2;
+    layout.rowsPerImage = static_cast<uint32_t>(h);
+    WGPUExtent3D extent{ static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+    wgpuQueueWriteTexture(_wgpuQueue, &dst, halves.data(), halves.size() * 2, &layout, &extent);
+}
+
 uint32_t GfxFactory::UploadCompressedTexture2D(
   TextureCompressionFormat format, const uint8_t* data, size_t dataSize, int w, int h
 ) {

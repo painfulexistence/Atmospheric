@@ -166,12 +166,11 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 
 // Non-tessellated terrain, mirroring the GLES/WebGL2 fallback pair
 // terrain_simple.vert + terrain.frag (palette path — the Terrain example uses
-// no color/splat/layer maps). The heightmap arrives as RGBA8 with a 16-bit
-// height packed into r (high byte) / g (low byte) — see AssetManager::
-// PackHeightmapRGBA8; the decode is linear in both channels so hardware
-// bilinear filtering equals filtering the original heights. Shares group 0
-// (frame + dynamic draw slot) and group 1 (texture + sampler) layouts with
-// FORWARD_OPAQUE_WGSL so the pass reuses _uniformBG and _getOrCreateTexBG.
+// no color/splat/layer maps). The heightmap is r16float, the same GL_R16F
+// format the WebGL2 path samples (GfxFactory::UploadTextureR16F); r16float is
+// filterable core WebGPU. Shares group 0 (frame + dynamic draw slot) and
+// group 1 (texture + sampler) layouts with FORWARD_OPAQUE_WGSL so the pass
+// reuses _uniformBG and _getOrCreateTexBG.
 // Terrain draw slots pack params at the draw-uniform offset 64:
 //   params = (height_scale, world_size, palette_index, unused)
 static const char* TERRAIN_WGSL = R"(
@@ -192,12 +191,12 @@ struct DrawUniforms {
 @group(1) @binding(0) var height_map: texture_2d<f32>;
 @group(1) @binding(1) var samp: sampler;
 
-// Decode the RG-packed 16-bit height. Coords are clamped in-shader because
-// the shared sampler uses Repeat addressing (base maps want tiling).
+// textureLod(height_map, uv, 0.0).r, as in terrain_simple.vert. Coords are
+// clamped in-shader because the shared sampler uses Repeat addressing (base
+// maps want tiling; the GL heightmap texture uses CLAMP_TO_EDGE).
 fn readHeight(uv: vec2<f32>) -> f32 {
-    let c = textureSampleLevel(height_map, samp,
-                               clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0);
-    return dot(c.rg, vec2<f32>(65280.0, 255.0)) / 65535.0;
+    return textureSampleLevel(height_map, samp,
+                              clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0)), 0.0).r;
 }
 
 struct VSOut {
@@ -271,7 +270,11 @@ fn heightmapNormal(uv: vec2<f32>, heightScale: f32, worldSize: f32) -> vec3<f32>
 @fragment
 fn fs(in: VSOut) -> @location(0) vec4<f32> {
     let n        = heightmapNormal(in.uv, draw.params.x, draw.params.y);
-    let albedo   = palette(in.height, i32(draw.params.z + 0.5));
+    // The cosine palette can dip below zero per channel; clamp it or the
+    // pow() below is NaN, and one NaN pixel poisons the whole frame through
+    // the bloom downsample chain (GLSL pow on negatives is undefined too,
+    // but WGSL/Dawn reliably produces NaN here).
+    let albedo   = max(palette(in.height, i32(draw.params.z + 0.5)), vec3<f32>(0.0));
     let lightDir = normalize(frame.lightDir.xyz);
     let ndl      = clamp(dot(n, lightDir), 0.0, 1.0);
     var lit = albedo * frame.lightColor.rgb * ndl;

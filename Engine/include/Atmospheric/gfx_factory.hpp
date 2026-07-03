@@ -104,6 +104,18 @@ public:
     // and ReleaseTexture(), or 0 if format is None or the device lacks the
     // feature.
     static uint32_t UploadCompressedTexture2D(TextureCompressionFormat format, const uint8_t* data, size_t dataSize, int w, int h);
+
+    // WebGPU-only: single-channel half-float texture from float data (heights,
+    // masks) — the same GL_R16F path the GLES/WebGL2 backend uses for
+    // heightmaps. r16float is filterable core WebGPU, so it binds like any
+    // other sampled texture. float→f16 conversion happens internally.
+    // Returns a synthetic ID usable with GetWGPUTexture()/ReleaseTexture()/
+    // UpdateTextureR16F().
+    static uint32_t UploadTextureR16F(const float* texels, int w, int h);
+
+    // Update (and resize, same semantics as UpdateTexture2D) an r16float
+    // texture created by UploadTextureR16F().
+    static void UpdateTextureR16F(uint32_t id, const float* texels, int w, int h);
 #endif
 
 private:
