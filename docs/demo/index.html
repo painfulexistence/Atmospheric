@@ -265,16 +265,16 @@
       </div>
     </a>
 
-    <a href="./ProceduralTerrain/" class="demo-card">
+    <a href="./Terrain/" class="demo-card">
       <div class="demo-thumb">
         <span class="demo-thumb-icon">🏔️</span>
         <!-- FUTURE WebM preview: Uncomment and configure this when ready:
-        <video class="demo-video-preview" loop muted playsinline preload="none" src="./ProceduralTerrain/assets/preview.webm"></video>
+        <video class="demo-video-preview" loop muted playsinline preload="none" src="./Terrain/assets/preview.webm"></video>
         -->
       </div>
       <div class="demo-body">
-        <div class="demo-title">Procedural Terrain</div>
-        <div class="demo-desc">Infinite landscape generation using heightmaps and procedural noise shaders.</div>
+        <div class="demo-title">Terrain</div>
+        <div class="demo-desc">Landscape generated from procedural noise or image heightmaps.</div>
         <span class="demo-badge">Active</span>
       </div>
     </a>
@@ -386,7 +386,7 @@
 </footer>
 
 </body>
-  
+
   <!-- Modal Overlay -->
   <div id="demo-modal" class="modal">
     <div class="modal-content">
@@ -411,15 +411,15 @@
       cards.forEach(function(card) {
         card.addEventListener('click', function(e) {
           e.preventDefault(); // Prevent full page navigation
-          
+
           var href = this.getAttribute('href');
           var title = this.querySelector('.demo-title').textContent;
-          
+
           modalTitle.textContent = title;
-          
+
           // Reuse the static iframe
           iframe.src = href;
-          
+
           modal.style.display = 'flex';
           // Force reflow
           modal.offsetHeight;
@@ -433,7 +433,7 @@
         document.body.style.overflow = '';
         setTimeout(function() {
           modal.style.display = 'none';
-          
+
           // Force cleanup of the Wasm engine inside the iframe
           try {
             if (iframe.contentWindow) {
@@ -445,13 +445,13 @@
           } catch(e) {
             console.error("Parent frame failed to call iframe cleanup:", e);
           }
-          
+
           iframe.src = 'about:blank'; // Reset iframe src using about:blank to force release
         }, 300);
       }
 
       closeBtn.addEventListener('click', closeModal);
-      
+
       // Close on clicking outside the modal box
       modal.addEventListener('click', function(e) {
         if (e.target === modal) {

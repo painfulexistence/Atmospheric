@@ -39,7 +39,7 @@ CONFIG="${CONFIG:-${2:-}}"
 ALLOW_MISSING="${ALLOW_MISSING:-0}"
 
 # Keep in sync with Examples/CMakeLists.txt (MazeFPS is disabled there).
-DEFAULT_EXAMPLES="HelloWorld SceneLoader Physics2D RPG CardBattle VoxelWorld ProceduralTerrain MidnightSkyraiders MultiplayerSandbox VideoPlayer LuaScripting"
+DEFAULT_EXAMPLES="HelloWorld SceneLoader Physics2D RPG CardBattle VoxelWorld Terrain MidnightSkyraiders MultiplayerSandbox VideoPlayer LuaScripting"
 EXAMPLES="${EXAMPLES:-$DEFAULT_EXAMPLES}"
 
 mkdir -p "$ARTIFACT_DIR"

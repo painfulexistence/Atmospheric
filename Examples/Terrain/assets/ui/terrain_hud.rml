@@ -1,0 +1,33 @@
+<rml>
+<head>
+    <title>terrain_hud</title>
+    <link type="text/rcss" href="terrain_hud.rcss"/>
+</head>
+<body id="terrain_hud">
+    <div id="panel">
+        <div class="title">Terrain</div>
+
+        <div class="label">Mode</div>
+        <select id="mode_select">
+            <option value="proc">Procedural</option>
+            <option value="hmap">Heightmap</option>
+        </select>
+
+        <div class="label">Palette</div>
+        <select id="palette_select">
+            <option value="0">1 - Warm Pink/Gold</option>
+            <option value="1">2 - Cool Blue/Purple</option>
+            <option value="2">3 - Earthy Green</option>
+            <option value="3">4 - Forest</option>
+            <option value="4">5 - Soft Cool</option>
+            <option value="5">6 - Vivid Mint/Coral</option>
+        </select>
+
+        <div class="hints">
+            <div class="hint">SPACE - switch mode</div>
+            <div class="hint">P - select palette</div>
+            <div class="hint">I - toggle wireframe</div>
+        </div>
+    </div>
+</body>
+</rml>

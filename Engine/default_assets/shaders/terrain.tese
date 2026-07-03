@@ -9,6 +9,8 @@ layout(quads, fractional_odd_spacing, ccw) in;
 
 layout(location = 0) in vec2 tese_uv[];
 
+out vec2 frag_uv;
+out vec3 frag_pos;
 out float height;
 
 void main()
@@ -21,8 +23,11 @@ void main()
 	vec4 pos2 = mix(gl_in[3].gl_Position, gl_in[2].gl_Position, gl_TessCoord.x);
 	vec4 pos = mix(pos1, pos2, gl_TessCoord.y);
 
-	height = textureLod(height_map_unit, tex_uv, 1.0).r;
+	height = textureLod(height_map_unit, tex_uv, 0.0).r;
 	pos.y += height * height_scale;
 
-	gl_Position = ProjectionView * World * pos;
+	vec4 world_pos = World * pos;
+	frag_uv = tex_uv;
+	frag_pos = world_pos.xyz;
+	gl_Position = ProjectionView * world_pos;
 }

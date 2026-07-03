@@ -876,6 +876,8 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             auto* tm = dynamic_cast<TerrainMaterial*>(mesh->GetMaterial());
             terrainShader->SetUniform(std::string("tessellation_factor"), tm ? tm->tessellationFactor : 16.0f);
             terrainShader->SetUniform(std::string("height_scale"),         tm ? tm->heightScale        : 32.0f);
+            terrainShader->SetUniform(std::string("world_size"),           tm ? tm->worldSize          : 1024.0f);
+            terrainShader->SetUniform(std::string("palette_index"),        tm ? tm->paletteIndex       : 0);
             glActiveTexture(GL_TEXTURE7);
             TextureHandle heightMap = mesh->GetMaterial()->heightMap;
             if (heightMap.IsValid() && (uint32_t)heightMap != 0) {
@@ -884,6 +886,57 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
             terrainShader->SetUniform(std::string("height_map_unit"), 7);
+
+            // Surface maps (WorldCreator/Gaea workflow). Units follow the
+            // PRIM-pass convention (2=base, 3=normal, 4=ao) plus 5=splat and
+            // 8..15 for the detail layers. Every declared sampler gets a
+            // valid 2D texture bound (default textures as fallback) so WebGL
+            // never sees a sampler pointing at an incompatible unit.
+            {
+                Material* mat = mesh->GetMaterial();
+                const auto& defaults = assetManager.GetDefaultTextures();
+                auto bindTex2D = [&](int unit, TextureHandle tex, int defaultIdx) {
+                    glActiveTexture(GL_TEXTURE0 + unit);
+                    if (tex.IsValid() && (uint32_t)tex != 0)
+                        glBindTexture(GL_TEXTURE_2D, (uint32_t)tex);
+                    else if ((int)defaults.size() > defaultIdx)
+                        glBindTexture(GL_TEXTURE_2D, defaults[defaultIdx]);
+                    else
+                        glBindTexture(GL_TEXTURE_2D, 0);
+                };
+
+                bindTex2D(2, mat->baseMap, 0);
+                terrainShader->SetUniform(std::string("base_map_unit"), 2);
+                terrainShader->SetUniform(std::string("has_base_map"), mat->baseMap.IsValid() ? 1 : 0);
+
+                bindTex2D(3, mat->normalMap, 1);
+                terrainShader->SetUniform(std::string("normal_map_unit"), 3);
+                terrainShader->SetUniform(std::string("has_normal_map"), mat->normalMap.IsValid() ? 1 : 0);
+
+                bindTex2D(4, mat->aoMap, 2);
+                terrainShader->SetUniform(std::string("ao_map_unit"), 4);
+                terrainShader->SetUniform(std::string("has_ao_map"), mat->aoMap.IsValid() ? 1 : 0);
+
+                TextureHandle splat = tm ? tm->splatMap : TextureHandle{};
+                bindTex2D(5, splat, 0);
+                terrainShader->SetUniform(std::string("splat_map_unit"), 5);
+                terrainShader->SetUniform(std::string("has_splat_map"), splat.IsValid() ? 1 : 0);
+
+                terrainShader->SetUniform(std::string("layer_count"), tm ? tm->layerCount : 0);
+                for (int i = 0; i < TerrainMaterial::MAX_LAYERS; ++i) {
+                    const TerrainLayer* layer = (tm && i < tm->layerCount) ? &tm->layers[i] : nullptr;
+                    bindTex2D(8 + i, layer ? layer->albedoMap : TextureHandle{}, 0);
+                    bindTex2D(12 + i, layer ? layer->normalMap : TextureHandle{}, 1);
+                    terrainShader->SetUniform(fmt::format("layer{}_albedo_unit", i), 8 + i);
+                    terrainShader->SetUniform(fmt::format("layer{}_normal_unit", i), 12 + i);
+                    terrainShader->SetUniform(fmt::format("layer_tiling[{}]", i), layer ? layer->tiling : 1.0f);
+                    terrainShader->SetUniform(
+                      fmt::format("layer_has_normal[{}]", i),
+                      (layer && layer->normalMap.IsValid()) ? 1.0f : 0.0f
+                    );
+                }
+            }
+
             terrainShader->SetUniform(std::string("ProjectionView"), projectionView);
 
             // Terrain is usually a single instance, but we handle it in the batch loop
