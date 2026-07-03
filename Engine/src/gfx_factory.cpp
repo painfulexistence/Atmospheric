@@ -276,10 +276,12 @@ void GfxFactory::UpdateTexture2D(uint32_t id, const uint8_t* pixels, int w, int 
         WGPUTexture tex = it->second.tex;
         if (wgpuTextureGetWidth(tex) != static_cast<uint32_t>(w) ||
             wgpuTextureGetHeight(tex) != static_cast<uint32_t>(h)) {
-            // WGPUTexture storage is immutable — release and recreate under
-            // the same synthetic id so callers don't need to track resizes.
-            wgpuTextureRelease(tex);
-
+            // WGPUTexture storage is immutable — recreate under the same
+            // synthetic id so callers don't need to track resizes. Create the
+            // replacement BEFORE releasing the old texture: handles are object-
+            // table slots, so release-then-create can hand the new texture the
+            // old handle value, and pointer-compare bind-group caches (canvas /
+            // forward passes) would keep sampling the stale texture forever.
             WGPUTextureDescriptor td{};
             td.size          = { static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
             td.format        = WGPUTextureFormat_RGBA8Unorm;
@@ -287,7 +289,9 @@ void GfxFactory::UpdateTexture2D(uint32_t id, const uint8_t* pixels, int w, int 
             td.dimension     = WGPUTextureDimension_2D;
             td.mipLevelCount = 1;
             td.sampleCount   = 1;
-            tex = wgpuDeviceCreateTexture(_wgpuDevice, &td);
+            WGPUTexture newTex = wgpuDeviceCreateTexture(_wgpuDevice, &td);
+            wgpuTextureRelease(tex);
+            tex = newTex;
             it->second.tex = tex; // filter hint preserved
         }
 
