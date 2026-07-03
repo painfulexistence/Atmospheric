@@ -49,18 +49,23 @@ static void WriteToMemFS(const std::string& path, const uint8_t* data, size_t le
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Singleton
+//
+// Meyers singleton (function-local static): unlike the engine's other
+// services, FileSystem must exist before Application — every example calls
+// FileSystem::Get().Prefetch(...) in main() and only constructs the app in
+// the completion callback — so it cannot be Application-owned. It holds no
+// GPU state, so its destruction after main() returns is safe.
 // ─────────────────────────────────────────────────────────────────────────────
-FileSystem* FileSystem::_instance = nullptr;
+FileSystem::FileSystem() {
+#ifndef __EMSCRIPTEN__
+    const char* sdlBase = SDL_GetBasePath();
+    if (sdlBase) g_basePath = sdlBase;
+#endif
+}
 
 FileSystem& FileSystem::Get() {
-    if (!_instance) {
-        _instance = new FileSystem();
-#ifndef __EMSCRIPTEN__
-        const char* sdlBase = SDL_GetBasePath();
-        if (sdlBase) g_basePath = sdlBase;
-#endif
-    }
-    return *_instance;
+    static FileSystem instance;
+    return instance;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

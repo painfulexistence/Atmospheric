@@ -132,10 +132,8 @@ public:
     void WriteFile(const std::string& path, const uint8_t* data, size_t len);
 
 private:
-    FileSystem()                             = default;
+    FileSystem();// defined in file_system.cpp (captures the SDL base path)
     ~FileSystem()                            = default;
     FileSystem(const FileSystem&)            = delete;
     FileSystem& operator=(const FileSystem&) = delete;
-
-    static FileSystem* _instance;
 };
