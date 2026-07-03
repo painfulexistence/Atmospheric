@@ -236,6 +236,7 @@ Application::Application(AppConfig config) : _config(config) {
     _window->InitImGui();
 
     _assetManager = std::make_unique<AssetManager>();
+    _rmlUi = std::make_unique<RmlUiManager>();
 
     PushLayer(new GameLayer(this));
 #ifndef NDEBUG

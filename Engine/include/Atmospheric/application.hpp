@@ -23,6 +23,7 @@ class GameObject;
 class EditorLayer;
 class VideoRecorder;
 class AssetManager;
+class RmlUiManager;
 struct SceneBlueprint;
 
 struct FrameData {
@@ -244,6 +245,7 @@ private:
     // static Get() is a non-owning locator into these members. Declared after
     // _window: destroyed before it, while the GL context is still alive.
     std::unique_ptr<AssetManager> _assetManager;
+    std::unique_ptr<RmlUiManager> _rmlUi;
     std::vector<std::shared_ptr<Subsystem>> _subsystems;
     bool _initialized = false;
 
