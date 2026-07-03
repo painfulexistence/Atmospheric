@@ -128,7 +128,6 @@ public:
     void SetShowImGui(bool show);
 #endif
 
-    std::shared_ptr<Window> GetWindow();
     void ReloadScene();
     void GoScene(const std::string& sceneName, std::function<void()> onReady = nullptr);
 
@@ -183,15 +182,10 @@ public:
     void UnloadCurrentScene();
 
 protected:
-    // These subsystems will be game accessible
-    AudioSubsystem audio;
-    Physics3DSubsystem physics;
-    Physics2DSubsystem physics2D;
-    ConsoleSubsystem console;
-    InputSubsystem input;
-
-    GraphicsSubsystem graphics;
-
+    // Subsystems are owned privately (see below) and reached from anywhere —
+    // game code included — through their static locator, e.g.
+    // GraphicsSubsystem::Get() / InputSubsystem::Get(), consistent with
+    // AssetManager / FileSystem / Window.
     std::vector<Scene> scenes;
     CameraComponent* mainCamera = nullptr;
     LightComponent* mainLight = nullptr;
@@ -224,10 +218,19 @@ private:
 
     AppConfig _config;
 
-    std::shared_ptr<Window> _window = nullptr;
-    // Engine-scoped services owned here so teardown is deterministic. Their
-    // static Get() is a non-owning locator into these members. Declared after
-    // _window: destroyed before it, while the GL context is still alive.
+    // Every engine service is owned here as a unique_ptr and constructed in the
+    // Application constructor in dependency order. Each type's static Get() is a
+    // non-owning locator into these members — the single access path for the
+    // whole codebase. Declaration order == construction order == reverse
+    // destruction order: _window is first so it outlives every service that
+    // touches the GL context it owns (graphics, assetManager, rmlUi).
+    std::unique_ptr<Window> _window;
+    std::unique_ptr<ConsoleSubsystem> _console;
+    std::unique_ptr<InputSubsystem> _input;
+    std::unique_ptr<AudioSubsystem> _audio;
+    std::unique_ptr<GraphicsSubsystem> _graphics;
+    std::unique_ptr<Physics3DSubsystem> _physics;
+    std::unique_ptr<Physics2DSubsystem> _physics2D;
     std::unique_ptr<AssetManager> _assetManager;
     std::unique_ptr<RmlUiManager> _rmlUi;
     std::unique_ptr<UIPageManager> _uiPages;// dies before _rmlUi (closes documents through it)

@@ -134,11 +134,11 @@ class MidnightSkyraiders : public Application {
         texBg[2]   = "assets/images/nightsky-fg.png";
         // The title sprite (and its texture) live in assets/scenes/main.json.
 
-        fontID = graphics.LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 22.0f);
+        fontID = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 22.0f);
 
-        bgm     = audio.LoadMusic("assets/sounds/sky-lines.ogg");
-        sfxExp  = audio.LoadSound("assets/sounds/explosion.wav");
-        sfxOver = audio.LoadSound("assets/sounds/game-over.wav");
+        bgm     = AudioSubsystem::Get()->LoadMusic("assets/sounds/sky-lines.ogg");
+        sfxExp  = AudioSubsystem::Get()->LoadSound("assets/sounds/explosion.wav");
+        sfxOver = AudioSubsystem::Get()->LoadSound("assets/sounds/game-over.wav");
 
         auto* background = CreateGameObject();
         background->SetName("Background");
@@ -160,7 +160,7 @@ class MidnightSkyraiders : public Application {
         sysObj->SetName("CollisionSystem");
         sysObj->SetActive(false);
         sysObj->AddComponent<CollisionSystemComponent>(director,
-            [this]{ audio.PlaySoundVariation(sfxExp, 0.1f, 0.05f); });
+            [this]{ AudioSubsystem::Get()->PlaySoundVariation(sfxExp, 0.1f, 0.05f); });
         _collision = sysObj->GetComponent<CollisionSystemComponent>();
 
         auto* hudObj = CreateGameObject();
@@ -178,7 +178,7 @@ class MidnightSkyraiders : public Application {
         case GameState::Playing:  break; // CollisionSystemComponent + HUDComponent drive per-frame logic
         case GameState::GameOver: updateGameOver(dt); break;
         }
-        if (input.IsKeyDown(Key::ESCAPE)) Quit();
+        if (InputSubsystem::Get()->IsKeyDown(Key::ESCAPE)) Quit();
     }
 
     // ── title ─────────────────────────────────────────────────────────────────
@@ -194,11 +194,11 @@ class MidnightSkyraiders : public Application {
     }
 
     void updateTitle(float /*dt*/) {
-        graphics.DrawText(fontID,
+        GraphicsSubsystem::Get()->DrawText(fontID,
             "Press SPACE or ENTER to start",
             HALF - 140.0f, WORLD - 60.0f, 0.8f, glm::vec4(1,1,0,1));
 
-        if (input.IsKeyPressed(Key::SPACE) || input.IsKeyPressed(Key::ENTER)) {
+        if (InputSubsystem::Get()->IsKeyPressed(Key::SPACE) || InputSubsystem::Get()->IsKeyPressed(Key::ENTER)) {
             if (titleObj) { titleObj->SetActive(false); titleObj = nullptr; }
             startGame();
         }
@@ -239,7 +239,7 @@ class MidnightSkyraiders : public Application {
         }
 
         spawnWave();
-        audio.PlayMusic(bgm);
+        AudioSubsystem::Get()->PlayMusic(bgm);
         director->SetRunning(true);
         state = GameState::Playing;
     }
@@ -339,13 +339,13 @@ class MidnightSkyraiders : public Application {
         if (_collision) _collision->gameObject->SetActive(false);
         if (_hudComp)   _hudComp->gameObject->SetActive(false);
         if ((long long)director->Score() > hiScore) hiScore = (long long)director->Score();
-        audio.StopMusic(bgm);
-        audio.PlaySound(sfxOver);
+        AudioSubsystem::Get()->StopMusic(bgm);
+        AudioSubsystem::Get()->PlaySound(sfxOver);
         state = GameState::GameOver;
     }
 
     void updateGameOver(float /*dt*/) {
-        auto* gs = &graphics;
+        auto* gs = GraphicsSubsystem::Get();
         gs->DrawText(fontID, "GAME  OVER",
             HALF - 80.0f, WORLD * 0.30f, 1.5f, glm::vec4(1,0.2f,0.2f,1));
         gs->DrawText(fontID, "Score: " + std::to_string((long long)director->Score()),
@@ -354,7 +354,7 @@ class MidnightSkyraiders : public Application {
             HALF - 80.0f, WORLD * 0.52f, 1.0f, glm::vec4(1,1,0,1));
         gs->DrawText(fontID, "Press SPACE or ENTER to play again",
             HALF - 150.0f, WORLD * 0.65f, 0.8f, glm::vec4(0.8f,0.8f,0.8f,1));
-        if (input.IsKeyPressed(Key::SPACE) || input.IsKeyPressed(Key::ENTER)) {
+        if (InputSubsystem::Get()->IsKeyPressed(Key::SPACE) || InputSubsystem::Get()->IsKeyPressed(Key::ENTER)) {
             startGame();
         }
     }

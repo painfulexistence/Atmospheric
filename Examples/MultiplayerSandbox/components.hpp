@@ -41,7 +41,7 @@ private:
         if (inp->IsKeyDown(Key::W) || inp->IsKeyDown(Key::SPACE) || inp->IsKeyDown(Key::UP))
             f.buttons |= BTN_JUMP;
         if (inp->IsKeyDown(Key::S) || inp->IsKeyDown(Key::DOWN))  f.buttons |= BTN_DOWN;
-        if (app->GetWindow()->GetMouseButtonState())               f.buttons |= BTN_FIRE;
+        if (Window::Get()->GetMouseButtonState())               f.buttons |= BTN_FIRE;
 
         static const Key spellKeys[] = {
             Key::Num1, Key::Num2, Key::Num3, Key::Num4,

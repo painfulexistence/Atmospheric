@@ -224,7 +224,7 @@ Application::Application(AppConfig config) : _config(config) {
     });
 #endif
 
-    _window = std::make_shared<Window>(WindowProps{
+    _window = std::make_unique<Window>(WindowProps{
       .title = config.windowTitle,
       .width = config.windowWidth,
       .height = config.windowHeight,
@@ -235,6 +235,17 @@ Application::Application(AppConfig config) : _config(config) {
     });// Multi-window not supported now
     _window->Init();
     _window->InitImGui();
+
+    // Construct subsystems in dependency order (matches member declaration
+    // order). Each registers itself as its type's Get() locator here; the real
+    // GL/device setup still happens in Init(this) from Run(), once the full
+    // engine is wired up.
+    _console = std::make_unique<ConsoleSubsystem>();
+    _input = std::make_unique<InputSubsystem>();
+    _audio = std::make_unique<AudioSubsystem>();
+    _graphics = std::make_unique<GraphicsSubsystem>();
+    _physics = std::make_unique<Physics3DSubsystem>();
+    _physics2D = std::make_unique<Physics2DSubsystem>();
 
     _assetManager = std::make_unique<AssetManager>();
     _rmlUi = std::make_unique<RmlUiManager>();
@@ -542,20 +553,20 @@ void Application::Run() {
     TracyNoop;
     tracy::InitCallstack();
 #endif
-    console.Init(this);
-    input.Init(this);
-    audio.Init(this);
-    _recorder->setAudioManager(&audio);
-    graphics.Init(this);
-    physics.Init(this);// Note that physics debug drawer is dependent on graphics server
-    physics2D.Init(this);
+    _console->Init(this);
+    _input->Init(this);
+    _audio->Init(this);
+    _recorder->setAudioManager(_audio.get());
+    _graphics->Init(this);
+    _physics->Init(this);// Note that physics debug drawer is dependent on graphics server
+    _physics2D->Init(this);
     for (auto& subsystem : _subsystems) {
         subsystem->Init(this);
     }
     ENGINE_LOG("Subsystems initialized.");
 
     auto windowSize = _window->GetLogicalSize();
-    RmlUiManager::Get()->Initialize(windowSize.width, windowSize.height, graphics.renderer.get());
+    RmlUiManager::Get()->Initialize(windowSize.width, windowSize.height, _graphics->renderer.get());
 
     _transition.Init();
 
@@ -947,8 +958,8 @@ void Application::InstantiateScene(const SceneBlueprint& bp) {
     if (!bp.entities.empty())
         ENGINE_LOG("JSON Game objects created.");
 
-    mainCamera = graphics.GetMainCamera();
-    mainLight = graphics.GetMainLight();
+    mainCamera = _graphics->GetMainCamera();
+    mainLight = _graphics->GetMainLight();
 }
 
 void Application::ShowLoadingScreen() {
@@ -1037,21 +1048,21 @@ void Application::GoScene(const std::string& sceneName, std::function<void()> on
     FileSystem::Get().Prefetch({ scenePath }, [this, sceneName, scenePath, finish]() {
         auto bytes = FileSystem::Get().ReadSync(scenePath);
         if (bytes.empty()) {
-            console.Error(fmt::format("GoScene: failed to read scene file '{}'", scenePath));
+            _console->Error(fmt::format("GoScene: failed to read scene file '{}'", scenePath));
             finish();
             return;
         }
 
         SceneBlueprint bp = ParseSceneBlueprint(std::string(bytes.begin(), bytes.end()));
         if (bp.name.empty()) {
-            console.Error(fmt::format("GoScene: scene blueprint parse failed '{}'", scenePath));
+            _console->Error(fmt::format("GoScene: scene blueprint parse failed '{}'", scenePath));
             finish();
             return;
         }
 
         // Stage 2: prefetch every asset the blueprint declares, then load.
         std::vector<std::string> assetPaths = CollectPrefetchPaths(bp, _config.useDefaultTextures);
-        console.Info(fmt::format("GoScene: prefetching {} asset(s) for '{}'", assetPaths.size(), sceneName));
+        _console->Info(fmt::format("GoScene: prefetching {} asset(s) for '{}'", assetPaths.size(), sceneName));
 
         FileSystem::Get().Prefetch(assetPaths, [this, sceneName, bp = std::move(bp), finish]() mutable {
             // Unload the current scene first. This runs under the loading overlay,
@@ -1086,21 +1097,21 @@ void Application::LoadEditorScene(const uint8_t* data, size_t len)
     std::erase_if(_entities, [this](const std::unique_ptr<GameObject>& e) { return e.get() != _defaultGameObject; });
     _nextEntityID = _defaultGameObject ? 1 : 0;
 
-    graphics.cameras.clear();
-    graphics.directionalLights.clear();
-    graphics.pointLights.clear();
+    _graphics->cameras.clear();
+    _graphics->directionalLights.clear();
+    _graphics->pointLights.clear();
 
-    audio.StopAll();
-    physics.Reset();
+    _audio->StopAll();
+    _physics->Reset();
 
     SceneLoader loader(this);
     auto result = loader.LoadFromBuffer(data, len);
     if (!result.success) {
         _editorSceneError = result.error;
-        console.Warn(fmt::format("[Editor] Scene load failed: {}", result.error));
+        _console->Warn(fmt::format("[Editor] Scene load failed: {}", result.error));
     } else {
         _editorSceneError.clear();
-        console.Info(fmt::format("[Editor] Scene loaded: {} node(s)", result.allNodes.size()));
+        _console->Info(fmt::format("[Editor] Scene loaded: {} node(s)", result.allNodes.size()));
     }
 
     _sceneReady = true;
@@ -1140,9 +1151,9 @@ void Application::UnloadScene(const std::string& name)
     // Must come after GameObjects are deleted so no component holds a dangling ref.
     AssetManager::Get().UnloadSceneAssets(name);
 
-    mainCamera = graphics.GetMainCamera();
-    mainLight = graphics.GetMainLight();
-    console.Info(fmt::format("[Scene] Unloaded scene '{}'.", name));
+    mainCamera = _graphics->GetMainCamera();
+    mainLight = _graphics->GetMainLight();
+    _console->Info(fmt::format("[Scene] Unloaded scene '{}'.", name));
 }
 
 void Application::ClearScenes()
@@ -1167,15 +1178,15 @@ void Application::UnloadCurrentScene()
     // the component-lifecycle TODO), so those lists would otherwise keep dangling
     // pointers to freed owners and re-draw the previous scene. Clear every
     // scene-populated list here, mirroring the camera/light reset.
-    graphics.cameras.clear();
-    graphics.directionalLights.clear();
-    graphics.pointLights.clear();
-    graphics.sunComponents.clear();
-    graphics.renderables.clear();      // MeshComponent
-    graphics.canvasDrawables.clear();  // SpriteComponent / Text2DComponent / ...
+    _graphics->cameras.clear();
+    _graphics->directionalLights.clear();
+    _graphics->pointLights.clear();
+    _graphics->sunComponents.clear();
+    _graphics->renderables.clear();      // MeshComponent
+    _graphics->canvasDrawables.clear();  // SpriteComponent / Text2DComponent / ...
 
-    audio.StopAll();
-    physics.Reset();
+    _audio->StopAll();
+    _physics->Reset();
     if (!_currentSceneName.empty())
         AssetManager::Get().ClearSceneAssets(); // free scene GPU assets
     _currentSceneName.clear();
@@ -1186,7 +1197,7 @@ void Application::AddScene(const std::string& json)
     SceneBlueprint bp = ParseSceneBlueprint(json, &_editorSceneError);
     if (bp.name.empty()) { // parse failed — _editorSceneError set by ParseSceneBlueprint
         _lastLoadedScene = "";
-        console.Warn(fmt::format("[Scene] AddScene JSON parse error: {}", _editorSceneError));
+        _console->Warn(fmt::format("[Scene] AddScene JSON parse error: {}", _editorSceneError));
         return;
     }
 
@@ -1198,11 +1209,11 @@ void Application::AddScene(const std::string& json)
         InstantiateScene(bp);
         _editorSceneError.clear();
         _lastLoadedScene = bp.name;
-        console.Info(fmt::format("[Scene] Added scene '{}'.", bp.name));
+        _console->Info(fmt::format("[Scene] Added scene '{}'.", bp.name));
     } catch (const std::exception& e) {
         _editorSceneError = e.what();
         _lastLoadedScene  = "";
-        console.Warn(fmt::format("[Scene] AddScene '{}' failed: {}", bp.name, e.what()));
+        _console->Warn(fmt::format("[Scene] AddScene '{}' failed: {}", bp.name, e.what()));
     }
 }
 
@@ -1262,12 +1273,12 @@ void Application::Update(const FrameData& props) {
     OnUpdate(dt, GetWindowTime());
 
     // ecs.Process(dt); // Note that most of the entity manipulation logic should be put there
-    console.Process(dt);
-    input.Process(dt);
-    audio.Process(dt);
-    physics.Process(dt);// TODO: Update only every entity's physics transform
-    physics2D.Process(dt);
-    graphics.Process(dt);
+    _console->Process(dt);
+    _input->Process(dt);
+    _audio->Process(dt);
+    _physics->Process(dt);// TODO: Update only every entity's physics transform
+    _physics2D->Process(dt);
+    _graphics->Process(dt);
     for (auto& subsystem : _subsystems) {
         subsystem->Process(dt);
     }
@@ -1324,7 +1335,7 @@ void Application::UpdateAutoCapture() {
         _capPhaseStart = now;// lazy init: anchor to the first rendered frame
     float elapsed = now - _capPhaseStart;
 
-    Renderer* renderer = graphics.renderer.get();
+    Renderer* renderer = _graphics->renderer.get();
 
     auto ensureParentDir = [](const std::string& path) {
         std::error_code ec;
@@ -1393,9 +1404,9 @@ void Application::UpdateAutoCapture() {
 }
 
 void Application::SaveScreenshot(const std::string& path) {
-    if (!graphics.renderer)
+    if (!_graphics->renderer)
         return;
-    graphics.renderer->readPixelsAsync([&path](const GpuImageData& img) {
+    _graphics->renderer->readPixelsAsync([&path](const GpuImageData& img) {
         if (img.data.empty())
             return;
         bool ok = pngWrite(path, img.data.data(), img.width, img.height, img.channelCount);
@@ -1419,10 +1430,6 @@ void Application::SyncTransformWithPhysics() {
 
 uint64_t Application::GetClock() {
     return this->_clock;
-}
-
-std::shared_ptr<Window> Application::GetWindow() {
-    return this->_window;
 }
 
 float Application::GetWindowTime() {

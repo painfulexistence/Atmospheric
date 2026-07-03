@@ -33,18 +33,18 @@ class VoxelWorldApp : public Application {
         auto* worldObj = CreateGameObject();
         worldObj->AddComponent<VoxelWorldComponent>(/*seed=*/1337);
 
-        Renderer* renderer = graphics.renderer.get();
+        Renderer* renderer = GraphicsSubsystem::Get()->renderer.get();
         if (auto* bloom = renderer->GetPass<BloomPass>()) {
             bloom->enabled       = true;
             bloom->threshold     = 0.6f;
             bloom->bloomStrength = 0.06f;
         }
 
-        console.Info("VoxelWorld loaded. WASD move, RF up/down, IJKL look, ESC quit.");
+        ConsoleSubsystem::Get()->Info("VoxelWorld loaded. WASD move, RF up/down, IJKL look, ESC quit.");
     }
 
     void OnUpdate(float /*dt*/, float /*time*/) override {
-        if (input.IsKeyPressed(Key::ESCAPE)) Quit();
+        if (InputSubsystem::Get()->IsKeyPressed(Key::ESCAPE)) Quit();
     }
 };
 

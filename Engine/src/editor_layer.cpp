@@ -84,7 +84,7 @@ void EditorLayer::DrawSystemInfo() {
         ImGui::Text("Vendor: %s", glGetString(GL_VENDOR));
         ImGui::Text("Renderer: %s", glGetString(GL_RENDERER));
 
-        auto window = _app->GetWindow();
+        auto window = Window::Get();
         auto [wx, wy] = window->GetLogicalSize();
         ImGui::Text("Window size: %dx%d", wx, wy);
         auto [fx, fy] = window->GetPhysicalSize();

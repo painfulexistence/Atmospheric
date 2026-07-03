@@ -285,7 +285,7 @@ class PolyMerge : public Application {
             if (drawing) {
                 glm::vec2 p1 = a + dir * t;
                 glm::vec2 p2 = a + dir * t2;
-                graphics.DrawLine(p1.x, p1.y, p2.x, p2.y, color);
+                GraphicsSubsystem::Get()->DrawLine(p1.x, p1.y, p2.x, p2.y, color);
             }
             t = t2;
             drawing = !drawing;
@@ -321,11 +321,11 @@ class PolyMerge : public Application {
         pendingShape = nullptr;
         shapes.clear();
 
-        fontID = graphics.LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
+        fontID = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
 
-        mainCamera = graphics.GetMainCamera();
+        mainCamera = GraphicsSubsystem::Get()->GetMainCamera();
 
-        physics2D.SetGravity({0.0f, -520.0f});
+        Physics2DSubsystem::Get()->SetGravity({0.0f, -520.0f});
 
         // Ground
         {
@@ -374,7 +374,7 @@ class PolyMerge : public Application {
         }
 
         // Collision callback: first launched-shape contact unlocks merge globally
-        physics2D.SetBeginContactCallback([this](Rigidbody2DComponent* a, Rigidbody2DComponent* b) {
+        Physics2DSubsystem::Get()->SetBeginContactCallback([this](Rigidbody2DComponent* a, Rigidbody2DComponent* b) {
             if (!a || !b || !a->gameObject || !b->gameObject) return;
             if (a->GetBodyType() != BodyType2D::Dynamic) return;
             if (b->GetBodyType() != BodyType2D::Dynamic) return;
@@ -394,15 +394,15 @@ class PolyMerge : public Application {
     }
 
     void OnUpdate(float dt, float /*time*/) override {
-        if (input.IsKeyDown(Key::ESCAPE)) { Quit(); return; }
+        if (InputSubsystem::Get()->IsKeyDown(Key::ESCAPE)) { Quit(); return; }
 
-        auto dpi = GetWindow()->GetDPI();
-        glm::vec2 mouse = input.GetMousePosition() / dpi;
+        auto dpi = Window::Get()->GetDPI();
+        glm::vec2 mouse = InputSubsystem::Get()->GetMousePosition() / dpi;
         mouse.y = H - mouse.y;
 
         // ── Firing ────────────────────────────────────────────────────────
         if (!gameOver && !launched && pendingShape) {
-            if (input.IsKeyPressed(Key::SPACE) || input.IsMouseButtonPressed()) {
+            if (InputSubsystem::Get()->IsKeyPressed(Key::SPACE) || InputSubsystem::Get()->IsMouseButtonPressed()) {
                 Launch(mouse);
             }
         }
@@ -416,20 +416,20 @@ class PolyMerge : public Application {
 
         // ── Crosshair ─────────────────────────────────────────────────────
         float mx = mouse.x, my = mouse.y;
-        graphics.DrawLine(mx - 10, my, mx + 10, my, {1, 1, 1, 0.9f});
-        graphics.DrawLine(mx, my - 10, mx, my + 10, {1, 1, 1, 0.9f});
-        graphics.DrawCircle(mx, my, 5.0f, {1, 1, 1, 0.4f});
+        GraphicsSubsystem::Get()->DrawLine(mx - 10, my, mx + 10, my, {1, 1, 1, 0.9f});
+        GraphicsSubsystem::Get()->DrawLine(mx, my - 10, mx, my + 10, {1, 1, 1, 0.9f});
+        GraphicsSubsystem::Get()->DrawCircle(mx, my, 5.0f, {1, 1, 1, 0.4f});
 
         // ── HUD ───────────────────────────────────────────────────────────
         if (fontID) {
             std::string scoreTxt = "Score: " + std::to_string(score);
-            graphics.DrawText(fontID, scoreTxt, 12.0f, H - 36.0f, 1.0f, {1, 1, 1, 1});
-            graphics.DrawText(fontID, "SPACE / LMB = fire", 12.0f, H - 64.0f, 0.7f, {0.8f, 0.8f, 0.8f, 0.8f});
+            GraphicsSubsystem::Get()->DrawText(fontID, scoreTxt, 12.0f, H - 36.0f, 1.0f, {1, 1, 1, 1});
+            GraphicsSubsystem::Get()->DrawText(fontID, "SPACE / LMB = fire", 12.0f, H - 64.0f, 0.7f, {0.8f, 0.8f, 0.8f, 0.8f});
 
             // Side legend (uncomment to show)
             // for (int s = MIN_SIDES; s <= MAX_SIDES; ++s) {
             //     float y = H - 36.0f - (s - MIN_SIDES) * 22.0f;
-            //     graphics.DrawText(fontID, std::to_string(s) + "-sided", W - 100.0f, y, 0.65f, SideColor(s));
+            //     GraphicsSubsystem::Get()->DrawText(fontID, std::to_string(s) + "-sided", W - 100.0f, y, 0.65f, SideColor(s));
             // }
         }
     }
