@@ -45,11 +45,15 @@ public:
     // (RGBA16Float) to the swapchain (BGRA8Unorm typically), so it must
     // record into a render pass opened on the swapchain view directly rather
     // than sceneRT. Mutually exclusive with depthTest.
+    // sceneSampleCount: sceneRT's MSAA count — the sceneRT-target pipeline
+    // variants must be built with a matching multisample state. Only consulted
+    // on the first call (lazy init); pass renderer.sceneRT->GetNumSamples().
     void Render(CommandEncoder* enc,
                 const glm::mat4& viewProj,
                 const std::vector<BatchDrawCommand>& commands,
                 bool depthTest = false,
-                bool toSwapchain = false);
+                bool toSwapchain = false,
+                uint32_t sceneSampleCount = 1);
 
     bool IsReady() const { return _pipeline != nullptr; }
 
@@ -88,7 +92,7 @@ struct VOut {
 }
 )";
 
-    void _init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format);
+    void _init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format, uint32_t sceneSampleCount);
     WGPUBindGroup _getOrCreateTexBG(uint32_t texID);
 
     WGPUDevice  _device  = nullptr;

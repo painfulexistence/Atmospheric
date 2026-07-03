@@ -40,7 +40,7 @@ SunPass::~SunPass() {
     if (_vertexBuf)  wgpuBufferRelease(_vertexBuf);
 }
 
-void SunPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat) {
+void SunPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount) {
     _gpuDevice = device;
     _gpuQueue  = queue;
     {
@@ -60,7 +60,8 @@ void SunPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat col
         .wgsl(SUN_WGSL)
         .bgl({ gpuUniform(0, wgsl_stage::both, 192) })
         .vertex(12, { {WGPUVertexFormat_Float32x3, 0, 0} })
-        .colorFormat(colorFormat).depth(true, WGPUCompareFunction_Less).build();
+        .colorFormat(colorFormat).depth(true, WGPUCompareFunction_Less)
+        .multisample(sampleCount).build();
     _pipeline   = p.pipeline;
     _uniformBGL = p.bgl(0);
     _uniformBG  = GpuBindGroupBuilder(device, _uniformBGL).buffer(0, _uniformBuf, 192).build();
@@ -74,7 +75,8 @@ void SunPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* e
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float);
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float,
+                     (uint32_t)renderer.sceneRT->GetNumSamples());
         }
         if (!renderer.sceneRT) return;
 
@@ -243,7 +245,7 @@ SkyboxPass::~SkyboxPass() {
     if (_vertexBuf)  wgpuBufferRelease(_vertexBuf);
 }
 
-void SkyboxPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat) {
+void SkyboxPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount) {
     _gpuDevice = device;
     _gpuQueue  = queue;
     {
@@ -265,7 +267,8 @@ void SkyboxPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
         .wgsl(SKYBOX_WGSL)
         .bgl({ gpuUniform(0, wgsl_stage::both, 96) })
         .vertex(12, { {WGPUVertexFormat_Float32x3, 0, 0} })
-        .colorFormat(colorFormat).depth(false, WGPUCompareFunction_LessEqual).build();
+        .colorFormat(colorFormat).depth(false, WGPUCompareFunction_LessEqual)
+        .multisample(sampleCount).build();
     _pipeline   = p.pipeline;
     _uniformBGL = p.bgl(0);
     _uniformBG  = GpuBindGroupBuilder(device, _uniformBGL).buffer(0, _uniformBuf, 96).build();
@@ -279,7 +282,8 @@ void SkyboxPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float);
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float,
+                     (uint32_t)renderer.sceneRT->GetNumSamples());
         }
         if (!renderer.sceneRT) return;
 
@@ -356,7 +360,7 @@ VoxelChunkPass::~VoxelChunkPass() {
     if (_drawUniformBuf)  wgpuBufferRelease(_drawUniformBuf);
 }
 
-void VoxelChunkPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat) {
+void VoxelChunkPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount) {
     _gpuDevice = device;
     _gpuQueue  = queue;
     {
@@ -373,7 +377,7 @@ void VoxelChunkPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFor
                gpuDynUniform(1, wgsl_stage::vert, VOXEL_DRAW_UNIFORM_SIZE) })
         .vertex(8, { {WGPUVertexFormat_Uint8x4, 0, 0}, {WGPUVertexFormat_Uint8x4, 4, 1} })
         .colorFormat(colorFormat).depth(true, WGPUCompareFunction_Less)
-        .cull(WGPUCullMode_Back).build();
+        .cull(WGPUCullMode_Back).multisample(sampleCount).build();
     _pipeline   = p.pipeline;
     _uniformBGL = p.bgl(0);
 }
@@ -414,7 +418,8 @@ void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEnc
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float);
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float,
+                     (uint32_t)renderer.sceneRT->GetNumSamples());
         }
 
         struct DrawItem { Buffer* buf; glm::mat4 model; };
@@ -546,7 +551,7 @@ WaterPass::~WaterPass() {
     if (_drawUniformBuf)  wgpuBufferRelease(_drawUniformBuf);
 }
 
-void WaterPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat) {
+void WaterPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount) {
     _gpuDevice = device;
     _gpuQueue  = queue;
     {
@@ -564,7 +569,8 @@ void WaterPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat c
         .vertex(56, { {WGPUVertexFormat_Float32x3,  0, 0},
                       {WGPUVertexFormat_Float32x2, 12, 1},
                       {WGPUVertexFormat_Float32x3, 20, 2} })
-        .colorFormat(colorFormat).blend().depth(false, WGPUCompareFunction_LessEqual).build();
+        .colorFormat(colorFormat).blend().depth(false, WGPUCompareFunction_LessEqual)
+        .multisample(sampleCount).build();
     _pipeline   = p.pipeline;
     _uniformBGL = p.bgl(0);
 }
@@ -605,7 +611,8 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float);
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float,
+                     (uint32_t)renderer.sceneRT->GetNumSamples());
         }
 
         // Water params now live on WaterMaterial (mesh/material decoupling);
@@ -774,7 +781,7 @@ void BloomPass::_destroyGPUTextures() {
     if (_snapshotTex) { wgpuTextureRelease(_snapshotTex);    _snapshotTex = nullptr; }
 }
 
-void BloomPass::_initGPU(WGPUDevice device, WGPUQueue queue) {
+void BloomPass::_initGPU(WGPUDevice device, WGPUQueue queue, uint32_t sceneSampleCount) {
     _gpuDevice = device;
     _gpuQueue  = queue;
 
@@ -821,6 +828,7 @@ void BloomPass::_initGPU(WGPUDevice device, WGPUQueue queue) {
                    gpuTexture(1), gpuTexture(2), gpuSampler(3) })
             .colorFormat(WGPUTextureFormat_RGBA16Float)
             .depth(false, WGPUCompareFunction_Always)
+            .multisample(sceneSampleCount)
             .build();
         _compPipeline = p.pipeline; _compBGL = p.bgl(0);
     }
@@ -961,7 +969,7 @@ void BloomPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q);
+            _initGPU(dev, q, (uint32_t)renderer.sceneRT->GetNumSamples());
         }
 
         auto [w, h] = Window::Get()->GetPhysicalSize();

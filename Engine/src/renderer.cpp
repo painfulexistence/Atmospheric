@@ -1001,7 +1001,7 @@ ForwardOpaquePass::~ForwardOpaquePass() {
     if (_shadowSampler)   wgpuSamplerRelease(_shadowSampler);
 }
 
-void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat) {
+void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount) {
     _gpuDevice = device;
     _gpuQueue  = queue;
 
@@ -1064,6 +1064,7 @@ void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTexture
         .colorFormat(colorFormat)
         .depth(true, WGPUCompareFunction_Less)
         .cull(WGPUCullMode_Back)
+        .multisample(sampleCount)
         .build();
     _pipeline   = p.pipeline;
     _uniformBGL = p.bgl(0);
@@ -1122,7 +1123,8 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float);
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float,
+                     (uint32_t)renderer.sceneRT->GetNumSamples());
         }
 
         struct DrawItem { Buffer* buf; glm::mat4 model; Material* mat; };
@@ -1769,7 +1771,8 @@ void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
         // Render into the already-open sceneRT pass (depth-tested, read-only)
         // so world sprites are occluded by — but never occlude — 3D geometry.
         renderer.sceneRT->Begin(enc);
-        gpuPass->Render(enc, viewProj, allCommands, /*depthTest=*/true);
+        gpuPass->Render(enc, viewProj, allCommands, /*depthTest=*/true, /*toSwapchain=*/false,
+                        (uint32_t)renderer.sceneRT->GetNumSamples());
         renderer.sceneRT->End();
         return;
     }
@@ -1892,7 +1895,8 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         // PostProcessPass is the sole pass that later writes sceneRT to the
         // swapchain, so we must not touch the swapchain or present here.
         renderer.sceneRT->Begin(enc);
-        gpuPass->Render(enc, viewProj, allCommands);
+        gpuPass->Render(enc, viewProj, allCommands, /*depthTest=*/false, /*toSwapchain=*/false,
+                        (uint32_t)renderer.sceneRT->GetNumSamples());
         renderer.sceneRT->End();
         return;
     }
@@ -2159,7 +2163,8 @@ void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* en
         WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &rpDesc);
         gpuEnc->pass = pass;
 
-        gpuPass->Render(enc, projection, allCommands, /*depthTest=*/false, /*toSwapchain=*/true);
+        gpuPass->Render(enc, projection, allCommands, /*depthTest=*/false, /*toSwapchain=*/true,
+                        renderer.sceneRT ? (uint32_t)renderer.sceneRT->GetNumSamples() : 1u);
 
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);

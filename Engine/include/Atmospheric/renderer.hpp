@@ -85,7 +85,7 @@ public:
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
-    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat);
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
     void _ensureDrawCapacity(uint32_t drawCount);
     WGPUBindGroup _getOrCreateTexBG(uint32_t texID);
 
@@ -202,7 +202,7 @@ public:
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
-    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat);
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
     WGPUDevice          _gpuDevice  = nullptr;
     WGPUQueue           _gpuQueue   = nullptr;
     WGPURenderPipeline  _pipeline   = nullptr;
@@ -226,7 +226,7 @@ public:
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
-    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat);
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
     WGPUDevice          _gpuDevice  = nullptr;
     WGPUQueue           _gpuQueue   = nullptr;
     WGPURenderPipeline  _pipeline   = nullptr;
@@ -249,7 +249,7 @@ public:
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
-    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat);
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
     // Grows _drawUniformBuf/_uniformBG to fit at least drawCount dynamic-offset slots.
     void _ensureDrawCapacity(uint32_t drawCount);
     WGPUDevice          _gpuDevice       = nullptr;
@@ -280,7 +280,7 @@ public:
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
-    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat);
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
     void _ensureDrawCapacity(uint32_t drawCount);
 
     WGPUDevice          _gpuDevice       = nullptr;
@@ -334,7 +334,7 @@ private:
     // while it's bound as the composite pass's render attachment by first
     // copying it into _snapshotTex (requires CopySrc on sceneRT's texture,
     // see gpu_render_target.cpp).
-    void _initGPU(WGPUDevice device, WGPUQueue queue);
+    void _initGPU(WGPUDevice device, WGPUQueue queue, uint32_t sceneSampleCount);
     void _resizeGPU(int width, int height);
 
     WGPUDevice  _gpuDevice = nullptr;

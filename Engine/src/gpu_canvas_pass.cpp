@@ -21,7 +21,7 @@ GPUCanvasPass::~GPUCanvasPass() {
     if (_sampler)    wgpuSamplerRelease(_sampler);
 }
 
-void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format) {
+void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format, uint32_t sceneSampleCount) {
     _device = device;
     _queue  = queue;
 
@@ -102,6 +102,7 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
         .vertex((uint64_t)FLOATS_PER_VERT * sizeof(float), quadAttrs)
         .colorFormat(format).blend()
         .depth(false, WGPUCompareFunction_Always)
+        .multisample(sceneSampleCount)
         .build();
     _pipeline   = p.pipeline;
     _uniformBGL = p.bgl(0);
@@ -121,6 +122,7 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
         .vertex((uint64_t)FLOATS_PER_VERT * sizeof(float), quadAttrs)
         .colorFormat(format).blend()
         .depth(false, WGPUCompareFunction_LessEqual)
+        .multisample(sceneSampleCount)
         .build().pipeline;
 
     // ── Swapchain-format variant (UIPass): no depth, blend on, but targets ──
@@ -158,13 +160,14 @@ void GPUCanvasPass::Render(CommandEncoder* enc,
                             const glm::mat4& viewProj,
                             const std::vector<BatchDrawCommand>& commands,
                             bool depthTest,
-                            bool toSwapchain) {
+                            bool toSwapchain,
+                            uint32_t sceneSampleCount) {
     // Lazy init: wait until GfxFactory has a live device
     if (!_pipeline) {
         WGPUDevice dev = GfxFactory::GetWebGPUDevice();
         WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
         if (!dev) return;
-        _init(dev, q, WGPUTextureFormat_RGBA16Float); // sceneRT's HDR format
+        _init(dev, q, WGPUTextureFormat_RGBA16Float, sceneSampleCount); // sceneRT's HDR format
     }
 
     if (commands.empty()) return;

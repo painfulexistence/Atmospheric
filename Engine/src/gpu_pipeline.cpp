@@ -135,7 +135,7 @@ GpuPipeline GpuPipelineBuilder::build() {
     pd.primitive.topology  = WGPUPrimitiveTopology_TriangleList;
     pd.primitive.frontFace = WGPUFrontFace_CCW;
     pd.primitive.cullMode  = _cullMode;
-    pd.multisample.count   = 1;
+    pd.multisample.count   = _sampleCount;
     pd.multisample.mask    = 0xFFFFFFFFu;
     result.pipeline = wgpuDeviceCreateRenderPipeline(_device, &pd);
 

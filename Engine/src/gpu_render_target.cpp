@@ -5,6 +5,7 @@ GPURenderTarget::GPURenderTarget(WGPUDevice device, const RenderTarget::Props& p
     : _device(device),
       _width(props.width),
       _height(props.height),
+      _samples(props.numSamples > 1 ? props.numSamples : 1),
       _withDepth(props.withDepth),
       _hdr(props.hdr) {
     Create();
@@ -15,6 +16,8 @@ GPURenderTarget::~GPURenderTarget() {
 }
 
 void GPURenderTarget::Create() {
+    const WGPUTextureFormat colorFmt = _hdr ? WGPUTextureFormat_RGBA16Float : WGPUTextureFormat_RGBA8Unorm;
+
     WGPUTextureDescriptor colorDesc{};
     // CopySrc: BloomPass snapshots sceneRT's color texture into a separate
     // texture before compositing bloom back in, since a texture cannot be
@@ -22,10 +25,21 @@ void GPURenderTarget::Create() {
     colorDesc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopySrc;
     colorDesc.dimension     = WGPUTextureDimension_2D;
     colorDesc.size          = { (uint32_t)_width, (uint32_t)_height, 1 };
-    colorDesc.format        = _hdr ? WGPUTextureFormat_RGBA16Float : WGPUTextureFormat_RGBA8Unorm;
+    colorDesc.format        = colorFmt;
     colorDesc.mipLevelCount = 1;
-    colorDesc.sampleCount   = 1;
+    colorDesc.sampleCount   = 1; // single-sample; resolve target under MSAA
     _colorTexture = wgpuDeviceCreateTexture(_device, &colorDesc);
+
+    if (_samples > 1) {
+        WGPUTextureDescriptor msaaDesc{};
+        msaaDesc.usage         = WGPUTextureUsage_RenderAttachment;
+        msaaDesc.dimension     = WGPUTextureDimension_2D;
+        msaaDesc.size          = { (uint32_t)_width, (uint32_t)_height, 1 };
+        msaaDesc.format        = colorFmt;
+        msaaDesc.mipLevelCount = 1;
+        msaaDesc.sampleCount   = (uint32_t)_samples;
+        _msaaTexture = wgpuDeviceCreateTexture(_device, &msaaDesc);
+    }
 
     if (_withDepth) {
         WGPUTextureDescriptor depthDesc{};
@@ -34,7 +48,7 @@ void GPURenderTarget::Create() {
         depthDesc.size          = { (uint32_t)_width, (uint32_t)_height, 1 };
         depthDesc.format        = WGPUTextureFormat_Depth32Float;
         depthDesc.mipLevelCount = 1;
-        depthDesc.sampleCount   = 1;
+        depthDesc.sampleCount   = (uint32_t)_samples; // must match the color attachment
         _depthTexture = wgpuDeviceCreateTexture(_device, &depthDesc);
     }
 }
@@ -50,8 +64,10 @@ void GPURenderTarget::Destroy() {
         _activeEnc = nullptr;
     }
     if (_colorView)   { wgpuTextureViewRelease(_colorView);   _colorView   = nullptr; }
+    if (_msaaView)    { wgpuTextureViewRelease(_msaaView);    _msaaView    = nullptr; }
     if (_depthView)   { wgpuTextureViewRelease(_depthView);   _depthView   = nullptr; }
     if (_colorTexture){ wgpuTextureRelease(_colorTexture);    _colorTexture = nullptr; }
+    if (_msaaTexture) { wgpuTextureRelease(_msaaTexture);     _msaaTexture  = nullptr; }
     if (_depthTexture){ wgpuTextureRelease(_depthTexture);    _depthTexture = nullptr; }
 }
 
@@ -64,7 +80,17 @@ void GPURenderTarget::Begin(CommandEncoder* enc) {
     // Zero-init leaves depthSlice = 0, but for non-3D attachments Dawn
     // requires WGPU_DEPTH_SLICE_UNDEFINED (newer Chrome validates this).
     colorAttach.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-    colorAttach.view       = _colorView;
+    if (_samples > 1) {
+        // Render into the multisampled texture; every End() resolves into the
+        // single-sample _colorTexture so downstream sampling/copies always
+        // see resolved content. Load preserves MSAA content across the many
+        // Begin/End pairs sceneRT goes through within one frame.
+        _msaaView = wgpuTextureCreateView(_msaaTexture, nullptr);
+        colorAttach.view          = _msaaView;
+        colorAttach.resolveTarget = _colorView;
+    } else {
+        colorAttach.view = _colorView;
+    }
     colorAttach.loadOp     = _clearPending ? WGPULoadOp_Clear : WGPULoadOp_Load;
     colorAttach.storeOp    = WGPUStoreOp_Store;
     colorAttach.clearValue = { _clearColor.r, _clearColor.g, _clearColor.b, _clearColor.a };
@@ -101,6 +127,7 @@ void GPURenderTarget::End() {
         _activeEnc = nullptr;
     }
     if (_colorView) { wgpuTextureViewRelease(_colorView); _colorView = nullptr; }
+    if (_msaaView)  { wgpuTextureViewRelease(_msaaView);  _msaaView  = nullptr; }
     if (_depthView) { wgpuTextureViewRelease(_depthView); _depthView = nullptr; }
 }
 

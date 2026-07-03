@@ -103,27 +103,64 @@ fn shadowFactor(worldPos: vec3<f32>, nDotL: f32) -> f32 {
     return lit / 9.0;
 }
 
+// Mirror of pbr.frag's Cook-Torrance directional lighting. The ao/roughness/
+// metallic maps aren't bound under WebGPU (base map only); the constants
+// below stand in for the engine's default map values. Composition matches
+// pbr.frag main() exactly: BRDF·lightDiffuse·(1-shadow)·ndl + 0.2·ao·albedo,
+// then gamma-ENCODED before writing — the tonemap pass (hdr.frag port)
+// expects gamma-encoded input and decodes with pow(2.2) first. Note that
+// light.ambient and material ambient/shininess are ignored, as in pbr.frag.
+const PI: f32 = 3.1415927;
+const SURF_AO: f32        = 1.0;
+const SURF_ROUGHNESS: f32 = 0.6;
+const SURF_METALLIC: f32  = 0.0;
+
+fn trowbridgeReitzGGX(nh: f32, r: f32) -> f32 {
+    let a2   = r * r * r * r;
+    let nhr  = nh * nh * (a2 - 1.0) + 1.0;
+    return a2 / (PI * nhr * nhr);
+}
+
+fn smithsSchlickGGX(nv: f32, nl: f32, r: f32) -> f32 {
+    let k    = (r + 1.0) * (r + 1.0) / 8.0;
+    let ggx1 = nv / (nv * (1.0 - k) + k);
+    let ggx2 = nl / (nl * (1.0 - k) + k);
+    return ggx1 * ggx2;
+}
+
 @fragment
 fn fs(in: VSOut) -> @location(0) vec4<f32> {
     let norm     = normalize(in.normal);
     let lightDir = normalize(frame.lightDir.xyz);
     let viewDir  = normalize(frame.cameraPos.xyz - in.worldPos);
-    let halfDir  = normalize(lightDir + viewDir);
+    let halfway  = normalize(lightDir + viewDir);
 
-    let diff = max(dot(norm, lightDir), 0.0);
-    let spec = pow(max(dot(norm, halfDir), 0.0), max(draw.shininess.x * 128.0, 1.0));
+    let nv = clamp(dot(norm, viewDir),  0.0, 1.0);
+    let nl = clamp(dot(norm, lightDir), 0.0, 1.0);
+    let nh = clamp(dot(norm, halfway),  0.0, 1.0);
+    let vh = clamp(dot(viewDir, halfway), 0.0, 1.0);
 
-    // Decode the sRGB-encoded base map to linear before lighting, matching
-    // pbr.frag's SurfaceColor (pow 2.2); PostProcess re-encodes after tonemap.
+    // SurfaceColor: sRGB base map decoded to linear, tinted by material diffuse.
     let texColor = textureSample(base_map, samp, in.uv);
     let albedo   = pow(texColor.rgb, vec3<f32>(2.2)) * draw.diffuse.rgb;
 
-    let shadow   = shadowFactor(in.worldPos, diff);
-    let ambient  = draw.materialAmbient.rgb + frame.ambient.rgb * albedo;
-    let diffuse  = diff * frame.lightColor.rgb * albedo;
-    let specular = spec * frame.lightColor.rgb * draw.specular.rgb;
+    let r  = SURF_ROUGHNESS + 0.01;
+    let d  = trowbridgeReitzGGX(nh, r);
+    let g  = smithsSchlickGGX(nv, nl, r);
+    let f0 = mix(vec3<f32>(0.04), albedo, SURF_METALLIC);
+    let f  = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - vh, 5.0);
 
-    return vec4<f32>(ambient + shadow * (diffuse + specular), texColor.a);
+    let specular = d * f * g / max(4.0 * nv * nl, 0.0001);
+    let kd       = (1.0 - SURF_METALLIC) * (vec3<f32>(1.0) - f);
+    let brdf     = kd * albedo / PI + specular;
+
+    let shadow   = shadowFactor(in.worldPos, nl); // 1 = lit
+    let radiance = frame.lightColor.rgb * shadow;
+
+    var result = brdf * radiance * nl;
+    result    += vec3<f32>(0.2) * SURF_AO * albedo;
+
+    return vec4<f32>(pow(result, vec3<f32>(1.0 / 2.2)), texColor.a);
 }
 )";
 

@@ -221,6 +221,10 @@ public:
     // The WGSL only needs a vs entry point. Must be combined with depth().
     GpuPipelineBuilder& depthOnly() { _depthOnlyPipeline = true; return *this; }
 
+    // MSAA sample count — must match the render pass's attachments (e.g.
+    // sceneRT->GetNumSamples() for pipelines drawing into sceneRT).
+    GpuPipelineBuilder& multisample(uint32_t count) { _sampleCount = count; return *this; }
+
     GpuPipeline build();
 
 private:
@@ -243,6 +247,7 @@ private:
     WGPUCompareFunction _depthCompare = WGPUCompareFunction_Less;
     WGPUCullMode        _cullMode     = WGPUCullMode_None;
     bool                _depthOnlyPipeline = false;
+    uint32_t            _sampleCount  = 1;
 };
 
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__

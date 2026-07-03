@@ -32,11 +32,13 @@ public:
     int GetWidth() const override { return _width; }
     int GetHeight() const override { return _height; }
     glm::vec2 GetSize() const override { return { (float)_width, (float)_height }; }
-    int GetNumSamples() const override { return 1; }
+    int GetNumSamples() const override { return _samples; }
 
     bool IsValid() const override { return _colorTexture != nullptr; }
     void Resize(int width, int height) override;
 
+    // Always single-sampled: with MSAA on, this is the resolve target that
+    // every pass's End() resolves into — safe to sample/copy at any time.
     WGPUTexture GetNativeTexture() const { return _colorTexture; }
     WGPUTexture GetNativeDepthTexture() const { return _depthTexture; }
 
@@ -45,9 +47,11 @@ private:
     void Destroy();
 
     WGPUDevice            _device       = nullptr;
-    WGPUTexture           _colorTexture = nullptr;
-    WGPUTexture           _depthTexture = nullptr;
+    WGPUTexture           _colorTexture = nullptr; // single-sample (resolve target under MSAA)
+    WGPUTexture           _msaaTexture  = nullptr; // multisampled color, only when _samples > 1
+    WGPUTexture           _depthTexture = nullptr; // sampleCount matches _samples
     WGPUTextureView       _colorView    = nullptr;
+    WGPUTextureView       _msaaView     = nullptr;
     WGPUTextureView       _depthView    = nullptr;
     WGPURenderPassEncoder _activePass   = nullptr;
     // Encoder whose ->pass we set in Begin(); kept so End() can null it out
@@ -57,6 +61,7 @@ private:
 
     int  _width     = 0;
     int  _height    = 0;
+    int  _samples   = 1;
     bool _withDepth = false;
     bool _hdr       = false;
     glm::vec4 _clearColor = glm::vec4(0.0f);
