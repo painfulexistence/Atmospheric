@@ -117,7 +117,15 @@ Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> sou
     glBindTexture(GL_TEXTURE_2D, textureId);
 
     glTexImage2D(
-        GL_TEXTURE_2D, 0, GL_RGBA8, source_dimensions.x, source_dimensions.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, source.data()
+        GL_TEXTURE_2D,
+        0,
+        GL_RGBA8,
+        source_dimensions.x,
+        source_dimensions.y,
+        0,
+        GL_RGBA,
+        GL_UNSIGNED_BYTE,
+        source.data()
     );
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);

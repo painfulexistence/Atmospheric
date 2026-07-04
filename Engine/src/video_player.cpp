@@ -30,6 +30,7 @@ extern "C" {
     int js_video_grab_frame(uintptr_t playerId, uint8_t* outPixels);
 }
 
+// clang-format off
 // NOLINTBEGIN
 EM_JS(void, js_video_open, (uintptr_t playerId, const char* pathStr), {
     var path = UTF8ToString(pathStr);
@@ -50,7 +51,9 @@ EM_JS(void, js_video_open, (uintptr_t playerId, const char* pathStr), {
     window.videoPlayers[playerId] = { video : video, canvas : canvas, ctx : ctx, lastTime : -1, width : 0, height : 0 };
 });
 // NOLINTEND
+// clang-format on
 
+// clang-format off
 // NOLINTBEGIN
 EM_JS(void, js_video_close, (uintptr_t playerId), {
     if (window.videoPlayers && window.videoPlayers[playerId]) {
@@ -61,7 +64,9 @@ EM_JS(void, js_video_close, (uintptr_t playerId), {
     }
 });
 // NOLINTEND
+// clang-format on
 
+// clang-format off
 // NOLINTBEGIN
 EM_JS(void, js_video_play, (uintptr_t playerId), {
     if (window.videoPlayers && window.videoPlayers[playerId]) {
@@ -81,7 +86,9 @@ EM_JS(void, js_video_play, (uintptr_t playerId), {
     }
 });
 // NOLINTEND
+// clang-format on
 
+// clang-format off
 // NOLINTBEGIN
 EM_JS(void, js_video_pause, (uintptr_t playerId), {
     if (window.videoPlayers && window.videoPlayers[playerId]) {
@@ -89,7 +96,9 @@ EM_JS(void, js_video_pause, (uintptr_t playerId), {
     }
 });
 // NOLINTEND
+// clang-format on
 
+// clang-format off
 // NOLINTBEGIN
 EM_JS(void, js_video_get_info, (uintptr_t playerId, double* outInfo), {
     if (!window.videoPlayers || !window.videoPlayers[playerId]) return;
@@ -101,7 +110,9 @@ EM_JS(void, js_video_get_info, (uintptr_t playerId, double* outInfo), {
     setValue(outInfo + 32, video.ended ? 1 : 0, 'double');
 });
 // NOLINTEND
+// clang-format on
 
+// clang-format off
 // NOLINTBEGIN
 EM_JS(int, js_video_grab_frame, (uintptr_t playerId, uint8_t* outPixels), {
     if (!window.videoPlayers || !window.videoPlayers[playerId]) return 0;
@@ -136,6 +147,7 @@ EM_JS(int, js_video_grab_frame, (uintptr_t playerId, uint8_t* outPixels), {
     return 1;
 });
 // NOLINTEND
+// clang-format on
 #endif
 
 // ─── FFmpegDecodeContext ───────────────────────────────────────────────────────────────────────────────────────

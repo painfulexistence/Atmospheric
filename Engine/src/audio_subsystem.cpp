@@ -27,6 +27,7 @@ AudioSubsystem::AudioSubsystem(void) {
     _instance = this;
 
     // Initialize Web Audio context and global window.AudioManager
+    // clang-format off
     // NOLINTBEGIN
     EM_ASM({
         if (!window.AudioManager) {
@@ -257,6 +258,7 @@ AudioSubsystem::AudioSubsystem(void) {
         document.addEventListener('touchend', resumeAudio);
     });
     // NOLINTEND
+    // clang-format on
 }
 
 AudioSubsystem::~AudioSubsystem(void) {
@@ -337,6 +339,7 @@ MusicID AudioSubsystem::LoadMusic(const char* filename) {
     musicPaths[id] = path;
     musicVolumes[id] = 1.0f;
 
+    // clang-format off
     // NOLINTBEGIN
     EM_ASM(
         {
@@ -347,6 +350,7 @@ MusicID AudioSubsystem::LoadMusic(const char* filename) {
         path.c_str()
     );
     // NOLINTEND
+    // clang-format on
 
     return id;
 }
@@ -423,6 +427,7 @@ SoundID AudioSubsystem::LoadSound(const char* filename) {
     soundPaths[id] = path;
     soundVolumes[id] = 1.0f;
 
+    // clang-format off
     // NOLINTBEGIN
     EM_ASM(
         {
@@ -433,6 +438,7 @@ SoundID AudioSubsystem::LoadSound(const char* filename) {
         path.c_str()
     );
     // NOLINTEND
+    // clang-format on
 
     return id;
 }
@@ -476,11 +482,13 @@ void AudioSubsystem::PlaySoundVariation(SoundID id, float pitchVariation, float 
         if (pitch < 0.1) pitch = 0.1;
     }
 
+    // clang-format off
     // NOLINTBEGIN
     int jsId = EM_ASM_INT(
         { return window.AudioManager.play(UTF8ToString($0), false, $1, false, $2); }, path.c_str(), vol, pitch
     );
     // NOLINTEND
+    // clang-format on
 
     soundActiveJsIds[id].push_back(jsId);
 }
