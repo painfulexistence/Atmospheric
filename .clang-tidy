@@ -32,3 +32,10 @@ CheckOptions:
   readability-identifier-naming.VariableCase: camelBack
   readability-identifier-naming.ParameterCase: camelBack
   readability-identifier-naming.NamespaceCase: CamelCase
+  # Global/static vars carry a 'g' prefix (e.g. gCache) — matches existing engine
+  # convention. Without an explicit rule here, clang-tidy has been observed to
+  # mis-rename these across #ifdef boundaries, leaving decl/use out of sync.
+  readability-identifier-naming.GlobalVariableCase: camelBack
+  readability-identifier-naming.GlobalVariablePrefix: g
+  readability-identifier-naming.StaticVariableCase: camelBack
+  readability-identifier-naming.StaticVariablePrefix: g

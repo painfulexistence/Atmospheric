@@ -12,7 +12,7 @@
 //   Prefetch   : parallel fread via JobSystem; onDone fires before Prefetch
 //                returns (synchronous completion on native).
 //
-// The in-process cache (g_cache) is a file-scope global so it is reachable
+// The in-process cache (gCache) is a file-scope global so it is reachable
 // from C-style callbacks (Emscripten) and JobSystem lambdas without needing
 // a captured 'this' pointer.
 
@@ -37,7 +37,7 @@ static std::string gBasePath;
 // In-process cache
 // ─────────────────────────────────────────────────────────────────────────────
 static std::unordered_map<std::string, FileSystem::Bytes> gCache;
-// Protects g_cache on native builds where JobSystem worker threads write it.
+// Protects gCache on native builds where JobSystem worker threads write it.
 // On Emscripten (single-threaded), the mutex is a no-op but keeps the code
 // correct if pthreads are ever enabled.
 static std::mutex gCacheMutex;
@@ -403,8 +403,8 @@ namespace {
             }
             // Store in in-process cache
             {
-                std::lock_guard<std::mutex> lk(g_cacheMutex);
-                g_cache[ctx->path] = bytes;
+                std::lock_guard<std::mutex> lk(gCacheMutex);
+                gCache[ctx->path] = bytes;
             }
         }
 
@@ -465,9 +465,9 @@ void FileSystem::ReadAsync(const std::string& path, ReadCallback cb) {
     std::string normPath = NormalizePath(path);
     // Cache hit → immediate
     {
-        std::lock_guard<std::mutex> lk(g_cacheMutex);
-        auto it = g_cache.find(normPath);
-        if (it != g_cache.end()) {
+        std::lock_guard<std::mutex> lk(gCacheMutex);
+        auto it = gCache.find(normPath);
+        if (it != gCache.end()) {
             cb(it->second, true);
             return;
         }
@@ -486,15 +486,15 @@ void FileSystem::Prefetch(const std::vector<std::string>& paths, CompletionCallb
     // Skip paths that are already in cache or MEMFS
     std::vector<std::string> pending;
     {
-        std::lock_guard<std::mutex> lk(g_cacheMutex);
+        std::lock_guard<std::mutex> lk(gCacheMutex);
         for (const auto& p : paths) {
             std::string normPath = NormalizePath(p);
-            if (g_cache.contains(normPath)) continue;
+            if (gCache.contains(normPath)) continue;
 
             // Try reading from MEMFS (populated via --preload-file)
             auto bytes = ReadFromDisk(normPath);
             if (!bytes.empty()) {
-                g_cache[normPath] = std::move(bytes);
+                gCache[normPath] = std::move(bytes);
                 continue;
             }
 

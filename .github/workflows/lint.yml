@@ -1,4 +1,4 @@
-name: Code Quality
+name: Lint
 
 on:
   pull_request:
@@ -18,11 +18,10 @@ jobs:
   format-check:
     name: clang-format
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install clang-format 18
+      - name: Install clang-format
         run: |
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
           sudo add-apt-repository "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-18 main"
@@ -34,5 +33,4 @@ jobs:
       # cleaned up in a dedicated bulk-reformat commit. Failures still show
       # in the job log; remove continue-on-error to make this gate again.
       - name: Check formatting
-        continue-on-error: true
         run: python3 scripts/run_code_check.py --check
