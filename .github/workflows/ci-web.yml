@@ -95,8 +95,8 @@ jobs:
       - name: Upload WebAssembly artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: helloworld-wasm-${{ github.sha }}
-          path: ${{ github.workspace }}/build/HelloWorld/
+          name: 3dbasics-wasm-${{ github.sha }}
+          path: ${{ github.workspace }}/build/3DBasics/
           if-no-files-found: error
           retention-days: 30
 

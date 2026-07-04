@@ -57,14 +57,16 @@ else
     echo -e "${RED}⚠️ 警告: 找不到 ${PROJECT_ROOT}/docs 目錄${NC}"
 fi
 
-# 3. 啟動 buildWasm release (使用 --no-server 略過伺服器啟動)
+# 3. 啟動 buildWasm release (使用 --no-server 略過伺服器啟動)。
+#    部署一律用 --clean 重新建置，確保 www/ 只反映目前的原始碼，不會殘留
+#    已改名/移除範例的舊產物 (deploy 是逐一發佈 build 目錄下每個含 .html 的資料夾)。
 echo -e ""
 if [ ${#BUILD_FLAGS[@]} -gt 0 ]; then
-    echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建 (${BUILD_FLAGS[*]})...${NC}"
+    echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建 (clean, ${BUILD_FLAGS[*]})...${NC}"
 else
-    echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建...${NC}"
+    echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建 (clean)...${NC}"
 fi
-"${SCRIPT_DIR}/buildWasm.sh" release --no-server "${BUILD_FLAGS[@]}"
+"${SCRIPT_DIR}/buildWasm.sh" release --no-server --clean "${BUILD_FLAGS[@]}"
 
 # 4. 尋找每個範例產物並複製到 www/demo/ 下，重新命名為 index.html
 echo -e ""
@@ -91,9 +93,14 @@ if [ -d "${RELEASE_DIR}" ]; then
             # 複製整個資料夾到 www/demo/
             cp -R "$target_dir" "${LOCAL_WWW}/demo/${target_name}"
             
-            # 將 <TargetName>.html 改名為 index.html (相容舊版與 OUTPUT_NAME 'index' 的新版產物)
-            if [ -f "${LOCAL_WWW}/demo/${target_name}/${target_name}.html" ]; then
-                mv "${LOCAL_WWW}/demo/${target_name}/${target_name}.html" "${LOCAL_WWW}/demo/${target_name}/index.html"
+            # 將唯一的 *.html 改名為 index.html，讓 ./<target_name>/ 能直接載入
+            # (名稱無關：相容 <TargetName>.html 與 OUTPUT_NAME 'index' 兩種產物)。
+            demo_dir="${LOCAL_WWW}/demo/${target_name}"
+            if [ ! -f "${demo_dir}/index.html" ]; then
+                first_html=$(ls "${demo_dir}"/*.html 2>/dev/null | head -n1)
+                if [ -n "$first_html" ]; then
+                    mv "$first_html" "${demo_dir}/index.html"
+                fi
             fi
             
             COPIED_COUNT=$((COPIED_COUNT + 1))
@@ -110,8 +117,6 @@ find "${LOCAL_WWW}" -name ".DS_Store" -type f -delete 2>/dev/null || true
 get_deploy_name() {
     local folder_name="$1"
     case "$folder_name" in
-        "LuaScripting") echo "AtmosLua" ;;
-        "SceneLoader") echo "CSBDemo" ;;
         "Physics2D") echo "Physics2DDemo" ;;
         "MazeFPS") echo "Maze" ;;
         *) echo "$folder_name" ;;

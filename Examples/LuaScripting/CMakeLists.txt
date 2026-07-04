@@ -1,4 +1,4 @@
-set(TARGET_NAME AtmosLua)
+set(TARGET_NAME LuaScripting)
 
 find_package(glm CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
