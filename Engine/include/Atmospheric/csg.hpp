@@ -19,112 +19,109 @@
 
 namespace CSG {
 
-// ============================================================================
-// AABB - Axis-Aligned Bounding Box
-// ============================================================================
+    // ============================================================================
+    // AABB - Axis-Aligned Bounding Box
+    // ============================================================================
 
-struct AABB {
-    glm::vec3 min = glm::vec3(0);
-    glm::vec3 max = glm::vec3(0);
+    struct AABB {
+        glm::vec3 min = glm::vec3(0);
+        glm::vec3 max = glm::vec3(0);
 
-    AABB() = default;
-    AABB(glm::vec3 min, glm::vec3 max) : min(min), max(max) {}
+        AABB() = default;
+        AABB(glm::vec3 min, glm::vec3 max) : min(min), max(max) {
+        }
 
-    // Create from center and size
-    static AABB FromCenterSize(glm::vec3 center, glm::vec3 size) {
-        glm::vec3 halfSize = size * 0.5f;
-        return AABB(center - halfSize, center + halfSize);
-    }
+        // Create from center and size
+        static AABB FromCenterSize(glm::vec3 center, glm::vec3 size) {
+            glm::vec3 halfSize = size * 0.5f;
+            return AABB(center - halfSize, center + halfSize);
+        }
 
-    bool IsValid() const {
-        return min.x < max.x && min.y < max.y && min.z < max.z;
-    }
+        bool IsValid() const {
+            return min.x < max.x && min.y < max.y && min.z < max.z;
+        }
 
-    glm::vec3 GetCenter() const {
-        return (min + max) * 0.5f;
-    }
+        glm::vec3 GetCenter() const {
+            return (min + max) * 0.5f;
+        }
 
-    glm::vec3 GetSize() const {
-        return max - min;
-    }
+        glm::vec3 GetSize() const {
+            return max - min;
+        }
 
-    // Calculate intersection of two AABBs
-    static AABB Intersect(const AABB& a, const AABB& b) {
-        return AABB(
-            glm::max(a.min, b.min),
-            glm::min(a.max, b.max)
-        );
-    }
+        // Calculate intersection of two AABBs
+        static AABB Intersect(const AABB& a, const AABB& b) {
+            return AABB(glm::max(a.min, b.min), glm::min(a.max, b.max));
+        }
 
-    bool Intersects(const AABB& other) const {
-        return Intersect(*this, other).IsValid();
-    }
+        bool Intersects(const AABB& other) const {
+            return Intersect(*this, other).IsValid();
+        }
 
-    bool Contains(const AABB& other) const {
-        return other.min.x >= min.x && other.max.x <= max.x &&
-               other.min.y >= min.y && other.max.y <= max.y &&
-               other.min.z >= min.z && other.max.z <= max.z;
-    }
-};
+        bool Contains(const AABB& other) const {
+            return other.min.x >= min.x && other.max.x <= max.x && other.min.y >= min.y && other.max.y <= max.y
+                   && other.min.z >= min.z && other.max.z <= max.z;
+        }
+    };
 
-// ============================================================================
-// CSG Primitive Types
-// ============================================================================
+    // ============================================================================
+    // CSG Primitive Types
+    // ============================================================================
 
-enum class PrimitiveType {
-    Box,
-    Cylinder,  // Future
-    Wedge      // Future
-};
+    enum class PrimitiveType {
+        Box,
+        Cylinder,// Future
+        Wedge// Future
+    };
 
-struct Primitive {
-    PrimitiveType type = PrimitiveType::Box;
-    glm::vec3 position = glm::vec3(0);
-    glm::vec3 size = glm::vec3(1);
-    std::string name;  // For debugging/editor
-};
+    struct Primitive {
+        PrimitiveType type = PrimitiveType::Box;
+        glm::vec3 position = glm::vec3(0);
+        glm::vec3 size = glm::vec3(1);
+        std::string name;// For debugging/editor
+    };
 
-// ============================================================================
-// CSG Node - Tree structure for CSG operations
-// ============================================================================
+    // ============================================================================
+    // CSG Node - Tree structure for CSG operations
+    // ============================================================================
 
-enum class Operation {
-    Primitive,   // Leaf node - single shape
-    Union,       // A + B
-    Subtract,    // A - B
-    Intersect    // A & B
-};
+    enum class Operation {
+        Primitive,// Leaf node - single shape
+        Union,// A + B
+        Subtract,// A - B
+        Intersect// A & B
+    };
 
-struct Node {
-    Operation operation = Operation::Primitive;
-    Primitive primitive;
-    std::shared_ptr<Node> left;
-    std::shared_ptr<Node> right;
-    std::string name;
-};
+    struct Node {
+        Operation operation = Operation::Primitive;
+        Primitive primitive;
+        std::shared_ptr<Node> left;
+        std::shared_ptr<Node> right;
+        std::string name;
+    };
 
-using NodePtr = std::shared_ptr<Node>;
+    using NodePtr = std::shared_ptr<Node>;
 
-// ============================================================================
-// CSG API - Main interface
-// ============================================================================
+    // ============================================================================
+    // CSG API - Main interface
+    // ============================================================================
 
-// Create primitives
-NodePtr Box(glm::vec3 position, glm::vec3 size, const std::string& name = "");
+    // Create primitives
+    NodePtr Box(glm::vec3 position, glm::vec3 size, const std::string& name = "");
 
-// Boolean operations
-NodePtr Union(NodePtr a, NodePtr b);
-NodePtr Subtract(NodePtr a, NodePtr b);
-NodePtr Intersect(NodePtr a, NodePtr b);
+    // Boolean operations
+    NodePtr Union(NodePtr a, NodePtr b);
+    NodePtr Subtract(NodePtr a, NodePtr b);
+    NodePtr Intersect(NodePtr a, NodePtr b);
 
-// Compile CSG tree to list of AABBs
-std::vector<AABB> Compile(const NodePtr& node);
+    // Compile CSG tree to list of AABBs
+    std::vector<AABB> Compile(const NodePtr& node);
 
-// ============================================================================
-// Box Subtract Algorithm
-// ============================================================================
+    // ============================================================================
+    // Box Subtract Algorithm
+    // ============================================================================
 
-// Subtract box B from box A, returning resulting boxes (max 6)
-std::vector<AABB> SubtractBox(const AABB& a, const AABB& b);
+    // Subtract box B from box A, returning resulting boxes (max 6)
+    std::vector<AABB> SubtractBox(const AABB& a, const AABB& b);
 
-} // namespace CSG
+}// namespace CSG

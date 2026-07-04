@@ -1,17 +1,17 @@
 #include "ui_page_manager.hpp"
 #include "rmlui_manager.hpp"
+#include <cassert>
 #include <spdlog/spdlog.h>
 
 UIPageManager* UIPageManager::s_instance = nullptr;
 
 UIPageManager* UIPageManager::Get() {
-    if (!s_instance) {
-        s_instance = new UIPageManager();
-    }
+    assert(s_instance && "UIPageManager is owned by Application — construct the Application first");
     return s_instance;
 }
 
 UIPageManager::UIPageManager() {
+    assert(!s_instance && "UIPageManager is a single-instance service owned by Application");
     s_instance = this;
 }
 
@@ -55,10 +55,7 @@ void UIPageManager::RemovePage(const UIPageID& id) {
     entry.page->OnDetach();
 
     // Remove from navigation stack if present
-    _navigationStack.erase(
-      std::remove(_navigationStack.begin(), _navigationStack.end(), id),
-      _navigationStack.end()
-    );
+    _navigationStack.erase(std::remove(_navigationStack.begin(), _navigationStack.end(), id), _navigationStack.end());
 
     _pages.erase(it);
 }
@@ -107,8 +104,8 @@ void UIPageManager::PopPage() {
 }
 
 const UIPageID& UIPageManager::GetCurrentPage() const {
-    static const UIPageID empty;
-    if (_navigationStack.empty()) return empty;
+    static const UIPageID gempty;
+    if (_navigationStack.empty()) return gempty;
     return _navigationStack.back();
 }
 

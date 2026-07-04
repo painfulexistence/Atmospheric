@@ -1,47 +1,37 @@
 #include "message_bus.hpp"
-#include "messagable.hpp"
 #include "application.hpp"
+#include "messagable.hpp"
 
-MessageBus::MessageBus(Application* supervisor)
-{
+MessageBus::MessageBus(Application* supervisor) {
     this->_supervisor = supervisor;
 }
 
-MessageBus::~MessageBus()
-{
-
+MessageBus::~MessageBus() {
 }
 
-int MessageBus::Register(Messagable* receiver)
-{
+int MessageBus::Register(Messagable* receiver) {
     int id = _receivers.size();
     this->_receivers.push_back(receiver);
     return id;
 }
 
-void MessageBus::PostMessage(Message msg)
-{
+void MessageBus::PostMessage(Message msg) {
     _messages.push(msg);
 }
 
-void MessageBus::PostImmediateMessage(Message msg)
-{
-    if (msg.type == MessageType::ON_QUIT)
-    {
+void MessageBus::PostImmediateMessage(Message msg) {
+    if (msg.type == MessageType::ON_QUIT) {
         _supervisor->Quit();
         return;
     }
-    for (auto m : _receivers)
-    {
+    for (auto m : _receivers) {
         m->ReceiveMessage(msg);
     }
 }
 
-void MessageBus::Process()
-{
+void MessageBus::Process() {
     int processedCount = 0;
-    while (!this->_messages.empty() && processedCount < MAX_PROCESSING_NUM_MSGS)
-    {
+    while (!this->_messages.empty() && processedCount < MAX_PROCESSING_NUM_MSGS) {
         auto msg = this->_messages.front();
         PostImmediateMessage(msg);
         OnMessageSent(msg);
@@ -51,7 +41,6 @@ void MessageBus::Process()
     }
 }
 
-void MessageBus::OnMessageSent(Message msg)
-{
+void MessageBus::OnMessageSent(Message msg) {
     PostImmediateMessage(Message(MessageType::ON_MESSAGE_SENT));
 }

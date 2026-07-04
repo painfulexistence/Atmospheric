@@ -1,16 +1,16 @@
 #pragma once
-#include <glm/glm.hpp>
 #include <cstdint>
+#include <glm/glm.hpp>
 #include <vector>
 
-class GraphicsServer;
+class GraphicsSubsystem;
 
 /// A single 2D point-light.
 /// Ported from 2d-engine/src/fx/lighting.ts  PointLight interface.
 struct PointLight2D {
     float x = 0, y = 0;
     float r = 1.0f, g = 0.9f, b = 0.7f;
-    float radius    = 150.0f;
+    float radius = 150.0f;
     float intensity = 1.0f;
 };
 
@@ -29,7 +29,7 @@ public:
     /// Submit a dark ambient overlay and glowing light circles to the canvas
     /// draw queue.  Call this AFTER drawing the scene tiles/sprites so the
     /// overlay appears on top of everything but beneath the HUD.
-    void Apply(GraphicsServer* gfx, int screenW, int screenH) const;
+    void Apply(GraphicsSubsystem* gfx, int screenW, int screenH) const;
 
     // Ambient light colour (applied uniformly across the whole scene)
     float ambientR = 0.18f, ambientG = 0.20f, ambientB = 0.28f, ambientA = 1.0f;

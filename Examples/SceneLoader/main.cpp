@@ -3,39 +3,41 @@
 class CSBDemo : public Application {
     using Application::Application;
 
-    SceneLoader* sceneLoader = nullptr;
-    SceneLoadResult loadedScene;
-    bool showDebugGrid = false;
-    bool showNodeInfo = false;
+    SceneLoader* _sceneLoader = nullptr;
+    SceneLoadResult _loadedScene;
+    bool _showDebugGrid = false;
+    bool _showNodeInfo = false;
 
     // Test sprites for layout verification
-    std::vector<GameObject*> testSprites;
+    std::vector<GameObject*> _testSprites;
 
     void OnInit() override {
-        GoScene("main", [this]{ OnLoad(); });
+        GoScene("main", [this] { OnLoad(); });
     }
 
     void OnLoad() override {
         // Initialize scene loader
-        sceneLoader = new SceneLoader(this);
+        _sceneLoader = new SceneLoader(this);
 
         // Set up orthographic camera for 2D view
-        mainCamera = graphics.GetMainCamera();
+        mainCamera = GraphicsSubsystem::Get()->GetMainCamera();
 
-        loadedScene = sceneLoader->Load("assets/scenes/Canvas.csb", glm::vec3(0.0f), CanvasLayer::LAYER_WORLD);
-        if (loadedScene.success) {
-            console.Info(fmt::format("CSB loaded successfully! {} nodes created", loadedScene.allNodes.size()));
+        _loadedScene = _sceneLoader->Load("assets/scenes/Canvas.csb", glm::vec3(0.0f), CanvasLayer::LAYER_WORLD);
+        if (_loadedScene.success) {
+            ConsoleSubsystem::Get()->Info(
+                fmt::format("CSB loaded successfully! {} nodes created", _loadedScene.allNodes.size())
+            );
         } else {
-            console.Warn(fmt::format("CSB load failed: {}", loadedScene.error));
-            console.Info("Creating layout test sprites...");
+            ConsoleSubsystem::Get()->Warn(fmt::format("CSB load failed: {}", _loadedScene.error));
+            ConsoleSubsystem::Get()->Info("Creating layout test sprites...");
             CreateLayoutTestSprites();
         }
 
-        console.Info("=== CSB Demo Controls ===");
-        console.Info("1 - Toggle debug grid/coordinate system");
-        console.Info("2 - Toggle node info overlay");
-        console.Info("R - Reload scene");
-        console.Info("ESC - Quit");
+        ConsoleSubsystem::Get()->Info("=== CSB Demo Controls ===");
+        ConsoleSubsystem::Get()->Info("1 - Toggle debug grid/coordinate system");
+        ConsoleSubsystem::Get()->Info("2 - Toggle node info overlay");
+        ConsoleSubsystem::Get()->Info("R - Reload scene");
+        ConsoleSubsystem::Get()->Info("ESC - Quit");
     }
 
     void CreateLayoutTestSprites() {
@@ -51,7 +53,7 @@ class CSBDemo : public Application {
         originProps.layer = CanvasLayer::LAYER_OVERLAY;
         origin->AddComponent<SpriteComponent>(originProps);
         origin->SetName("Origin (0,0)");
-        testSprites.push_back(origin);
+        _testSprites.push_back(origin);
 
         // === Test 2: Different pivot points ===
         // All at same position (200, 300) but different pivots
@@ -68,7 +70,7 @@ class CSBDemo : public Application {
         blProps.zOrder = 1;
         pivotBL->AddComponent<SpriteComponent>(blProps);
         pivotBL->SetName("Pivot(0,0) BL");
-        testSprites.push_back(pivotBL);
+        _testSprites.push_back(pivotBL);
 
         // Pivot (0.5, 0.5) - center
         auto pivotC = CreateGameObject(glm::vec2(testX, testY));
@@ -80,7 +82,7 @@ class CSBDemo : public Application {
         cProps.zOrder = 2;
         pivotC->AddComponent<SpriteComponent>(cProps);
         pivotC->SetName("Pivot(0.5,0.5) C");
-        testSprites.push_back(pivotC);
+        _testSprites.push_back(pivotC);
 
         // Pivot (1,1) - top-right
         auto pivotTR = CreateGameObject(glm::vec2(testX, testY));
@@ -92,7 +94,7 @@ class CSBDemo : public Application {
         trProps.zOrder = 3;
         pivotTR->AddComponent<SpriteComponent>(trProps);
         pivotTR->SetName("Pivot(1,1) TR");
-        testSprites.push_back(pivotTR);
+        _testSprites.push_back(pivotTR);
 
         // === Test 3: Scale test ===
         auto scaled = CreateGameObject(glm::vec2(400.0f, 300.0f));
@@ -104,7 +106,7 @@ class CSBDemo : public Application {
         scaledProps.layer = CanvasLayer::LAYER_WORLD;
         scaled->AddComponent<SpriteComponent>(scaledProps);
         scaled->SetName("Scaled 2x1.5 (100x75)");
-        testSprites.push_back(scaled);
+        _testSprites.push_back(scaled);
 
         // === Test 4: Rotation test ===
         auto rotated = CreateGameObject(glm::vec2(550.0f, 300.0f));
@@ -116,7 +118,7 @@ class CSBDemo : public Application {
         rotProps.layer = CanvasLayer::LAYER_WORLD;
         rotated->AddComponent<SpriteComponent>(rotProps);
         rotated->SetName("Rotated 45deg");
-        testSprites.push_back(rotated);
+        _testSprites.push_back(rotated);
 
         // === Test 5: Flip test ===
         // Normal
@@ -128,7 +130,7 @@ class CSBDemo : public Application {
         normalProps.layer = CanvasLayer::LAYER_WORLD;
         normal->AddComponent<SpriteComponent>(normalProps);
         normal->SetName("Normal");
-        testSprites.push_back(normal);
+        _testSprites.push_back(normal);
 
         // FlipX
         auto flipX = CreateGameObject(glm::vec2(650.0f, 500.0f));
@@ -140,7 +142,7 @@ class CSBDemo : public Application {
         flipXProps.layer = CanvasLayer::LAYER_WORLD;
         flipX->AddComponent<SpriteComponent>(flipXProps);
         flipX->SetName("FlipX");
-        testSprites.push_back(flipX);
+        _testSprites.push_back(flipX);
 
         // FlipY
         auto flipY = CreateGameObject(glm::vec2(650.0f, 550.0f));
@@ -152,7 +154,7 @@ class CSBDemo : public Application {
         flipYProps.layer = CanvasLayer::LAYER_WORLD;
         flipY->AddComponent<SpriteComponent>(flipYProps);
         flipY->SetName("FlipY");
-        testSprites.push_back(flipY);
+        _testSprites.push_back(flipY);
 
         // === Test 6: Aspect ratio test (should be 16:9) ===
         auto aspect = CreateGameObject(glm::vec2(400.0f, 500.0f));
@@ -163,7 +165,7 @@ class CSBDemo : public Application {
         aspectProps.layer = CanvasLayer::LAYER_WORLD_BACK;
         aspect->AddComponent<SpriteComponent>(aspectProps);
         aspect->SetName("16:9 Aspect (160x90)");
-        testSprites.push_back(aspect);
+        _testSprites.push_back(aspect);
 
         // === Test 7: zOrder test (stacked at same position) ===
         for (int i = 0; i < 3; i++) {
@@ -176,40 +178,40 @@ class CSBDemo : public Application {
             stackProps.zOrder = i;// 0, 1, 2
             stacked->AddComponent<SpriteComponent>(stackProps);
             stacked->SetName(fmt::format("zOrder={}", i));
-            testSprites.push_back(stacked);
+            _testSprites.push_back(stacked);
         }
 
-        console.Info(fmt::format("Created {} layout test sprites", testSprites.size()));
+        ConsoleSubsystem::Get()->Info(fmt::format("Created {} layout test sprites", _testSprites.size()));
     }
 
     void OnUpdate(float dt, float time) override {
         // Toggle debug grid
-        if (input.IsKeyPressed(Key::Num1)) {
-            showDebugGrid = !showDebugGrid;
-            console.Info(fmt::format("Debug grid: {}", showDebugGrid ? "ON" : "OFF"));
+        if (InputSubsystem::Get()->IsKeyPressed(Key::Num1)) {
+            _showDebugGrid = !_showDebugGrid;
+            ConsoleSubsystem::Get()->Info(fmt::format("Debug grid: {}", _showDebugGrid ? "ON" : "OFF"));
         }
 
         // Toggle node info
-        if (input.IsKeyPressed(Key::Num2)) {
-            showNodeInfo = !showNodeInfo;
-            console.Info(fmt::format("Node info: {}", showNodeInfo ? "ON" : "OFF"));
+        if (InputSubsystem::Get()->IsKeyPressed(Key::Num2)) {
+            _showNodeInfo = !_showNodeInfo;
+            ConsoleSubsystem::Get()->Info(fmt::format("Node info: {}", _showNodeInfo ? "ON" : "OFF"));
         }
 
         // Reload scene
-        if (input.IsKeyPressed(Key::R)) {
+        if (InputSubsystem::Get()->IsKeyPressed(Key::R)) {
             ReloadScene();
         }
 
-        if (input.IsKeyDown(Key::ESCAPE)) {
+        if (InputSubsystem::Get()->IsKeyDown(Key::ESCAPE)) {
             Quit();
         }
 
         // Draw debug overlay
-        if (showDebugGrid) {
+        if (_showDebugGrid) {
             DrawDebugGrid();
         }
 
-        if (showNodeInfo) {
+        if (_showNodeInfo) {
             DrawNodeInfo();
         }
     }
@@ -219,10 +221,10 @@ class CSBDemo : public Application {
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(ImVec2(800, 600));
         ImGui::Begin(
-          "DebugOverlay",
-          nullptr,
-          ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize
-            | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs
+            "DebugOverlay",
+            nullptr,
+            ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize
+                | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoInputs
         );
 
         ImDrawList* drawList = ImGui::GetWindowDrawList();
@@ -273,13 +275,13 @@ class CSBDemo : public Application {
     void DrawNodeInfo() {
         ImGui::SetNextWindowPos(ImVec2(10, 10));
         ImGui::SetNextWindowSize(ImVec2(250, 400));
-        ImGui::Begin("Node Info", &showNodeInfo);
+        ImGui::Begin("Node Info", &_showNodeInfo);
 
         ImGui::Text("Test Sprites:");
         ImGui::Separator();
 
-        std::vector<GameObject*> allDebugNodes = testSprites;
-        allDebugNodes.insert(allDebugNodes.end(), loadedScene.allNodes.begin(), loadedScene.allNodes.end());
+        std::vector<GameObject*> allDebugNodes = _testSprites;
+        allDebugNodes.insert(allDebugNodes.end(), _loadedScene.allNodes.begin(), _loadedScene.allNodes.end());
 
         for (auto* go : allDebugNodes) {
             if (!go) continue;
@@ -328,14 +330,14 @@ class CSBDemo : public Application {
 };
 
 int main(int argc, char* argv[]) {
-    CSBDemo game({
-      .windowTitle = "CSB Layout Test",
-      .windowWidth = 800,
-      .windowHeight = 600,
-      .useDefaultTextures = true,
-      .useDefaultShaders = true,
-      .preset = "2D"
-    });
+    CSBDemo game(
+        { .windowTitle = "CSB Layout Test",
+          .windowWidth = 800,
+          .windowHeight = 600,
+          .useDefaultTextures = true,
+          .useDefaultShaders = true,
+          .preset = "2D" }
+    );
     game.Run();
     return 0;
 }

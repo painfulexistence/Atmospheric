@@ -2,9 +2,9 @@
 #include "canvas_drawable.hpp"
 #include "component.hpp"
 #include "globals.hpp"
+#include <functional>
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
-#include <functional>
 #include <memory>
 #include <vector>
 
@@ -31,9 +31,15 @@ public:
     void GenerateGrid(int cols, int rows, const glm::vec2& size);
 
     // Vertex access
-    int GetVertexCount() const { return static_cast<int>(_vertices.size()); }
-    int GetCols() const { return _cols; }
-    int GetRows() const { return _rows; }
+    int GetVertexCount() const {
+        return static_cast<int>(_vertices.size());
+    }
+    int GetCols() const {
+        return _cols;
+    }
+    int GetRows() const {
+        return _rows;
+    }
 
     // Get vertex by index
     SpriteMeshVertex& GetVertex(int index);
@@ -52,9 +58,15 @@ public:
     void ResetOffsets();
 
     // Get final positions (base + offset)
-    const std::vector<SpriteMeshVertex>& GetVertices() const { return _vertices; }
-    const std::vector<glm::vec2>& GetOffsets() const { return _offsets; }
-    const std::vector<uint32_t>& GetIndices() const { return _indices; }
+    const std::vector<SpriteMeshVertex>& GetVertices() const {
+        return _vertices;
+    }
+    const std::vector<glm::vec2>& GetOffsets() const {
+        return _offsets;
+    }
+    const std::vector<uint32_t>& GetIndices() const {
+        return _indices;
+    }
 
     // Apply offsets to vertices (call before rendering)
     void ApplyOffsets();
@@ -212,22 +224,50 @@ public:
     void Tick(float deltaTime);// Update deformers
 
     // ─── Basic Properties ───
-    glm::vec2 GetSize() const { return _size; }
-    glm::vec2 GetPivot() const { return _pivot; }
-    glm::vec4 GetColor() const { return _color; }
-    TextureHandle GetTexture() const { return _texture; }
-    BillboardMode GetBillboardMode() const { return _billboardMode; }
+    glm::vec2 GetSize() const {
+        return _size;
+    }
+    glm::vec2 GetPivot() const {
+        return _pivot;
+    }
+    glm::vec4 GetColor() const {
+        return _color;
+    }
+    TextureHandle GetTexture() const {
+        return _texture;
+    }
+    BillboardMode GetBillboardMode() const {
+        return _billboardMode;
+    }
 
     Sprite3DComponent& SetSize(const glm::vec2& size);
-    Sprite3DComponent& SetSize(float w, float h) { return SetSize(glm::vec2(w, h)); }
-    Sprite3DComponent& SetPivot(const glm::vec2& pivot) { _pivot = pivot; return *this; }
-    Sprite3DComponent& SetColor(const glm::vec4& color) { _color = color; return *this; }
-    Sprite3DComponent& SetTexture(TextureHandle texture) { _texture = texture; return *this; }
-    Sprite3DComponent& SetBillboardMode(BillboardMode mode) { _billboardMode = mode; return *this; }
+    Sprite3DComponent& SetSize(float w, float h) {
+        return SetSize(glm::vec2(w, h));
+    }
+    Sprite3DComponent& SetPivot(const glm::vec2& pivot) {
+        _pivot = pivot;
+        return *this;
+    }
+    Sprite3DComponent& SetColor(const glm::vec4& color) {
+        _color = color;
+        return *this;
+    }
+    Sprite3DComponent& SetTexture(TextureHandle texture) {
+        _texture = texture;
+        return *this;
+    }
+    Sprite3DComponent& SetBillboardMode(BillboardMode mode) {
+        _billboardMode = mode;
+        return *this;
+    }
 
     // ─── UV for Spritesheets ───
-    glm::vec2 GetUVMin() const { return _uvMin; }
-    glm::vec2 GetUVMax() const { return _uvMax; }
+    glm::vec2 GetUVMin() const {
+        return _uvMin;
+    }
+    glm::vec2 GetUVMax() const {
+        return _uvMax;
+    }
     Sprite3DComponent& SetUVs(const glm::vec2& min, const glm::vec2& max) {
         _uvMin = min;
         _uvMax = max;
@@ -236,7 +276,7 @@ public:
     }
 
     CanvasLayer GetLayer() const override {
-        return CanvasLayer::LAYER_EFFECTS;  // Render after regular world objects
+        return CanvasLayer::LAYER_EFFECTS;// Render after regular world objects
     }
 
     // ─── Mesh / Deformation API ───
@@ -249,17 +289,22 @@ public:
     Sprite3DComponent& DisableMesh();
 
     // Check if mesh is enabled
-    bool HasMesh() const { return _mesh != nullptr; }
+    bool HasMesh() const {
+        return _mesh != nullptr;
+    }
 
     // Get mesh for direct manipulation
-    SpriteMesh* GetMesh() { return _mesh.get(); }
-    const SpriteMesh* GetMesh() const { return _mesh.get(); }
+    SpriteMesh* GetMesh() {
+        return _mesh.get();
+    }
+    const SpriteMesh* GetMesh() const {
+        return _mesh.get();
+    }
 
     // ─── Deformer Management ───
 
     // Add a deformer (takes ownership)
-    template<typename T, typename... Args>
-    T* AddDeformer(Args&&... args) {
+    template<typename T, typename... Args> T* AddDeformer(Args&&... args) {
         auto deformer = std::make_unique<T>(std::forward<Args>(args)...);
         T* ptr = deformer.get();
         _deformers.push_back(std::move(deformer));
@@ -270,8 +315,7 @@ public:
     SpriteDeformer* GetDeformer(int index);
 
     // Get deformer by type (returns first match)
-    template<typename T>
-    T* GetDeformer() {
+    template<typename T> T* GetDeformer() {
         for (auto& d : _deformers) {
             if (auto* typed = dynamic_cast<T*>(d.get())) {
                 return typed;
@@ -281,10 +325,14 @@ public:
     }
 
     // Remove all deformers
-    void ClearDeformers() { _deformers.clear(); }
+    void ClearDeformers() {
+        _deformers.clear();
+    }
 
     // Get deformer count
-    int GetDeformerCount() const { return static_cast<int>(_deformers.size()); }
+    int GetDeformerCount() const {
+        return static_cast<int>(_deformers.size());
+    }
 
 private:
     // Basic properties

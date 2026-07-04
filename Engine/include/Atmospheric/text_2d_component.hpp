@@ -13,10 +13,10 @@ enum class TextVAlignment { Top = 0, Center = 1, Bottom = 2 };
 
 struct Text2DProps {
     std::string text = "";
-    FontHandle font = 0;                        // Pre-loaded font ID (0 will fallback to default)
-    float fontSize = 24.0f;                     // Desired font size
-    glm::vec2 size = glm::vec2(100.0f, 100.0f); // Bounding box size
-    glm::vec2 pivot = glm::vec2(0.0f, 0.0f);   // Default to top-left
+    FontHandle font = 0;// Pre-loaded font ID (0 will fallback to default)
+    float fontSize = 24.0f;// Desired font size
+    glm::vec2 size = glm::vec2(100.0f, 100.0f);// Bounding box size
+    glm::vec2 pivot = glm::vec2(0.0f, 0.0f);// Default to top-left
     glm::vec4 color = glm::vec4(1.0f);
     TextHAlignment hAlign = TextHAlignment::Left;
     TextVAlignment vAlign = TextVAlignment::Top;
@@ -36,31 +36,73 @@ public:
 
     void Draw(BatchRenderer2D* renderer) override;
 
-    bool CanTick() const override { return false; }
+    bool CanTick() const override {
+        return false;
+    }
 
     // Getters
-    const std::string& GetText() const { return _text; }
-    FontHandle GetFont() const { return _font; }
-    float GetFontSize() const { return _fontSize; }
-    glm::vec2 GetSize() const { return _size; }
-    glm::vec2 GetPivot() const { return _pivot; }
-    glm::vec4 GetColor() const { return _color; }
-    TextHAlignment GetHAlign() const { return _hAlign; }
-    TextVAlignment GetVAlign() const { return _vAlign; }
-    CanvasLayer GetLayer() const override { return _layer; }
-    int GetZOrder() const override { return _zOrder; }
+    const std::string& GetText() const {
+        return _text;
+    }
+    FontHandle GetFont() const {
+        return _font;
+    }
+    float GetFontSize() const {
+        return _fontSize;
+    }
+    glm::vec2 GetSize() const {
+        return _size;
+    }
+    glm::vec2 GetPivot() const {
+        return _pivot;
+    }
+    glm::vec4 GetColor() const {
+        return _color;
+    }
+    TextHAlignment GetHAlign() const {
+        return _hAlign;
+    }
+    TextVAlignment GetVAlign() const {
+        return _vAlign;
+    }
+    CanvasLayer GetLayer() const override {
+        return _layer;
+    }
+    int GetZOrder() const override {
+        return _zOrder;
+    }
 
     // Setters
-    void SetText(const std::string& text) { _text = text; }
-    void SetFont(FontHandle font) { _font = font; }
-    void SetFontSize(float fontSize) { _fontSize = fontSize; }
-    void SetSize(const glm::vec2& size) { _size = size; }
-    void SetPivot(const glm::vec2& pivot) { _pivot = pivot; }
-    void SetColor(const glm::vec4& color) { _color = color; }
-    void SetHAlign(TextHAlignment hAlign) { _hAlign = hAlign; }
-    void SetVAlign(TextVAlignment vAlign) { _vAlign = vAlign; }
-    void SetLayer(CanvasLayer layer) { _layer = layer; }
-    void SetZOrder(int zOrder) { _zOrder = zOrder; }
+    void SetText(const std::string& text) {
+        _text = text;
+    }
+    void SetFont(FontHandle font) {
+        _font = font;
+    }
+    void SetFontSize(float fontSize) {
+        _fontSize = fontSize;
+    }
+    void SetSize(const glm::vec2& size) {
+        _size = size;
+    }
+    void SetPivot(const glm::vec2& pivot) {
+        _pivot = pivot;
+    }
+    void SetColor(const glm::vec4& color) {
+        _color = color;
+    }
+    void SetHAlign(TextHAlignment hAlign) {
+        _hAlign = hAlign;
+    }
+    void SetVAlign(TextVAlignment vAlign) {
+        _vAlign = vAlign;
+    }
+    void SetLayer(CanvasLayer layer) {
+        _layer = layer;
+    }
+    void SetZOrder(int zOrder) {
+        _zOrder = zOrder;
+    }
 
 private:
     std::string _text;

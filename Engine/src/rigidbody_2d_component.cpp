@@ -13,16 +13,16 @@ Rigidbody2DComponent::~Rigidbody2DComponent() {
 
 void Rigidbody2DComponent::OnAttach() {
     CreateBody();
-    Physics2DServer::Get()->RegisterRigidbody2D(this);
+    Physics2DSubsystem::Get()->RegisterRigidbody2D(this);
 }
 
 void Rigidbody2DComponent::OnDetach() {
-    Physics2DServer::Get()->UnregisterRigidbody2D(this);
+    Physics2DSubsystem::Get()->UnregisterRigidbody2D(this);
     DestroyBody();
 }
 
 void Rigidbody2DComponent::CreateBody() {
-    auto* physics = Physics2DServer::Get();
+    auto* physics = Physics2DSubsystem::Get();
     // Check if world is created (using v3 ID check)
     if (!physics || !b2World_IsValid(physics->GetWorldId())) return;
 
@@ -52,7 +52,7 @@ void Rigidbody2DComponent::CreateBody() {
         break;
     }
 
-    glm::vec2 posMeters = Physics2DServer::PixelsToMeters(posPixels);
+    glm::vec2 posMeters = Physics2DSubsystem::PixelsToMeters(posPixels);
     bodyDef.position = { posMeters.x, posMeters.y };
     bodyDef.rotation = b2MakeRot(_props.angle);
     bodyDef.linearDamping = _props.linearDamping;
@@ -87,7 +87,7 @@ void Rigidbody2DComponent::CreateShape() {
 
     switch (_shapeDef.type) {
     case ShapeType2D::Box: {
-        glm::vec2 halfSize = Physics2DServer::PixelsToMeters(_shapeDef.boxSize * 0.5f);
+        glm::vec2 halfSize = Physics2DSubsystem::PixelsToMeters(_shapeDef.boxSize * 0.5f);
         b2Polygon box = b2MakeBox(halfSize.x, halfSize.y);
         b2CreatePolygonShape(_bodyId, &shapeDef, &box);
         break;
@@ -95,7 +95,7 @@ void Rigidbody2DComponent::CreateShape() {
     case ShapeType2D::Circle: {
         b2Circle circle;
         circle.center = { 0.0f, 0.0f };
-        circle.radius = Physics2DServer::PixelsToMeters(_shapeDef.circleRadius);
+        circle.radius = Physics2DSubsystem::PixelsToMeters(_shapeDef.circleRadius);
         b2CreateCircleShape(_bodyId, &shapeDef, &circle);
         break;
     }
@@ -104,11 +104,11 @@ void Rigidbody2DComponent::CreateShape() {
             std::vector<b2Vec2> points;
             points.reserve(_shapeDef.polygonVertices.size());
             for (const auto& v : _shapeDef.polygonVertices) {
-                glm::vec2 vMeters = Physics2DServer::PixelsToMeters(v);
+                glm::vec2 vMeters = Physics2DSubsystem::PixelsToMeters(v);
                 points.push_back({ vMeters.x, vMeters.y });
             }
 
-            b2Hull hull = b2ComputeHull(points.data(), (int32_t)points.size());
+            b2Hull hull = b2ComputeHull(points.data(), static_cast<int32_t>(points.size()));
             b2Polygon poly = b2MakePolygon(&hull, 0.0f);
             b2CreatePolygonShape(_bodyId, &shapeDef, &poly);
         }
@@ -119,7 +119,7 @@ void Rigidbody2DComponent::CreateShape() {
 
 void Rigidbody2DComponent::DestroyBody() {
     if (b2Body_IsValid(_bodyId)) {
-        auto* physics = Physics2DServer::Get();
+        auto* physics = Physics2DSubsystem::Get();
         if (physics) {
             physics->DestroyBody(_bodyId);
         }
@@ -134,7 +134,7 @@ void Rigidbody2DComponent::SyncToTransform(float dt) {
     auto* transform = gameObject->GetComponent<TransformComponent>();
     if (transform) {
         b2Vec2 pos = b2Body_GetPosition(_bodyId);
-        glm::vec2 posPixels = Physics2DServer::MetersToPixels(glm::vec2(pos.x, pos.y));
+        glm::vec2 posPixels = Physics2DSubsystem::MetersToPixels(glm::vec2(pos.x, pos.y));
 
         glm::vec3 newPos(posPixels.x, posPixels.y, transform->GetPosition().z);
         transform->SetPosition(newPos);
@@ -151,14 +151,14 @@ void Rigidbody2DComponent::SyncToTransform(float dt) {
 glm::vec2 Rigidbody2DComponent::GetPosition() const {
     if (b2Body_IsValid(_bodyId)) {
         b2Vec2 pos = b2Body_GetPosition(_bodyId);
-        return Physics2DServer::MetersToPixels(glm::vec2(pos.x, pos.y));
+        return Physics2DSubsystem::MetersToPixels(glm::vec2(pos.x, pos.y));
     }
     return glm::vec2(0.0f);
 }
 
 void Rigidbody2DComponent::SetPosition(const glm::vec2& position) {
     if (b2Body_IsValid(_bodyId)) {
-        glm::vec2 posM = Physics2DServer::PixelsToMeters(position);
+        glm::vec2 posM = Physics2DSubsystem::PixelsToMeters(position);
         b2Rot rot = b2Body_GetRotation(_bodyId);
         b2Body_SetTransform(_bodyId, { posM.x, posM.y }, rot);
     }
@@ -182,14 +182,14 @@ void Rigidbody2DComponent::SetAngle(float angle) {
 glm::vec2 Rigidbody2DComponent::GetLinearVelocity() const {
     if (b2Body_IsValid(_bodyId)) {
         b2Vec2 vel = b2Body_GetLinearVelocity(_bodyId);
-        return Physics2DServer::MetersToPixels(glm::vec2(vel.x, vel.y));
+        return Physics2DSubsystem::MetersToPixels(glm::vec2(vel.x, vel.y));
     }
     return glm::vec2(0.0f);
 }
 
 void Rigidbody2DComponent::SetLinearVelocity(const glm::vec2& velocity) {
     if (b2Body_IsValid(_bodyId)) {
-        glm::vec2 velM = Physics2DServer::PixelsToMeters(velocity);
+        glm::vec2 velM = Physics2DSubsystem::PixelsToMeters(velocity);
         b2Body_SetLinearVelocity(_bodyId, { velM.x, velM.y });
     }
 }
@@ -209,15 +209,15 @@ void Rigidbody2DComponent::SetAngularVelocity(float omega) {
 
 void Rigidbody2DComponent::ApplyForce(const glm::vec2& force, const glm::vec2& point) {
     if (b2Body_IsValid(_bodyId)) {
-        glm::vec2 forceM = Physics2DServer::PixelsToMeters(force);
-        glm::vec2 pointM = Physics2DServer::PixelsToMeters(point);
+        glm::vec2 forceM = Physics2DSubsystem::PixelsToMeters(force);
+        glm::vec2 pointM = Physics2DSubsystem::PixelsToMeters(point);
         b2Body_ApplyForce(_bodyId, { forceM.x, forceM.y }, { pointM.x, pointM.y }, true);
     }
 }
 
 void Rigidbody2DComponent::ApplyForceToCenter(const glm::vec2& force) {
     if (b2Body_IsValid(_bodyId)) {
-        glm::vec2 forceM = Physics2DServer::PixelsToMeters(force);
+        glm::vec2 forceM = Physics2DSubsystem::PixelsToMeters(force);
         b2Body_ApplyForceToCenter(_bodyId, { forceM.x, forceM.y }, true);
     }
 }
@@ -230,15 +230,15 @@ void Rigidbody2DComponent::ApplyTorque(float torque) {
 
 void Rigidbody2DComponent::ApplyLinearImpulse(const glm::vec2& impulse, const glm::vec2& point) {
     if (b2Body_IsValid(_bodyId)) {
-        glm::vec2 impulseM = Physics2DServer::PixelsToMeters(impulse);
-        glm::vec2 pointM = Physics2DServer::PixelsToMeters(point);
+        glm::vec2 impulseM = Physics2DSubsystem::PixelsToMeters(impulse);
+        glm::vec2 pointM = Physics2DSubsystem::PixelsToMeters(point);
         b2Body_ApplyLinearImpulse(_bodyId, { impulseM.x, impulseM.y }, { pointM.x, pointM.y }, true);
     }
 }
 
 void Rigidbody2DComponent::ApplyLinearImpulseToCenter(const glm::vec2& impulse) {
     if (b2Body_IsValid(_bodyId)) {
-        glm::vec2 impulseM = Physics2DServer::PixelsToMeters(impulse);
+        glm::vec2 impulseM = Physics2DSubsystem::PixelsToMeters(impulse);
         b2Body_ApplyLinearImpulseToCenter(_bodyId, { impulseM.x, impulseM.y }, true);
     }
 }

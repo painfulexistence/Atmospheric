@@ -1,5 +1,9 @@
 option(BUILD_SHARED_LIBS OFF)
 
+# Self-sufficient regardless of how this directory is added (Atmospheric's own
+# top-level CMakeLists.txt, or a downstream project that bypasses it and calls
+# add_subdirectory(Atmospheric/Engine) directly, e.g. platforms/ios).
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/helpers")
 include(AssetPipeline)
 
 
@@ -160,8 +164,8 @@ set(SOURCES
     src/application.cpp
     src/game_layer.cpp
     src/editor_layer.cpp
-    src/server.cpp
-    src/console.cpp
+    src/subsystem.cpp
+    src/console_subsystem.cpp
     src/game_object.cpp
     src/transform_component.cpp
     src/rigidbody_component.cpp
@@ -183,12 +187,12 @@ set(SOURCES
     src/height_field_collider_component.cpp
     src/water_component.cpp
     src/shader.cpp
-    src/graphics_server.cpp
-    src/graphics_server_tile.cpp
+    src/graphics_subsystem.cpp
+    src/graphics_subsystem_tile.cpp
     src/renderer.cpp
-    src/physics_server.cpp
+    src/physics_subsystem_3d.cpp
     src/physics_debug_drawer.cpp
-    src/input.cpp
+    src/input_subsystem.cpp
     src/scene.cpp
     src/action.cpp
     src/action_manager.cpp
@@ -197,7 +201,7 @@ set(SOURCES
     src/font_manager.cpp
     src/job_system.cpp
     src/bullet_task_scheduler.cpp
-    src/particle_server.cpp
+    src/particle_subsystem.cpp
     src/particle_emitter.cpp
     src/file.cpp
     src/rmlui_renderer.cpp
@@ -205,7 +209,7 @@ set(SOURCES
     src/rmlui_manager.cpp
     src/ui_page_manager.cpp
     src/batch_renderer_2d.cpp
-    src/physics_server_2d.cpp
+    src/physics_subsystem_2d.cpp
     src/rigidbody_2d_component.cpp
     src/mesh_builder.cpp
     src/shape_renderer_component.cpp
@@ -217,7 +221,7 @@ set(SOURCES
     src/scene_transition.cpp
     src/video_player.cpp
     src/video_recorder.cpp
-    src/script.cpp
+    src/script_subsystem.cpp
     src/component_factory.cpp
     src/tilemap_2d.cpp
     src/lighting_2d.cpp
@@ -230,7 +234,7 @@ set(SOURCES
 option(AE_USE_WEBGPU "Target WebGPU on Emscripten builds (replaces WebGL2)" OFF)
 
 list(APPEND SOURCES src/gfx_factory.cpp)
-list(APPEND SOURCES src/audio_manager.cpp)
+list(APPEND SOURCES src/audio_subsystem.cpp)
 if(NOT EMSCRIPTEN)
     list(APPEND SOURCES src/window_sdl3.cpp)
 else()
@@ -245,6 +249,7 @@ else()
         list(APPEND SOURCES src/gpu_buffer.cpp)
         list(APPEND SOURCES src/gpu_render_target.cpp)
         list(APPEND SOURCES src/gpu_canvas_pass.cpp)
+        list(APPEND SOURCES src/gpu_pipeline.cpp)
     endif()
 endif()
 # FileSystem: platform-agnostic async I/O with in-process cache.
@@ -412,7 +417,7 @@ if(EMSCRIPTEN OR ANDROID OR IOS)
     target_compile_definitions(AtmosphericEngine PRIVATE IMGUI_IMPL_OPENGL_ES3)
 endif()
 if(EMSCRIPTEN)
-    # spdlog::spdlog : console.cpp and scene_loader.cpp call spdlog directly;
+    # spdlog::spdlog : console_subsystem.cpp and scene_loader.cpp call spdlog directly;
     #   Emscripten maps stdout → browser console so spdlog works fine on web.
     target_compile_definitions(AtmosphericEngine PUBLIC BT_THREADSAFE=1)
     target_link_libraries(AtmosphericEngine PUBLIC spdlog::spdlog)
@@ -426,9 +431,6 @@ if(EMSCRIPTEN)
     target_compile_options(AtmosphericEngine PUBLIC -pthread)
     if(AE_USE_WEBGPU)
         target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_WEBGPU)
-        # --use-port=emdawnwebgpu must appear in both compile and link flags:
-        #   compile: adds the webgpu/ include path so <webgpu/webgpu.h> resolves
-        #   link:    links the emdawnwebgpu JS/WASM glue
         target_compile_options(AtmosphericEngine PUBLIC --use-port=emdawnwebgpu)
         # The actual backend is chosen at runtime by GfxFactory::Init():
         #   - browser exposes navigator.gpu → attempts WebGPU
@@ -532,7 +534,7 @@ if(EMSCRIPTEN)
             "${_AE_WASM_SRC}/index.d.ts"  "${_AE_WASM_OUT}/index.d.ts"
         COMMAND ${CMAKE_COMMAND} -Dsrc="$<TARGET_FILE_DIR:atmospheric>/atmos.worker.js"
             -Ddst="${_AE_WASM_OUT}/atmos.worker.js"
-            -P "${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/copy_if_exists.cmake"
         COMMENT "Assembling @atmospheric/engine package → ${_AE_WASM_OUT}"
     )
 endif()

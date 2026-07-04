@@ -1,6 +1,8 @@
 #pragma once
 #include "globals.hpp"
+#include <concepts>
 #include <map>
+#include <memory>
 
 class Application;
 class TransformComponent;
@@ -14,9 +16,9 @@ struct SpriteProps;
 
 class Mesh;
 
-class GraphicsServer;
+class GraphicsSubsystem;
 
-class PhysicsServer;
+class Physics3DSubsystem;
 
 class GameObject {
 public:
@@ -24,35 +26,38 @@ public:
     bool isActive = true;
 
     GameObject(
-      Application* app,
-      glm::vec3 position = glm::vec3(0.0f),
-      glm::vec3 rotation = glm::vec3(0.0f),
-      glm::vec3 scale = glm::vec3(1.0f)
+        Application* app,
+        glm::vec3 position = glm::vec3(0.0f),
+        glm::vec3 rotation = glm::vec3(0.0f),
+        glm::vec3 scale = glm::vec3(1.0f)
     );
     ~GameObject();
 
-    template<typename T> T* GetComponent() const {
-        for (auto* component : _components) {
-            if (T* cast = dynamic_cast<T*>(component)) {
+    template<std::derived_from<Component> T> [[nodiscard]] T* GetComponent() const {
+        for (const auto& component : _components) {
+            if (T* cast = dynamic_cast<T*>(component.get())) {
                 return cast;
             }
         }
         return nullptr;
     }
     // Component* GetComponent(std::string name) const;
-    template<typename T, typename... Args> Component* AddComponent(Args&&... args) {
-        T* component = new T(this, std::forward<Args>(args)...);
-        _components.push_back(component);
+    template<std::derived_from<Component> T, typename... Args> Component* AddComponent(Args&&... args) {
+        auto owned = std::make_unique<T>(this, std::forward<Args>(args)...);
+        T* component = owned.get();
+        _components.push_back(std::move(owned));
         component->gameObject = this;
         component->OnAttach();
         return component;
     }
+    // Takes ownership of a heap-allocated component (callers pass `new T(...)`).
     void AddComponent(Component* component);
+    // Detaches and destroys the component; the pointer is invalid afterwards.
     void RemoveComponent(Component* component);
 
     // Read-only access to all attached components (used by the editor to drive
     // each component's DrawImGui generically).
-    const std::vector<Component*>& GetComponents() const {
+    const std::vector<std::unique_ptr<Component>>& GetComponents() const {
         return _components;
     }
 
@@ -66,7 +71,7 @@ public:
     GameObject* AddLight(const LightProps&);
     GameObject* AddCamera(const CameraProps&);
     GameObject* AddMesh(const std::string& meshName);
-    GameObject* AddMesh(Mesh* mesh);
+    GameObject* AddMesh(MeshHandle mesh);
     GameObject* AddSprite(const SpriteProps& props);
     GameObject* AddRigidbody(const RigidbodyProps& props);
     // GameObject* AddRigidbody(const std::string& meshName, float mass = 0.0f, glm::vec3 linearFactor =
@@ -74,12 +79,12 @@ public:
     // 0.0f, glm::vec3 linearFactor = glm::vec3(1.0f), glm::vec3 angularFactor = glm::vec3(1.0f));
 
     glm::mat4 GetLocalTransform() const;
-    void SetLocalTransform(glm::mat4 xform);
+    void SetLocalTransform(const glm::mat4& xform);
 
     glm::mat4 GetObjectTransform() const;
-    void SetObjectTransform(glm::mat4 xform);
+    void SetObjectTransform(const glm::mat4& xform);
 
-    void SyncObjectTransform(glm::mat4 xform);
+    void SyncObjectTransform(const glm::mat4& xform);
 
     glm::vec3 GetPosition() const;
     glm::vec3 GetRotation() const;// radians
@@ -97,16 +102,16 @@ public:
     glm::vec3 GetVelocity();
     void SetVelocity(glm::vec3 value);
 
-    inline void SetActive(bool value) {
+    void SetActive(bool value) {
         isActive = value;
     }
 
     void SetPhysicsActivated(bool value);
 
-    inline const std::string& GetName() {
+    const std::string& GetName() const {
         return _name;
     }
-    inline void SetName(const std::string& name) {
+    void SetName(const std::string& name) {
         _name = name;
     }
 
@@ -118,7 +123,9 @@ public:
 
 private:
     std::string _name = " ";
-    std::vector<Component*> _components;
+    // Sole owner of attached components; ~GameObject detaches each one first
+    // so components unregister from server-side registries before dying.
+    std::vector<std::unique_ptr<Component>> _components;
     // std::map<std::string, Component*> _namedComponents;
     Application* _app = nullptr;
     TransformComponent* _transform = nullptr;

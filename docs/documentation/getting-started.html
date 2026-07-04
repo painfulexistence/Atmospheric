@@ -267,19 +267,19 @@ sudo pacman -S base-devel cmake ninja xorg-server mesa</code></pre>
     </div>
 
     <h2>Repository Setup</h2>
-    <p>Clone the project along with its dependency submodules, and bootstrap the <code>vcpkg</code> package manager.</p>
+    <p>Clone <a href="https://github.com/painfulexistence/Atmospheric-Starter" target="_blank">Atmospheric-Starter</a>, a cross-platform starter app built on Atmospheric — it pulls in the engine as a submodule, so this is the fastest way to get a real build running.</p>
 
     <div class="code-container">
-      <pre><code># Clone repo with nested submodules
-git clone --recurse-submodules https://github.com/painfulexistence/Atmospheric.git
-cd Atmospheric</code></pre>
+      <pre><code># Clone the starter with nested submodules (Atmospheric + its own vcpkg submodule)
+git clone --recurse-submodules https://github.com/painfulexistence/Atmospheric-Starter.git
+cd Atmospheric-Starter</code></pre>
       <button class="copy-btn" onclick="copyCode(this)">Copy</button>
     </div>
 
     <div class="host-os-pane active" data-host-os="macos linux">
       <div class="code-container">
         <pre><code># Bootstrap vcpkg dependency manager
-./vcpkg/bootstrap-vcpkg.sh -disableMetrics</code></pre>
+./Atmospheric/vcpkg/bootstrap-vcpkg.sh -disableMetrics</code></pre>
         <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       </div>
     </div>
@@ -287,7 +287,7 @@ cd Atmospheric</code></pre>
     <div class="host-os-pane" data-host-os="windows">
       <div class="code-container">
         <pre><code># Bootstrap vcpkg dependency manager (PowerShell / cmd)
-.\vcpkg\bootstrap-vcpkg.bat -disableMetrics</code></pre>
+.\Atmospheric\vcpkg\bootstrap-vcpkg.bat -disableMetrics</code></pre>
         <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       </div>
     </div>
@@ -304,17 +304,17 @@ cd Atmospheric</code></pre>
 
     <!-- TARGET: Native Desktop -->
     <div class="pane-content active" data-target="desktop">
-      <p>Configure CMake and build the native C++ executable of Atmospheric and the bundled examples.</p>
-      
+      <p>Configure and build using the bundled CMake presets. The first configure bootstraps vcpkg and builds all dependencies from source, so it takes a while — subsequent builds are fast.</p>
+
       <!-- macOS Native build -->
       <div class="host-os-pane active" data-host-os="macos">
         <div class="code-container">
           <pre><code># Configure and build on macOS
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DAE_BUILD_EXAMPLES=ON
-cmake --build build --parallel
+cmake --preset desktop
+cmake --build --preset debug   # or --preset release
 
-# Run example binary
-./build/Physics2DDemo/Physics2DDemo</code></pre>
+# Run the example binary
+./build/GradientQuad/Debug/GradientQuad</code></pre>
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
         </div>
       </div>
@@ -323,11 +323,11 @@ cmake --build build --parallel
       <div class="host-os-pane" data-host-os="windows">
         <div class="code-container">
           <pre><code># Configure and build on Windows (MSVC)
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DAE_BUILD_EXAMPLES=ON
-cmake --build build --config Release --parallel
+cmake --preset desktop
+cmake --build --preset debug   # or --preset release
 
-# Run example binary
-.\build\Physics2DDemo\Release\Physics2DDemo.exe</code></pre>
+# Run the example binary
+.\build\GradientQuad\Debug\GradientQuad.exe</code></pre>
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
         </div>
       </div>
@@ -335,12 +335,12 @@ cmake --build build --config Release --parallel
       <!-- Linux Native build -->
       <div class="host-os-pane" data-host-os="linux">
         <div class="code-container">
-          <pre><code># Configure and build on Linux (using Ninja)
-cmake -G Ninja -B build -S . -DCMAKE_BUILD_TYPE=Release -DAE_BUILD_EXAMPLES=ON
-cmake --build build --parallel
+          <pre><code># Configure and build on Linux
+cmake --preset desktop
+cmake --build --preset debug   # or --preset release
 
-# Run example binary
-./build/Physics2DDemo/Physics2DDemo</code></pre>
+# Run the example binary
+./build/GradientQuad/Debug/GradientQuad</code></pre>
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
         </div>
       </div>
@@ -348,51 +348,38 @@ cmake --build build --parallel
 
     <!-- TARGET: WebAssembly -->
     <div class="pane-content" data-target="wasm">
-      <p>Compile the engine and examples to WebAssembly using Emscripten. The build scripts will staging and package shaders and fonts into the VFS.</p>
-      
+      <p>Compile GradientQuad to WebAssembly using Emscripten.</p>
+
       <div class="note-box">
-        <p><strong>Note:</strong> Ensure you have the Emscripten SDK (emsdk) activated in your shell (e.g. <code>source path/to/emsdk/emsdk_env.sh</code>) before running the build scripts.</p>
+        <p><strong>Note:</strong> Ensure you have the Emscripten SDK (emsdk) activated in your shell (e.g. <code>source path/to/emsdk/emsdk_env.sh</code>) before configuring.</p>
       </div>
 
-      <div class="host-os-pane active" data-host-os="macos linux">
-        <div class="code-container">
-          <pre><code># Compile the engine & all examples to WASM
-./scripts/buildWasm.sh release
-
-# Sync built assets and HTML wrappers to local web root
-./scripts/deployWWW.sh</code></pre>
-          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-        </div>
-        <p>You can run the web server using <code>python -m http.server 8000 --directory build-wasm/release</code>, or utilize Caddy as documented in the <a href="deployment.html">Caddy Deployment Guide</a>.</p>
+      <div class="code-container">
+        <pre><code>cmake --preset wasm
+cmake --build --preset wasm</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       </div>
 
-      <div class="host-os-pane" data-host-os="windows">
-        <div class="note-box" style="border-left-color: var(--color-warn); background: rgba(212, 168, 75, 0.08);">
-          <p><strong>Windows User:</strong> It is highly recommended to compile WebAssembly targets within Git Bash or a WSL (Windows Subsystem for Linux) terminal to natively execute the shell scripts.</p>
-        </div>
-        <div class="code-container">
-          <pre><code># Inside Git Bash:
-./scripts/buildWasm.sh release
-./scripts/deployWWW.sh</code></pre>
-          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-        </div>
+      <p>Serve and open the build output in a browser:</p>
+
+      <div class="code-container">
+        <pre><code>python -m http.server 8000 --directory build-wasm/GradientQuad
+# then open http://localhost:8000/GradientQuad.html</code></pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       </div>
     </div>
 
     <!-- TARGET: Android -->
     <div class="pane-content" data-target="android">
-      <p>Build Android packages (APK) for deploy. Shaders, assets, and dependencies are packed automatically using Gradle.</p>
-      
+      <p>Build the Android APK. Shaders, assets, and native dependencies are packed automatically by Gradle, which drives the same CMake build under the hood.</p>
+
       <div class="note-box">
-        <p><strong>Prerequisite:</strong> Ensure <code>ANDROID_HOME</code> and <code>ANDROID_NDK_HOME</code> environment variables point to your Android SDK and NDK installations respectively.</p>
+        <p><strong>Prerequisite:</strong> Ensure <code>ANDROID_HOME</code> points to your Android SDK installation. The required NDK version is pinned in <code>platforms/android/app/build.gradle.kts</code> and is downloaded automatically on first build.</p>
       </div>
 
       <div class="host-os-pane active" data-host-os="macos linux">
         <div class="code-container">
-          <pre><code># Change to example android platform folder
-cd Examples/HelloWorld/platforms/android
-
-# Compile and package Android debug APK
+          <pre><code>cd platforms/android
 ./gradlew assembleDebug
 
 # Output APK path:
@@ -403,14 +390,11 @@ cd Examples/HelloWorld/platforms/android
 
       <div class="host-os-pane" data-host-os="windows">
         <div class="code-container">
-          <pre><code># Change to example android platform folder
-cd Examples/HelloWorld/platforms/android
-
-# Compile and package Android debug APK (Command Prompt / PowerShell)
+          <pre><code>cd platforms\android
 .\gradlew.bat assembleDebug
 
 # Output APK path:
-# app/build/outputs/apk/debug/app-debug.apk</code></pre>
+# app\build\outputs\apk\debug\app-debug.apk</code></pre>
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
         </div>
       </div>
@@ -418,17 +402,22 @@ cd Examples/HelloWorld/platforms/android
 
     <!-- TARGET: iOS -->
     <div class="pane-content" data-target="ios">
-      <p>Configure Xcode project to deploy Atmospheric to iOS devices or Simulators.</p>
+      <p>Configure and open the Xcode project to run GradientQuad on the iOS Simulator or a device.</p>
 
       <div class="host-os-pane active" data-host-os="macos">
         <div class="code-container">
-          <pre><code># Generate Xcode iOS project using CMake toolchain
-cmake -G Xcode -B build-ios -S . -DCMAKE_SYSTEM_NAME=iOS -DAE_BUILD_EXAMPLES=ON
+          <pre><code># Generate the Xcode project for the iOS Simulator
+cmake -G Xcode -B build-ios-sim -S platforms/ios \
+  -DCMAKE_SYSTEM_NAME=iOS \
+  -DCMAKE_OSX_SYSROOT=iphonesimulator \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \
+  -DVCPKG_TARGET_TRIPLET=arm64-ios-simulator
 
-# Open the project in Xcode to configure code signing and run on device
-open build-ios/Atmospheric.xcodeproj</code></pre>
+# Open in Xcode, or build from the CLI:
+cmake --build build-ios-sim --config Release</code></pre>
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
         </div>
+        <p>For a physical device, swap the triplet/sysroot flags for <code>arm64-ios</code> / <code>iphoneos</code> and pass <code>-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=&lt;TeamID&gt;</code> to configure code signing.</p>
       </div>
 
       <div class="host-os-pane" data-host-os="windows linux">

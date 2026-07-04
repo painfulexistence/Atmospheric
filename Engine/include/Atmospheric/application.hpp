@@ -1,17 +1,16 @@
 #pragma once
-#include "audio_manager.hpp"
+#include "audio_subsystem.hpp"
 #include "config.hpp"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "game_object.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include "imgui.h"
-#include "input.hpp"
+#include "input_subsystem.hpp"
 #include "layer.hpp"
-#include "physics_server.hpp"
-#include "physics_server_2d.hpp"
-
-#include "physics_server_2d.hpp"
+#include "physics_subsystem_2d.hpp"
+#include "physics_subsystem_3d.hpp"
 #include "scene.hpp"
+#include "scene_transition.hpp"
 
 #include <memory>
 #include <string>
@@ -21,6 +20,10 @@ class Window;
 class GameObject;
 class EditorLayer;
 class VideoRecorder;
+class AssetManager;
+class RmlUiManager;
+class UIPageManager;
+struct SceneBlueprint;
 
 struct FrameData {
     FrameData(uint64_t number, float time, float deltaTime) {
@@ -29,8 +32,8 @@ struct FrameData {
         this->deltaTime = deltaTime;
     };
     uint64_t number;
-    float time;
-    float deltaTime;
+    float time = 0.0f;
+    float deltaTime = 0.0f;
 };
 
 struct AppConfig {
@@ -47,7 +50,7 @@ struct AppConfig {
     float fixedTimeStep = FIXED_TIME_STEP;
     bool useDefaultTextures = false;
     bool useDefaultShaders = true;
-    std::string preset = "3D"; // "2D" | "3D"
+    std::string preset = "3D";// "2D" | "3D"
 };
 
 // Drives an automated "warm up → capture → quit" sequence so every example can
@@ -60,10 +63,10 @@ struct AppConfig {
 struct AutoCaptureConfig {
     enum class Mode { Video, Screenshot };
 
-    bool        enabled    = false;
-    Mode        mode       = Mode::Video;
-    float       warmup     = 3.0f;
-    float       duration   = 10.0f;
+    bool enabled = false;
+    Mode mode = Mode::Video;
+    float warmup = 3.0f;
+    float duration = 10.0f;
     std::string outputPath = "output/capture.mp4";
 };
 
@@ -72,12 +75,15 @@ using EntityID = uint64_t;
 class Application {
 public:
     static Application* Get();
-    const AppConfig& GetConfig() const { return _config; }
+    const AppConfig& GetConfig() const {
+        return _config;
+    }
 
     explicit Application(AppConfig config = {});
     virtual ~Application();
 
     void Run();
+    void DestroyEntities();
 
     virtual void OnInit() {
     }// Load resources
@@ -85,6 +91,12 @@ public:
     virtual void OnUpdate(float dt, float time) = 0;
     virtual void OnReload() {
     }// Reset game objects (side effects clean up and recreate)
+
+    // Called just before a scene transition begins and just after the new scene is ready.
+    // Override to customize the loading screen content (e.g. add a spinner or progress bar).
+    // Base implementation fades a full-screen black overlay in and out via RmlUI.
+    virtual void ShowLoadingScreen();
+    virtual void HideLoadingScreen();
 
     uint64_t GetClock();
 
@@ -96,35 +108,21 @@ public:
         return _defaultGameObject;
     }
 
+    // Takes ownership of a heap-allocated layer (callers pass `new T(...)`).
     void PushLayer(Layer* layer);
 
-    inline const std::vector<GameObject*>& GetEntities() const {
+    const std::vector<std::unique_ptr<GameObject>>& GetEntities() const {
         return _entities;
     }
-    inline GraphicsServer* GetGraphicsServer() {
-        return &graphics;
-    }
-    inline PhysicsServer* GetPhysicsServer() {
-        return &physics;
-    }
-    inline Physics2DServer* GetPhysics2DServer() {
-        return &physics2D;
-    }
-    inline Console* GetConsole() {
-        return &console;
-    }
-    inline Input* GetInput() {
-        return &input;
-    }
-    inline CameraComponent* GetMainCamera() {
+    // Subsystems are reached through their static locator (e.g.
+    // GraphicsSubsystem::Get()), consistent with AssetManager/FileSystem/etc.
+    // No per-Application accessors — there is exactly one way in.
+    CameraComponent* GetMainCamera() {
         return mainCamera;
-    }
-    inline AudioManager* GetAudioManager() {
-        return &audio;
     }
     // Shared video recorder. Drives both the automated capture sequence and the
     // manual F2 toggle in EditorLayer; both operate on this single instance.
-    inline VideoRecorder* GetRecorder() {
+    VideoRecorder* GetRecorder() {
         return _recorder.get();
     }
 
@@ -133,8 +131,6 @@ public:
     void SetShowImGui(bool show);
 #endif
 
-    std::shared_ptr<Window> GetWindow();
-    void LoadScene(const std::string& jsonContent);
     void ReloadScene();
     void GoScene(const std::string& sceneName, std::function<void()> onReady = nullptr);
 
@@ -168,7 +164,7 @@ public:
     const std::string& GetEditorSceneError() const;
 
     GameObject* CreateGameObject(
-      glm::vec3 position = glm::vec3(0.0f), glm::vec3 rotation = glm::vec3(0.0f), glm::vec3 scale = glm::vec3(1.0f)
+        glm::vec3 position = glm::vec3(0.0f), glm::vec3 rotation = glm::vec3(0.0f), glm::vec3 scale = glm::vec3(1.0f)
     );
 
     GameObject* CreateGameObject(glm::vec2 position, float rotation = 0.0f);
@@ -182,16 +178,17 @@ public:
     // touching __root__ itself or other persistent entities.
     void ClearScenes();
 
+    // Internal: unload everything the current scene owns — its GameObjects,
+    // registered cameras/lights, audio, physics bodies, and GPU assets — leaving
+    // a blank slate for the next scene. Counterpart to UnloadScene(name), which
+    // targets a single named scene. Clears _currentSceneName.
+    void UnloadCurrentScene();
+
 protected:
-    // These subsystems will be game accessible
-    AudioManager audio;
-    PhysicsServer physics;
-    Physics2DServer physics2D;
-    Console console;
-    Input input;
-
-    GraphicsServer graphics;
-
+    // Subsystems are owned privately (see below) and reached from anywhere —
+    // game code included — through their static locator, e.g.
+    // GraphicsSubsystem::Get() / InputSubsystem::Get(), consistent with
+    // AssetManager / FileSystem / Window.
     std::vector<Scene> scenes;
     CameraComponent* mainCamera = nullptr;
     LightComponent* mainLight = nullptr;
@@ -206,7 +203,7 @@ protected:
     void SetWindowTitle(const std::string& title);
 
     template<typename T> std::shared_ptr<T> AddSubsystem() {
-        static_assert(std::is_base_of<Server, T>::value, "Type T must be a subclass of Server");
+        static_assert(std::is_base_of<Subsystem, T>::value, "Type T must be a subclass of Subsystem");
         auto subsystem = std::make_shared<T>();
         _subsystems.push_back(subsystem);
         return subsystem;
@@ -217,10 +214,30 @@ private:
 
     void RegisterComponents();
 
+    // Phase 2a: upload GPU resources declared in the blueprint.  Must run on the main thread.
+    void LoadSceneResources(const SceneBlueprint& bp);
+    // Phase 2b: create GameObjects + Components from resolved entity blueprints.
+    void InstantiateScene(const SceneBlueprint& bp);
+
     AppConfig _config;
 
-    std::shared_ptr<Window> _window = nullptr;
-    std::vector<std::shared_ptr<Server>> _subsystems;
+    // Every engine service is owned here as a unique_ptr and constructed in the
+    // Application constructor in dependency order. Each type's static Get() is a
+    // non-owning locator into these members — the single access path for the
+    // whole codebase. Declaration order == construction order == reverse
+    // destruction order: _window is first so it outlives every service that
+    // touches the GL context it owns (graphics, assetManager, rmlUi).
+    std::unique_ptr<Window> _window;
+    std::unique_ptr<ConsoleSubsystem> _console;
+    std::unique_ptr<InputSubsystem> _input;
+    std::unique_ptr<AudioSubsystem> _audio;
+    std::unique_ptr<GraphicsSubsystem> _graphics;
+    std::unique_ptr<Physics3DSubsystem> _physics;
+    std::unique_ptr<Physics2DSubsystem> _physics2D;
+    std::unique_ptr<AssetManager> _assetManager;
+    std::unique_ptr<RmlUiManager> _rmlUi;
+    std::unique_ptr<UIPageManager> _uiPages;// dies before _rmlUi (closes documents through it)
+    std::vector<std::shared_ptr<Subsystem>> _subsystems;
     bool _initialized = false;
 
     uint64_t _clock = 0;
@@ -229,11 +246,12 @@ private:
     std::string _editorSceneError;
     std::string _lastLoadedScene;
     bool _sceneReady = false;
-    std::vector<GameObject*> _entities;
+    // Sole owner of all game objects; observers hold raw GameObject*.
+    std::vector<std::unique_ptr<GameObject>> _entities;
     EntityID _nextEntityID = 0;
     GameObject* _defaultGameObject = nullptr;
 
-    std::vector<Layer*> _layers;
+    std::vector<std::unique_ptr<Layer>> _layers;
     std::vector<std::function<void()>> _spawnQueue;
     GameObject* _selectedEntity = nullptr;
 #ifndef NDEBUG
@@ -241,9 +259,13 @@ private:
 #endif
 
     void Update(const FrameData& frame);
-    void Render(const FrameData& frame
+    void Render(
+        const FrameData& frame
     );// TODO: Properly separate rendering and drawing logic if the backend supports command buffering
     void SyncTransformWithPhysics();
+
+    // ─── Loading screen / transition ────────────────────────────────────
+    SceneTransition _transition;
 
     // ─── Automated capture ──────────────────────────────────────────────
     std::unique_ptr<VideoRecorder> _recorder;

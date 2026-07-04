@@ -3,8 +3,8 @@
 #include "game_sim.hpp"
 #include "net_lockstep.hpp"
 #include <chrono>
-#include <string>
 #include <fmt/format.h>
+#include <string>
 
 // ─── PlayerInputComponent ────────────────────────────────────────────────────
 // Samples local keyboard/mouse state and builds an InputFrame each fixed tick.
@@ -13,17 +13,22 @@
 
 class PlayerInputComponent : public Component {
 public:
-    PlayerInputComponent(GameObject* go, GameSim* sim, LockstepNet* net)
-        : _sim(sim), _net(net) { gameObject = go; }
+    PlayerInputComponent(GameObject* go, GameSim* sim, LockstepNet* net) : _sim(sim), _net(net) {
+        gameObject = go;
+    }
 
-    std::string GetName() const override { return "PlayerInput"; }
+    std::string GetName() const override {
+        return "PlayerInput";
+    }
 
     InputFrame BuildFrame() {
         _last = Sample();
         return _last;
     }
 
-    uint8_t GetCurSpell() const { return _curSpell; }
+    uint8_t GetCurSpell() const {
+        return _curSpell;
+    }
 
     void DrawImGui() override {
         ImGui::Text("Spell slot: %d", int(_curSpell));
@@ -34,19 +39,15 @@ public:
 private:
     InputFrame Sample() {
         auto* app = gameObject->GetApp();
-        auto* inp = app->GetInput();
+        auto* inp = InputSubsystem::Get();
         InputFrame f;
-        if (inp->IsKeyDown(Key::A) || inp->IsKeyDown(Key::LEFT))  f.buttons |= BTN_LEFT;
+        if (inp->IsKeyDown(Key::A) || inp->IsKeyDown(Key::LEFT)) f.buttons |= BTN_LEFT;
         if (inp->IsKeyDown(Key::D) || inp->IsKeyDown(Key::RIGHT)) f.buttons |= BTN_RIGHT;
-        if (inp->IsKeyDown(Key::W) || inp->IsKeyDown(Key::SPACE) || inp->IsKeyDown(Key::UP))
-            f.buttons |= BTN_JUMP;
-        if (inp->IsKeyDown(Key::S) || inp->IsKeyDown(Key::DOWN))  f.buttons |= BTN_DOWN;
-        if (app->GetWindow()->GetMouseButtonState())               f.buttons |= BTN_FIRE;
+        if (inp->IsKeyDown(Key::W) || inp->IsKeyDown(Key::SPACE) || inp->IsKeyDown(Key::UP)) f.buttons |= BTN_JUMP;
+        if (inp->IsKeyDown(Key::S) || inp->IsKeyDown(Key::DOWN)) f.buttons |= BTN_DOWN;
+        if (Window::Get()->GetMouseButtonState()) f.buttons |= BTN_FIRE;
 
-        static const Key spellKeys[] = {
-            Key::Num1, Key::Num2, Key::Num3, Key::Num4,
-            Key::Num5, Key::Num6, Key::Num7
-        };
+        static const Key spellKeys[] = { Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7 };
         for (int i = 0; i < int(SpellType::Count); i++) {
             if (inp->IsKeyDown(spellKeys[i])) _curSpell = uint8_t(i);
         }
@@ -59,13 +60,13 @@ private:
         float wx = mouse.x * float(SandWorld::W) / float(ws.width);
         float wy = mouse.y * float(SandWorld::H) / float(ws.height);
         f.aimQ = InputFrame::QuantizeAim(std::atan2(wy - me.y, wx - me.x));
-        return f;       
-     }
+        return f;
+    }
 
-    GameSim*    _sim;
+    GameSim* _sim;
     LockstepNet* _net;
-    uint8_t     _curSpell = 0;
-    InputFrame  _last{};
+    uint8_t _curSpell = 0;
+    InputFrame _last{};
 };
 
 // ─── LockstepNetComponent ────────────────────────────────────────────────────
@@ -75,13 +76,16 @@ private:
 
 class LockstepNetComponent : public Component {
 public:
-    explicit LockstepNetComponent(GameObject* go) { gameObject = go; }
+    explicit LockstepNetComponent(GameObject* go) {
+        gameObject = go;
+    }
 
-    std::string GetName() const override { return "LockstepNet"; }
+    std::string GetName() const override {
+        return "LockstepNet";
+    }
 
-    void Start(LockstepNet::Mode mode, uint16_t port, uint32_t seed, int delay,
-               const std::string& joinIp = "") {
-        auto* con = gameObject->GetApp()->GetConsole();
+    void Start(LockstepNet::Mode mode, uint16_t port, uint32_t seed, int delay, const std::string& joinIp = "") {
+        auto* con = ConsoleSubsystem::Get();
         switch (mode) {
         case LockstepNet::Mode::Host:
             _net.StartHost(port, seed, delay);
@@ -97,15 +101,29 @@ public:
         }
     }
 
-    void Shutdown() { _net.Shutdown(); }
+    void Shutdown() {
+        _net.Shutdown();
+    }
 
-    void SetInputComponent(PlayerInputComponent* ic) { _inputComp = ic; }
+    void SetInputComponent(PlayerInputComponent* ic) {
+        _inputComp = ic;
+    }
 
-    GameSim&     GetSim()       { return _sim; }
-    LockstepNet& GetNet()       { return _net; }
-    bool         IsStarted() const { return _started; }
-    bool         IsStalled() const { return _stalled; }
-    bool*        StartedPtr()   { return &_started; }
+    GameSim& GetSim() {
+        return _sim;
+    }
+    LockstepNet& GetNet() {
+        return _net;
+    }
+    bool IsStarted() const {
+        return _started;
+    }
+    bool IsStalled() const {
+        return _stalled;
+    }
+    bool* StartedPtr() {
+        return &_started;
+    }
 
     void OnTick(float dt) override {
         _net.Pump(NowMs());
@@ -113,7 +131,7 @@ public:
         if (!_started && _net.state == LockstepNet::State::Running) {
             _sim.Init(_net.seed);
             _started = true;
-            gameObject->GetApp()->GetConsole()->Info(
+            ConsoleSubsystem::Get()->Info(
                 fmt::format("Game started, seed {}, local player {}", _net.seed, _net.localPlayer)
             );
         }
@@ -122,24 +140,26 @@ public:
     }
 
     void DrawImGui() override {
-        if (!_started) { ImGui::TextDisabled("Waiting for connection..."); return; }
+        if (!_started) {
+            ImGui::TextDisabled("Waiting for connection...");
+            return;
+        }
         ImGui::Text("Tick: %u", _sim.tick);
         ImGui::Text("Checksum: 0x%08X", _sim.Checksum());
         int aliveProj = 0;
-        for (const auto& p : _sim.projectiles) if (p.alive) aliveProj++;
+        for (const auto& p : _sim.projectiles)
+            if (p.alive) aliveProj++;
         ImGui::Text("Projectiles alive: %d", aliveProj);
         ImGui::Text("World: %dx%d cells", SandWorld::W, SandWorld::H);
         ImGui::Text("Stalled: %s", _stalled ? "yes" : "no");
         ImGui::Separator();
-        static const char* modeNames[]  = { "Solo", "Host", "Client" };
+        static const char* modeNames[] = { "Solo", "Host", "Client" };
         static const char* stateNames[] = { "Idle", "Connecting", "Running", "Failed" };
         ImGui::Text("Mode: %s  State: %s", modeNames[int(_net.mode)], stateNames[int(_net.state)]);
         if (_net.mode != LockstepNet::Mode::Solo) {
-            ImGui::Text("RTT: %d ms  Delay: %d ticks",
-                        _net.rttMs < 0 ? 0 : _net.rttMs, _net.inputDelay);
+            ImGui::Text("RTT: %d ms  Delay: %d ticks", _net.rttMs < 0 ? 0 : _net.rttMs, _net.inputDelay);
             ImGui::Text("Local player: %d", _net.localPlayer);
-            if (_net.desync)
-                ImGui::TextColored({ 1, 0, 0, 1 }, "DESYNC DETECTED");
+            if (_net.desync) ImGui::TextColored({ 1, 0, 0, 1 }, "DESYNC DETECTED");
         }
     }
 
@@ -155,23 +175,28 @@ private:
         int guard = 0;
         while (_accum >= TICK_DT) {
             uint32_t t = _sim.tick;
-            if (_inputComp)
-                _net.SubmitLocalInput(t + uint32_t(_net.inputDelay), _inputComp->BuildFrame());
-            if (!_net.HasInputs(t)) { _stalled = true; break; }
+            if (_inputComp) _net.SubmitLocalInput(t + uint32_t(_net.inputDelay), _inputComp->BuildFrame());
+            if (!_net.HasInputs(t)) {
+                _stalled = true;
+                break;
+            }
             _stalled = false;
             _sim.Step(_net.GetInput(0, t), _net.GetInput(1, t));
             if (t % 120 == 0) _net.ShareChecksum(t, _sim.Checksum());
             _net.PruneBelow(t);
             _accum -= TICK_DT;
-            if (++guard >= 5) { _accum = std::min(_accum, TICK_DT); break; }
+            if (++guard >= 5) {
+                _accum = std::min(_accum, TICK_DT);
+                break;
+            }
         }
     }
 
-    GameSim    _sim;
+    GameSim _sim;
     LockstepNet _net;
-    bool        _started = false;
-    bool        _stalled = false;
-    float       _accum   = 0.0f;
+    bool _started = false;
+    bool _stalled = false;
+    float _accum = 0.0f;
     PlayerInputComponent* _inputComp = nullptr;
 };
 
@@ -182,9 +207,13 @@ private:
 class PlayerInspectorComponent : public Component {
 public:
     PlayerInspectorComponent(GameObject* go, Player* p, int idx, LockstepNet* net, bool* started)
-        : _player(p), _index(idx), _net(net), _started(started) { gameObject = go; }
+      : _player(p), _index(idx), _net(net), _started(started) {
+        gameObject = go;
+    }
 
-    std::string GetName() const override { return "Player " + std::to_string(_index); }
+    std::string GetName() const override {
+        return "Player " + std::to_string(_index);
+    }
 
     void DrawImGui() override {
         ImGui::PushID(_index);
@@ -211,8 +240,8 @@ public:
     }
 
 private:
-    Player*      _player;
-    int          _index;
+    Player* _player;
+    int _index;
     LockstepNet* _net;
-    bool*        _started;
+    bool* _started;
 };

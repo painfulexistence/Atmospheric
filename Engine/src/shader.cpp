@@ -9,6 +9,21 @@ static std::string PreprocessShaderForWebGL(std::string src, ShaderType type) {
     std::regex versionRegex(R"(#version\s+[0-9]+(?:\s+core)?)");
     src = std::regex_replace(src, versionRegex, "#version 300 es");
 
+    // GLSL requires #version to be the literal first line. Desktop compilers
+    // tolerate leading comments/blank lines before it, but ANGLE (WebGL) rejects
+    // it outright and silently falls back to GLSL ES 1.00 defaults -- which then
+    // cascades into unrelated-looking errors like "'in' supported in GLSL ES 3.00
+    // only". If a source has header comments above #version, hoist the directive
+    // to line 1.
+    size_t versionPos = src.find("#version 300 es");
+    if (versionPos != std::string::npos && versionPos != 0) {
+        size_t lineEnd = src.find('\n', versionPos);
+        size_t lineLen = (lineEnd == std::string::npos ? src.size() : lineEnd + 1) - versionPos;
+        std::string versionLine = src.substr(versionPos, lineLen);
+        src.erase(versionPos, lineLen);
+        src = versionLine + src;
+    }
+
     // Insert precision qualifiers for fragment shaders if not present
     if (type == ShaderType::Fragment) {
         // Strip layout(location = ...) from fragment shader inputs (in)
@@ -39,13 +54,18 @@ static std::string PreprocessShaderForWebGL(std::string src, ShaderType type) {
 
 static GLenum GetGLShaderType(ShaderType type) {
     switch (type) {
-        case ShaderType::Vertex:         return GL_VERTEX_SHADER;
-        case ShaderType::Fragment:       return GL_FRAGMENT_SHADER;
+    case ShaderType::Vertex:
+        return GL_VERTEX_SHADER;
+    case ShaderType::Fragment:
+        return GL_FRAGMENT_SHADER;
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
-        case ShaderType::TessControl:    return GL_TESS_CONTROL_SHADER;
-        case ShaderType::TessEvaluation: return GL_TESS_EVALUATION_SHADER;
+    case ShaderType::TessControl:
+        return GL_TESS_CONTROL_SHADER;
+    case ShaderType::TessEvaluation:
+        return GL_TESS_EVALUATION_SHADER;
 #endif
-        default: return GL_VERTEX_SHADER;
+    default:
+        return GL_VERTEX_SHADER;
     }
 }
 
@@ -67,10 +87,11 @@ Shader::Shader(const std::string& path, ShaderType type) {
         GLint maxLength = 0;
         glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &maxLength);
 
-        GLchar* log = new GLchar[maxLength];
-        glGetShaderInfoLog(shader, maxLength, &maxLength, log);
+        std::string log(maxLength, '\0');
+        glGetShaderInfoLog(shader, maxLength, &maxLength, log.data());
+        log.resize(maxLength);// drop the trailing '\0' GL didn't write into
 
-        throw std::runtime_error(fmt::format("Shader error: {}\n", (char*)log));
+        throw std::runtime_error(fmt::format("Shader error: {}\n", log));
     }
 }
 
@@ -87,12 +108,12 @@ GLShaderProgram::GLShaderProgram(const ShaderProgramProps& props) : _program(glC
 #endif
 
     if (props.feedbackVaryings.has_value()) {
-        std::vector<const char*> varyings_c_str;
-        varyings_c_str.reserve(props.feedbackVaryings->size());
+        std::vector<const char*> varyingsCStr;
+        varyingsCStr.reserve(props.feedbackVaryings->size());
         for (const auto& varying : props.feedbackVaryings.value()) {
-            varyings_c_str.push_back(varying.c_str());
+            varyingsCStr.push_back(varying.c_str());
         }
-        glTransformFeedbackVaryings(_program, varyings_c_str.size(), varyings_c_str.data(), GL_INTERLEAVED_ATTRIBS);
+        glTransformFeedbackVaryings(_program, varyingsCStr.size(), varyingsCStr.data(), GL_INTERLEAVED_ATTRIBS);
     }
 
     glLinkProgram(_program);
@@ -113,7 +134,7 @@ GLShaderProgram::GLShaderProgram(const ShaderProgramProps& props) : _program(glC
 }
 
 GLShaderProgram::GLShaderProgram(
-  std::string vert, std::string frag, std::optional<std::string> tesc, std::optional<std::string> tese
+    std::string vert, std::string frag, std::optional<std::string> tesc, std::optional<std::string> tese
 )
   : _program(glCreateProgram()) {
     glAttachShader(_program, Shader(vert, ShaderType::Vertex).shader);

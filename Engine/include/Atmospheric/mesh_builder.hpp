@@ -1,6 +1,6 @@
 #pragma once
-#include "csg.hpp"
 #include "buffer.hpp"
+#include "csg.hpp"
 #include "vertex.hpp"
 
 
@@ -8,12 +8,12 @@ class Mesh;
 
 // Face direction enum for voxel meshes
 enum class FaceDir : uint8_t {
-    TOP    = 0,  // +Y
-    BOTTOM = 1,  // -Y
-    RIGHT  = 2,  // +X
-    LEFT   = 3,  // -X
-    FRONT  = 4,  // +Z
-    BACK   = 5   // -Z
+    TOP = 0,// +Y
+    BOTTOM = 1,// -Y
+    RIGHT = 2,// +X
+    LEFT = 3,// -X
+    FRONT = 4,// +Z
+    BACK = 5// -Z
 };
 
 class MeshBuilder {
@@ -30,18 +30,18 @@ public:
     static Mesh* CreateSphereWithPhysics(const float& radius = 0.5f, const int& division = 18);
 
     static Mesh* CreateTerrainWithPhysics(
-      const float& size = 1024.f,
-      const int& resolution = 10,
-      const std::string& heightmap = "assets/textures/heightmap_debug.jpg"
+        const float& size = 1024.f,
+        const int& resolution = 10,
+        const std::string& heightmap = "assets/textures/heightmap_debug.jpg"
     );
 
     void PushQuad(
-      glm::vec3 position,
-      glm::vec2 size,
-      glm::vec3 normal,
-      glm::quat rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-      glm::vec2 uvMin = glm::vec2(0.0f),
-      glm::vec2 uvMax = glm::vec2(1.0f)
+        glm::vec3 position,
+        glm::vec2 size,
+        glm::vec3 normal,
+        glm::quat rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+        glm::vec2 uvMin = glm::vec2(0.0f),
+        glm::vec2 uvMax = glm::vec2(1.0f)
     );
 
     void PushCube(glm::vec3 position, glm::vec3 size, glm::quat rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f));
@@ -79,8 +79,7 @@ public:
     // h        : extent along v_axis
     // u_axis   : 0=X, 1=Y, 2=Z
     // v_axis   : 0=X, 1=Y, 2=Z  (u_axis != v_axis, both != normal axis)
-    void PushGreedyFace(glm::ivec3 pos, FaceDir dir, uint8_t voxelId,
-                        int w, int h, int u_axis, int v_axis);
+    void PushGreedyFace(glm::ivec3 pos, FaceDir dir, uint8_t voxelId, int w, int h, int u_axis, int v_axis);
 
     // Build and return vertex data
     const std::vector<VoxelVertex>& Build() {

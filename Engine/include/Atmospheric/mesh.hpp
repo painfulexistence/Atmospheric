@@ -1,54 +1,42 @@
 #pragma once
+#include "buffer.hpp"
 #include "bullet_collision.hpp"
 #include "globals.hpp"
 #include "material.hpp"
-#include "buffer.hpp"
 #include "shader.hpp"
 #include "vertex.hpp"
 #include <array>
 #include <cstdint>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
+#include <memory>
 #include <optional>
 #include <vector>
 
-struct TerrainShaderData {
-    float heightScale        = 32.0f;
-    float tessellationFactor = 16.0f;
-};
-
-struct WaterShaderData {
-    float     waterLine       = 32.0f;
-    float     waveStrength    =  0.1f;
-    float     waveSpeed       =  1.0f;
-    glm::vec3 waterFogColor   = {0.55f, 0.65f, 0.75f};
-    float     waterFogDensity =  0.003f;
-};
-
 enum class MeshType {
-    PRIM    = 0,
+    PRIM = 0,
     TERRAIN = 1,
-    SKY     = 2,
-    DEBUG   = 3,  // Debug lines, wireframes
-    CANVAS  = 4,  // UI/Canvas elements
-    VOXEL   = 5   // Voxel chunk meshes
+    SKY = 2,
+    DEBUG = 3,// Debug lines, wireframes
+    CANVAS = 4,// UI/Canvas elements
+    VOXEL = 5// Voxel chunk meshes
 };
 
 enum class UpdateFrequency {
-    Static,   // One-time upload, never changes (normal 3D models)
-    Dynamic,  // May change per frame (debug lines, canvas, particles)
-    Stream    // Always changes per frame
+    Static,// One-time upload, never changes (normal 3D models)
+    Dynamic,// May change per frame (debug lines, canvas, particles)
+    Stream// Always changes per frame
 };
 
 class Mesh {
 public:
     MeshType type;
     UpdateFrequency updateFreq = UpdateFrequency::Static;
-    size_t vertCount;
-    size_t triCount;
+    size_t vertCount = 0;
+    size_t triCount = 0;
     bool initialized = false;
-    GLuint vao;
-    GLuint ibo;
+    GLuint vao = 0;
+    GLuint ibo = 0;
 
     Mesh(MeshType type = MeshType::PRIM);
     ~Mesh();
@@ -85,25 +73,22 @@ public:
         _bounds = bounds;
     }
 
-    // Shader-specific data populated by the owning component.
-    // Only meaningful for the matching MeshType.
-    std::optional<TerrainShaderData> terrainData;
-    std::optional<WaterShaderData>   waterData;
-
-    Material* GetMaterial() const {
+    MaterialHandle GetMaterial() const {
         return _material;
     }
 
-    void SetMaterial(Material* material) {
+    void SetMaterial(MaterialHandle material) {
         _material = material;
     };
 
-    btCollisionShape* GetShape() {
-        return _shape;
+    // Non-owning observer; the Mesh owns the shape.
+    btCollisionShape* GetShape() const {
+        return _shape.get();
     }
 
+    // Takes ownership of a heap-allocated shape (callers pass `new btXxxShape(...)`).
     void SetShape(btCollisionShape* shape) {
-        _shape = shape;
+        _shape.reset(shape);
     }
 
     void SetShapeLocalScaling(glm::vec3 localScaling);
@@ -115,8 +100,10 @@ private:
     GLenum _primitiveType = GL_TRIANGLES;
     std::array<glm::vec3, 8> _bounds;
 
-    Material* _material;
-    btCollisionShape* _shape;
+    // Stable reference into AssetManager's material table; never dangles
+    // (resolves to nullptr after the material is unloaded).
+    MaterialHandle _material;
+    std::unique_ptr<btCollisionShape> _shape;
 
     // New RenderMesh-based storage (used by Update methods)
     RenderMeshHandle _renderMeshHandle;

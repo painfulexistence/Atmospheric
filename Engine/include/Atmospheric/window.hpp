@@ -5,7 +5,7 @@
 #include <unordered_map>
 
 struct ImageSize {
-    ImageSize(int width, int height) : width(width), height(height){};
+    ImageSize(int width, int height) : width(width), height(height) {};
     int width;
     int height;
 };
@@ -22,9 +22,27 @@ struct WindowProps {
 
 // Active graphics backend.
 enum class GfxBackend {
-    WebGPU,  // Primary: Dawn on native / browser WebGPU on web
-    OpenGL,  // Fallback: OpenGL 4.1 (native) / WebGL 2.0 (Emscripten)
+    WebGPU,// Primary: Dawn on native / browser WebGPU on web
+    OpenGL,// Fallback: OpenGL 4.1 (native) / WebGL 2.0 (Emscripten)
 };
+
+// Negotiated block-compressed texture support on the active WebGPU device.
+// Reflects the WGPUFeatureName_TextureCompression* features actually granted
+// by the adapter/device (queried via wgpuAdapterHasFeature), not just requested.
+enum class TextureCompressionFormat {
+    None,// No compressed-texture feature negotiated; upload uncompressed RGBA32.
+    BC7,// Desktop browsers (Chrome/Firefox on Windows/Mac/Linux)
+    ETC2,// Mobile / some integrated GPUs
+    ASTC4x4,// Mobile (newer Android GPUs)
+};
+
+// Minification/magnification filter hint for a 2D texture.
+//   Linear:  smooth — fonts, photos, video (default; most 2D content)
+//   Nearest: crisp texels — pixel-art / grid content
+// On GL this is baked into the texture object (glTexParameteri). On WebGPU
+// the filter lives on the sampler, so GfxFactory records the hint per texture
+// and GPUCanvasPass selects a matching sampler (see GfxFactory::UploadTexture2D).
+enum class TextureFilter { Linear, Nearest };
 
 enum class KeyState { PRESSED, RELEASED, HELD, UNKNOWN };
 
@@ -166,17 +184,19 @@ public:
     glm::vec2 GetDPI();
 
     // Returns the native window handle (SDL_Window* on SDL backend).
-    void* GetNativeHandle() const { return _internal; }
+    void* GetNativeHandle() const {
+        return _internal;
+    }
 
 private:
     void* _internal = nullptr;
     bool _isRunning = true;
     bool _isFullscreen = false;
-    bool _webGPUCanvas = false; // true if canvas was left free for WebGPU (no GL context)
-    int _windowedX;
-    int _windowedY;
-    int _windowedWidth;
-    int _windowedHeight;
+    bool _webGPUCanvas = false;// true if canvas was left free for WebGPU (no GL context)
+    int _windowedX = 0;
+    int _windowedY = 0;
+    int _windowedWidth = 0;
+    int _windowedHeight = 0;
     float _scaleX = 1.0f;
     float _scaleY = 1.0f;
     WindowEventCallbackID _nextCallbackID = 0;

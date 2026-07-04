@@ -1,18 +1,14 @@
 #include "voxel_chunk.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include <algorithm>
 #include <cstring>
 
-VoxelChunk::VoxelChunk(glm::ivec3 chunkPos)
-    : _chunkPos(chunkPos)
-{
-    std::memset(_voxels,    0, sizeof(_voxels));
+VoxelChunk::VoxelChunk(glm::ivec3 chunkPos) : _chunkPos(chunkPos) {
+    std::memset(_voxels, 0, sizeof(_voxels));
     std::memset(_neighbors, 0, sizeof(_neighbors));
 }
 
 VoxelChunk::~VoxelChunk() {
-    // _mesh lifetime is managed externally (passed to AssetManager / deleted by VoxelWorld)
-    delete _mesh;
 }
 
 uint8_t VoxelChunk::GetVoxel(int x, int y, int z) const {
@@ -33,9 +29,7 @@ bool VoxelChunk::IsAir(int x, int y, int z) const {
 }
 
 bool VoxelChunk::IsInBounds(int x, int y, int z) const {
-    return x >= 0 && x < SIZE &&
-           y >= 0 && y < SIZE &&
-           z >= 0 && z < SIZE;
+    return x >= 0 && x < SIZE && y >= 0 && y < SIZE && z >= 0 && z < SIZE;
 }
 
 void VoxelChunk::SetNeighbor(int dx, int dz, VoxelChunk* chunk) {
@@ -48,11 +42,21 @@ uint8_t VoxelChunk::GetVoxelWithNeighbors(int x, int y, int z) const {
     int dx = 0, dz = 0;
     int nx = x, nz = z;
 
-    if      (x <    0) { nx = x + SIZE; dx = -1; }
-    else if (x >= SIZE) { nx = x - SIZE; dx =  1; }
+    if (x < 0) {
+        nx = x + SIZE;
+        dx = -1;
+    } else if (x >= SIZE) {
+        nx = x - SIZE;
+        dx = 1;
+    }
 
-    if      (z <    0) { nz = z + SIZE; dz = -1; }
-    else if (z >= SIZE) { nz = z - SIZE; dz =  1; }
+    if (z < 0) {
+        nz = z + SIZE;
+        dz = -1;
+    } else if (z >= SIZE) {
+        nz = z - SIZE;
+        dz = 1;
+    }
 
     if (dx == 0 && dz == 0) return _voxels[x][y][z];
 
@@ -68,7 +72,7 @@ float VoxelChunk::GetBoundingSphereRadius() const {
     return BSPHERE_RADIUS;
 }
 
-void VoxelChunk::RebuildMesh(GraphicsServer* gfx) {
+void VoxelChunk::RebuildMesh(GraphicsSubsystem* gfx) {
     if (!_dirty) return;
 
     VoxelMeshBuilder builder;
@@ -83,7 +87,7 @@ void VoxelChunk::RebuildMesh(GraphicsServer* gfx) {
     const auto& verts = builder.Build();
 
     if (!_mesh) {
-        _mesh = new Mesh(MeshType::VOXEL);
+        _mesh = std::make_unique<Mesh>(MeshType::VOXEL);
     }
     if (!verts.empty()) {
         _mesh->Update(verts);
@@ -92,37 +96,39 @@ void VoxelChunk::RebuildMesh(GraphicsServer* gfx) {
     // Update AABB bounding box for frustum culling
     glm::vec3 wp = GetWorldPos();
     float s = static_cast<float>(SIZE);
-    std::array<glm::vec3, 8> bounds = {{
-        wp + glm::vec3(0, 0, 0), wp + glm::vec3(s, 0, 0),
-        wp + glm::vec3(0, s, 0), wp + glm::vec3(s, s, 0),
-        wp + glm::vec3(0, 0, s), wp + glm::vec3(s, 0, s),
-        wp + glm::vec3(0, s, s), wp + glm::vec3(s, s, s),
-    }};
+    std::array<glm::vec3, 8> bounds = { {
+        wp + glm::vec3(0, 0, 0),
+        wp + glm::vec3(s, 0, 0),
+        wp + glm::vec3(0, s, 0),
+        wp + glm::vec3(s, s, 0),
+        wp + glm::vec3(0, 0, s),
+        wp + glm::vec3(s, 0, s),
+        wp + glm::vec3(0, s, s),
+        wp + glm::vec3(s, s, s),
+    } };
     _mesh->SetBoundingBox(bounds);
 
     _dirty = false;
 }
 
-void VoxelChunk::BuildGreedyLayer(VoxelMeshBuilder& builder,
-                                   int axis, int layer, int dir)
-{
+void VoxelChunk::BuildGreedyLayer(VoxelMeshBuilder& builder, int axis, int layer, int dir) {
     // The two axes perpendicular to `axis`
     int u_axis = (axis + 1) % 3;
     int v_axis = (axis + 2) % 3;
 
     // mask[u][v] = voxel_id of the visible face, 0 if none
     static uint8_t mask[SIZE][SIZE];
-    static bool    done[SIZE][SIZE];
+    static bool done[SIZE][SIZE];
     std::memset(mask, 0, sizeof(mask));
 
     for (int u = 0; u < SIZE; ++u) {
         for (int v = 0; v < SIZE; ++v) {
             glm::ivec3 posA(0), posB(0);
-            posA[axis]   = layer;
+            posA[axis] = layer;
             posA[u_axis] = u;
             posA[v_axis] = v;
-            posB         = posA;
-            posB[axis]  += dir;
+            posB = posA;
+            posB[axis] += dir;
 
             uint8_t va = GetVoxelWithNeighbors(posA.x, posA.y, posA.z);
             uint8_t vb = GetVoxelWithNeighbors(posB.x, posB.y, posB.z);
@@ -132,9 +138,12 @@ void VoxelChunk::BuildGreedyLayer(VoxelMeshBuilder& builder,
     }
 
     FaceDir faceDir;
-    if (axis == 1)      faceDir = (dir > 0) ? FaceDir::TOP    : FaceDir::BOTTOM;
-    else if (axis == 0) faceDir = (dir > 0) ? FaceDir::RIGHT  : FaceDir::LEFT;
-    else                faceDir = (dir > 0) ? FaceDir::FRONT  : FaceDir::BACK;
+    if (axis == 1)
+        faceDir = (dir > 0) ? FaceDir::TOP : FaceDir::BOTTOM;
+    else if (axis == 0)
+        faceDir = (dir > 0) ? FaceDir::RIGHT : FaceDir::LEFT;
+    else
+        faceDir = (dir > 0) ? FaceDir::FRONT : FaceDir::BACK;
 
     std::memset(done, 0, sizeof(done));
 
@@ -155,7 +164,8 @@ void VoxelChunk::BuildGreedyLayer(VoxelMeshBuilder& builder,
                 bool ok = true;
                 for (int k = 0; k < w; ++k) {
                     if (mask[u + k][v + h] != voxelId || done[u + k][v + h]) {
-                        ok = false; break;
+                        ok = false;
+                        break;
                     }
                 }
                 if (!ok) break;
@@ -169,7 +179,7 @@ void VoxelChunk::BuildGreedyLayer(VoxelMeshBuilder& builder,
 
             // Base corner of the quad in local chunk space
             glm::ivec3 quadPos(0);
-            quadPos[axis]   = layer;
+            quadPos[axis] = layer;
             quadPos[u_axis] = u;
             quadPos[v_axis] = v;
 

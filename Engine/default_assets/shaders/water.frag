@@ -14,10 +14,9 @@ uniform sampler2D u_depthTexture;
 uniform mat4      u_invProj;
 uniform mat4      u_invView;
 uniform vec2      u_screenSize;
-
-const vec3  DEEP_COLOR    = vec3(0.04, 0.11, 0.35);
-const vec3  SHALLOW_COLOR = vec3(0.686, 0.933, 0.933);
-const float BEER_COEF     = 0.095;
+uniform vec3      u_deepColor;
+uniform vec3      u_shallowColor;
+uniform float     u_beerCoef;
 
 out vec4 fragColor;
 
@@ -37,7 +36,7 @@ void main() {
     // Underwater camera tint
     if (u_cameraPos.y < u_waterLine) {
         float sub = smoothstep(2.0, 32.0, u_waterLine - u_cameraPos.y);
-        fragColor = vec4(mix(SHALLOW_COLOR, DEEP_COLOR, sub), 0.9);
+        fragColor = vec4(mix(u_shallowColor, u_deepColor, sub), 0.9);
         return;
     }
 
@@ -46,8 +45,8 @@ void main() {
     float rawDepth       = texture(u_depthTexture, screenUV).r;
     vec3  floorPos       = reconstructWorldPos(screenUV, rawDepth);
     float waterThickness = max(v_worldPos.y - floorPos.y, 0.0);
-    float beerFactor     = max(1.0 - exp(-waterThickness * BEER_COEF), 0.0);
-    vec3  col            = mix(SHALLOW_COLOR, DEEP_COLOR, beerFactor);
+    float beerFactor     = max(1.0 - exp(-waterThickness * u_beerCoef), 0.0);
+    vec3  col            = mix(u_shallowColor, u_deepColor, beerFactor);
 
     float diff    = max(dot(norm, lightDir), 0.0);
     float spec    = pow(max(dot(norm, halfDir), 0.0), 128.0);

@@ -17,42 +17,58 @@
 
 namespace CardGame {
 
-struct Rect {
-    float x = 0, y = 0, w = 0, h = 0;
-    bool Contains(glm::vec2 p) const {
-        return p.x >= x && p.x <= x + w && p.y >= y && p.y <= y + h;
-    }
-    glm::vec2 Center() const { return { x + w * 0.5f, y + h * 0.5f }; }
-};
+    struct Rect {
+        float x = 0, y = 0, w = 0, h = 0;
+        bool Contains(glm::vec2 p) const {
+            return p.x >= x && p.x <= x + w && p.y >= y && p.y <= y + h;
+        }
+        glm::vec2 Center() const {
+            return { x + w * 0.5f, y + h * 0.5f };
+        }
+    };
 
-class CombatantComponent : public Component {
-public:
-    CombatantComponent(GameObject*, std::string name, bool isPlayer)
-        : _name(std::move(name)), _isPlayer(isPlayer) {}
+    class CombatantComponent : public Component {
+    public:
+        CombatantComponent(GameObject*, std::string name, bool isPlayer) : _name(std::move(name)), _isPlayer(isPlayer) {
+        }
 
-    std::string GetName() const override { return "CombatantComponent"; }
-    bool CanTick() const override { return false; }
+        std::string GetName() const override {
+            return "CombatantComponent";
+        }
+        bool CanTick() const override {
+            return false;
+        }
 
-    void OnAttach() override {
-        _health = gameObject->GetComponent<HealthComponent>();
-        _status = gameObject->GetComponent<StatusComponent>();
-    }
+        void OnAttach() override {
+            _health = gameObject->GetComponent<HealthComponent>();
+            _status = gameObject->GetComponent<StatusComponent>();
+        }
 
-    const std::string& DisplayName() const { return _name; }
-    bool IsPlayer() const { return _isPlayer; }
+        const std::string& DisplayName() const {
+            return _name;
+        }
+        bool IsPlayer() const {
+            return _isPlayer;
+        }
 
-    HealthComponent* Health() const { return _health; }
-    StatusComponent* Status() const { return _status; }
-    bool IsAlive() const { return _health && !_health->IsDead(); }
+        HealthComponent* Health() const {
+            return _health;
+        }
+        StatusComponent* Status() const {
+            return _status;
+        }
+        bool IsAlive() const {
+            return _health && !_health->IsDead();
+        }
 
-    Rect rect;                 // current on-screen box (set by the renderer)
-    float hitFlash = 0.0f;     // >0 right after taking damage (for a flash fx)
+        Rect rect;// current on-screen box (set by the renderer)
+        float hitFlash = 0.0f;// >0 right after taking damage (for a flash fx)
 
-private:
-    std::string      _name;
-    bool             _isPlayer;
-    HealthComponent* _health = nullptr;
-    StatusComponent* _status = nullptr;
-};
+    private:
+        std::string _name;
+        bool _isPlayer;
+        HealthComponent* _health = nullptr;
+        StatusComponent* _status = nullptr;
+    };
 
-} // namespace CardGame
+}// namespace CardGame

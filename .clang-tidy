@@ -1,0 +1,31 @@
+Checks: >
+  readability-avoid-const-params-in-decls,
+  readability-function-cognitive-complexity,
+  modernize-use-auto,
+  modernize-use-nullptr,
+  modernize-use-override,
+  bugprone-use-after-move,
+  bugprone-dangling-handle,
+  performance-unnecessary-copy-initialization,
+  performance-move-const-arg,
+  google-readability-casting,
+  cppcoreguidelines-virtual-class-destructor,
+  cppcoreguidelines-special-member-functions,
+  -readability-magic-numbers,
+  -readability-braces-around-statements,
+  -readability-misleading-indentation
+
+# readability-identifier-naming is intentionally NOT enabled here.
+#
+# Its auto-fix has repeatedly corrupted this codebase: it renames use sites
+# without renaming declarations across #ifdef boundaries, misinterprets the
+# interaction between prefix and camelBack for globals, and even rewrites
+# inline JavaScript inside EM_JS macros. LLVM's own repo does not enable it
+# for the same reasons. Naming is enforced by review; formatting is enforced
+# by clang-format, which is the tool actually equipped for it.
+
+CheckOptions:
+  # cppcoreguidelines-special-member-functions: allow Rule of Zero — classes
+  # whose members already handle everything don't need the full five spelled out.
+  cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor: true
+  cppcoreguidelines-special-member-functions.AllowMissingMoveFunctionsWhenCopyIsDeleted: true

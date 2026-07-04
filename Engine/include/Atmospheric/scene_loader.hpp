@@ -41,7 +41,7 @@ struct SceneLoadConfig {
     // Callback for custom node type handling
     // Return true if handled, false to use default handling
     std::function<bool(GameObject*, const std::string& classname, const flatbuffers::NodeTree*)> customNodeHandler =
-      nullptr;
+        nullptr;
 
     // Optional: Override the root node's position
     bool overrideRootPosition = false;
@@ -63,7 +63,7 @@ public:
 
     // Convenience version: Load with specific position and layer (automatically infers base path)
     SceneLoadResult
-      Load(const std::string& path, const glm::vec3& rootPosition, CanvasLayer layer = CanvasLayer::LAYER_WORLD);
+        Load(const std::string& path, const glm::vec3& rootPosition, CanvasLayer layer = CanvasLayer::LAYER_WORLD);
 
     // Load from memory buffer
     SceneLoadResult LoadFromBuffer(const uint8_t* buffer, size_t size, const SceneLoadConfig& config = {});
@@ -72,11 +72,14 @@ public:
     static std::vector<std::string> GetSupportedNodeTypes();
 
 private:
-    Application* _app;
+    Application* _app = nullptr;
 
     // Parse the binary and create node hierarchy
     GameObject* ParseNodeTree(
-      const flatbuffers::NodeTree* nodeTree, const SceneLoadConfig& config, SceneLoadResult& result, GameObject* parent
+        const flatbuffers::NodeTree* nodeTree,
+        const SceneLoadConfig& config,
+        SceneLoadResult& result,
+        GameObject* parent
     );
 
     // Node type handlers
@@ -90,17 +93,17 @@ private:
 
     // Parse animations from CSB
     void
-      ParseAnimations(const flatbuffers::NodeAction* actions, SceneLoadResult& result, const SceneLoadConfig& config);
+        ParseAnimations(const flatbuffers::NodeAction* actions, SceneLoadResult& result, const SceneLoadConfig& config);
 
     // Resolve texture path
     int ResolveTexture(
-      const std::string& path, const std::string& plistFile, int resourceType, const SceneLoadConfig& config
+        const std::string& path, const std::string& plistFile, int resourceType, const SceneLoadConfig& config
     );
 
     // Create Text2DProps from CSB TextOptions
     Text2DProps CreateTextProps(
-      const flatbuffers::NodeTree* nodeTree,
-      const flatbuffers::WidgetOptions* widgetOptions,
-      const SceneLoadConfig& config
+        const flatbuffers::NodeTree* nodeTree,
+        const flatbuffers::WidgetOptions* widgetOptions,
+        const SceneLoadConfig& config
     );
 };

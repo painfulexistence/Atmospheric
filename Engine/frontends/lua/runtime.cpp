@@ -23,8 +23,8 @@
 ///       end
 ///   end
 
-#include "lua_application.hpp"
 #include "Atmospheric/file_system.hpp"
+#include "lua_application.hpp"
 
 #ifdef __EMSCRIPTEN__
 // ─────────────────────────────────────────────────────────────────────────────
@@ -83,33 +83,36 @@ static void StartGame() {
     // At this point:
     //   FileSystem cache has all KTX2 bytes  → LoadDefaultTextures() uses them
     //   MEMFS has all .lua files              → LoadUserScripts() can fopen them
-    static LuaApplication app({
-        .windowTitle        = "AtmosLua",
-        .windowWidth        = 1280,
-        .windowHeight       = 720,
-        .windowResizable    = true,
-        .vsync              = true,
-        .useDefaultTextures = true,
-        .useDefaultShaders  = true,
-    });
-    app.Run(); // installs emscripten_set_main_loop; never returns
+    static LuaApplication app(
+        {
+            .windowTitle = "AtmosLua",
+            .windowWidth = 1280,
+            .windowHeight = 720,
+            .windowResizable = true,
+            .vsync = true,
+            .useDefaultTextures = true,
+            .useDefaultShaders = true,
+        }
+    );
+    app.Run();// installs emscripten_set_main_loop; never returns
 }
 
 #else
 // ─────────────────────────────────────────────────────────────────────────────
 // Native entry point (Linux / macOS / Windows)
 // ─────────────────────────────────────────────────────────────────────────────
-int main(int argc, char* argv[])
-{
-    LuaApplication app({
-        .windowTitle        = "AtmosLua",
-        .windowWidth        = 1280,
-        .windowHeight       = 720,
-        .windowResizable    = true,
-        .vsync              = true,
-        .useDefaultTextures = true,
-        .useDefaultShaders  = true,
-    });
+int main(int argc, char* argv[]) {
+    LuaApplication app(
+        {
+            .windowTitle = "AtmosLua",
+            .windowWidth = 1280,
+            .windowHeight = 720,
+            .windowResizable = true,
+            .vsync = true,
+            .useDefaultTextures = true,
+            .useDefaultShaders = true,
+        }
+    );
     app.Run();
     return 0;
 }

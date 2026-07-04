@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -54,8 +55,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 class FileSystem {
 public:
-    using Bytes              = std::vector<uint8_t>;
-    using ReadCallback       = std::function<void(Bytes data, bool success)>;
+    using Bytes = std::vector<uint8_t>;
+    using ReadCallback = std::function<void(Bytes data, bool success)>;
     using CompletionCallback = std::function<void()>;
 
     static FileSystem& Get();
@@ -110,7 +111,8 @@ public:
     bool IsCached(const std::string& path) const;
 
     // Resolves a relative virtual path to an absolute/normalized platform path.
-    std::string ResolvePath(const std::string& path) const;
+    // Returns std::nullopt if the path does not exist in the cache or on disk.
+    [[nodiscard]] std::optional<std::string> ResolvePath(const std::string& path) const;
 
     // Release a cached entry to reclaim memory (after ConsumeSync is preferred).
     void EvictCache(const std::string& path);
@@ -130,10 +132,8 @@ public:
     void WriteFile(const std::string& path, const uint8_t* data, size_t len);
 
 private:
-    FileSystem()                             = default;
-    ~FileSystem()                            = default;
-    FileSystem(const FileSystem&)            = delete;
+    FileSystem();// defined in file_system.cpp (captures the SDL base path)
+    ~FileSystem() = default;
+    FileSystem(const FileSystem&) = delete;
     FileSystem& operator=(const FileSystem&) = delete;
-
-    static FileSystem* _instance;
 };

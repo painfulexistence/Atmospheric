@@ -1,5 +1,25 @@
 {
   "name": "main",
-  "textures": [],
-  "shaders": []
+  "textures": [
+    "assets/images/title.png"
+  ],
+  "shaders": [],
+  "entities": [
+    {
+      "name": "Title",
+      "position": [300.0, 300.0, 0.0],
+      "components": [
+        {
+          "type": "SpriteComponent",
+          "size": [600.0, 600.0],
+          "pivot": [0.5, 0.5],
+          "color": [1.0, 1.0, 1.0, 1.0],
+          "texture": "assets/images/title.png",
+          "layer": "LAYER_WORLD_2D",
+          "flipY": true,
+          "zOrder": 20
+        }
+      ]
+    }
+  ]
 }

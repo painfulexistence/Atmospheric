@@ -16,5 +16,7 @@ public:
 
     virtual CanvasLayer GetLayer() const = 0;
 
-    virtual int GetZOrder() const { return 0; }
+    virtual int GetZOrder() const {
+        return 0;
+    }
 };

@@ -1,79 +1,46 @@
 #include "../lua_application.hpp"
-#include "Atmospheric/audio_manager.hpp"
+#include "Atmospheric/audio_subsystem.hpp"
 
-void BindAudioAPI(sol::state& lua, AudioManager* audio)
-{
+void BindAudioAPI(sol::state& lua, AudioSubsystem* audio) {
     sol::table atmos = lua["atmos"];
     sol::table audioTable = atmos.create("audio");
 
     // ===== Sound API (short sound effects) =====
-    audioTable["loadSound"] = [audio](const std::string& path) -> SoundID {
-        return audio->LoadSound(path.c_str());
-    };
+    audioTable["loadSound"] = [audio](const std::string& path) -> SoundID { return audio->LoadSound(path.c_str()); };
 
-    audioTable["unloadSound"] = [audio](SoundID id) {
-        audio->UnloadSound(id);
-    };
+    audioTable["unloadSound"] = [audio](SoundID id) { audio->UnloadSound(id); };
 
-    audioTable["playSound"] = [audio](SoundID id) {
-        audio->PlaySound(id);
-    };
+    audioTable["playSound"] = [audio](SoundID id) { audio->PlaySound(id); };
 
     audioTable["playSoundVariation"] = [audio](SoundID id, float pitchVar, float volVar) {
         audio->PlaySoundVariation(id, pitchVar, volVar);
     };
 
-    audioTable["stopSound"] = [audio](SoundID id) {
-        audio->StopSound(id);
-    };
+    audioTable["stopSound"] = [audio](SoundID id) { audio->StopSound(id); };
 
-    audioTable["setSoundVolume"] = [audio](SoundID id, float volume) {
-        audio->SetSoundVolume(id, volume);
-    };
+    audioTable["setSoundVolume"] = [audio](SoundID id, float volume) { audio->SetSoundVolume(id, volume); };
 
-    audioTable["isSoundPlaying"] = [audio](SoundID id) -> bool {
-        return audio->IsSoundPlaying(id);
-    };
+    audioTable["isSoundPlaying"] = [audio](SoundID id) -> bool { return audio->IsSoundPlaying(id); };
 
     // ===== Music API (streaming, for background music) =====
-    audioTable["loadMusic"] = [audio](const std::string& path) -> MusicID {
-        return audio->LoadMusic(path.c_str());
-    };
+    audioTable["loadMusic"] = [audio](const std::string& path) -> MusicID { return audio->LoadMusic(path.c_str()); };
 
-    audioTable["unloadMusic"] = [audio](MusicID id) {
-        audio->UnloadMusic(id);
-    };
+    audioTable["unloadMusic"] = [audio](MusicID id) { audio->UnloadMusic(id); };
 
-    audioTable["playMusic"] = [audio](MusicID id) {
-        audio->PlayMusic(id);
-    };
+    audioTable["playMusic"] = [audio](MusicID id) { audio->PlayMusic(id); };
 
-    audioTable["stopMusic"] = [audio](MusicID id) {
-        audio->StopMusic(id);
-    };
+    audioTable["stopMusic"] = [audio](MusicID id) { audio->StopMusic(id); };
 
-    audioTable["smoothStopMusic"] = [audio](MusicID id) {
-        audio->SmoothStopMusic(id);
-    };
+    audioTable["smoothStopMusic"] = [audio](MusicID id) { audio->SmoothStopMusic(id); };
 
-    audioTable["setMusicVolume"] = [audio](MusicID id, float volume) {
-        audio->SetMusicVolume(id, volume);
-    };
+    audioTable["setMusicVolume"] = [audio](MusicID id, float volume) { audio->SetMusicVolume(id, volume); };
 
-    audioTable["isMusicPlaying"] = [audio](MusicID id) -> bool {
-        return audio->IsMusicPlaying(id);
-    };
+    audioTable["isMusicPlaying"] = [audio](MusicID id) -> bool { return audio->IsMusicPlaying(id); };
 
     // ===== Global controls =====
-    audioTable["stopAllSounds"] = [audio]() {
-        audio->StopAllSounds();
-    };
+    audioTable["stopAllSounds"] = [audio]() { audio->StopAllSounds(); };
 
-    audioTable["stopAllMusic"] = [audio]() {
-        audio->StopAllMusics();
-    };
+    audioTable["stopAllMusic"] = [audio]() { audio->StopAllMusics(); };
 
-    audioTable["stopAll"] = [audio]() {
-        audio->StopAll();
-    };
+    audioTable["stopAll"] = [audio]() { audio->StopAll(); };
 }
