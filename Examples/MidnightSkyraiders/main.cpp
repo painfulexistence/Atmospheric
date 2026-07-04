@@ -261,18 +261,25 @@ class MidnightSkyraiders : public Application {
         if (type ==  2) maxLife = 2.0f;
         if (type == -3) maxLife = 2.5f;
 
+        // Render each bullet at its texture's native size. bullet.png and
+        // enemy-bullet.png are 32x4 laser streaks; forcing everything to 8x8
+        // collapsed them into tiny squares, which is why the normal player
+        // shot and the enemy laser looked missing. Sizes mirror the source
+        // game's per-type sprites (32x4 lasers, 16x16 orbs, 8x8 orbit).
         TextureHandle tex = texBullet;
+        glm::vec2     sz(32.0f, 4.0f);
         switch (type) {
-        case  1: tex = texCircle;  break;
-        case  2: tex = texOrbit;   break;
-        case -1: tex = texECircle; break;
-        case -2: tex = texEBullet; break;
-        case -3: tex = texECircle; break;
+        case  0: tex = texBullet;  sz = glm::vec2(32.0f,  4.0f); break;
+        case  1: tex = texCircle;  sz = glm::vec2(16.0f, 16.0f); break;
+        case  2: tex = texOrbit;   sz = glm::vec2( 8.0f,  8.0f); break;
+        case -1: tex = texECircle; sz = glm::vec2(16.0f, 16.0f); break;
+        case -2: tex = texEBullet; sz = glm::vec2(32.0f,  4.0f); break;
+        case -3: tex = texECircle; sz = glm::vec2(16.0f, 16.0f); break;
         }
 
         auto* obj = CreateGameObject(glm::vec2(x, y));
         obj->AddComponent<SpriteComponent>(SpriteProps{
-            .size      = glm::vec2(8.0f, 8.0f),
+            .size      = sz,
             .pivot     = glm::vec2(0.5f, 0.5f),
             .color     = glm::vec4(1,1,1,1),
             .texture   = tex,
