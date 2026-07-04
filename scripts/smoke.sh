@@ -106,6 +106,14 @@ find_bin() {
         found="$(find "$BUILD_DIR/$ex" -maxdepth 3 -type f -name "$ex" -perm -u+x 2>/dev/null | head -n1)"
         [[ -n "$found" ]] && { echo "$found"; return 0; }
     fi
+
+    # Name-agnostic fallback: run the unique executable in the folder even if
+    # its name differs from the folder, ignoring data files under assets/.
+    if [[ -d "$BUILD_DIR/$ex" ]]; then
+        local found
+        found="$(find "$BUILD_DIR/$ex" -maxdepth 2 -type f -perm -u+x -not -path '*/assets/*' 2>/dev/null | head -n1)"
+        [[ -n "$found" ]] && { echo "$found"; return 0; }
+    fi
     return 1
 }
 

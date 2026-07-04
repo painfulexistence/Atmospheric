@@ -91,9 +91,14 @@ if [ -d "${RELEASE_DIR}" ]; then
             # 複製整個資料夾到 www/demo/
             cp -R "$target_dir" "${LOCAL_WWW}/demo/${target_name}"
             
-            # 將 <TargetName>.html 改名為 index.html (相容舊版與 OUTPUT_NAME 'index' 的新版產物)
-            if [ -f "${LOCAL_WWW}/demo/${target_name}/${target_name}.html" ]; then
-                mv "${LOCAL_WWW}/demo/${target_name}/${target_name}.html" "${LOCAL_WWW}/demo/${target_name}/index.html"
+            # 將唯一的 *.html 改名為 index.html，讓 ./<target_name>/ 能直接載入
+            # (名稱無關：相容 <TargetName>.html 與 OUTPUT_NAME 'index' 兩種產物)。
+            demo_dir="${LOCAL_WWW}/demo/${target_name}"
+            if [ ! -f "${demo_dir}/index.html" ]; then
+                first_html=$(ls "${demo_dir}"/*.html 2>/dev/null | head -n1)
+                if [ -n "$first_html" ]; then
+                    mv "$first_html" "${demo_dir}/index.html"
+                fi
             fi
             
             COPIED_COUNT=$((COPIED_COUNT + 1))
