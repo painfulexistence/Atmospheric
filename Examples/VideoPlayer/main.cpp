@@ -1,4 +1,5 @@
 #include "Atmospheric.hpp"
+#include "log.hpp"
 #include "Atmospheric/gfx_factory.hpp"
 
 // Path or HTTP/HTTPS/RTSP URL passed in as the first CLI argument.
@@ -35,16 +36,14 @@ class VideoPlayerDemo : public Application {
         // Open video -- supports local paths AND HTTP / HTTPS / RTSP / HLS URLs.
         if (_m_player.open(gvideoPath)) {
             _m_player.play();
-            ConsoleSubsystem::Get()->Info(fmt::format("Playing '{}' ({:.1f} s)", gvideoPath, _m_player.getDuration()));
+            Log::Info("Playing '{}' ({:.1f} s)", gvideoPath, _m_player.getDuration());
         } else {
-            ConsoleSubsystem::Get()->Warn(
-                fmt::format(
+            Log::Warn(
                     "Could not open '{}'. "
                     "Make sure the engine was built with FFmpeg support "
                     "and that the path / URL is valid.",
                     gvideoPath
-                )
-            );
+                );
         }
 
         // Fullscreen 2D sprite.  CanvasPass uses top-left origin, Y-down, pixels.
@@ -74,7 +73,7 @@ class VideoPlayerDemo : public Application {
             .layer = CanvasLayer::LAYER_WORLD_2D,
         });
 
-        ConsoleSubsystem::Get()->Info("Controls: SPACE = play/pause, ESC = quit");
+        Log::Info("Controls: SPACE = play/pause, ESC = quit");
     }
 
     void OnUpdate(float dt, float /*time*/) override {

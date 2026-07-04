@@ -1,4 +1,5 @@
 #include "graphics_subsystem.hpp"
+#include "log.hpp"
 #include "Atmospheric/window.hpp"
 #include "application.hpp"
 #include "asset_manager.hpp"
@@ -184,7 +185,7 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
     if (totalCount > 0) {
         static int gframeCounter = 0;
         if (gframeCounter++ % 60 == 0) {
-            ConsoleSubsystem::Get()->Info(fmt::format("Culling: total {} culled {}", totalCount, culledCount));
+            Log::Info("Culling: total {} culled {}", totalCount, culledCount);
         }
     }
 
@@ -588,7 +589,7 @@ void GraphicsSubsystem::PushRenderTarget(RenderTarget* target) {
 
 void GraphicsSubsystem::PopRenderTarget() {
     if (_renderTargetStack.empty()) {
-        ConsoleSubsystem::Get()->Warn("GraphicsSubsystem::PopRenderTarget - Stack is empty!");
+        Log::Warn("GraphicsSubsystem::PopRenderTarget - Stack is empty!");
         return;
     }
 

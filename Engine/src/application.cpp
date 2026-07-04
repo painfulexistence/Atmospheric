@@ -823,7 +823,7 @@ static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::s
     try {
         j = nlohmann::json::parse(jsonContent);
     } catch (const std::exception& e) {
-        ConsoleSubsystem::Get()->Error(fmt::format("ParseSceneBlueprint: JSON parse error: {}", e.what()));
+        Log::Error("ParseSceneBlueprint: JSON parse error: {}", e.what());
         if (error) *error = e.what();
         return bp;// bp.name is "" — caller checks this
     }
@@ -1035,21 +1035,21 @@ void Application::GoScene(const std::string& sceneName, std::function<void()> on
     FileSystem::Get().Prefetch({ scenePath }, [this, sceneName, scenePath, finish]() {
         auto bytes = FileSystem::Get().ReadSync(scenePath);
         if (bytes.empty()) {
-            _console->Error(fmt::format("GoScene: failed to read scene file '{}'", scenePath));
+            Log::Error("GoScene: failed to read scene file '{}'", scenePath);
             finish();
             return;
         }
 
         SceneBlueprint bp = ParseSceneBlueprint(std::string(bytes.begin(), bytes.end()));
         if (bp.name.empty()) {
-            _console->Error(fmt::format("GoScene: scene blueprint parse failed '{}'", scenePath));
+            Log::Error("GoScene: scene blueprint parse failed '{}'", scenePath);
             finish();
             return;
         }
 
         // Stage 2: prefetch every asset the blueprint declares, then load.
         std::vector<std::string> assetPaths = CollectPrefetchPaths(bp, _config.useDefaultTextures);
-        _console->Info(fmt::format("GoScene: prefetching {} asset(s) for '{}'", assetPaths.size(), sceneName));
+        Log::Info("GoScene: prefetching {} asset(s) for '{}'", assetPaths.size(), sceneName);
 
         FileSystem::Get().Prefetch(assetPaths, [this, sceneName, bp = std::move(bp), finish]() mutable {
             // Unload the current scene first. This runs under the loading overlay,
@@ -1094,10 +1094,10 @@ void Application::LoadEditorScene(const uint8_t* data, size_t len) {
     auto result = loader.LoadFromBuffer(data, len);
     if (!result.success) {
         _editorSceneError = result.error;
-        _console->Warn(fmt::format("[Editor] Scene load failed: {}", result.error));
+        Log::Warn("[Editor] Scene load failed: {}", result.error);
     } else {
         _editorSceneError.clear();
-        _console->Info(fmt::format("[Editor] Scene loaded: {} node(s)", result.allNodes.size()));
+        Log::Info("[Editor] Scene loaded: {} node(s)", result.allNodes.size());
     }
 
     _sceneReady = true;
@@ -1138,7 +1138,7 @@ void Application::UnloadScene(const std::string& name) {
 
     mainCamera = _graphics->GetMainCamera();
     mainLight = _graphics->GetMainLight();
-    _console->Info(fmt::format("[Scene] Unloaded scene '{}'.", name));
+    Log::Info("[Scene] Unloaded scene '{}'.", name);
 }
 
 void Application::ClearScenes() {
@@ -1178,7 +1178,7 @@ void Application::AddScene(const std::string& json) {
     SceneBlueprint bp = ParseSceneBlueprint(json, &_editorSceneError);
     if (bp.name.empty()) {// parse failed — _editorSceneError set by ParseSceneBlueprint
         _lastLoadedScene = "";
-        _console->Warn(fmt::format("[Scene] AddScene JSON parse error: {}", _editorSceneError));
+        Log::Warn("[Scene] AddScene JSON parse error: {}", _editorSceneError);
         return;
     }
 
@@ -1190,11 +1190,11 @@ void Application::AddScene(const std::string& json) {
         InstantiateScene(bp);
         _editorSceneError.clear();
         _lastLoadedScene = bp.name;
-        _console->Info(fmt::format("[Scene] Added scene '{}'.", bp.name));
+        Log::Info("[Scene] Added scene '{}'.", bp.name);
     } catch (const std::exception& e) {
         _editorSceneError = e.what();
         _lastLoadedScene = "";
-        _console->Warn(fmt::format("[Scene] AddScene '{}' failed: {}", bp.name, e.what()));
+        Log::Warn("[Scene] AddScene '{}' failed: {}", bp.name, e.what());
     }
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "Atmospheric.hpp"
+#include "log.hpp"
 #include "game_sim.hpp"
 #include "net_lockstep.hpp"
 #include <chrono>
@@ -89,11 +90,11 @@ public:
         switch (mode) {
         case LockstepNet::Mode::Host:
             _net.StartHost(port, seed, delay);
-            con->Info(fmt::format("Hosting on UDP port {} (seed {})", port, seed));
+            Log::Info("Hosting on UDP port {} (seed {})", port, seed);
             break;
         case LockstepNet::Mode::Client:
             _net.StartClient(joinIp, port);
-            con->Info(fmt::format("Joining {}:{} ...", joinIp, port));
+            Log::Info("Joining {}:{} ...", joinIp, port);
             break;
         default:
             _net.StartSolo(seed);
@@ -131,9 +132,7 @@ public:
         if (!_started && _net.state == LockstepNet::State::Running) {
             _sim.Init(_net.seed);
             _started = true;
-            ConsoleSubsystem::Get()->Info(
-                fmt::format("Game started, seed {}, local player {}", _net.seed, _net.localPlayer)
-            );
+            Log::Info("Game started, seed {}, local player {}", _net.seed, _net.localPlayer);
         }
 
         if (_started) RunFixedUpdate(dt);

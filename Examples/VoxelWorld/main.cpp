@@ -1,4 +1,5 @@
 #include "Atmospheric.hpp"
+#include "log.hpp"
 #include "components.hpp"
 
 // Camera navigation is FlyCameraComponent; world streaming and rendering are
@@ -38,7 +39,7 @@ class VoxelWorldApp : public Application {
             bloom->bloomStrength = 0.06f;
         }
 
-        ConsoleSubsystem::Get()->Info("VoxelWorld loaded. WASD move, RF up/down, IJKL look, ESC quit.");
+        Log::Info("VoxelWorld loaded. WASD move, RF up/down, IJKL look, ESC quit.");
     }
 
     void OnUpdate(float /*dt*/, float /*time*/) override {

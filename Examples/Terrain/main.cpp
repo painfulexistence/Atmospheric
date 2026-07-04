@@ -1,4 +1,5 @@
 #include "Atmospheric.hpp"
+#include "log.hpp"
 #include "Atmospheric/rmlui_manager.hpp"
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Elements/ElementFormControlSelect.h>
@@ -64,9 +65,7 @@ class TerrainDemo : public Application {
             _selMode->SetSelection(procedural ? 0 : 1);
             _syncing = false;
         }
-        ConsoleSubsystem::Get()->Info(
-            procedural ? "Switched to procedural noise terrain" : "Switched to heightmap terrain"
-        );
+        Log::Info("{}", procedural ? "Switched to procedural noise terrain" : "Switched to heightmap terrain");
     }
 
     void ApplyPalette(int index) {
@@ -81,7 +80,7 @@ class TerrainDemo : public Application {
             _selPalette->SetSelection(_paletteIndex);
             _syncing = false;
         }
-        ConsoleSubsystem::Get()->Info(std::string("Terrain palette ") + gpaletteNames[_paletteIndex]);
+        Log::Info("{}", std::string("Terrain palette ") + gpaletteNames[_paletteIndex]);
     }
 
     GameObject* CreateTerrain(const std::string& name, const std::shared_ptr<HeightField>& hf) {
@@ -123,7 +122,7 @@ class TerrainDemo : public Application {
     void SetupHUD() {
         _hud = RmlUiManager::Get()->LoadDocument("assets/ui/terrain_hud.rml");
         if (!_hud) {
-            ConsoleSubsystem::Get()->Warn("Terrain HUD failed to load; keyboard controls still work.");
+            Log::Warn("Terrain HUD failed to load; keyboard controls still work.");
             return;
         }
         _hud->Show();
@@ -206,10 +205,8 @@ class TerrainDemo : public Application {
         ApplyProcedural(_showProcedural);
         ApplyPalette(_paletteIndex);
 
-        ConsoleSubsystem::Get()->Info(
-            "Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, ESC "
-            "quit."
-        );
+        Log::Info("Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, ESC "
+            "quit.");
     }
 
     void OnUpdate(float dt, float /*time*/) override {

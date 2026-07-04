@@ -1,4 +1,5 @@
 #include "animator_2d.hpp"
+#include "log.hpp"
 #include "console_subsystem.hpp"
 #include "game_object.hpp"
 #include "sprite_component.hpp"
@@ -43,7 +44,7 @@ void Animator2D::AddAnimation(const std::string& name, const AnimationClip& clip
 
 void Animator2D::Play(const std::string& name) {
     if (_animations.find(name) == _animations.end()) {
-        ConsoleSubsystem::Get()->Error("Animation not found: " + name);
+        Log::Error("Animation not found: " + name);
         return;
     }
 

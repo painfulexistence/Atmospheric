@@ -1,4 +1,5 @@
 #include "text_2d_component.hpp"
+#include "log.hpp"
 #include "application.hpp"
 #include "batch_renderer_2d.hpp"
 #include "console_subsystem.hpp"
@@ -37,7 +38,7 @@ void Text2DComponent::DrawImGui() {
 }
 
 void Text2DComponent::OnAttach() {
-    ConsoleSubsystem::Get()->Info(fmt::format("Text2DComponent: Attaching with text='{}'", _text));
+    Log::Info("Text2DComponent: Attaching with text='{}'", _text);
     auto* graphics = GraphicsSubsystem::Get();
     graphics->RegisterCanvasDrawable(this);
 

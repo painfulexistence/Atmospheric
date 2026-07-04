@@ -1,4 +1,5 @@
 #include "physics_subsystem_2d.hpp"
+#include "log.hpp"
 #include "batch_renderer_2d.hpp"
 #include "console_subsystem.hpp"
 #include "game_object.hpp"
@@ -62,7 +63,7 @@ void Physics2DSubsystem::Init(Application* app) {
     worldDef.gravity = { 0.0f, 9.8f };
     _worldId = b2CreateWorld(&worldDef);
 
-    ConsoleSubsystem::Get()->Info("Physics2DSubsystem initialized with Box2D v3");
+    Log::Info("Physics2DSubsystem initialized with Box2D v3");
 }
 
 void Physics2DSubsystem::Process(float dt) {

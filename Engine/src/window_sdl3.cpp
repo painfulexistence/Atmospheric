@@ -16,7 +16,7 @@
     do {                                                                                    \
         GLenum _e;                                                                          \
         while ((_e = glGetError()) != GL_NO_ERROR)                                          \
-            ConsoleSubsystem::Get()->Error(fmt::format("GL probe [{}]: 0x{:x}", name, _e)); \
+            Log::Error("GL probe [{}]: 0x{:x}", name, _e); \
     } while (0)
 #else
 #define AE_GL_PROBE(name) ((void)0)

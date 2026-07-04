@@ -1,4 +1,5 @@
 #include "renderer.hpp"
+#include "log.hpp"
 #include "asset_manager.hpp"
 #include "batch_renderer_2d.hpp"
 #include "canvas_drawable.hpp"
@@ -452,7 +453,7 @@ void Renderer::CheckErrors(const std::string& prefix) {
             error = "UNKNOWN";
             break;
         }
-        ConsoleSubsystem::Get()->Error(fmt::format("{}: {}\n", prefix, error));
+        Log::Error("{}: {}\n", prefix, error);
     }
 }
 
@@ -560,7 +561,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
 
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
-            ConsoleSubsystem::Get()->Error("Renderer: WebGL resolved depth FBO incomplete!");
+            Log::Error("Renderer: WebGL resolved depth FBO incomplete!");
         }
         glBindFramebuffer(GL_FRAMEBUFFER, gl.finalFBO);
 

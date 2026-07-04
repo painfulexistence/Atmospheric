@@ -303,12 +303,10 @@ void SceneLoader::ParseAnimations(
             }
 
             if (!parsed) {
-                ConsoleSubsystem::Get()->Warn(
-                    fmt::format(
+                Log::Warn(
                         "SceneLoader: RotationSkew timeline found on '{}' but frames contain no IntFrame data.",
                         target->GetName()
-                    )
-                );
+                    );
             }
         } else if (property == "CColor") {
             for (auto frame : *timeline->frames()) {

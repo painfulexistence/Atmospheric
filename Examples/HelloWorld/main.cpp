@@ -1,4 +1,5 @@
 #include "Atmospheric.hpp"
+#include "log.hpp"
 #include "components.hpp"
 #if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
 #include <SDL3/SDL_main.h>
@@ -70,11 +71,9 @@ class HelloWorld : public Application {
             .color = glm::vec4(1.0f, 1.0f, 0.0f, 1.0f),
         });
 
-        ConsoleSubsystem::Get()->Info(fmt::format("Game fully loaded in {:.1f} seconds", GetWindowTime()));
-        ConsoleSubsystem::Get()->Info("Press R to reload shaders, ESC to quit");
-        ConsoleSubsystem::Get()->Info(
-            "Scene (camera, 3D sprites, 2D sprites, HUD) loaded from assets/scenes/main.json"
-        );
+        Log::Info("Game fully loaded in {:.1f} seconds", GetWindowTime());
+        Log::Info("Press R to reload shaders, ESC to quit");
+        Log::Info("Scene (camera, 3D sprites, 2D sprites, HUD) loaded from assets/scenes/main.json");
     }
 
     void OnUpdate(float dt, float time) override {

@@ -1,4 +1,5 @@
 #include "particle_subsystem.hpp"
+#include "log.hpp"
 
 #include "asset_manager.hpp"
 #include "console_subsystem.hpp"
@@ -27,7 +28,7 @@ namespace Atmospheric {
 
         CreateSharedResources();
         CreatePipelines();
-        ConsoleSubsystem::Get()->Info("Particle Subsystem Initialized");
+        Log::Info("Particle Subsystem Initialized");
     }
 
     void ParticleSubsystem::Shutdown() {
@@ -66,7 +67,7 @@ namespace Atmospheric {
             drawing_shader = assets.GetShaderHandle("particle_draw");
 
         } catch (const std::exception& e) {
-            ConsoleSubsystem::Get()->Error(fmt::format("Failed to create particle shaders: {}", e.what()));
+            Log::Error("Failed to create particle shaders: {}", e.what());
             throw;
         }
     }
