@@ -91,7 +91,7 @@ void RmlUiRenderer::SetScissorRegion(Rml::Rectanglei region) {
     // TODO: Pass scissor command
 }
 
-Rml::TextureHandle RmlUiRenderer::LoadTexture(Rml::Vector2i& textureDimensions, const Rml::String& source) {
+Rml::TextureHandle RmlUiRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source) {
     // In a real engine, we would load the texture via AssetManager
     // For now, we return 0 or implement basic loading if needed
     // But since we are refactoring, let's keep it minimal
@@ -99,7 +99,7 @@ Rml::TextureHandle RmlUiRenderer::LoadTexture(Rml::Vector2i& textureDimensions, 
     return 0;
 }
 
-Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i sourceDimensions) {
+Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         uint32_t texture_id = GfxFactory::UploadTexture2D(
@@ -117,7 +117,7 @@ Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> sou
     glBindTexture(GL_TEXTURE_2D, textureId);
 
     glTexImage2D(
-        GL_TEXTURE_2D, 0, GL_RGBA8, sourceDimensions.x, sourceDimensions.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, source.data()
+        GL_TEXTURE_2D, 0, GL_RGBA8, source_dimensions.x, source_dimensions.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, source.data()
     );
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -130,8 +130,8 @@ Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> sou
     return static_cast<Rml::TextureHandle>(textureId);
 }
 
-void RmlUiRenderer::ReleaseTexture(Rml::TextureHandle textureHandle) {
-    GfxFactory::ReleaseTexture(static_cast<uint32_t>(textureHandle));
+void RmlUiRenderer::ReleaseTexture(Rml::TextureHandle texture_handle) {
+    GfxFactory::ReleaseTexture(static_cast<uint32_t>(texture_handle));
 }
 
 void RmlUiRenderer::SetTransform(const Rml::Matrix4f* transform) {

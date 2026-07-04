@@ -252,8 +252,8 @@ EM_JS(void, fs_js_write_memfs, (const char* path_ptr, const uint8_t* data_ptr, i
     var parts = path.split('/');
     var dir = '';
     for (var i = 0; i < parts.length - 1; ++i) {
-        dir += (i == = 0 && parts[i] == = '' ? '' : '/') + parts[i];
-        if (dir != = '') {
+        dir += (i === 0 && parts[i] === '' ? '' : '/') + parts[i];
+        if (dir !== '') {
             try {
                 FS.mkdir(dir);
             } catch (e) {

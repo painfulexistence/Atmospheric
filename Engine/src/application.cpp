@@ -210,13 +210,15 @@ Application::Application(AppConfig config) : _config(config) {
 
 #ifdef __EMSCRIPTEN__
     // Polyfill document.exitPointerLock globally to prevent crash in Safari (iOS / iframes)
+    // NOLINTBEGIN
     EM_ASM({
-        if (typeof document != = 'undefined' && !document.exitPointerLock) {
+        if (typeof document !== 'undefined' && !document.exitPointerLock) {
             document.exitPointerLock = document.webkitExitPointerLock || document.mozExitPointerLock || function() {
                 console.warn("Pointer lock not supported/allowed in this browser context");
             };
         }
     });
+    // NOLINTEND
 #endif
 
     _window = std::make_unique<Window>(WindowProps{
@@ -1452,12 +1454,14 @@ extern "C" {
         size_t vramBytes = AssetManager::Get().getTotalTextureBytes();
 
         double jsHeapSizeMB = -1.0;
+        // NOLINTBEGIN
         int jsHeapBytes = EM_ASM_INT({
             if (globalThis.performance && globalThis.performance.memory) {
                 return globalThis.performance.memory.usedJSHeapSize;
             }
             return -1;
         });
+        // NOLINTEND
         if (jsHeapBytes >= 0) {
             jsHeapSizeMB = static_cast<double>(jsHeapBytes) / mb;
         }

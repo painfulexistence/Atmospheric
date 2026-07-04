@@ -27,6 +27,7 @@ AudioSubsystem::AudioSubsystem(void) {
     _instance = this;
 
     // Initialize Web Audio context and global window.AudioManager
+    // NOLINTBEGIN
     EM_ASM({
         if (!window.AudioManager) {
             window.AudioManager = (function() {
@@ -88,14 +89,14 @@ AudioSubsystem::AudioSubsystem(void) {
                     source.buffer = buf;
                     source.loop = loop;
                     gain.gain.value = volume;
-                    if (pitch != = undefined&& pitch != = null) {
+                    if (pitch !== undefined&& pitch !== null) {
                         source.playbackRate.value = pitch;
                     }
                     source.connect(gain).connect(c.destination);
 
                     source.onended = function() {
                         var node = activeNodes.get(id);
-                        if (node&& node.source == = source) {
+                        if (node&& node.source === source) {
                             activeNodes.delete(id);
                         }
                     };
@@ -122,8 +123,8 @@ AudioSubsystem::AudioSubsystem(void) {
                             .then(function(loadedBuf) {
                                 var nodeInfo = activeNodes.get(id);
                                 if (nodeInfo && nodeInfo.pending) {
-                                    var vol = nodeInfo.volume != = undefined ? nodeInfo.volume : volume;
-                                    var p = nodeInfo.pitch != = undefined ? nodeInfo.pitch : pitch;
+                                    var vol = nodeInfo.volume !== undefined ? nodeInfo.volume : volume;
+                                    var p = nodeInfo.pitch !== undefined ? nodeInfo.pitch : pitch;
                                     startSource(id, loadedBuf, loop, vol, isMusic, p);
                                 }
                             })
@@ -244,7 +245,7 @@ AudioSubsystem::AudioSubsystem(void) {
         // Interaction listener to resume audio context
         function resumeAudio() {
             var ctx = window.AudioManager.getContext();
-            if (ctx&& ctx.state == = 'suspended') {
+            if (ctx&& ctx.state === 'suspended') {
                 ctx.resume();
             }
             document.removeEventListener('click', resumeAudio);
@@ -255,6 +256,7 @@ AudioSubsystem::AudioSubsystem(void) {
         document.addEventListener('keydown', resumeAudio);
         document.addEventListener('touchend', resumeAudio);
     });
+    // NOLINTEND
 }
 
 AudioSubsystem::~AudioSubsystem(void) {
@@ -335,6 +337,7 @@ MusicID AudioSubsystem::LoadMusic(const char* filename) {
     musicPaths[id] = path;
     musicVolumes[id] = 1.0f;
 
+    // NOLINTBEGIN
     EM_ASM(
         {
             window.AudioManager.load(UTF8ToString($0)).catch(function(err) {
@@ -343,6 +346,7 @@ MusicID AudioSubsystem::LoadMusic(const char* filename) {
         },
         path.c_str()
     );
+    // NOLINTEND
 
     return id;
 }
@@ -419,6 +423,7 @@ SoundID AudioSubsystem::LoadSound(const char* filename) {
     soundPaths[id] = path;
     soundVolumes[id] = 1.0f;
 
+    // NOLINTBEGIN
     EM_ASM(
         {
             window.AudioManager.load(UTF8ToString($0)).catch(function(err) {
@@ -427,6 +432,7 @@ SoundID AudioSubsystem::LoadSound(const char* filename) {
         },
         path.c_str()
     );
+    // NOLINTEND
 
     return id;
 }
@@ -470,9 +476,11 @@ void AudioSubsystem::PlaySoundVariation(SoundID id, float pitchVariation, float 
         if (pitch < 0.1) pitch = 0.1;
     }
 
+    // NOLINTBEGIN
     int jsId = EM_ASM_INT(
         { return window.AudioManager.play(UTF8ToString($0), false, $1, false, $2); }, path.c_str(), vol, pitch
     );
+    // NOLINTEND
 
     soundActiveJsIds[id].push_back(jsId);
 }
