@@ -56,7 +56,7 @@ jobs:
           submodules: false
           sparse-checkout: |
             Engine
-            Examples/HelloWorld
+            Examples/3DBasics
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json

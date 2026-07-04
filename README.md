@@ -75,6 +75,6 @@ We support building WebAssembly targets for browser deployment.
 ----
 
 ## Usage
-The engine includes some example projects to help you get started. Please note that the API is still evolving and may change in the future. To get started, you can check out the HelloWorld example.
+The engine includes some example projects to help you get started. Please note that the API is still evolving and may change in the future. To get started, you can check out the 3D Basics example.
 
 ![demo_helloworld](.github/assets/Demo_HelloWorld.gif)

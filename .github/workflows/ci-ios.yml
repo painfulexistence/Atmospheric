@@ -3,10 +3,10 @@ name: CI (iOS)
 permissions:
   contents: read
 
-# Builds HelloWorld — the only bundled example with iOS platform
+# Builds 3DBasics — the only bundled example with iOS platform
 # scaffolding — for the iOS Simulator via the same CMake invocation a
 # developer would run locally (see the usage comment atop
-# Examples/HelloWorld/platforms/ios/CMakeLists.txt).
+# Examples/3DBasics/platforms/ios/CMakeLists.txt).
 
 on:
   push:
@@ -53,7 +53,7 @@ jobs:
 
       - name: Configure (Xcode, iOS Simulator)
         run: |
-          cmake -S Examples/HelloWorld/platforms/ios -B build-ios-sim \
+          cmake -S Examples/3DBasics/platforms/ios -B build-ios-sim \
             -G Xcode \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \

@@ -1,4 +1,4 @@
-set(GAME_NAME HelloWorld)
+set(GAME_NAME 3DBasics)
 set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 
 find_package(glm CONFIG REQUIRED)

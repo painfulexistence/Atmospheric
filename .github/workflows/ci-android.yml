@@ -3,7 +3,7 @@ name: CI (Android)
 permissions:
   contents: read
 
-# Builds HelloWorld — the only bundled example with Android platform
+# Builds 3DBasics — the only bundled example with Android platform
 # scaffolding — through its real Gradle project rather than invoking cmake
 # directly. A raw cmake build only proves the engine compiles for Android;
 # it misses real integration issues (missing gradle-wrapper.jar, CMake
@@ -69,7 +69,7 @@ jobs:
           restore-keys: vcpkg-android-
 
       - name: Build APK (Gradle)
-        working-directory: Examples/HelloWorld/platforms/android
+        working-directory: Examples/3DBasics/platforms/android
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
