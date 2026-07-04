@@ -215,7 +215,7 @@ Window::Window(WindowProps props) {
         throw std::runtime_error("Window is already initialized!");
     }
     if (!SDL_Init(SDL_INIT_VIDEO)) {
-        SDL_Log("SDL could not initialize! Error: %s\n", SDL_GetError());
+        Log::Error("SDL could not initialize! Error: {}", SDL_GetError());
     }
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -238,13 +238,13 @@ Window::Window(WindowProps props) {
 #endif
     _internal = SDL_CreateWindow(props.title.c_str(), props.width, props.height, windowFlags);
     if (!_internal) {
-        SDL_Log("SDL could not create window! Error: %s\n", SDL_GetError());
+        Log::Error("SDL could not create window! Error: {}", SDL_GetError());
     }
 
     auto window = static_cast<SDL_Window*>(_internal);
     SDL_GLContext context = SDL_GL_CreateContext(window);
     if (!context) {
-        SDL_Log("SDL_GL_CreateContext failed: %s\n", SDL_GetError());
+        Log::Error("SDL_GL_CreateContext failed: {}", SDL_GetError());
     }
     SDL_GL_MakeCurrent(window, context);
     SDL_GL_SetSwapInterval(props.vsync ? 1 : 0);
