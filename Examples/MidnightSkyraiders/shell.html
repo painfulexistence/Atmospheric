@@ -77,45 +77,11 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-
-        #credits {
-            position: absolute;
-            left: 50%;
-            bottom: 10px;
-            transform: translateX(-50%);
-            z-index: 500;
-            display: flex;
-            gap: 18px;
-            padding: 6px 14px;
-            font-size: 12px;
-            line-height: 1.4;
-            color: #9ca3af;
-            background-color: rgba(0, 0, 0, 0.35);
-            border-radius: 6px;
-            white-space: nowrap;
-            pointer-events: none;
-        }
-
-        #credits a {
-            color: #d1d5db;
-            text-decoration: underline;
-            text-decoration-color: gold;
-            pointer-events: auto;
-        }
-
-        #credits a:hover {
-            color: #ffffff;
-        }
     </style>
 </head>
 <body>
 
     <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
-
-    <div id="credits">
-        <span>Arts &amp; Programming: <a href="https://x.com/DevLucidum" target="_blank" rel="noopener">DevLucidum</a></span>
-        <span>Music: &ldquo;Sky - Lines&rdquo; by <a href="https://soundcloud.com/ansimuz" target="_blank" rel="noopener">Ansimuz</a></span>
-    </div>
 
     <div id="loading-container">
         <div class="spinner" id="loading-spinner"></div>

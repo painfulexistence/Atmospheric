@@ -194,9 +194,18 @@ class MidnightSkyraiders : public Application {
     }
 
     void updateTitle(float /*dt*/) {
-        GraphicsSubsystem::Get()->DrawText(fontID,
+        auto* gs = GraphicsSubsystem::Get();
+        gs->DrawText(fontID,
             "Press SPACE or ENTER to start",
-            HALF - 140.0f, WORLD - 60.0f, 0.8f, glm::vec4(1,1,0,1));
+            HALF - 140.0f, WORLD - 96.0f, 0.8f, glm::vec4(1,1,0,1));
+
+        // Credits, mirrored from the original game's index.html.
+        gs->DrawText(fontID,
+            "Arts & Programming: DevLucidum",
+            HALF - 100.0f, WORLD - 52.0f, 0.55f, glm::vec4(1,1,1,1));
+        gs->DrawText(fontID,
+            "Music: \"Sky - Lines\" by Ansimuz",
+            HALF - 100.0f, WORLD - 30.0f, 0.55f, glm::vec4(1,1,1,1));
 
         if (InputSubsystem::Get()->IsKeyPressed(Key::SPACE) || InputSubsystem::Get()->IsKeyPressed(Key::ENTER)) {
             if (titleObj) { titleObj->SetActive(false); titleObj = nullptr; }
