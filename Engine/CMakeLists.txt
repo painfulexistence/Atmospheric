@@ -539,15 +539,4 @@ if(EMSCRIPTEN)
     )
 endif()
 
-# ── AtmosLua frontend (Löve2D-style Lua runtime) ─────────────────────────────
-# First-class engine frontend, a sibling to the AtmosWasm (`atmospheric`) target
-# above: builds the reusable Lua runtime executable from Engine/frontends/lua.
-# A "Lua game" is just an assets/scripts/main.lua that this binary loads (see
-# Examples/LuaScripting, which stages this binary + its own scripts). Not
-# applicable to the mobile app-packaging targets, which build a single app lib.
-option(AE_BUILD_LUA_FRONTEND "Build the AtmosLua Lua runtime frontend" ON)
-if(AE_BUILD_LUA_FRONTEND AND NOT ANDROID AND NOT IOS)
-    add_subdirectory(frontends/lua)
-endif()
-
 set(AE_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/default_assets" PARENT_SCOPE)

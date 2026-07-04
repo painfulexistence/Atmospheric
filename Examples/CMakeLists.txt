@@ -22,6 +22,6 @@ add_subdirectory(Terrain)            # procedural / heightmap terrain, RmlUi HUD
 add_subdirectory(MultiplayerSandbox) # deterministic lockstep netplay
 
 # ── Scripting frontend ───────────────────────────────────────────────────────
-add_subdirectory(LuaScripting)       # Löve2D-style Lua runtime (AtmosLua)
+add_subdirectory(LuaScripting)       # Löve2D-style Lua scripting frontend
 
 #add_subdirectory(MazeFPS)
