@@ -27,7 +27,7 @@ public:
 
     // Check if RmlUi is initialized
     bool IsInitialized() const {
-        return m_initialized;
+        return _initialized;
     }
 
     // Update RmlUi (call once per frame)
@@ -47,7 +47,7 @@ public:
 
     // Context access
     Rml::Context* GetContext() {
-        return m_context;
+        return _context;
     }
 
     // Input handling - to be called from the input subsystem
@@ -65,11 +65,11 @@ public:
 private:
     static RmlUiManager* s_instance;
 
-    std::unique_ptr<RmlUiRenderer> m_renderer;
-    std::unique_ptr<RmlUiSystem> m_system;
-    Rml::Context* m_context = nullptr;
+    std::unique_ptr<RmlUiRenderer> _renderer;
+    std::unique_ptr<RmlUiSystem> _system;
+    Rml::Context* _context = nullptr;
 
-    int m_width = 0;
-    int m_height = 0;
-    bool m_initialized = false;
+    int _width = 0;
+    int _height = 0;
+    bool _initialized = false;
 };

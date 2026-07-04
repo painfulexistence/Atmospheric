@@ -598,11 +598,11 @@ private:
 
     // Async readback state (3-PBO ring buffer + persistent FBO).
     static constexpr int READBACK_PBO_COUNT = 3;
-    GLuint m_readbackPBOs[READBACK_PBO_COUNT] = {};
-    GLuint m_readbackFBO = 0;
-    uint32_t m_readbackFrameIdx = 0;
-    uint32_t m_readbackPBOWidth = 0;
-    uint32_t m_readbackPBOHeight = 0;
+    GLuint _readbackPBOs[READBACK_PBO_COUNT] = {};
+    GLuint _readbackFBO = 0;
+    uint32_t _readbackFrameIdx = 0;
+    uint32_t _readbackPBOWidth = 0;
+    uint32_t _readbackPBOHeight = 0;
 
     void SortAndBucket(const glm::vec3& cameraPos);
     uint64_t CalculateSortKey(const RenderCommand& cmd, const glm::vec3& cameraPos);
@@ -610,20 +610,20 @@ private:
     void SortOpaque();
     void SortTransparent();
 
-    std::unique_ptr<BatchRenderer2D> m_BatchRenderer;
+    std::unique_ptr<BatchRenderer2D> _BatchRenderer;
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    std::unique_ptr<GPUCanvasPass> m_GPUCanvasPass;
+    std::unique_ptr<GPUCanvasPass> _GPUCanvasPass;
 #endif
 
 public:
     BatchRenderer2D* GetBatchRenderer() const {
-        return m_BatchRenderer.get();
+        return _BatchRenderer.get();
     }
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     GPUCanvasPass* GetGPUCanvasPass() const {
-        return m_GPUCanvasPass.get();
+        return _GPUCanvasPass.get();
     }
 
     // Shadow-map handoff: written by ShadowPass each frame (non-owning view —

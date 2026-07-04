@@ -4,7 +4,7 @@
 #include <RmlUi/Core.h>
 #include <spdlog/spdlog.h>
 
-RmlUiRenderer::RmlUiRenderer(Renderer* renderer) : m_Renderer(renderer) {
+RmlUiRenderer::RmlUiRenderer(Renderer* renderer) : _Renderer(renderer) {
 }
 
 RmlUiRenderer::~RmlUiRenderer() {
@@ -16,8 +16,8 @@ void RmlUiRenderer::Initialize() {
 }
 
 void RmlUiRenderer::Shutdown() {
-    m_textures.clear();
-    m_geometry.clear();
+    _textures.clear();
+    _geometry.clear();
 }
 
 Rml::CompiledGeometryHandle
@@ -44,8 +44,8 @@ Rml::CompiledGeometryHandle
         geom.indices.push_back(static_cast<uint32_t>(i));
     }
 
-    Rml::CompiledGeometryHandle handle = m_next_geometry_handle++;
-    m_geometry[handle] = std::move(geom);
+    Rml::CompiledGeometryHandle handle = _next_geometry_handle++;
+    _geometry[handle] = std::move(geom);
 
     return handle;
 }
@@ -53,41 +53,41 @@ Rml::CompiledGeometryHandle
 void RmlUiRenderer::RenderGeometry(
     Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, Rml::TextureHandle texture
 ) {
-    auto it = m_geometry.find(geometry);
-    if (it == m_geometry.end()) return;
+    auto it = _geometry.find(geometry);
+    if (it == _geometry.end()) return;
 
     const CompiledGeometry& geom = it->second;
 
     // Apply translation
-    glm::mat4 transform = glm::translate(m_transform, glm::vec3(translation.x, translation.y, 0.0f));
+    glm::mat4 transform = glm::translate(_transform, glm::vec3(translation.x, translation.y, 0.0f));
 
     // Submit to Renderer
-    if (m_Renderer) {
+    if (_Renderer) {
         BatchDrawCommand cmd;
         cmd.vertices = geom.vertices;
         cmd.indices = geom.indices;
         cmd.textureID = static_cast<uint32_t>(texture);
         cmd.transform = transform;
-        m_Renderer->SubmitUICommand(cmd);
+        _Renderer->SubmitUICommand(cmd);
     }
 }
 
 void RmlUiRenderer::ReleaseGeometry(Rml::CompiledGeometryHandle geometry) {
-    m_geometry.erase(geometry);
+    _geometry.erase(geometry);
 }
 
 void RmlUiRenderer::EnableScissorRegion(bool enable) {
-    m_scissor.enabled = enable;
+    _scissor.enabled = enable;
     // TODO: Pass scissor command to BatchRenderer or Renderer
     // For now, BatchRenderer doesn't support scissor per draw call easily without flushing.
     // We might need to add SetScissor to BatchRenderer.
 }
 
 void RmlUiRenderer::SetScissorRegion(Rml::Rectanglei region) {
-    m_scissor.x = region.Left();
-    m_scissor.y = region.Top();
-    m_scissor.width = region.Width();
-    m_scissor.height = region.Height();
+    _scissor.x = region.Left();
+    _scissor.y = region.Top();
+    _scissor.width = region.Width();
+    _scissor.height = region.Height();
     // TODO: Pass scissor command
 }
 
@@ -136,8 +136,8 @@ void RmlUiRenderer::ReleaseTexture(Rml::TextureHandle textureHandle) {
 
 void RmlUiRenderer::SetTransform(const Rml::Matrix4f* transform) {
     if (transform) {
-        m_transform = glm::make_mat4(transform->data());
+        _transform = glm::make_mat4(transform->data());
     } else {
-        m_transform = glm::mat4(1.0f);
+        _transform = glm::mat4(1.0f);
     }
 }

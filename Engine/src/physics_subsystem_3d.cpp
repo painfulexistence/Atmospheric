@@ -16,7 +16,7 @@ private:
     btVector3 _m_rayToWorld;
 
 public:
-    // float m_hitDistance;
+    // float _hitDistance;
 
     RaycastCallback(const btVector3& rayFromWorld, const btVector3& rayToWorld)
       : btCollisionWorld::ClosestRayResultCallback(rayFromWorld, rayToWorld), _m_rayFromWorld(rayFromWorld),
@@ -25,7 +25,7 @@ public:
 
     btScalar addSingleResult(btCollisionWorld::LocalRayResult& rayResult, bool normalInWorldSpace) override {
         btScalar result = ClosestRayResultCallback::addSingleResult(rayResult, normalInWorldSpace);
-        // m_hitDistance = rayResult.m_hitFraction * (m_rayFromWorld.distance(m_rayToWorld));
+        // _hitDistance = rayResult._hitFraction * (_rayFromWorld.distance(_rayToWorld));
         return result;
     }
 };
@@ -194,9 +194,9 @@ bool Physics3DSubsystem::Raycast(const glm::vec3& from, const glm::vec3& to, Ray
     _world->rayTest(rayFrom, rayTo, callback);
 
     if (callback.hasHit()) {
-        btVector3 hitPoint = callback.m_hitPointWorld;
-        btVector3 hitNormal = callback.m_hitNormalWorld;
-        auto* hitObject = static_cast<GameObject*>(callback.m_collisionObject->getUserPointer());
+        btVector3 hitPoint = callback._hitPointWorld;
+        btVector3 hitNormal = callback._hitNormalWorld;
+        auto* hitObject = static_cast<GameObject*>(callback._collisionObject->getUserPointer());
         hit.point = glm::vec3(hitPoint.x(), hitPoint.y(), hitPoint.z());
         hit.normal = glm::vec3(hitNormal.x(), hitNormal.y(), hitNormal.z());
         hit.gameObject = hitObject;

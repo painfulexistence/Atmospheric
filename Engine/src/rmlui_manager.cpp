@@ -81,25 +81,25 @@ RmlUiManager::~RmlUiManager() {
 }
 
 bool RmlUiManager::Initialize(int width, int height, Renderer* renderer) {
-    if (m_initialized) {
+    if (_initialized) {
         spdlog::warn("RmlUiManager already initialized");
         return true;
     }
 
-    m_width = width;
-    m_height = height;
+    _width = width;
+    _height = height;
 
     // Create renderer and system interfaces
-    m_renderer = std::make_unique<RmlUiRenderer>(renderer);
-    m_system = std::make_unique<RmlUiSystem>();
+    _renderer = std::make_unique<RmlUiRenderer>(renderer);
+    _system = std::make_unique<RmlUiSystem>();
 
     // Initialize renderer
-    m_renderer->Initialize();
+    _renderer->Initialize();
 
     // Set interfaces
     Rml::SetFileInterface(&gsRmlFileInterface);
-    Rml::SetRenderInterface(m_renderer.get());
-    Rml::SetSystemInterface(m_system.get());
+    Rml::SetRenderInterface(_renderer.get());
+    Rml::SetSystemInterface(_system.get());
 
     // Initialize RmlUi
     if (!Rml::Initialise()) {
@@ -117,78 +117,78 @@ bool RmlUiManager::Initialize(int width, int height, Renderer* renderer) {
     }
 
     // Create the main UI context
-    m_context = Rml::CreateContext("main", Rml::Vector2i(width, height));
-    if (!m_context) {
+    _context = Rml::CreateContext("main", Rml::Vector2i(width, height));
+    if (!_context) {
         spdlog::error("Failed to create RmlUi context");
         Rml::Shutdown();
         return false;
     }
 
     // Initialize debugger (useful for development)
-    Rml::Debugger::Initialise(m_context);
+    Rml::Debugger::Initialise(_context);
 
-    m_initialized = true;
+    _initialized = true;
     spdlog::info("RmlUi initialized successfully ({}x{})", width, height);
 
     return true;
 }
 
 void RmlUiManager::Shutdown() {
-    if (!m_initialized) return;
+    if (!_initialized) return;
 
-    if (m_context) {
+    if (_context) {
         Rml::Debugger::Shutdown();
-        Rml::RemoveContext(m_context->GetName());
-        m_context = nullptr;
+        Rml::RemoveContext(_context->GetName());
+        _context = nullptr;
     }
 
     Rml::Shutdown();
 
-    if (m_renderer) {
-        m_renderer->Shutdown();
-        m_renderer.reset();
+    if (_renderer) {
+        _renderer->Shutdown();
+        _renderer.reset();
     }
 
-    m_system.reset();
+    _system.reset();
 
-    m_initialized = false;
+    _initialized = false;
     spdlog::info("RmlUi shutdown complete");
 }
 
 void RmlUiManager::Update(float deltaTime) {
-    if (!m_initialized || !m_context) return;
+    if (!_initialized || !_context) return;
 
     // Update the context
-    m_context->Update();
+    _context->Update();
 }
 
 void RmlUiManager::Render() {
     ZoneScopedN("RmlUiManager::Render");
-    if (!m_initialized || !m_context) return;
+    if (!_initialized || !_context) return;
 
     // Render the context (generates commands to Renderer)
-    m_context->Render();
+    _context->Render();
 }
 
 void RmlUiManager::OnResize(int width, int height) {
-    m_width = width;
-    m_height = height;
+    _width = width;
+    _height = height;
 
-    if (m_context) {
+    if (_context) {
         // TODO: width/height must be logical pixels (GetSize()), not framebuffer pixels (GetPhysicalSize()),
         // to match RmlUi's CSS px unit expectations. Wire this to ViewportResizeCallback, not
         // FramebufferResizeCallback.
-        m_context->SetDimensions(Rml::Vector2i(width, height));
+        _context->SetDimensions(Rml::Vector2i(width, height));
     }
 }
 
 Rml::ElementDocument* RmlUiManager::LoadDocument(const std::string& path) {
-    if (!m_context) {
+    if (!_context) {
         spdlog::error("Cannot load document: RmlUi not initialized");
         return nullptr;
     }
 
-    Rml::ElementDocument* document = m_context->LoadDocument(path);
+    Rml::ElementDocument* document = _context->LoadDocument(path);
     if (!document) {
         spdlog::error("Failed to load RmlUi document: {}", path);
         return nullptr;
@@ -201,15 +201,15 @@ Rml::ElementDocument* RmlUiManager::LoadDocument(const std::string& path) {
 void RmlUiManager::UnloadDocument(Rml::ElementDocument* document) {
     // After Shutdown() the context (and every document it owned) is already
     // destroyed; closing a stale pointer then would be use-after-free.
-    if (m_context && document) {
+    if (_context && document) {
         document->Close();
     }
 }
 
 void RmlUiManager::ShowDocument(const std::string& id) {
-    if (!m_context) return;
+    if (!_context) return;
 
-    Rml::ElementDocument* document = m_context->GetDocument(id);
+    Rml::ElementDocument* document = _context->GetDocument(id);
     if (document) {
         document->Show();
     } else {
@@ -218,9 +218,9 @@ void RmlUiManager::ShowDocument(const std::string& id) {
 }
 
 void RmlUiManager::HideDocument(const std::string& id) {
-    if (!m_context) return;
+    if (!_context) return;
 
-    Rml::ElementDocument* document = m_context->GetDocument(id);
+    Rml::ElementDocument* document = _context->GetDocument(id);
     if (document) {
         document->Hide();
     }
@@ -228,44 +228,44 @@ void RmlUiManager::HideDocument(const std::string& id) {
 
 // Input handling methods
 void RmlUiManager::ProcessKeyDown(Rml::Input::KeyIdentifier key, int keyModifier) {
-    if (m_context) {
-        m_context->ProcessKeyDown(key, keyModifier);
+    if (_context) {
+        _context->ProcessKeyDown(key, keyModifier);
     }
 }
 
 void RmlUiManager::ProcessKeyUp(Rml::Input::KeyIdentifier key, int keyModifier) {
-    if (m_context) {
-        m_context->ProcessKeyUp(key, keyModifier);
+    if (_context) {
+        _context->ProcessKeyUp(key, keyModifier);
     }
 }
 
 void RmlUiManager::ProcessTextInput(Rml::Character character) {
-    if (m_context) {
-        m_context->ProcessTextInput(character);
+    if (_context) {
+        _context->ProcessTextInput(character);
     }
 }
 
 bool RmlUiManager::ProcessMouseMove(int x, int y, int keyModifier) {
-    if (m_context) {
-        return m_context->ProcessMouseMove(x, y, keyModifier);
+    if (_context) {
+        return _context->ProcessMouseMove(x, y, keyModifier);
     }
     return true;// no context ⇒ nothing to interact with
 }
 
 void RmlUiManager::ProcessMouseButtonDown(int buttonIndex, int keyModifier) {
-    if (m_context) {
-        m_context->ProcessMouseButtonDown(buttonIndex, keyModifier);
+    if (_context) {
+        _context->ProcessMouseButtonDown(buttonIndex, keyModifier);
     }
 }
 
 void RmlUiManager::ProcessMouseButtonUp(int buttonIndex, int keyModifier) {
-    if (m_context) {
-        m_context->ProcessMouseButtonUp(buttonIndex, keyModifier);
+    if (_context) {
+        _context->ProcessMouseButtonUp(buttonIndex, keyModifier);
     }
 }
 
 void RmlUiManager::ProcessMouseWheel(float wheelDelta, int keyModifier) {
-    if (m_context) {
-        m_context->ProcessMouseWheel(Rml::Vector2f(0, wheelDelta), keyModifier);
+    if (_context) {
+        _context->ProcessMouseWheel(Rml::Vector2f(0, wheelDelta), keyModifier);
     }
 }

@@ -1000,44 +1000,44 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
             }
 
             // Compressed transcode targets size the output buffer in blocks,
-            // not pixels (unlike cTFRGBA32) — m_width/m_height are the
-            // block-aligned physical dimensions, m_total_blocks the block count.
-            std::vector<uint8_t> buf(static_cast<size_t>(info0.m_total_blocks) * 16);
-            if (!ktx2Dec.transcode_image_level(0, 0, 0, buf.data(), info0.m_total_blocks, basisFmt))
+            // not pixels (unlike cTFRGBA32) — _width/_height are the
+            // block-aligned physical dimensions, _total_blocks the block count.
+            std::vector<uint8_t> buf(static_cast<size_t>(info0._total_blocks) * 16);
+            if (!ktx2Dec.transcode_image_level(0, 0, 0, buf.data(), info0._total_blocks, basisFmt))
                 throw std::runtime_error(fmt::format("KTX2 transcode_image_level failed (level 0): {}", path));
 
             uint32_t texID = GfxFactory::UploadCompressedTexture2D(
-                wgpuCompression, buf.data(), buf.size(), static_cast<int>(info0.m_width), static_cast<int>(info0.m_height)
+                wgpuCompression, buf.data(), buf.size(), static_cast<int>(info0._width), static_cast<int>(info0._height)
             );
             ENGINE_LOG(
-                "Loaded KTX2 texture '{}' ({}×{}, WebGPU {}, no mips)", path, info0.m_width, info0.m_height, fmtName
+                "Loaded KTX2 texture '{}' ({}×{}, WebGPU {}, no mips)", path, info0._width, info0._height, fmtName
             );
-            if (out) *out = { texID, info0.m_width, info0.m_height, buf.size() };
+            if (out) *out = { texID, info0._width, info0._height, buf.size() };
             return texID;
         }
 
         // No compressed-texture feature negotiated by the device (or running
         // on a backend without WGPUFeatureName_TextureCompression* support) —
         // fall back to uncompressed RGBA32.
-        std::vector<uint8_t> buf(static_cast<size_t>(info0.m_orig_width) * info0.m_orig_height * 4);
+        std::vector<uint8_t> buf(static_cast<size_t>(info0._orig_width) * info0._orig_height * 4);
         if (!ktx2Dec.transcode_image_level(
                 0,
                 0,
                 0,
                 buf.data(),
-                info0.m_orig_width * info0.m_orig_height,
+                info0._orig_width * info0._orig_height,
                 basist::transcoder_texture_format::cTFRGBA32
             ))
             throw std::runtime_error(fmt::format("KTX2 transcode_image_level failed (level 0): {}", path));
 
-        uint32_t texID = GfxFactory::UploadTexture2D(buf.data(), static_cast<int>(info0.m_orig_width), static_cast<int>(info0.m_orig_height));
+        uint32_t texID = GfxFactory::UploadTexture2D(buf.data(), static_cast<int>(info0._orig_width), static_cast<int>(info0._orig_height));
         ENGINE_LOG(
             "Loaded KTX2 texture '{}' ({}×{}, WebGPU RGBA32 fallback, no mips)",
             path,
-            info0.m_orig_width,
-            info0.m_orig_height
+            info0._orig_width,
+            info0._orig_height
         );
-        if (out) *out = { texID, info0.m_orig_width, info0.m_orig_height, buf.size() };
+        if (out) *out = { texID, info0._orig_width, info0._orig_height, buf.size() };
         return texID;
     }
 #endif
@@ -1088,7 +1088,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
             throw std::runtime_error(fmt::format("KTX2 get_image_level_info failed (level {}): {}", level, path));
         }
 
-        uint32_t numBlocks = info.m_total_blocks;
+        uint32_t numBlocks = info._total_blocks;
         uint32_t bufferSize = numBlocks * bytesPerBlk;
         std::vector<uint8_t> buf(bufferSize);
 
@@ -1116,7 +1116,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         for (uint32_t level = 0; level < levels; ++level) {
             basist::ktx2_image_level_info info;
             if (ktx2Dec.get_image_level_info(info, level, 0, 0))
-                totalBytes += static_cast<size_t>(info.m_total_blocks) * bytesPerBlk;
+                totalBytes += static_cast<size_t>(info._total_blocks) * bytesPerBlk;
         }
         *out = { texID, baseWidth, baseHeight, totalBytes };
     }

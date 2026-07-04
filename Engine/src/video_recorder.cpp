@@ -43,7 +43,7 @@ struct VideoRecorder::FFmpegContext {
 VideoRecorder::VideoRecorder() = default;
 
 VideoRecorder::~VideoRecorder() {
-    if (m_recording) {
+    if (_recording) {
         stopRecording();
     }
 }
@@ -53,81 +53,81 @@ bool VideoRecorder::startRecording(Renderer* renderer, const Config& config) {
     fmt::print(stderr, "[VideoRecorder] Built without FFmpeg support — recording unavailable\n");
     return false;
 #else
-    if (m_recording) {
+    if (_recording) {
         return false;
     }
 
-    m_renderer = renderer;
-    m_config = config;
-    m_ffmpeg = std::make_unique<FFmpegContext>();
-    m_recordingStart = std::chrono::steady_clock::now();
-    m_stop = false;
+    _renderer = renderer;
+    _config = config;
+    _ffmpeg = std::make_unique<FFmpegContext>();
+    _recordingStart = std::chrono::steady_clock::now();
+    _stop = false;
 
-    m_audioActive = false;
-    if (m_config.captureAudio && m_config.audioSampleRate > 0 && m_config.audioChannels > 0) {
-        m_audioActive = true;
-        std::lock_guard<std::mutex> lock(m_audioMutex);
-        m_audioQueue.clear();
+    _audioActive = false;
+    if (_config.captureAudio && _config.audioSampleRate > 0 && _config.audioChannels > 0) {
+        _audioActive = true;
+        std::lock_guard<std::mutex> lock(_audioMutex);
+        _audioQueue.clear();
     }
 
 #ifndef __EMSCRIPTEN__
-    if (m_config.captureAudio && m_audioManager) m_audioManager->attachVideoRecorder(this);
+    if (_config.captureAudio && _audioManager) _audioManager->attachVideoRecorder(this);
 #endif
 
-    m_recording = true;
+    _recording = true;
 
-    m_encoderThread = std::thread(&VideoRecorder::encoderThreadFunc, this);
+    _encoderThread = std::thread(&VideoRecorder::encoderThreadFunc, this);
     return true;
 #endif
 }
 
 void VideoRecorder::stopRecording() {
-    if (!m_recording) {
+    if (!_recording) {
         return;
     }
 
-    m_stop = true;
-    m_cv.notify_all();
+    _stop = true;
+    _cv.notify_all();
 
 #ifndef __EMSCRIPTEN__
-    if (m_audioManager) m_audioManager->detachVideoRecorder();
+    if (_audioManager) _audioManager->detachVideoRecorder();
 #endif
 
     // All captureFrame() calls are done; PBO pixel data was already copied into
     // RawFrame.pixels, so it's safe to release the GL resources now.
-    if (m_renderer) m_renderer->destroyReadbackPBOs();
+    if (_renderer) _renderer->destroyReadbackPBOs();
 
-    if (m_encoderThread.joinable()) {
-        m_encoderThread.join();
+    if (_encoderThread.joinable()) {
+        _encoderThread.join();
     }
 
-    m_recording = false;
-    m_audioActive = false;
-    m_renderer = nullptr;
+    _recording = false;
+    _audioActive = false;
+    _renderer = nullptr;
 }
 
 VideoRecorder::CaptureResult VideoRecorder::captureFrame() {
-    if (!m_recording) {
+    if (!_recording) {
         return CaptureResult::Dropped;
     }
 
     // Phase 1: issue this frame's async DMA into the next PBO slot (non-blocking).
-    m_renderer->schedulePixelReadback();
+    _renderer->schedulePixelReadback();
 
     // Phase 2: collect the PBO written 2 frames ago (nullopt while priming).
-    auto imgOpt = m_renderer->collectPixelReadback();
+    auto imgOpt = _renderer->collectPixelReadback();
     if (!imgOpt) {
         return CaptureResult::Dropped;
     }
 
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        if (m_frameQueue.size() >= MAX_QUEUE_FRAMES) {
+        std::lock_guard<std::mutex> lock(_mutex);
+        if (_frameQueue.size() >= MAX_QUEUE_FRAMES) {
             return CaptureResult::Dropped;// encoder lagging; pixel data discarded
         }
     }
 
-    const double timestamp = std::chrono::duration<double>(std::chrono::steady_clock::now() - m_recordingStart).count();
+    const double timestamp = std::chrono::duration<double>(std::chrono::steady_clock::now() - _recordingStart).count();
 
     RawFrame frame;
     frame.pixels = std::move(imgOpt->data);// move: zero extra memcpy
@@ -137,30 +137,30 @@ VideoRecorder::CaptureResult VideoRecorder::captureFrame() {
     frame.bottomUp = imgOpt->bottomUp;
 
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        m_frameQueue.push(std::move(frame));
+        std::lock_guard<std::mutex> lock(_mutex);
+        _frameQueue.push(std::move(frame));
     }
-    m_cv.notify_one();
+    _cv.notify_one();
     return CaptureResult::Captured;
 }
 
 // ─── Audio capture (caller thread) ─────────────────────────────────────────────────────────
 
 void VideoRecorder::writeAudio(const float* frames, uint32_t frameCount) {
-    if (!m_audioActive || !m_recording.load() || frameCount == 0) {
+    if (!_audioActive || !_recording.load() || frameCount == 0) {
         return;
     }
 
-    const size_t incoming = static_cast<size_t>(frameCount) * m_config.audioChannels;
+    const size_t incoming = static_cast<size_t>(frameCount) * _config.audioChannels;
     // Cap at ~5 seconds to prevent unbounded growth if the encoder falls behind.
-    const size_t cap = static_cast<size_t>(m_config.audioSampleRate) * m_config.audioChannels * 5;
+    const size_t cap = static_cast<size_t>(_config.audioSampleRate) * _config.audioChannels * 5;
 
-    std::lock_guard<std::mutex> lock(m_audioMutex);
-    if (m_audioQueue.size() + incoming > cap) {
-        size_t overflow = std::min(m_audioQueue.size() + incoming - cap, m_audioQueue.size());
-        m_audioQueue.erase(m_audioQueue.begin(), m_audioQueue.begin() + overflow);
+    std::lock_guard<std::mutex> lock(_audioMutex);
+    if (_audioQueue.size() + incoming > cap) {
+        size_t overflow = std::min(_audioQueue.size() + incoming - cap, _audioQueue.size());
+        _audioQueue.erase(_audioQueue.begin(), _audioQueue.begin() + overflow);
     }
-    m_audioQueue.insert(m_audioQueue.end(), frames, frames + incoming);
+    _audioQueue.insert(_audioQueue.end(), frames, frames + incoming);
 }
 
 // ─── Encoder thread ────────────────────────────────────────────────────────────────────────────────
@@ -172,21 +172,21 @@ void VideoRecorder::encoderThreadFunc() {
         RawFrame frame;
 
         {
-            std::unique_lock<std::mutex> lock(m_mutex);
-            m_cv.wait(lock, [this] { return !m_frameQueue.empty() || m_stop.load(); });
+            std::unique_lock<std::mutex> lock(_mutex);
+            _cv.wait(lock, [this] { return !_frameQueue.empty() || _stop.load(); });
 
-            if (m_frameQueue.empty()) {
+            if (_frameQueue.empty()) {
                 break;
             }
 
-            frame = std::move(m_frameQueue.front());
-            m_frameQueue.pop();
+            frame = std::move(_frameQueue.front());
+            _frameQueue.pop();
         }
 
         if (!encoderInitialized) {
             if (!initEncoder(frame.width, frame.height)) {
                 fmt::print(stderr, "[VideoRecorder] Encoder initialization failed\n");
-                m_recording = false;
+                _recording = false;
                 return;
             }
             encoderInitialized = true;
@@ -211,7 +211,7 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
 #ifndef AE_HAS_FFMPEG
     return false;
 #else
-    auto& ff = *m_ffmpeg;
+    auto& ff = *_ffmpeg;
 
     // AV1 requires even-numbered dimensions; crop one pixel if needed.
     width &= ~1u;
@@ -234,28 +234,28 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
     const AVCodec* codec = nullptr;
     std::string usedEncoder;
     // Try configured encoder first, then walk the candidate list.
-    if (!m_config.encoder.empty()) {
-        codec = avcodec_find_encoder_by_name(m_config.encoder.c_str());
-        if (codec) usedEncoder = m_config.encoder;
+    if (!_config.encoder.empty()) {
+        codec = avcodec_find_encoder_by_name(_config.encoder.c_str());
+        if (codec) usedEncoder = _config.encoder;
     }
     if (!codec) {
         for (int i = 0; gkEncoderCandidates[i]; ++i) {
-            if (m_config.encoder == gkEncoderCandidates[i]) continue;
+            if (_config.encoder == gkEncoderCandidates[i]) continue;
             codec = avcodec_find_encoder_by_name(gkEncoderCandidates[i]);
             if (codec) {
                 usedEncoder = gkEncoderCandidates[i];
-                fmt::print("[VideoRecorder] Encoder '{}' not found, using '{}'\n", m_config.encoder, usedEncoder);
+                fmt::print("[VideoRecorder] Encoder '{}' not found, using '{}'\n", _config.encoder, usedEncoder);
                 break;
             }
         }
     }
     if (!codec) {
-        fmt::print(stderr, "[VideoRecorder] No video encoder found (tried '{}' and all fallbacks)\n", m_config.encoder);
+        fmt::print(stderr, "[VideoRecorder] No video encoder found (tried '{}' and all fallbacks)\n", _config.encoder);
         return false;
     }
 
-    if (avformat_alloc_output_context2(&ff.fmtCtx, nullptr, nullptr, m_config.outputPath.c_str()) < 0) {
-        fmt::print(stderr, "[VideoRecorder] Failed to create output context for '{}'\n", m_config.outputPath);
+    if (avformat_alloc_output_context2(&ff.fmtCtx, nullptr, nullptr, _config.outputPath.c_str()) < 0) {
+        fmt::print(stderr, "[VideoRecorder] Failed to create output context for '{}'\n", _config.outputPath);
         return false;
     }
 
@@ -267,9 +267,9 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
     ff.codecCtx->width = static_cast<int>(width);
     ff.codecCtx->height = static_cast<int>(height);
     ff.codecCtx->time_base = AVRational{ 1, 1'000'000 };
-    ff.codecCtx->framerate = AVRational{ m_config.fps, 1 };
+    ff.codecCtx->framerate = AVRational{ _config.fps, 1 };
     ff.codecCtx->pix_fmt = AV_PIX_FMT_YUV420P;
-    ff.codecCtx->gop_size = m_config.fps;
+    ff.codecCtx->gop_size = _config.fps;
 
     if (usedEncoder == "h264_videotoolbox") {
         ff.codecCtx->bit_rate = 8'000'000;// 8 Mbps — good quality at 30fps 1080p
@@ -278,14 +278,14 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
         av_opt_set(ff.codecCtx->priv_data, "rc", "vbr", 0);
         av_opt_set_int(ff.codecCtx->priv_data, "cq", 23, 0);
     } else if (usedEncoder == "libsvtav1") {
-        av_opt_set_int(ff.codecCtx->priv_data, "crf", m_config.crf, 0);
+        av_opt_set_int(ff.codecCtx->priv_data, "crf", _config.crf, 0);
         av_opt_set_int(ff.codecCtx->priv_data, "preset", 8, 0);
     } else if (usedEncoder == "libaom-av1") {
-        av_opt_set_int(ff.codecCtx->priv_data, "crf", m_config.crf, 0);
+        av_opt_set_int(ff.codecCtx->priv_data, "crf", _config.crf, 0);
         av_opt_set_int(ff.codecCtx->priv_data, "cpu-used", 6, 0);
         av_opt_set(ff.codecCtx->priv_data, "usage", "realtime", 0);
     } else if (usedEncoder == "librav1e") {
-        av_opt_set_int(ff.codecCtx->priv_data, "crf", m_config.crf, 0);
+        av_opt_set_int(ff.codecCtx->priv_data, "crf", _config.crf, 0);
         av_opt_set_int(ff.codecCtx->priv_data, "speed", 8, 0);
     } else if (usedEncoder == "libx264") {
         av_opt_set(ff.codecCtx->priv_data, "preset", "fast", 0);
@@ -309,16 +309,16 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
     avcodec_parameters_from_context(ff.stream->codecpar, ff.codecCtx);
 
     // Audio stream must be added before avformat_write_header.
-    if (m_audioActive) {
+    if (_audioActive) {
         if (!initAudioEncoder()) {
             fmt::print(stderr, "[VideoRecorder] Audio encoder init failed — recording video only\n");
-            m_audioActive = false;
+            _audioActive = false;
         }
     }
 
     if (!(ff.fmtCtx->oformat->flags & AVFMT_NOFILE)) {
-        if (avio_open(&ff.fmtCtx->pb, m_config.outputPath.c_str(), AVIO_FLAG_WRITE) < 0) {
-            fmt::print(stderr, "[VideoRecorder] Cannot open output file '{}'\n", m_config.outputPath);
+        if (avio_open(&ff.fmtCtx->pb, _config.outputPath.c_str(), AVIO_FLAG_WRITE) < 0) {
+            fmt::print(stderr, "[VideoRecorder] Cannot open output file '{}'\n", _config.outputPath);
             return false;
         }
     }
@@ -357,12 +357,12 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
 
     fmt::print(
         "[VideoRecorder] Started: {} ({}x{} @ {} fps, encoder: {}{}\n",
-        m_config.outputPath,
+        _config.outputPath,
         width,
         height,
-        m_config.fps,
+        _config.fps,
         usedEncoder,
-        m_audioActive ? ", AAC audio)" : ")"
+        _audioActive ? ", AAC audio)" : ")"
     );
     return true;
 #endif
@@ -372,7 +372,7 @@ bool VideoRecorder::encodeFrame(const RawFrame& rawFrame) {
 #ifndef AE_HAS_FFMPEG
     return false;
 #else
-    auto& ff = *m_ffmpeg;
+    auto& ff = *_ffmpeg;
 
     if (av_frame_make_writable(ff.frame) < 0) {
         return false;
@@ -420,7 +420,7 @@ bool VideoRecorder::encodeFrame(const RawFrame& rawFrame) {
 
 void VideoRecorder::flushEncoder() {
 #ifdef AE_HAS_FFMPEG
-    auto& ff = *m_ffmpeg;
+    auto& ff = *_ffmpeg;
     if (!ff.codecCtx) {
         return;
     }
@@ -450,7 +450,7 @@ bool VideoRecorder::initAudioEncoder() {
 #ifndef AE_HAS_FFMPEG
     return false;
 #else
-    auto& ff = *m_ffmpeg;
+    auto& ff = *_ffmpeg;
 
     const AVCodec* codec = avcodec_find_encoder(AV_CODEC_ID_AAC);
     if (!codec) {
@@ -464,10 +464,10 @@ bool VideoRecorder::initAudioEncoder() {
     }
 
     ff.audioCodecCtx->sample_fmt = AV_SAMPLE_FMT_FLTP;// native AAC encoder format
-    ff.audioCodecCtx->sample_rate = m_config.audioSampleRate;
-    ff.audioCodecCtx->bit_rate = m_config.audioBitrate;
-    av_channel_layout_default(&ff.audioCodecCtx->ch_layout, m_config.audioChannels);
-    ff.audioCodecCtx->time_base = AVRational{ 1, m_config.audioSampleRate };
+    ff.audioCodecCtx->sample_rate = _config.audioSampleRate;
+    ff.audioCodecCtx->bit_rate = _config.audioBitrate;
+    av_channel_layout_default(&ff.audioCodecCtx->ch_layout, _config.audioChannels);
+    ff.audioCodecCtx->time_base = AVRational{ 1, _config.audioSampleRate };
 
     if (ff.fmtCtx->oformat->flags & AVFMT_GLOBALHEADER) {
         ff.audioCodecCtx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
@@ -488,16 +488,16 @@ bool VideoRecorder::initAudioEncoder() {
     // Resampler: interleaved float (FLT) → planar float (FLTP) required by AAC.
     // Sample rate and channel count match, so this is a layout conversion only.
     AVChannelLayout inLayout, outLayout;
-    av_channel_layout_default(&inLayout, m_config.audioChannels);
-    av_channel_layout_default(&outLayout, m_config.audioChannels);
+    av_channel_layout_default(&inLayout, _config.audioChannels);
+    av_channel_layout_default(&outLayout, _config.audioChannels);
     int swrErr = swr_alloc_set_opts2(
         &ff.swrCtx,
         &outLayout,
         AV_SAMPLE_FMT_FLTP,
-        m_config.audioSampleRate,
+        _config.audioSampleRate,
         &inLayout,
         AV_SAMPLE_FMT_FLT,
-        m_config.audioSampleRate,
+        _config.audioSampleRate,
         0,
         nullptr
     );
@@ -508,7 +508,7 @@ bool VideoRecorder::initAudioEncoder() {
         return false;
     }
 
-    ff.audioFifo = av_audio_fifo_alloc(AV_SAMPLE_FMT_FLTP, m_config.audioChannels, 1);
+    ff.audioFifo = av_audio_fifo_alloc(AV_SAMPLE_FMT_FLTP, _config.audioChannels, 1);
     ff.audioFrame = av_frame_alloc();
     ff.audioPacket = av_packet_alloc();
     if (!ff.audioFifo || !ff.audioFrame || !ff.audioPacket) {
@@ -517,9 +517,9 @@ bool VideoRecorder::initAudioEncoder() {
 
     fmt::print(
         "[VideoRecorder] Audio track: AAC {} Hz, {} ch, {} kbps\n",
-        m_config.audioSampleRate,
-        m_config.audioChannels,
-        m_config.audioBitrate / 1000
+        _config.audioSampleRate,
+        _config.audioChannels,
+        _config.audioBitrate / 1000
     );
     return true;
 #endif
@@ -527,23 +527,23 @@ bool VideoRecorder::initAudioEncoder() {
 
 void VideoRecorder::drainAudio(bool flush) {
 #ifdef AE_HAS_FFMPEG
-    if (!m_audioActive || !m_ffmpeg || !m_ffmpeg->audioCodecCtx) {
+    if (!_audioActive || !_ffmpeg || !_ffmpeg->audioCodecCtx) {
         return;
     }
-    auto& ff = *m_ffmpeg;
+    auto& ff = *_ffmpeg;
 
     // Move queued PCM out under lock; resample and encode outside it.
     std::vector<float> input;
     {
-        std::lock_guard<std::mutex> lock(m_audioMutex);
-        if (!m_audioQueue.empty()) {
-            input.assign(m_audioQueue.begin(), m_audioQueue.end());
-            m_audioQueue.clear();
+        std::lock_guard<std::mutex> lock(_audioMutex);
+        if (!_audioQueue.empty()) {
+            input.assign(_audioQueue.begin(), _audioQueue.end());
+            _audioQueue.clear();
         }
     }
 
     if (!input.empty()) {
-        const int inSamples = static_cast<int>(input.size()) / m_config.audioChannels;
+        const int inSamples = static_cast<int>(input.size()) / _config.audioChannels;
         const uint8_t* inData[1] = { reinterpret_cast<const uint8_t*>(input.data()) };
 
         int outCount = swr_get_out_samples(ff.swrCtx, inSamples);
@@ -551,7 +551,7 @@ void VideoRecorder::drainAudio(bool flush) {
             uint8_t** outData = nullptr;
             int outLinesize = 0;
             if (av_samples_alloc_array_and_samples(
-                    &outData, &outLinesize, m_config.audioChannels, outCount, AV_SAMPLE_FMT_FLTP, 0
+                    &outData, &outLinesize, _config.audioChannels, outCount, AV_SAMPLE_FMT_FLTP, 0
                 )
                 >= 0) {
                 int converted = swr_convert(ff.swrCtx, outData, outCount, inData, inSamples);
@@ -579,7 +579,7 @@ void VideoRecorder::drainAudio(bool flush) {
             uint8_t** outData = nullptr;
             int outLinesize = 0;
             if (av_samples_alloc_array_and_samples(
-                    &outData, &outLinesize, m_config.audioChannels, outCount, AV_SAMPLE_FMT_FLTP, 0
+                    &outData, &outLinesize, _config.audioChannels, outCount, AV_SAMPLE_FMT_FLTP, 0
                 )
                 >= 0) {
                 int converted = swr_convert(ff.swrCtx, outData, outCount, nullptr, 0);
@@ -607,7 +607,7 @@ void VideoRecorder::drainAudio(bool flush) {
 
 void VideoRecorder::encodeAudioFrame(int nbSamples) {
 #ifdef AE_HAS_FFMPEG
-    auto& ff = *m_ffmpeg;
+    auto& ff = *_ffmpeg;
 
     av_frame_unref(ff.audioFrame);
     ff.audioFrame->nb_samples = nbSamples;
@@ -648,10 +648,10 @@ void VideoRecorder::encodeAudioFrame(int nbSamples) {
 
 void VideoRecorder::flushAudioEncoder() {
 #ifdef AE_HAS_FFMPEG
-    if (!m_audioActive || !m_ffmpeg || !m_ffmpeg->audioCodecCtx) {
+    if (!_audioActive || !_ffmpeg || !_ffmpeg->audioCodecCtx) {
         return;
     }
-    auto& ff = *m_ffmpeg;
+    auto& ff = *_ffmpeg;
 
     avcodec_send_frame(ff.audioCodecCtx, nullptr);
 
@@ -674,10 +674,10 @@ void VideoRecorder::flushAudioEncoder() {
 
 void VideoRecorder::cleanup() {
 #ifdef AE_HAS_FFMPEG
-    if (!m_ffmpeg) {
+    if (!_ffmpeg) {
         return;
     }
-    auto& ff = *m_ffmpeg;
+    auto& ff = *_ffmpeg;
 
     if (ff.fmtCtx) {
         if (ff.fmtCtx->pb) {
@@ -721,7 +721,7 @@ void VideoRecorder::cleanup() {
         ff.audioFifo = nullptr;
     }
 
-    m_ffmpeg.reset();
-    fmt::print("[VideoRecorder] Finished: {}\n", m_config.outputPath);
+    _ffmpeg.reset();
+    fmt::print("[VideoRecorder] Finished: {}\n", _config.outputPath);
 #endif
 }
