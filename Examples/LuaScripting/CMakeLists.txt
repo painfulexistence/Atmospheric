@@ -1,113 +1,53 @@
-set(TARGET_NAME AtmosLua)
+# LuaScripting — a Lua game (content only).
+#
+# The Lua runtime itself is the AtmosLua frontend, built once as part of the
+# engine (Engine/frontends/lua). This example provides nothing but its Lua
+# scripts + scenes: it depends on AtmosLua and stages the runtime binary next
+# to its own assets so the pair is a self-contained, runnable demo under a
+# LuaScripting/ directory.
+#
+# The staged binary keeps its honest `AtmosLua` name — the tooling does not
+# rely on it: smoke.sh runs the unique executable it finds in the folder, and
+# deployWWW.sh serves the folder by directory name (renaming the single .html
+# to index.html). Any future Lua example follows the same pattern for free.
 
-find_package(glm CONFIG REQUIRED)
-find_package(fmt CONFIG REQUIRED)
-find_package(Bullet CONFIG REQUIRED)
+if(NOT TARGET AtmosLua)
+    message(STATUS "Skipping LuaScripting: AtmosLua frontend is not built "
+                   "(AE_BUILD_LUA_FRONTEND is OFF or unsupported on this platform).")
+    return()
+endif()
 
-set(LUA_FRONTEND_DIR ${CMAKE_SOURCE_DIR}/Engine/frontends/lua)
-
-set(SOURCES
-    ${LUA_FRONTEND_DIR}/runtime.cpp
-    ${LUA_FRONTEND_DIR}/lua_application.cpp
-    ${LUA_FRONTEND_DIR}/scriptable_component.cpp
-    ${LUA_FRONTEND_DIR}/bindings/bind_core.cpp
-    ${LUA_FRONTEND_DIR}/bindings/bind_input.cpp
-    ${LUA_FRONTEND_DIR}/bindings/bind_world.cpp
-    ${LUA_FRONTEND_DIR}/bindings/bind_graphics.cpp
-    ${LUA_FRONTEND_DIR}/bindings/bind_physics.cpp
-    ${LUA_FRONTEND_DIR}/bindings/bind_audio.cpp
-)
-
-add_executable(${TARGET_NAME} ${SOURCES})
-
-set_target_properties(${TARGET_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${TARGET_NAME}
-)
-
-target_include_directories(${TARGET_NAME}
-    PRIVATE
-        ${CMAKE_SOURCE_DIR}/Engine/include
-        ${CMAKE_SOURCE_DIR}/Engine/external/stb
-        ${LUA_FRONTEND_DIR}
-)
-
-target_link_libraries(${TARGET_NAME}
-    PRIVATE
-        AtmosphericEngine
-        glm::glm
-        fmt::fmt
-        BulletSoftBody
-        BulletDynamics
-        BulletCollision
-        LinearMath
-)
+set(_lua_out ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/LuaScripting)
+set(_lua_assets ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 
 if(EMSCRIPTEN)
-    set(CMAKE_EXECUTABLE_SUFFIX ".html")
-
-    set(EM_PRELOAD_STAGING_DIR ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${TARGET_NAME}/assets)
-
-    add_custom_target(stage_${TARGET_NAME}_em_preload
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${EM_PRELOAD_STAGING_DIR}
+    add_custom_target(LuaScripting ALL
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${_lua_out}
+        # Runtime artifacts (AtmosLua.html/.js/.wasm/.data) reference each other
+        # by name, so copy them in verbatim.
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/Engine/default_assets/shaders
-            ${EM_PRELOAD_STAGING_DIR}/shaders
+            ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/AtmosLua ${_lua_out}
+        # Game scripts are fetched at runtime → serve them next to the binary.
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/Engine/default_assets/fonts
-            ${EM_PRELOAD_STAGING_DIR}/fonts
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
-            ${EM_PRELOAD_STAGING_DIR}/scenes
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_SOURCE_DIR}/Engine/default_assets/ui
-            ${EM_PRELOAD_STAGING_DIR}/ui
-        COMMENT "Staging Emscripten preload assets (shaders, scenes, ui) for ${TARGET_NAME}"
+            ${_lua_assets} ${_lua_out}/assets
+        COMMENT "Staging AtmosLua + LuaScripting game assets (web)"
+        VERBATIM
     )
-    add_dependencies(${TARGET_NAME} stage_${TARGET_NAME}_em_preload)
-
-    target_link_options(${TARGET_NAME} PRIVATE
-        -sWASM=1 -O3 -sUSE_GLFW=3
-        -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -sFULL_ES3=1
-        -sFETCH=1 -sFORCE_FILESYSTEM=1 -sALLOW_MEMORY_GROWTH=1
-        -sASSERTIONS=1
-        -sDISABLE_EXCEPTION_CATCHING=0
-        -sEXPORTED_FUNCTIONS=["_main","_printMemoryStats"]
-        -Wl,--undefined=printMemoryStats
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/ui@assets/ui"
-    )
-
-
-    # Use custom centered template only for Release builds
-    # Keep default Emscripten shell layout in Debug builds for easier console/stdout debugging
-    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-        target_link_options(${TARGET_NAME} PRIVATE "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell.html")
-    endif()
 else()
-    find_package(spdlog CONFIG REQUIRED)
-    find_package(glad CONFIG REQUIRED)
-
-    target_link_libraries(${TARGET_NAME}
-        PRIVATE
-            glad::glad
-            spdlog::spdlog
-            raudio
-            SDL3::SDL3
+    add_custom_target(LuaScripting ALL
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${_lua_out}
+        # Copy the runtime binary in as-is (keeps the name AtmosLua).
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE:AtmosLua> ${_lua_out}/
+        # Engine defaults (shaders/fonts/ui/...) the runtime loads from ./assets.
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets ${_lua_out}/assets
+        # This game's scripts + scenes (overlaid on top of the engine defaults).
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${_lua_assets} ${_lua_out}/assets
+        COMMENT "Staging AtmosLua runtime + LuaScripting game assets"
+        VERBATIM
     )
 endif()
 
-# ── Asset sync ───────────────────────────────────────────────────────────────
-ae_copy_engine_assets(${TARGET_NAME})
-# Ensure scripts/ directory exists for Lua script loading
-add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-        "$<TARGET_FILE_DIR:${TARGET_NAME}>/assets/scripts"
-    VERBATIM
-)
-ae_copy_game_assets(${TARGET_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/assets")
-ae_convert_textures(${TARGET_NAME}
-    "${CMAKE_CURRENT_SOURCE_DIR}/assets/textures"
-    "$<TARGET_FILE_DIR:${TARGET_NAME}>/assets/textures"
-)
+add_dependencies(LuaScripting AtmosLua)

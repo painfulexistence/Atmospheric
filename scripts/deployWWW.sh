@@ -81,8 +81,11 @@ if [ -d "${RELEASE_DIR}" ]; then
         if ls "$target_dir"/*.html >/dev/null 2>&1; then
             target_name=$(basename "$target_dir")
             
-            # 排除內建編譯系統資料夾
-            if [ "$target_name" = "CMakeFiles" ] || [ "$target_name" = "vcpkg_installed" ] || [ "$target_name" = "lib" ]; then
+            # 排除內建編譯系統資料夾，以及不含遊戲的共用 runtime (AtmosLua)。
+            # 每個 Lua 範例會把 AtmosLua 複製進自己的資料夾並附上 main.lua，
+            # 所以獨立的 AtmosLua/ 產物本身不是一個可執行的 demo。
+            if [ "$target_name" = "CMakeFiles" ] || [ "$target_name" = "vcpkg_installed" ] \
+               || [ "$target_name" = "lib" ] || [ "$target_name" = "AtmosLua" ]; then
                 continue
             fi
             
@@ -91,9 +94,15 @@ if [ -d "${RELEASE_DIR}" ]; then
             # 複製整個資料夾到 www/demo/
             cp -R "$target_dir" "${LOCAL_WWW}/demo/${target_name}"
             
-            # 將 <TargetName>.html 改名為 index.html (相容舊版與 OUTPUT_NAME 'index' 的新版產物)
-            if [ -f "${LOCAL_WWW}/demo/${target_name}/${target_name}.html" ]; then
-                mv "${LOCAL_WWW}/demo/${target_name}/${target_name}.html" "${LOCAL_WWW}/demo/${target_name}/index.html"
+            # 將唯一的 *.html 改名為 index.html，讓 ./<target_name>/ 能直接載入。
+            # 名稱無關：相容舊版 <TargetName>.html、OUTPUT_NAME 'index'，以及共用
+            # runtime 的情況 (例如 LuaScripting 內是 AtmosLua.html)。
+            demo_dir="${LOCAL_WWW}/demo/${target_name}"
+            if [ ! -f "${demo_dir}/index.html" ]; then
+                first_html=$(ls "${demo_dir}"/*.html 2>/dev/null | head -n1)
+                if [ -n "$first_html" ]; then
+                    mv "$first_html" "${demo_dir}/index.html"
+                fi
             fi
             
             COPIED_COUNT=$((COPIED_COUNT + 1))
@@ -110,7 +119,6 @@ find "${LOCAL_WWW}" -name ".DS_Store" -type f -delete 2>/dev/null || true
 get_deploy_name() {
     local folder_name="$1"
     case "$folder_name" in
-        "LuaScripting") echo "AtmosLua" ;;
         "Physics2D") echo "Physics2DDemo" ;;
         "MazeFPS") echo "Maze" ;;
         *) echo "$folder_name" ;;
