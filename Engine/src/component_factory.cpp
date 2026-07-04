@@ -1,4 +1,5 @@
 #include "component_factory.hpp"
+#include "log.hpp"
 #include "game_object.hpp"
 #include <spdlog/spdlog.h>
 
@@ -15,6 +16,6 @@ Component* ComponentFactory::Create(const std::string& typeName, GameObject* own
         if (comp) owner->AddComponent(comp);
         return comp;
     }
-    spdlog::warn("[ComponentFactory] Unknown component type: '{}' — skipping", typeName);
+    Log::Warn("[ComponentFactory] Unknown component type: '{}' — skipping", typeName);
     return nullptr;
 }

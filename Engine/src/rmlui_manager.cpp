@@ -1,4 +1,5 @@
 #include "rmlui_manager.hpp"
+#include "log.hpp"
 #include "file_system.hpp"
 #include "rmlui_renderer.hpp"
 #include "rmlui_system.hpp"
@@ -82,7 +83,7 @@ RmlUiManager::~RmlUiManager() {
 
 bool RmlUiManager::Initialize(int width, int height, Renderer* renderer) {
     if (_initialized) {
-        spdlog::warn("RmlUiManager already initialized");
+        Log::Warn("RmlUiManager already initialized");
         return true;
     }
 
@@ -103,13 +104,13 @@ bool RmlUiManager::Initialize(int width, int height, Renderer* renderer) {
 
     // Initialize RmlUi
     if (!Rml::Initialise()) {
-        spdlog::error("Failed to initialize RmlUi");
+        Log::Error("Failed to initialize RmlUi");
         return false;
     }
 
     // Load fonts
     if (!Rml::LoadFontFace("assets/fonts/NotoSans-SemiBold.ttf")) {
-        spdlog::warn(
+        Log::Warn(
             "Failed to load default font, UI text may not render correctly. Consider using 'rmlui-debugger-font' in "
             "your "
             "RCSS."
@@ -119,7 +120,7 @@ bool RmlUiManager::Initialize(int width, int height, Renderer* renderer) {
     // Create the main UI context
     _context = Rml::CreateContext("main", Rml::Vector2i(width, height));
     if (!_context) {
-        spdlog::error("Failed to create RmlUi context");
+        Log::Error("Failed to create RmlUi context");
         Rml::Shutdown();
         return false;
     }
@@ -128,7 +129,7 @@ bool RmlUiManager::Initialize(int width, int height, Renderer* renderer) {
     Rml::Debugger::Initialise(_context);
 
     _initialized = true;
-    spdlog::info("RmlUi initialized successfully ({}x{})", width, height);
+    Log::Info("RmlUi initialized successfully ({}x{})", width, height);
 
     return true;
 }
@@ -152,7 +153,7 @@ void RmlUiManager::Shutdown() {
     _system.reset();
 
     _initialized = false;
-    spdlog::info("RmlUi shutdown complete");
+    Log::Info("RmlUi shutdown complete");
 }
 
 void RmlUiManager::Update(float deltaTime) {
@@ -184,17 +185,17 @@ void RmlUiManager::OnResize(int width, int height) {
 
 Rml::ElementDocument* RmlUiManager::LoadDocument(const std::string& path) {
     if (!_context) {
-        spdlog::error("Cannot load document: RmlUi not initialized");
+        Log::Error("Cannot load document: RmlUi not initialized");
         return nullptr;
     }
 
     Rml::ElementDocument* document = _context->LoadDocument(path);
     if (!document) {
-        spdlog::error("Failed to load RmlUi document: {}", path);
+        Log::Error("Failed to load RmlUi document: {}", path);
         return nullptr;
     }
 
-    spdlog::info("Loaded RmlUi document: {}", path);
+    Log::Info("Loaded RmlUi document: {}", path);
     return document;
 }
 
@@ -213,7 +214,7 @@ void RmlUiManager::ShowDocument(const std::string& id) {
     if (document) {
         document->Show();
     } else {
-        spdlog::warn("Document not found: {}", id);
+        Log::Warn("Document not found: {}", id);
     }
 }
 

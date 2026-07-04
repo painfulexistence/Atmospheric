@@ -344,7 +344,7 @@ void Application::RegisterComponents() {
                     try {
                         texID = AssetManager::Get().CreateTexture(texPath);
                     } catch (const std::exception& e) {
-                        spdlog::warn("SpriteComponent deserializer: failed to load '{}': {}", texPath, e.what());
+                        Log::Warn("SpriteComponent deserializer: failed to load '{}': {}", texPath, e.what());
                     }
                 }
                 props.texture = texID;
@@ -742,7 +742,7 @@ static std::unique_ptr<Action> ParseAction(const nlohmann::json& val) {
                         parsed.release();// Sequence takes ownership below
                         seqActions.push_back(fta);
                     } else {
-                        spdlog::warn("ParseAction: Sequence only supports FiniteTimeActions. Action ignored.");
+                        Log::Warn("ParseAction: Sequence only supports FiniteTimeActions. Action ignored.");
                     }
                 }
             }
@@ -758,7 +758,7 @@ static std::unique_ptr<Action> ParseAction(const nlohmann::json& val) {
                     parsed.release();// RepeatForever takes ownership
                     return std::make_unique<RepeatForever>(interval);
                 }
-                spdlog::warn("ParseAction: RepeatForever only supports ActionIntervals. Action ignored.");
+                Log::Warn("ParseAction: RepeatForever only supports ActionIntervals. Action ignored.");
             }
         }
     }
@@ -801,7 +801,7 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
                     }
                 }
             } else {
-                spdlog::warn("ParseEntity: unregistered component type '{}' on '{}' — skipping", type, name);
+                Log::Warn("ParseEntity: unregistered component type '{}' on '{}' — skipping", type, name);
             }
         }
     }
@@ -1397,7 +1397,7 @@ void Application::SaveScreenshot(const std::string& path) {
         if (ok)
             Log::Info("Screenshot saved: {} ({}x{})", path, img.width, img.height);
         else
-            spdlog::error("[Screenshot] Failed to write {}", path);
+            Log::Error("[Screenshot] Failed to write {}", path);
     });
 }
 

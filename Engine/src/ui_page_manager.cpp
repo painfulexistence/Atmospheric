@@ -1,4 +1,5 @@
 #include "ui_page_manager.hpp"
+#include "log.hpp"
 #include "rmlui_manager.hpp"
 #include <cassert>
 #include <spdlog/spdlog.h>
@@ -35,7 +36,7 @@ void UIPageManager::_loadDocument(const UIPageID& id) {
     PageEntry& entry = it->second;
     Rml::ElementDocument* doc = RmlUiManager::Get()->LoadDocument(entry.documentPath);
     if (!doc) {
-        spdlog::warn("UIPageManager: failed to load document for page '{}' ({})", id, entry.documentPath);
+        Log::Warn("UIPageManager: failed to load document for page '{}' ({})", id, entry.documentPath);
         return;
     }
 
@@ -63,7 +64,7 @@ void UIPageManager::RemovePage(const UIPageID& id) {
 void UIPageManager::ShowPage(const UIPageID& id) {
     auto it = _pages.find(id);
     if (it == _pages.end()) {
-        spdlog::warn("UIPageManager::ShowPage: unknown page '{}'", id);
+        Log::Warn("UIPageManager::ShowPage: unknown page '{}'", id);
         return;
     }
     UIPage* page = it->second.page.get();

@@ -1,4 +1,5 @@
 #include "bullet_task_scheduler.hpp"
+#include "log.hpp"
 #include "job_system.hpp"
 #include "pch.hpp"
 
@@ -24,7 +25,7 @@ void BulletTaskScheduler::parallelFor(int iBegin, int iEnd, int grainSize, const
             ZoneScopedN("BulletTask");
 #endif
             // Debug logging to verify multithreading
-            // spdlog::info("Bullet Task on Thread: {}", std::this_thread::get_id());
+            // Log::Info("Bullet Task on Thread: {}", std::this_thread::get_id());
             body.forLoop(start, end);
         });
     }
