@@ -166,6 +166,7 @@ set(SOURCES
     src/editor_layer.cpp
     src/subsystem.cpp
     src/console_subsystem.cpp
+    src/log.cpp
     src/game_object.cpp
     src/transform_component.cpp
     src/rigidbody_component.cpp

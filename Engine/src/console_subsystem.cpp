@@ -1,4 +1,5 @@
 #include "console_subsystem.hpp"
+#include "log.hpp"
 #ifdef __EMSCRIPTEN__
 #include "emscripten.h"
 #else
@@ -67,34 +68,18 @@ void ConsoleSubsystem::DrawImGui(float dt) {
     }
 }
 
+// These forward to Log, the single logging dispatch point. "{}" passes the
+// message as data, so any braces it contains are not treated as format specs.
 void ConsoleSubsystem::Info(const std::string& message) {
-#if RUNTIME_LOG_ON
-#ifdef __EMSCRIPTEN__
-    EM_ASM({ console.info(UTF8ToString($0)); }, message.c_str());
-#else
-    spdlog::info(message);
-#endif
-#endif
+    Log::Info("{}", message);
 }
 
 void ConsoleSubsystem::Warn(const std::string& message) {
-#if RUNTIME_LOG_ON
-#ifdef __EMSCRIPTEN__
-    EM_ASM({ console.warn(UTF8ToString($0)); }, message.c_str());
-#else
-    spdlog::warn(message);
-#endif
-#endif
+    Log::Warn("{}", message);
 }
 
 void ConsoleSubsystem::Error(const std::string& message) {
-#if RUNTIME_LOG_ON
-#ifdef __EMSCRIPTEN__
-    EM_ASM({ console.error(UTF8ToString($0)); }, message.c_str());
-#else
-    spdlog::error(message);
-#endif
-#endif
+    Log::Error("{}", message);
 }
 
 void ConsoleSubsystem::RegisterCommand(
