@@ -2,10 +2,10 @@
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "batch_renderer_2d.hpp"
 #include "command_encoder.hpp"
-#include <webgpu/webgpu.h>
 #include <glm/glm.hpp>
 #include <unordered_map>
 #include <vector>
+#include <webgpu/webgpu.h>
 
 // WebGPU 2D batch renderer — mirrors 2d-engine's Renderer class.
 // Handles all canvas draw commands (quads, sprites, text) for the WebGPU backend.
@@ -13,18 +13,18 @@
 // has a live WGPUDevice (async browser init).
 class GPUCanvasPass {
 public:
-    static constexpr int MAX_VERTS       = 32768; // 8192 quads × 4
-    static constexpr int MAX_INDICES     = 49152; // 8192 quads × 6
+    static constexpr int MAX_VERTS = 32768;// 8192 quads × 4
+    static constexpr int MAX_INDICES = 49152;// 8192 quads × 6
     // Full 3D position: WorldCanvasPass feeds world-space vertices through a
     // perspective viewProj, so z must survive to the shader (dropping it
     // projects every world sprite onto the z=0 plane — they vanish).
-    static constexpr int FLOATS_PER_VERT = 11;    // x,y,z, u,v, r,g,b,a, texIdx(unused), flags
+    static constexpr int FLOATS_PER_VERT = 11;// x,y,z, u,v, r,g,b,a, texIdx(unused), flags
 
     // viewProj uniform slots: one per pass variant so the three Render()
     // invocations per frame don't overwrite each other's matrix (WriteBuffer
     // is submit-ordered, not record-ordered).
-    static constexpr uint32_t UNIFORM_SLOT_STRIDE = 256; // WebGPU dyn-offset alignment
-    static constexpr uint32_t UNIFORM_SLOT_COUNT  = 3;   // world / screen / UI
+    static constexpr uint32_t UNIFORM_SLOT_STRIDE = 256;// WebGPU dyn-offset alignment
+    static constexpr uint32_t UNIFORM_SLOT_COUNT = 3;// world / screen / UI
 
     GPUCanvasPass() = default;
     ~GPUCanvasPass();
@@ -48,14 +48,18 @@ public:
     // sceneSampleCount: sceneRT's MSAA count — the sceneRT-target pipeline
     // variants must be built with a matching multisample state. Only consulted
     // on the first call (lazy init); pass renderer.sceneRT->GetNumSamples().
-    void Render(CommandEncoder* enc,
-                const glm::mat4& viewProj,
-                const std::vector<BatchDrawCommand>& commands,
-                bool depthTest = false,
-                bool toSwapchain = false,
-                uint32_t sceneSampleCount = 1);
+    void Render(
+        CommandEncoder* enc,
+        const glm::mat4& viewProj,
+        const std::vector<BatchDrawCommand>& commands,
+        bool depthTest = false,
+        bool toSwapchain = false,
+        uint32_t sceneSampleCount = 1
+    );
 
-    bool IsReady() const { return _pipeline != nullptr; }
+    bool IsReady() const {
+        return _pipeline != nullptr;
+    }
 
 private:
     // WGSL source — identical to 2d-engine's QUAD_WGSL
@@ -95,43 +99,43 @@ struct VOut {
     void _init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format, uint32_t sceneSampleCount);
     WGPUBindGroup _getOrCreateTexBG(uint32_t texID);
 
-    WGPUDevice  _device  = nullptr;
-    WGPUQueue   _queue   = nullptr;
+    WGPUDevice _device = nullptr;
+    WGPUQueue _queue = nullptr;
 
-    WGPURenderPipeline  _pipeline   = nullptr;
+    WGPURenderPipeline _pipeline = nullptr;
     // Depth-tested variant (read-only, no write) used by WorldCanvasPass so
     // world-space sprites are occluded by 3D geometry already in sceneRT's
     // depth buffer. Shares BGLs and the texture cache with the pipeline above.
-    WGPURenderPipeline  _pipelineDepthTest = nullptr;
+    WGPURenderPipeline _pipelineDepthTest = nullptr;
     // Swapchain-format variant used by UIPass (see Render() doc above).
-    WGPURenderPipeline  _pipelineSwapchain = nullptr;
+    WGPURenderPipeline _pipelineSwapchain = nullptr;
     WGPUBindGroupLayout _uniformBGL = nullptr;
-    WGPUBindGroupLayout _texBGL     = nullptr;
+    WGPUBindGroupLayout _texBGL = nullptr;
     // Per-variant geometry buffers. All three Render() invocations record
     // into the SAME frame's command buffer, but WriteBuffer applies at
     // submit — sharing one vertex/index buffer means the last invocation's
     // geometry replaces everyone's. Each variant streams into its own pair.
-    WGPUBuffer          _vertexBufs[UNIFORM_SLOT_COUNT] = {};
-    WGPUBuffer          _indexBufs[UNIFORM_SLOT_COUNT]  = {};
-    WGPUBuffer          _uniformBuf = nullptr;
-    WGPUBindGroup       _uniformBG  = nullptr;
+    WGPUBuffer _vertexBufs[UNIFORM_SLOT_COUNT] = {};
+    WGPUBuffer _indexBufs[UNIFORM_SLOT_COUNT] = {};
+    WGPUBuffer _uniformBuf = nullptr;
+    WGPUBindGroup _uniformBG = nullptr;
     // Two samplers so each texture is sampled with the filter it was uploaded
     // with (GfxFactory::GetTextureFilter) — GL bakes the filter per texture,
     // this restores that on WebGPU where the filter lives on the sampler.
-    WGPUSampler         _samplerLinear  = nullptr;
-    WGPUSampler         _samplerNearest = nullptr;
-    WGPUTexture         _whiteTex   = nullptr;
+    WGPUSampler _samplerLinear = nullptr;
+    WGPUSampler _samplerNearest = nullptr;
+    WGPUTexture _whiteTex = nullptr;
 
-    std::vector<float>    _verts;
+    std::vector<float> _verts;
     std::vector<uint32_t> _indices;
 
     // Cached per-texture bind groups. `tex` records the WGPUTexture the bind
     // group was built from so the cache self-invalidates when
     // GfxFactory::UpdateTexture2D recreates the texture under the same ID.
     struct CachedTexBG {
-        WGPUBindGroup bg  = nullptr;
-        WGPUTexture   tex = nullptr; // non-owning
+        WGPUBindGroup bg = nullptr;
+        WGPUTexture tex = nullptr;// non-owning
     };
     std::unordered_map<uint32_t, CachedTexBG> _texBGCache;
 };
-#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+#endif// AE_USE_WEBGPU && __EMSCRIPTEN__

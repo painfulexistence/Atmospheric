@@ -173,7 +173,7 @@ void Physics2DSubsystem::SetEndContactCallback(CollisionCallback callback) {
 }
 
 Physics2DSubsystem::RaycastResult
-  Physics2DSubsystem::Raycast(const glm::vec2& origin, const glm::vec2& direction, float maxDistance) {
+    Physics2DSubsystem::Raycast(const glm::vec2& origin, const glm::vec2& direction, float maxDistance) {
     RaycastResult result;
     if (!b2World_IsValid(_worldId)) return result;
 
@@ -182,14 +182,14 @@ Physics2DSubsystem::RaycastResult
 
     b2QueryFilter filter = b2DefaultQueryFilter();
     b2World_CastRay(
-      _worldId, { originM.x, originM.y }, { translationM.x, translationM.y }, filter, RayCastCallbackWrapper, &result
+        _worldId, { originM.x, originM.y }, { translationM.x, translationM.y }, filter, RayCastCallbackWrapper, &result
     );
 
     return result;
 }
 
 std::vector<Rigidbody2DComponent*>
-  Physics2DSubsystem::QueryAABB(const glm::vec2& lowerBound, const glm::vec2& upperBound) {
+    Physics2DSubsystem::QueryAABB(const glm::vec2& lowerBound, const glm::vec2& upperBound) {
     std::vector<Rigidbody2DComponent*> results;
     if (!b2World_IsValid(_worldId)) return results;
 

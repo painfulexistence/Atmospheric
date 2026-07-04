@@ -1,5 +1,4 @@
 #include "game_object.hpp"
-#include <algorithm>
 #include "application.hpp"
 #include "component.hpp"
 #include "graphics_subsystem.hpp"
@@ -7,6 +6,7 @@
 #include "rigidbody_component.hpp"
 #include "sprite_component.hpp"
 #include "transform_component.hpp"
+#include <algorithm>
 
 GameObject::GameObject(Application* app, glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) : _app(app) {
     _transform = new TransformComponent(this, position, rotation, scale);
@@ -30,8 +30,9 @@ void GameObject::AddComponent(Component* component) {
 }
 
 void GameObject::RemoveComponent(Component* component) {
-    auto it = std::find_if(_components.begin(), _components.end(),
-                           [component](const std::unique_ptr<Component>& c) { return c.get() == component; });
+    auto it = std::find_if(_components.begin(), _components.end(), [component](const std::unique_ptr<Component>& c) {
+        return c.get() == component;
+    });
     if (it != _components.end()) {
         component->OnDetach();
         _components.erase(it);// destroys the component
@@ -147,7 +148,7 @@ glm::mat4 GameObject::GetObjectTransform() const {
 void GameObject::SetObjectTransform(const glm::mat4& xform) {
     _transform->SetWorldTransform(xform);
 
-    RigidbodyComponent* rb = GetComponent<RigidbodyComponent>();
+    auto* rb = GetComponent<RigidbodyComponent>();
     if (rb) rb->SetWorldTransform(_transform->GetPosition(), _transform->GetRotation());
 }
 
@@ -162,7 +163,7 @@ glm::vec3 GameObject::GetPosition() const {
 void GameObject::SetPosition(glm::vec3 value) {
     _transform->SetPosition(value);
 
-    RigidbodyComponent* rb = GetComponent<RigidbodyComponent>();
+    auto* rb = GetComponent<RigidbodyComponent>();
     if (rb) rb->SetWorldTransform(_transform->GetPosition(), _transform->GetRotation());
 }
 
@@ -173,7 +174,7 @@ glm::vec3 GameObject::GetRotation() const {
 void GameObject::SetRotation(glm::vec3 value) {
     _transform->SetRotation(value);
 
-    RigidbodyComponent* rb = GetComponent<RigidbodyComponent>();
+    auto* rb = GetComponent<RigidbodyComponent>();
     if (rb) rb->SetWorldTransform(_transform->GetPosition(), _transform->GetRotation());
 }
 
@@ -184,7 +185,7 @@ glm::vec3 GameObject::GetEulerAngles() const {
 void GameObject::SetEulerAngles(glm::vec3 degrees) {
     _transform->SetEulerAngles(degrees);
 
-    RigidbodyComponent* rb = GetComponent<RigidbodyComponent>();
+    auto* rb = GetComponent<RigidbodyComponent>();
     if (rb) rb->SetWorldTransform(_transform->GetPosition(), _transform->GetRotation());
 }
 
@@ -201,21 +202,21 @@ glm::mat4 GameObject::GetTransform() const {
 }
 
 glm::vec3 GameObject::GetVelocity() {
-    RigidbodyComponent* rb = GetComponent<RigidbodyComponent>();
+    auto* rb = GetComponent<RigidbodyComponent>();
     if (rb == nullptr) throw std::runtime_error("RigidbodyComponent not found");
 
     return rb->GetLinearVelocity();
 }
 
 void GameObject::SetVelocity(glm::vec3 value) {
-    RigidbodyComponent* rb = GetComponent<RigidbodyComponent>();
+    auto* rb = GetComponent<RigidbodyComponent>();
     if (rb == nullptr) throw std::runtime_error("RigidbodyComponent not found");
 
     rb->SetLinearVelocity(value);
 }
 
 void GameObject::SetPhysicsActivated(bool value) {
-    RigidbodyComponent* rb = GetComponent<RigidbodyComponent>();
+    auto* rb = GetComponent<RigidbodyComponent>();
     if (rb == nullptr) return;
 
     if (value) {

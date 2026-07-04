@@ -1,6 +1,6 @@
 #include "light_component.hpp"
-#include "game_object.hpp"
 #include "application.hpp"
+#include "game_object.hpp"
 #include "graphics_subsystem.hpp"
 #include "imgui.h"
 

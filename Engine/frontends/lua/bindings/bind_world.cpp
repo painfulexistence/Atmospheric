@@ -1,67 +1,79 @@
 #include "../lua_application.hpp"
 #include "../scriptable_component.hpp"
 
-void BindWorldAPI(sol::state& lua, LuaApplication* app)
-{
+void BindWorldAPI(sol::state& lua, LuaApplication* app) {
     sol::table atmos = lua["atmos"];
 
     // ===== ScriptableComponent usertype =====
-    lua.new_usertype<ScriptableComponent>("ScriptableComponent",
+    lua.new_usertype<ScriptableComponent>(
+        "ScriptableComponent",
         sol::no_constructor,
 
         // Access the Lua instance table
-        "instance", sol::property(&ScriptableComponent::GetInstance),
+        "instance",
+        sol::property(&ScriptableComponent::GetInstance),
 
         // Get the class name
-        "className", sol::property(&ScriptableComponent::GetClassName),
+        "className",
+        sol::property(&ScriptableComponent::GetClassName),
 
         // Check if a method exists
-        "hasMethod", &ScriptableComponent::HasMethod,
+        "hasMethod",
+        &ScriptableComponent::HasMethod,
 
         // Access the owning GameObject
-        "gameObject", sol::readonly(&ScriptableComponent::gameObject),
+        "gameObject",
+        sol::readonly(&ScriptableComponent::gameObject),
 
         // Enable/disable the component
-        "enabled", &ScriptableComponent::enabled
+        "enabled",
+        &ScriptableComponent::enabled
     );
 
     // ===== GameObject usertype =====
-    lua.new_usertype<GameObject>("GameObject",
-        sol::no_constructor,  // Users can't construct directly, use atmos.world.spawn()
+    lua.new_usertype<GameObject>(
+        "GameObject",
+        sol::no_constructor,// Users can't construct directly, use atmos.world.spawn()
 
         // Transform properties
-        "position", sol::property(
+        "position",
+        sol::property(
             [](GameObject* go) { return go->GetPosition(); },
             [](GameObject* go, const glm::vec3& pos) { go->SetPosition(pos); }
         ),
-        "rotation", sol::property(
+        "rotation",
+        sol::property(
             [](GameObject* go) { return go->GetRotation(); },
             [](GameObject* go, const glm::vec3& rot) { go->SetRotation(rot); }
         ),
-        "scale", sol::property(
+        "scale",
+        sol::property(
             [](GameObject* go) { return go->GetScale(); },
             [](GameObject* go, const glm::vec3& scale) { go->SetScale(scale); }
         ),
 
         // Basic properties
-        "name", sol::property(
+        "name",
+        sol::property(
             [](GameObject* go) { return go->GetName(); },
             [](GameObject* go, const std::string& name) { go->SetName(name); }
         ),
-        "isActive", &GameObject::isActive,
+        "isActive",
+        &GameObject::isActive,
 
         // Transform methods
-        "getTransform", &GameObject::GetTransform,
-        "setLocalTransform", &GameObject::SetLocalTransform,
+        "getTransform",
+        &GameObject::GetTransform,
+        "setLocalTransform",
+        &GameObject::SetLocalTransform,
 
         // Velocity (if rigidbody)
-        "velocity", sol::property(
-            &GameObject::GetVelocity,
-            &GameObject::SetVelocity
-        ),
+        "velocity",
+        sol::property(&GameObject::GetVelocity, &GameObject::SetVelocity),
 
         // Component methods
-        "addMesh", [](GameObject* go, const std::string& meshName) {
+        "addMesh",
+        [](GameObject* go, const std::string& meshName) {
             auto mesh = AssetManager::Get().GetMesh(meshName);
             if (mesh) {
                 go->AddMesh(mesh);
@@ -69,7 +81,8 @@ void BindWorldAPI(sol::state& lua, LuaApplication* app)
             return go;
         },
 
-        "addLight", [](GameObject* go, sol::table props) {
+        "addLight",
+        [](GameObject* go, sol::table props) {
             LightProps lightProps;
             lightProps.type = static_cast<LightType>(props.get_or("type", 1));
             lightProps.intensity = props.get_or("intensity", 1.0f);
@@ -92,7 +105,8 @@ void BindWorldAPI(sol::state& lua, LuaApplication* app)
             return go;
         },
 
-        "addCamera", [](GameObject* go, sol::table props) {
+        "addCamera",
+        [](GameObject* go, sol::table props) {
             CameraProps camProps;
             camProps.perspective.fieldOfView = glm::radians(props.get_or("fov", 60.0f));
             camProps.perspective.aspectRatio = props.get_or("aspect", 16.0f / 9.0f);
@@ -104,7 +118,8 @@ void BindWorldAPI(sol::state& lua, LuaApplication* app)
         },
 
         // Rigidbody
-        "addRigidbody", [](GameObject* go, sol::table props) {
+        "addRigidbody",
+        [](GameObject* go, sol::table props) {
             RigidbodyProps rbProps;
             rbProps.mass = props.get_or("mass", 0.0f);
             rbProps.isKinematic = props.get_or("kinematic", false);
@@ -115,7 +130,8 @@ void BindWorldAPI(sol::state& lua, LuaApplication* app)
         },
 
         // Add a Lua script component
-        "addScript", [&lua](GameObject* go, const std::string& className) {
+        "addScript",
+        [&lua](GameObject* go, const std::string& className) {
             auto* script = new ScriptableComponent(go, lua, className);
             go->AddComponent(script);
 
@@ -136,16 +152,15 @@ void BindWorldAPI(sol::state& lua, LuaApplication* app)
         },
 
         // Get the first ScriptableComponent (TODO: support multiple scripts per GameObject)
-        "getScript", [](GameObject* go) -> ScriptableComponent* {
-            return go->GetComponent<ScriptableComponent>();
-        },
+        "getScript",
+        [](GameObject* go) -> ScriptableComponent* { return go->GetComponent<ScriptableComponent>(); },
 
-        "setPhysicsActivated", &GameObject::SetPhysicsActivated,
+        "setPhysicsActivated",
+        &GameObject::SetPhysicsActivated,
 
         // Utility
-        sol::meta_function::to_string, [](GameObject* go) {
-            return fmt::format("GameObject(\"{}\")", go->GetName());
-        }
+        sol::meta_function::to_string,
+        [](GameObject* go) { return fmt::format("GameObject(\"{}\")", go->GetName()); }
     );
 
     // ===== World API =====
@@ -153,18 +168,10 @@ void BindWorldAPI(sol::state& lua, LuaApplication* app)
 
     // Spawn a new empty GameObject
     world["spawn"] = sol::overload(
-        [app]() -> GameObject* {
-            return app->CreateGameObject();
-        },
-        [app](float x, float y, float z) -> GameObject* {
-            return app->CreateGameObject(glm::vec3(x, y, z));
-        },
-        [app](const glm::vec3& pos) -> GameObject* {
-            return app->CreateGameObject(pos);
-        },
-        [app](const glm::vec3& pos, const glm::vec3& rot) -> GameObject* {
-            return app->CreateGameObject(pos, rot);
-        },
+        [app]() -> GameObject* { return app->CreateGameObject(); },
+        [app](float x, float y, float z) -> GameObject* { return app->CreateGameObject(glm::vec3(x, y, z)); },
+        [app](const glm::vec3& pos) -> GameObject* { return app->CreateGameObject(pos); },
+        [app](const glm::vec3& pos, const glm::vec3& rot) -> GameObject* { return app->CreateGameObject(pos, rot); },
         [app](const glm::vec3& pos, const glm::vec3& rot, const glm::vec3& scale) -> GameObject* {
             return app->CreateGameObject(pos, rot, scale);
         }
@@ -185,7 +192,8 @@ void BindWorldAPI(sol::state& lua, LuaApplication* app)
         // Lua receives non-owning observer pointers; Application owns the objects.
         std::vector<GameObject*> out;
         out.reserve(app->GetEntities().size());
-        for (const auto& entity : app->GetEntities()) out.push_back(entity.get());
+        for (const auto& entity : app->GetEntities())
+            out.push_back(entity.get());
         return out;
     };
 

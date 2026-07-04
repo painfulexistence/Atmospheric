@@ -29,10 +29,7 @@ void SpriteMesh::GenerateGrid(int cols, int rows, const glm::vec2& size) {
             vertex.position = glm::vec2(px, py);
 
             // UV
-            vertex.uv = glm::vec2(
-                static_cast<float>(x) / cols,
-                static_cast<float>(y) / rows
-            );
+            vertex.uv = glm::vec2(static_cast<float>(x) / cols, static_cast<float>(y) / rows);
 
             vertex.color = glm::vec4(1.0f);
 
@@ -275,8 +272,7 @@ void JiggleDeformer::Apply(float deltaTime, SpriteMesh& mesh) {
 // Sprite3DComponent Implementation
 // ============================================================================
 
-Sprite3DComponent::Sprite3DComponent(GameObject* gameObject, const Sprite3DProps& props)
-    : CanvasDrawable(gameObject) {
+Sprite3DComponent::Sprite3DComponent(GameObject* gameObject, const Sprite3DProps& props) : CanvasDrawable(gameObject) {
     _size = props.size;
     _color = props.color;
     _pivot = props.pivot;
@@ -354,8 +350,9 @@ void Sprite3DComponent::Tick(float deltaTime) {
     _mesh->ApplyOffsets();
 }
 
-glm::mat4 Sprite3DComponent::CalculateBillboardMatrix(const glm::vec3& position, const glm::vec3& cameraPosition) const {
-    glm::mat4 billboard = glm::mat4(1.0f);
+glm::mat4
+    Sprite3DComponent::CalculateBillboardMatrix(const glm::vec3& position, const glm::vec3& cameraPosition) const {
+    auto billboard = glm::mat4(1.0f);
 
     switch (_billboardMode) {
     case BillboardMode::ViewPoint: {
@@ -405,10 +402,7 @@ glm::mat4 Sprite3DComponent::CalculateBillboardMatrix(const glm::vec3& position,
 
 void Sprite3DComponent::DrawSimpleQuad(BatchRenderer2D* renderer, const glm::mat4& transform) {
     glm::vec2 uvs[4] = {
-        { _uvMin.x, _uvMin.y },
-        { _uvMax.x, _uvMin.y },
-        { _uvMax.x, _uvMax.y },
-        { _uvMin.x, _uvMax.y }
+        { _uvMin.x, _uvMin.y }, { _uvMax.x, _uvMin.y }, { _uvMax.x, _uvMax.y }, { _uvMin.x, _uvMax.y }
     };
     renderer->DrawQuad(transform, _texture, uvs, _color);
 }

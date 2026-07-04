@@ -24,8 +24,8 @@ void ConsoleSubsystem::Init(Application* app) {
     Subsystem::Init(app);
 
 #ifndef __EMSCRIPTEN__
-    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    auto logger = std::make_shared<spdlog::logger>("console", console_sink);
+    auto consoleSink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    auto logger = std::make_shared<spdlog::logger>("console", consoleSink);
     spdlog::set_default_logger(logger);
 #endif
 }
@@ -70,9 +70,7 @@ void ConsoleSubsystem::DrawImGui(float dt) {
 void ConsoleSubsystem::Info(const std::string& message) {
 #if RUNTIME_LOG_ON
 #ifdef __EMSCRIPTEN__
-    EM_ASM({
-        console.info(UTF8ToString($0));
-    }, message.c_str());
+    EM_ASM({ console.info(UTF8ToString($0)); }, message.c_str());
 #else
     spdlog::info(message);
 #endif
@@ -82,9 +80,7 @@ void ConsoleSubsystem::Info(const std::string& message) {
 void ConsoleSubsystem::Warn(const std::string& message) {
 #if RUNTIME_LOG_ON
 #ifdef __EMSCRIPTEN__
-    EM_ASM({
-        console.warn(UTF8ToString($0));
-    }, message.c_str());
+    EM_ASM({ console.warn(UTF8ToString($0)); }, message.c_str());
 #else
     spdlog::warn(message);
 #endif
@@ -94,16 +90,16 @@ void ConsoleSubsystem::Warn(const std::string& message) {
 void ConsoleSubsystem::Error(const std::string& message) {
 #if RUNTIME_LOG_ON
 #ifdef __EMSCRIPTEN__
-    EM_ASM({
-        console.error(UTF8ToString($0));
-    }, message.c_str());
+    EM_ASM({ console.error(UTF8ToString($0)); }, message.c_str());
 #else
     spdlog::error(message);
 #endif
 #endif
 }
 
-void ConsoleSubsystem::RegisterCommand(const std::string& cmd, std::function<void(const std::vector<std::string>&)> callback) {
+void ConsoleSubsystem::RegisterCommand(
+    const std::string& cmd, std::function<void(const std::vector<std::string>&)> callback
+) {
     _commands[cmd] = callback;
 }
 

@@ -49,7 +49,7 @@ SceneLoadResult SceneLoader::Load(const std::string& filename, const SceneLoadCo
         spdlog::error("SceneLoader: {}", result.error);
         return result;
     }
-    const std::string path = *resolvedOpt;
+    const std::string& path = *resolvedOpt;
 
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
@@ -79,7 +79,9 @@ SceneLoadResult SceneLoader::Load(const std::string& filename, const SceneLoadCo
 
     SceneLoadResult res = LoadFromBuffer(buffer.data(), buffer.size(), actualConfig);
     if (res.success) {
-        spdlog::info("SceneLoader: CSB file '{}' loaded successfully ({} nodes created)", filename, res.allNodes.size());
+        spdlog::info(
+            "SceneLoader: CSB file '{}' loaded successfully ({} nodes created)", filename, res.allNodes.size()
+        );
     }
     return res;
 }
@@ -163,7 +165,7 @@ SceneLoadResult SceneLoader::LoadFromBuffer(const uint8_t* buffer, size_t size, 
 // ... existing ParseNodeTree ...
 
 void SceneLoader::ParseAnimations(
-  const flatbuffers::NodeAction* actions, SceneLoadResult& result, const SceneLoadConfig& config
+    const flatbuffers::NodeAction* actions, SceneLoadResult& result, const SceneLoadConfig& config
 ) {
     if (!actions) {
         spdlog::debug("SceneLoader: No Action data in CSB.");
@@ -182,11 +184,11 @@ void SceneLoader::ParseAnimations(
     if (speed <= 0.0f) speed = 1.0f;// Fallback to normal speed if invalid
 
     spdlog::info(
-      "SceneLoader: Parsing {} timelines at {}fps, speed={}, loop={}",
-      actions->timeLines()->size(),
-      frameRate,
-      speed,
-      config.loopAnimations
+        "SceneLoader: Parsing {} timelines at {}fps, speed={}, loop={}",
+        actions->timeLines()->size(),
+        frameRate,
+        speed,
+        config.loopAnimations
     );
 
     for (auto timeline : *actions->timeLines()) {
@@ -197,15 +199,15 @@ void SceneLoader::ParseAnimations(
 
         int actionTag = timeline->actionTag();
         spdlog::info(
-          "SceneLoader: Processing timeline for ActionTag {} Property {}", actionTag, timeline->property()->c_str()
+            "SceneLoader: Processing timeline for ActionTag {} Property {}", actionTag, timeline->property()->c_str()
         );
 
         auto it = result.nodesByActionTag.find(actionTag);
         if (it == result.nodesByActionTag.end()) {
             spdlog::warn(
-              "SceneLoader: ActionTag {} not found in scene nodes (Map size: {}).",
-              actionTag,
-              result.nodesByActionTag.size()
+                "SceneLoader: ActionTag {} not found in scene nodes (Map size: {}).",
+                actionTag,
+                result.nodesByActionTag.size()
             );
             continue;
         }
@@ -214,7 +216,7 @@ void SceneLoader::ParseAnimations(
         if (!target) continue;
 
         // Ensure ActionManager exists
-        ActionManager* actionManager = target->GetComponent<ActionManager>();
+        auto* actionManager = target->GetComponent<ActionManager>();
         if (!actionManager) {
             actionManager = new ActionManager(target);
             target->AddComponent(actionManager);
@@ -290,7 +292,7 @@ void SceneLoader::ParseAnimations(
 
                 if (frame->intFrame()) {
                     // CSB stores rotation in degrees, convert to radians for RotateTo
-                    float rotDeg = static_cast<float>(frame->intFrame()->value());
+                    auto rotDeg = static_cast<float>(frame->intFrame()->value());
                     float rotRad = glm::radians(rotDeg);
                     auto action = new RotateTo(duration, glm::vec3(0, 0, rotRad));
                     action->SetEasing(easing);
@@ -300,10 +302,12 @@ void SceneLoader::ParseAnimations(
             }
 
             if (!parsed) {
-                ConsoleSubsystem::Get()->Warn(fmt::format(
-                  "SceneLoader: RotationSkew timeline found on '{}' but frames contain no IntFrame data.",
-                  target->GetName()
-                ));
+                ConsoleSubsystem::Get()->Warn(
+                    fmt::format(
+                        "SceneLoader: RotationSkew timeline found on '{}' but frames contain no IntFrame data.",
+                        target->GetName()
+                    )
+                );
             }
         } else if (property == "CColor") {
             for (auto frame : *timeline->frames()) {
@@ -312,10 +316,10 @@ void SceneLoader::ParseAnimations(
                     auto* colorData = frame->colorFrame()->color();
 
                     glm::vec4 targetColor(
-                      colorData->r() / 255.0f,
-                      colorData->g() / 255.0f,
-                      colorData->b() / 255.0f,
-                      colorData->a() / 255.0f
+                        colorData->r() / 255.0f,
+                        colorData->g() / 255.0f,
+                        colorData->b() / 255.0f,
+                        colorData->a() / 255.0f
                     );
 
                     int deltaFrames = currentFrameIndex - lastFrameIndex;
@@ -337,7 +341,7 @@ void SceneLoader::ParseAnimations(
         }
 
         if (!sequenceActions.empty()) {
-            Sequence* seq = new Sequence(sequenceActions);
+            auto* seq = new Sequence(sequenceActions);
             if (config.loopAnimations) {
                 // Wrap in RepeatForever for looping animations
                 Action* loopedAction = new RepeatForever(seq);
@@ -350,7 +354,7 @@ void SceneLoader::ParseAnimations(
 }
 
 GameObject* SceneLoader::ParseNodeTree(
-  const flatbuffers::NodeTree* nodeTree, const SceneLoadConfig& config, SceneLoadResult& result, GameObject* parent
+    const flatbuffers::NodeTree* nodeTree, const SceneLoadConfig& config, SceneLoadResult& result, GameObject* parent
 ) {
     if (!nodeTree) return nullptr;
 
@@ -391,10 +395,10 @@ GameObject* SceneLoader::ParseNodeTree(
             }
             if (widgetOptions->color()) {
                 props.color = glm::vec4(
-                  widgetOptions->color()->r() / 255.0f,
-                  widgetOptions->color()->g() / 255.0f,
-                  widgetOptions->color()->b() / 255.0f,
-                  widgetOptions->alpha() / 255.0f
+                    widgetOptions->color()->r() / 255.0f,
+                    widgetOptions->color()->g() / 255.0f,
+                    widgetOptions->color()->b() / 255.0f,
+                    widgetOptions->alpha() / 255.0f
                 );
             }
             props.layer = config.defaultLayer;
@@ -419,10 +423,10 @@ GameObject* SceneLoader::ParseNodeTree(
             }
             if (widgetOptions->color()) {
                 props.color = glm::vec4(
-                  widgetOptions->color()->r() / 255.0f,
-                  widgetOptions->color()->g() / 255.0f,
-                  widgetOptions->color()->b() / 255.0f,
-                  widgetOptions->alpha() / 255.0f
+                    widgetOptions->color()->r() / 255.0f,
+                    widgetOptions->color()->g() / 255.0f,
+                    widgetOptions->color()->b() / 255.0f,
+                    widgetOptions->alpha() / 255.0f
                 );
             }
             props.layer = config.defaultLayer;
@@ -436,8 +440,8 @@ GameObject* SceneLoader::ParseNodeTree(
         if (go) {
             go->AddComponent<Text2DComponent>(CreateTextProps(nodeTree, widgetOptions, config));
             spdlog::debug(
-              "SceneLoader: Created Text node '{}'",
-              widgetOptions && widgetOptions->name() ? widgetOptions->name()->c_str() : "Text"
+                "SceneLoader: Created Text node '{}'",
+                widgetOptions && widgetOptions->name() ? widgetOptions->name()->c_str() : "Text"
             );
         }
     } else if (classname == "Node" || classname == "SingleNode") {
@@ -523,10 +527,10 @@ GameObject* SceneLoader::CreateSprite(const flatbuffers::SpriteOptions* options,
         }
         if (widgetOpts->color()) {
             props.color = glm::vec4(
-              widgetOpts->color()->r() / 255.0f,
-              widgetOpts->color()->g() / 255.0f,
-              widgetOpts->color()->b() / 255.0f,
-              widgetOpts->alpha() / 255.0f
+                widgetOpts->color()->r() / 255.0f,
+                widgetOpts->color()->g() / 255.0f,
+                widgetOpts->color()->b() / 255.0f,
+                widgetOpts->alpha() / 255.0f
             );
         }
     }
@@ -534,10 +538,10 @@ GameObject* SceneLoader::CreateSprite(const flatbuffers::SpriteOptions* options,
     // Load texture from fileNameData
     if (options->fileNameData() && options->fileNameData()->path()) {
         props.texture = ResolveTexture(
-          options->fileNameData()->path()->c_str(),
-          options->fileNameData()->plistFile() ? options->fileNameData()->plistFile()->c_str() : "",
-          options->fileNameData()->resourceType(),
-          config
+            options->fileNameData()->path()->c_str(),
+            options->fileNameData()->plistFile() ? options->fileNameData()->plistFile()->c_str() : "",
+            options->fileNameData()->resourceType(),
+            config
         );
     }
 
@@ -563,10 +567,10 @@ GameObject* SceneLoader::CreateImageView(const flatbuffers::ImageViewOptions* op
         }
         if (widgetOpts->color()) {
             props.color = glm::vec4(
-              widgetOpts->color()->r() / 255.0f,
-              widgetOpts->color()->g() / 255.0f,
-              widgetOpts->color()->b() / 255.0f,
-              widgetOpts->alpha() / 255.0f
+                widgetOpts->color()->r() / 255.0f,
+                widgetOpts->color()->g() / 255.0f,
+                widgetOpts->color()->b() / 255.0f,
+                widgetOpts->alpha() / 255.0f
             );
         }
     }
@@ -574,10 +578,10 @@ GameObject* SceneLoader::CreateImageView(const flatbuffers::ImageViewOptions* op
     // Load texture
     if (options->fileNameData() && options->fileNameData()->path()) {
         props.texture = ResolveTexture(
-          options->fileNameData()->path()->c_str(),
-          options->fileNameData()->plistFile() ? options->fileNameData()->plistFile()->c_str() : "",
-          options->fileNameData()->resourceType(),
-          config
+            options->fileNameData()->path()->c_str(),
+            options->fileNameData()->plistFile() ? options->fileNameData()->plistFile()->c_str() : "",
+            options->fileNameData()->resourceType(),
+            config
         );
     }
 
@@ -588,12 +592,12 @@ GameObject* SceneLoader::CreateImageView(const flatbuffers::ImageViewOptions* op
 }
 
 GameObject*
-  SceneLoader::CreateSingleNode(const flatbuffers::SingleNodeOptions* options, const SceneLoadConfig& config) {
+    SceneLoader::CreateSingleNode(const flatbuffers::SingleNodeOptions* options, const SceneLoadConfig& config) {
     return CreateNode(options ? options->nodeOptions() : nullptr, config);
 }
 
 void SceneLoader::ApplyWidgetOptions(
-  GameObject* go, const flatbuffers::WidgetOptions* options, const SceneLoadConfig& config
+    GameObject* go, const flatbuffers::WidgetOptions* options, const SceneLoadConfig& config
 ) {
     if (!go || !options) return;
 
@@ -620,7 +624,7 @@ void SceneLoader::ApplyWidgetOptions(
 }
 
 int SceneLoader::ResolveTexture(
-  const std::string& path, const std::string& plistFile, int resourceType, const SceneLoadConfig& config
+    const std::string& path, const std::string& plistFile, int resourceType, const SceneLoadConfig& config
 ) {
     // Resource types in CSB:
     // 0 = Normal file
@@ -657,7 +661,9 @@ std::vector<std::string> SceneLoader::GetSupportedNodeTypes() {
 }
 
 Text2DProps SceneLoader::CreateTextProps(
-  const flatbuffers::NodeTree* nodeTree, const flatbuffers::WidgetOptions* widgetOptions, const SceneLoadConfig& config
+    const flatbuffers::NodeTree* nodeTree,
+    const flatbuffers::WidgetOptions* widgetOptions,
+    const SceneLoadConfig& config
 ) {
     Text2DProps props;
 
@@ -694,7 +700,7 @@ Text2DProps SceneLoader::CreateTextProps(
         // Get area size if custom size is enabled
         if (textOptions->isCustomSize()) {
             props.size =
-              glm::vec2(static_cast<float>(textOptions->areaWidth()), static_cast<float>(textOptions->areaHeight()));
+                glm::vec2(static_cast<float>(textOptions->areaWidth()), static_cast<float>(textOptions->areaHeight()));
         }
 
         // Get widget options from TextOptions
@@ -705,14 +711,14 @@ Text2DProps SceneLoader::CreateTextProps(
             }
             if (textWidgetOpts->anchorPoint()) {
                 props.pivot =
-                  glm::vec2(textWidgetOpts->anchorPoint()->scaleX(), textWidgetOpts->anchorPoint()->scaleY());
+                    glm::vec2(textWidgetOpts->anchorPoint()->scaleX(), textWidgetOpts->anchorPoint()->scaleY());
             }
             if (textWidgetOpts->color()) {
                 props.color = glm::vec4(
-                  textWidgetOpts->color()->r() / 255.0f,
-                  textWidgetOpts->color()->g() / 255.0f,
-                  textWidgetOpts->color()->b() / 255.0f,
-                  textWidgetOpts->alpha() / 255.0f
+                    textWidgetOpts->color()->r() / 255.0f,
+                    textWidgetOpts->color()->g() / 255.0f,
+                    textWidgetOpts->color()->b() / 255.0f,
+                    textWidgetOpts->alpha() / 255.0f
                 );
             }
             props.zOrder = textWidgetOpts->zOrder();
@@ -727,10 +733,10 @@ Text2DProps SceneLoader::CreateTextProps(
         }
         if (widgetOptions->color()) {
             props.color = glm::vec4(
-              widgetOptions->color()->r() / 255.0f,
-              widgetOptions->color()->g() / 255.0f,
-              widgetOptions->color()->b() / 255.0f,
-              widgetOptions->alpha() / 255.0f
+                widgetOptions->color()->r() / 255.0f,
+                widgetOptions->color()->g() / 255.0f,
+                widgetOptions->color()->b() / 255.0f,
+                widgetOptions->alpha() / 255.0f
             );
         }
         props.zOrder = widgetOptions->zOrder();

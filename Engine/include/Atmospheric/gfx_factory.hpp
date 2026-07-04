@@ -30,13 +30,19 @@ public:
     // falls back to WebGL 2 if WebGPU is unavailable or any step fails.
     static void Init();
 #if defined(AE_USE_WEBGPU)
-    static WGPUDevice        GetWebGPUDevice()      { return _wgpuDevice; }
-    static WGPUQueue         GetWebGPUQueue()        { return _wgpuQueue; }
-    static WGPUTextureFormat GetSwapchainFormat()    { return _swapchainFormat; }
+    static WGPUDevice GetWebGPUDevice() {
+        return _wgpuDevice;
+    }
+    static WGPUQueue GetWebGPUQueue() {
+        return _wgpuQueue;
+    }
+    static WGPUTextureFormat GetSwapchainFormat() {
+        return _swapchainFormat;
+    }
     // Returns the current swapchain texture view (caller must wgpuTextureViewRelease).
     // Returns nullptr if the surface isn't ready yet.
-    static WGPUTextureView   GetCurrentSwapchainView();
-    static void              PresentSwapchain();
+    static WGPUTextureView GetCurrentSwapchainView();
+    static void PresentSwapchain();
 #endif
 #else
     // Native: stores sdlWindow for future Dawn surface creation.
@@ -46,9 +52,11 @@ public:
 
     static void Shutdown();
 
-    static GfxBackend GetBackend() { return _backend; }
+    static GfxBackend GetBackend() {
+        return _backend;
+    }
 
-    static std::unique_ptr<Buffer>       CreateBuffer();
+    static std::unique_ptr<Buffer> CreateBuffer();
     static std::unique_ptr<RenderTarget> CreateRenderTarget(const RenderTarget::Props& props);
 
     // Cross-backend texture upload.
@@ -59,8 +67,7 @@ public:
     // `filter` records how the texture should be sampled (see TextureFilter):
     // on GL it's applied via glTexParameteri; on WebGPU it's remembered so
     // GPUCanvasPass can bind a matching sampler. Defaults to Linear.
-    static uint32_t  UploadTexture2D(const uint8_t* pixels, int w, int h,
-                                     TextureFilter filter = TextureFilter::Linear);
+    static uint32_t UploadTexture2D(const uint8_t* pixels, int w, int h, TextureFilter filter = TextureFilter::Linear);
 
     // Filter hint recorded for a texture at upload time. Returns Linear for
     // unknown IDs. Consulted by GPUCanvasPass to pick its sampler; on GL the
@@ -77,7 +84,7 @@ public:
     //                 handle same-size updates and resizes uniformly).
     //   WebGPU  path: wgpuQueueWriteTexture, recreating the WGPUTexture
     //                 first if the size changed.
-    static void      UpdateTexture2D(uint32_t id, const uint8_t* pixels, int w, int h);
+    static void UpdateTexture2D(uint32_t id, const uint8_t* pixels, int w, int h);
 
     // Cross-backend texture release. id must have come from UploadTexture2D()
     // or UploadCompressedTexture2D().
@@ -89,7 +96,9 @@ public:
     // at Init() time (queried via wgpuAdapterHasFeature, not just requested).
     // TextureCompressionFormat::None on the OpenGL backend, or on WebGPU if the
     // adapter granted none of the BC/ETC2/ASTC features.
-    static TextureCompressionFormat GetSupportedCompressionFormat() { return _compressionFormat; }
+    static TextureCompressionFormat GetSupportedCompressionFormat() {
+        return _compressionFormat;
+    }
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     // Returns the WGPUTexture previously registered via UploadTexture2D()
@@ -103,7 +112,8 @@ public:
     // BC7/ETC2/ASTC4x4). Returns a synthetic ID usable with GetWGPUTexture()
     // and ReleaseTexture(), or 0 if format is None or the device lacks the
     // feature.
-    static uint32_t UploadCompressedTexture2D(TextureCompressionFormat format, const uint8_t* data, size_t dataSize, int w, int h);
+    static uint32_t
+        UploadCompressedTexture2D(TextureCompressionFormat format, const uint8_t* data, size_t dataSize, int w, int h);
 
     // WebGPU-only: single-channel half-float texture from float data (heights,
     // masks) — the same GL_R16F path the GLES/WebGL2 backend uses for
@@ -123,13 +133,16 @@ private:
     static TextureCompressionFormat _compressionFormat;
 
 #if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
-    static WGPUDevice        _wgpuDevice;
-    static WGPUQueue         _wgpuQueue;
-    static WGPUSurface       _surface;
+    static WGPUDevice _wgpuDevice;
+    static WGPUQueue _wgpuQueue;
+    static WGPUSurface _surface;
     static WGPUTextureFormat _swapchainFormat;
-    struct GpuTexEntry { WGPUTexture tex = nullptr; TextureFilter filter = TextureFilter::Linear; };
+    struct GpuTexEntry {
+        WGPUTexture tex = nullptr;
+        TextureFilter filter = TextureFilter::Linear;
+    };
     static std::unordered_map<uint32_t, GpuTexEntry> _gpuTextures;
-    static uint32_t          _nextTexID;
+    static uint32_t _nextTexID;
 #elif !defined(__EMSCRIPTEN__)
     static SDL_Window* _sdlWindow;
 #endif

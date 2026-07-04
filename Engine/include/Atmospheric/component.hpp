@@ -5,19 +5,19 @@ class GameObject;
 
 class Component {
 public:
-    virtual ~Component(){};
+    virtual ~Component() {};
 
     virtual std::string GetName() const = 0;
 
-    virtual void OnAttach(){};
-    virtual void OnDetach(){};
-    virtual void OnTick(float dt){};
-    virtual void OnPhysicsTick(float dt){};
+    virtual void OnAttach() {};
+    virtual void OnDetach() {};
+    virtual void OnTick(float dt) {};
+    virtual void OnPhysicsTick(float dt) {};
     // Override to expose tunable parameters / live info in the editor's entity
     // inspector. The editor calls this for every component; the default does
     // nothing. Implementations typically wrap their widgets in an
     // ImGui::CollapsingHeader(GetName()).
-    virtual void DrawImGui(){};
+    virtual void DrawImGui() {};
     virtual bool CanTick() const {
         return enabled;
     }

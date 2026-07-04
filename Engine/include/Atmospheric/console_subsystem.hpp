@@ -1,24 +1,22 @@
 #pragma once
+#include "config.hpp"
 #include "globals.hpp"
+#include "subsystem.hpp"
+#include <functional>
 #include <string>
 #include <unordered_map>
-#include <functional>
-#include "config.hpp"
-#include "subsystem.hpp"
 
 struct LogEntry {
     std::string message;
 };
 
 /// Logging and command palette system
-class ConsoleSubsystem : public Subsystem
-{
+class ConsoleSubsystem : public Subsystem {
 private:
     static ConsoleSubsystem* _instance;
 
 public:
-    static ConsoleSubsystem* Get()
-    {
+    static ConsoleSubsystem* Get() {
         return _instance;
     }
 

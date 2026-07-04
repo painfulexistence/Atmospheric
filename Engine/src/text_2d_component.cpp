@@ -71,7 +71,7 @@ void Text2DComponent::Draw(BatchRenderer2D* renderer) {
 
     // Get world transform (includes parent transforms)
     glm::mat4 worldTransform = gameObject->GetTransform();
-    glm::vec3 worldPos = glm::vec3(worldTransform[3]);
+    auto worldPos = glm::vec3(worldTransform[3]);
 
     // Calculate alignment offset within the bounding box
     float alignOffsetX = 0.0f;

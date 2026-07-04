@@ -1,6 +1,6 @@
 #pragma once
-#include <glm/glm.hpp>
 #include <cstdint>
+#include <glm/glm.hpp>
 #include <vector>
 
 class GraphicsSubsystem;
@@ -10,7 +10,7 @@ class GraphicsSubsystem;
 struct PointLight2D {
     float x = 0, y = 0;
     float r = 1.0f, g = 0.9f, b = 0.7f;
-    float radius    = 150.0f;
+    float radius = 150.0f;
     float intensity = 1.0f;
 };
 

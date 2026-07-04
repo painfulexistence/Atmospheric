@@ -1,25 +1,28 @@
 #pragma once
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-#include <webgpu/webgpu.h>
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <webgpu/webgpu.h>
 
 // ── Visibility aliases ────────────────────────────────────────────────────────
 namespace wgsl_stage {
     constexpr WGPUShaderStage vert = WGPUShaderStage_Vertex;
     constexpr WGPUShaderStage frag = WGPUShaderStage_Fragment;
     constexpr WGPUShaderStage both = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
-}
+}// namespace wgsl_stage
 
 // ── Bind-group-layout entry descriptor ───────────────────────────────────────
 struct GpuBGLEntry {
     uint32_t binding = 0;
     WGPUShaderStage visibility = WGPUShaderStage_Fragment;
     enum class Kind {
-        Uniform, DynamicUniform, Texture, Sampler,
-        DepthTexture,      // texture_depth_2d (e.g. shadow map)
-        ComparisonSampler, // sampler_comparison (for textureSampleCompare)
+        Uniform,
+        DynamicUniform,
+        Texture,
+        Sampler,
+        DepthTexture,// texture_depth_2d (e.g. shadow map)
+        ComparisonSampler,// sampler_comparison (for textureSampleCompare)
     } kind = Kind::Uniform;
     uint64_t minBindingSize = 0;
 };
@@ -48,15 +51,15 @@ inline GpuBGLEntry gpuCompareSampler(uint32_t b, WGPUShaderStage v = WGPUShaderS
 // is less than 1"). Start from this and override the fields you need.
 inline WGPUSamplerDescriptor gpuSamplerDesc() {
     WGPUSamplerDescriptor d{};
-    d.addressModeU  = WGPUAddressMode_ClampToEdge;
-    d.addressModeV  = WGPUAddressMode_ClampToEdge;
-    d.addressModeW  = WGPUAddressMode_ClampToEdge;
-    d.magFilter     = WGPUFilterMode_Nearest;
-    d.minFilter     = WGPUFilterMode_Nearest;
-    d.mipmapFilter  = WGPUMipmapFilterMode_Nearest;
-    d.lodMinClamp   = 0.0f;
-    d.lodMaxClamp   = 32.0f; // WebGPU spec default
-    d.maxAnisotropy = 1;     // must be >= 1
+    d.addressModeU = WGPUAddressMode_ClampToEdge;
+    d.addressModeV = WGPUAddressMode_ClampToEdge;
+    d.addressModeW = WGPUAddressMode_ClampToEdge;
+    d.magFilter = WGPUFilterMode_Nearest;
+    d.minFilter = WGPUFilterMode_Nearest;
+    d.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+    d.lodMinClamp = 0.0f;
+    d.lodMaxClamp = 32.0f;// WebGPU spec default
+    d.maxAnisotropy = 1;// must be >= 1
     return d;
 }
 
@@ -66,7 +69,9 @@ inline WGPUSamplerDescriptor gpuSamplerDesc() {
 struct GpuPipeline {
     WGPURenderPipeline pipeline = nullptr;
     std::vector<WGPUBindGroupLayout> bgls;
-    WGPUBindGroupLayout bgl(size_t i) const { return bgls[i]; }
+    WGPUBindGroupLayout bgl(size_t i) const {
+        return bgls[i];
+    }
 };
 
 // ── Vertex attribute descriptor ───────────────────────────────────────────────
@@ -91,16 +96,15 @@ struct GpuVertexAttr {
 //       .build();
 class GpuBindGroupBuilder {
 public:
-    GpuBindGroupBuilder(WGPUDevice device, WGPUBindGroupLayout layout)
-        : _device(device), _layout(layout) {}
+    GpuBindGroupBuilder(WGPUDevice device, WGPUBindGroupLayout layout) : _device(device), _layout(layout) {
+    }
 
-    GpuBindGroupBuilder& buffer(uint32_t binding, WGPUBuffer buf, uint64_t size,
-                                uint64_t offset = 0) {
+    GpuBindGroupBuilder& buffer(uint32_t binding, WGPUBuffer buf, uint64_t size, uint64_t offset = 0) {
         WGPUBindGroupEntry e{};
         e.binding = binding;
-        e.buffer  = buf;
-        e.size    = size;
-        e.offset  = offset;
+        e.buffer = buf;
+        e.size = size;
+        e.offset = offset;
         _entries.push_back(e);
         return *this;
     }
@@ -110,7 +114,7 @@ public:
     GpuBindGroupBuilder& texture(uint32_t binding, WGPUTexture tex) {
         WGPUTextureView view = wgpuTextureCreateView(tex, nullptr);
         WGPUBindGroupEntry e{};
-        e.binding     = binding;
+        e.binding = binding;
         e.textureView = view;
         _entries.push_back(e);
         _transientViews.push_back(view);
@@ -121,7 +125,7 @@ public:
     // caller keeps ownership and must outlive the bind group.
     GpuBindGroupBuilder& textureView(uint32_t binding, WGPUTextureView view) {
         WGPUBindGroupEntry e{};
-        e.binding     = binding;
+        e.binding = binding;
         e.textureView = view;
         _entries.push_back(e);
         return *this;
@@ -137,20 +141,21 @@ public:
 
     WGPUBindGroup build() {
         WGPUBindGroupDescriptor d{};
-        d.layout     = _layout;
+        d.layout = _layout;
         d.entryCount = (uint32_t)_entries.size();
-        d.entries    = _entries.data();
+        d.entries = _entries.data();
         WGPUBindGroup bg = wgpuDeviceCreateBindGroup(_device, &d);
-        for (WGPUTextureView v : _transientViews) wgpuTextureViewRelease(v);
+        for (WGPUTextureView v : _transientViews)
+            wgpuTextureViewRelease(v);
         _transientViews.clear();
         return bg;
     }
 
 private:
-    WGPUDevice          _device = nullptr;
+    WGPUDevice _device = nullptr;
     WGPUBindGroupLayout _layout = nullptr;
     std::vector<WGPUBindGroupEntry> _entries;
-    std::vector<WGPUTextureView>    _transientViews;
+    std::vector<WGPUTextureView> _transientViews;
 };
 
 // ── Pipeline builder ──────────────────────────────────────────────────────────
@@ -173,10 +178,17 @@ private:
 //   _texBGL     = p.bgl(1);
 class GpuPipelineBuilder {
 public:
-    explicit GpuPipelineBuilder(WGPUDevice device) : _device(device) {}
+    explicit GpuPipelineBuilder(WGPUDevice device) : _device(device) {
+    }
 
-    GpuPipelineBuilder& wgsl(const char* src)         { _src = src; return *this; }
-    GpuPipelineBuilder& wgsl(const std::string& src)  { _src = src; return *this; }
+    GpuPipelineBuilder& wgsl(const char* src) {
+        _src = src;
+        return *this;
+    }
+    GpuPipelineBuilder& wgsl(const std::string& src) {
+        _src = src;
+        return *this;
+    }
 
     GpuPipelineBuilder& bgl(std::vector<GpuBGLEntry> entries) {
         _bglGroups.push_back({ std::move(entries), nullptr });
@@ -196,34 +208,48 @@ public:
     }
 
     GpuPipelineBuilder& vertex(uint64_t stride, std::vector<GpuVertexAttr> attrs) {
-        _stride      = stride;
+        _stride = stride;
         _vertexAttrs = std::move(attrs);
         return *this;
     }
 
-    GpuPipelineBuilder& colorFormat(WGPUTextureFormat fmt) { _colorFmt = fmt; return *this; }
+    GpuPipelineBuilder& colorFormat(WGPUTextureFormat fmt) {
+        _colorFmt = fmt;
+        return *this;
+    }
 
     // Enable standard src-alpha / one-minus-src-alpha blending.
-    GpuPipelineBuilder& blend() { _blend = true; return *this; }
+    GpuPipelineBuilder& blend() {
+        _blend = true;
+        return *this;
+    }
 
     // Enable depth testing.  writeEnabled=true for opaque, false for transparent.
-    GpuPipelineBuilder& depth(bool writeEnabled,
-                              WGPUCompareFunction cmp = WGPUCompareFunction_Less) {
+    GpuPipelineBuilder& depth(bool writeEnabled, WGPUCompareFunction cmp = WGPUCompareFunction_Less) {
         _depthEnabled = true;
-        _depthWrite   = writeEnabled;
+        _depthWrite = writeEnabled;
         _depthCompare = cmp;
         return *this;
     }
 
-    GpuPipelineBuilder& cull(WGPUCullMode mode) { _cullMode = mode; return *this; }
+    GpuPipelineBuilder& cull(WGPUCullMode mode) {
+        _cullMode = mode;
+        return *this;
+    }
 
     // Depth-only pipeline (shadow maps): no fragment stage, no color target.
     // The WGSL only needs a vs entry point. Must be combined with depth().
-    GpuPipelineBuilder& depthOnly() { _depthOnlyPipeline = true; return *this; }
+    GpuPipelineBuilder& depthOnly() {
+        _depthOnlyPipeline = true;
+        return *this;
+    }
 
     // MSAA sample count — must match the render pass's attachments (e.g.
     // sceneRT->GetNumSamples() for pipelines drawing into sceneRT).
-    GpuPipelineBuilder& multisample(uint32_t count) { _sampleCount = count; return *this; }
+    GpuPipelineBuilder& multisample(uint32_t count) {
+        _sampleCount = count;
+        return *this;
+    }
 
     GpuPipeline build();
 
@@ -232,7 +258,7 @@ private:
     // from, or a borrowed pre-existing BGL (entries empty, existing set).
     struct BGLGroup {
         std::vector<GpuBGLEntry> entries;
-        WGPUBindGroupLayout      existing = nullptr;
+        WGPUBindGroupLayout existing = nullptr;
     };
 
     WGPUDevice _device = nullptr;
@@ -240,14 +266,14 @@ private:
     std::vector<BGLGroup> _bglGroups;
     uint64_t _stride = 0;
     std::vector<GpuVertexAttr> _vertexAttrs;
-    WGPUTextureFormat   _colorFmt     = WGPUTextureFormat_RGBA16Float;
-    bool                _blend        = false;
-    bool                _depthEnabled = false;
-    bool                _depthWrite   = false;
+    WGPUTextureFormat _colorFmt = WGPUTextureFormat_RGBA16Float;
+    bool _blend = false;
+    bool _depthEnabled = false;
+    bool _depthWrite = false;
     WGPUCompareFunction _depthCompare = WGPUCompareFunction_Less;
-    WGPUCullMode        _cullMode     = WGPUCullMode_None;
-    bool                _depthOnlyPipeline = false;
-    uint32_t            _sampleCount  = 1;
+    WGPUCullMode _cullMode = WGPUCullMode_None;
+    bool _depthOnlyPipeline = false;
+    uint32_t _sampleCount = 1;
 };
 
-#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+#endif// AE_USE_WEBGPU && __EMSCRIPTEN__

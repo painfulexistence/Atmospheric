@@ -55,8 +55,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 class FileSystem {
 public:
-    using Bytes              = std::vector<uint8_t>;
-    using ReadCallback       = std::function<void(Bytes data, bool success)>;
+    using Bytes = std::vector<uint8_t>;
+    using ReadCallback = std::function<void(Bytes data, bool success)>;
     using CompletionCallback = std::function<void()>;
 
     static FileSystem& Get();
@@ -133,7 +133,7 @@ public:
 
 private:
     FileSystem();// defined in file_system.cpp (captures the SDL base path)
-    ~FileSystem()                            = default;
-    FileSystem(const FileSystem&)            = delete;
+    ~FileSystem() = default;
+    FileSystem(const FileSystem&) = delete;
     FileSystem& operator=(const FileSystem&) = delete;
 };

@@ -16,8 +16,8 @@
 #include "sprite_component.hpp"
 #include "stb_image.h"
 #include <fstream>
-#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <sstream>
 #ifdef TRACY_ENABLE
 #include <tracy/Tracy.hpp>
@@ -48,7 +48,7 @@ void GraphicsSubsystem::Init(Application* app) {
     stbi_set_flip_vertically_on_load(true);
 
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
-    if (gladLoadGLLoader((GLADloadproc)Window::GetProcAddress()) <= 0)
+    if (gladLoadGLLoader(reinterpret_cast<GLADloadproc>(Window::GetProcAddress())) <= 0)
         throw std::runtime_error("Failed to initialize OpenGL!");
 #endif
     GfxFactory::Init();
@@ -64,38 +64,36 @@ void GraphicsSubsystem::Init(Application* app) {
     CameraProps defaultCameraProps{};
     if (app->GetConfig().preset == "2D") {
         defaultCameraProps.isOrthographic = true;
-        defaultCameraProps.orthographic = {
-            .width = static_cast<float>(logicalWidth),
-            .height = static_cast<float>(logicalHeight),
-            .nearClip = -100.0f,
-            .farClip = 1000.0f
-        };
+        defaultCameraProps.orthographic = { .width = static_cast<float>(logicalWidth),
+                                            .height = static_cast<float>(logicalHeight),
+                                            .nearClip = -100.0f,
+                                            .farClip = 1000.0f };
         // 2D horizontal angle defaults to pointing down -Z/forward (Yaw equivalent to -half_pi)
         defaultCameraProps.horizontalAngle = -glm::half_pi<float>();
     } else {
         defaultCameraProps.isOrthographic = false;
-        defaultCameraProps.perspective = {
-            .fieldOfView = 45.0f,
-            .aspectRatio = static_cast<float>(width) / static_cast<float>(height),
-            .nearClip = 0.1f,
-            .farClip = 1000.0f
-        };
+        defaultCameraProps.perspective = { .fieldOfView = 45.0f,
+                                           .aspectRatio = static_cast<float>(width) / static_cast<float>(height),
+                                           .nearClip = 0.1f,
+                                           .farClip = 1000.0f };
     }
     defaultCamera =
-      dynamic_cast<CameraComponent*>(app->GetDefaultGameObject()->AddComponent<CameraComponent>(defaultCameraProps));
+        dynamic_cast<CameraComponent*>(app->GetDefaultGameObject()->AddComponent<CameraComponent>(defaultCameraProps));
 
     if (app->GetConfig().preset == "2D") {
-        defaultCamera->gameObject->SetPosition(glm::vec3(static_cast<float>(logicalWidth) * 0.5f, static_cast<float>(logicalHeight) * 0.5f, 0.0f));
+        defaultCamera->gameObject->SetPosition(
+            glm::vec3(static_cast<float>(logicalWidth) * 0.5f, static_cast<float>(logicalHeight) * 0.5f, 0.0f)
+        );
     }
 
     defaultLight = dynamic_cast<LightComponent*>(app->GetDefaultGameObject()->AddComponent<LightComponent>(LightProps{
-      .type = LightType::Directional,
-      .ambient = glm::vec3(1.0f, 1.0f, 1.0f),
-      .diffuse = glm::vec3(1.0f, 1.0f, 1.0f),
-      .specular = glm::vec3(1.0f, 1.0f, 1.0f),
-      .direction = glm::vec3(0.0f, -1.0f, 0.0f),
-      .intensity = 1.0f,
-      .castShadow = false }));
+        .type = LightType::Directional,
+        .ambient = glm::vec3(1.0f, 1.0f, 1.0f),
+        .diffuse = glm::vec3(1.0f, 1.0f, 1.0f),
+        .specular = glm::vec3(1.0f, 1.0f, 1.0f),
+        .direction = glm::vec3(0.0f, -1.0f, 0.0f),
+        .intensity = 1.0f,
+        .castShadow = false }));
 
     // GLSL shader compilation and raw GL state setup are GL-only; everything
     // below this block (Renderer, meshes) is backend-agnostic — Renderer::Init
@@ -210,14 +208,12 @@ void GraphicsSubsystem::DrawImGui(float dt) {
     if (ImGui::CollapsingHeader("Graphics", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Text("Frame rate: %.3f ms/frame (%.1f FPS)", 1000.0f * dt, 1.0f / dt);
         ImGui::Text(
-          "Average frame rate: %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate
+            "Average frame rate: %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate
         );
-        ImGui::ColorEdit3("Clear color", (float*)&renderer->clearColor);
+        ImGui::ColorEdit3("Clear color", reinterpret_cast<float*>(&renderer->clearColor));
         if (auto* vcp = renderer->GetPass<VoxelChunkPass>()) {
-            const char* paletteNames[] = {
-                "1 - Warm Pink/Gold", "2 - Cool Blue/Purple", "3 - Earthy Green",
-                "4 - Forest",         "5 - Soft Cool (default)", "6 - Vivid Mint/Coral"
-            };
+            const char* paletteNames[] = { "1 - Warm Pink/Gold", "2 - Cool Blue/Purple",    "3 - Earthy Green",
+                                           "4 - Forest",         "5 - Soft Cool (default)", "6 - Vivid Mint/Coral" };
             ImGui::Combo("Voxel Palette", &vcp->paletteIndex, paletteNames, 6);
         }
         if (auto* bloom = renderer->GetPass<BloomPass>()) {
@@ -302,7 +298,7 @@ void GraphicsSubsystem::DrawImGui(float dt) {
         if (ImGui::TreeNode("Textures")) {
             for (auto t : renderer->gl.uniShadowMaps) {
                 if (ImGui::TreeNode(fmt::format("Directional shadow map #{}", t).c_str())) {
-                    ImGui::Image((ImTextureID)(intptr_t)t, ImVec2(64, 64));
+                    ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(t)), ImVec2(64, 64));
                     ImGui::TreePop();
                 }
             }
@@ -315,49 +311,74 @@ void GraphicsSubsystem::DrawImGui(float dt) {
             }
             ImGui::Separator();
             if (ImGui::TreeNode(fmt::format("Scene Color RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)static_cast<uint32_t>(renderer->sceneRT ? renderer->sceneRT->GetTextureID() : 0), ImVec2(64, 64));
+                ImGui::Image(
+                    static_cast<ImTextureID>(static_cast<intptr_t>(
+                        static_cast<uint32_t>(renderer->sceneRT ? renderer->sceneRT->GetTextureID() : 0)
+                    )),
+                    ImVec2(64, 64)
+                );
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("Scene Depth RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)static_cast<uint32_t>(renderer->sceneRT ? renderer->sceneRT->GetDepthTextureID() : 0), ImVec2(64, 64));
+                ImGui::Image(
+                    static_cast<ImTextureID>(static_cast<intptr_t>(
+                        static_cast<uint32_t>(renderer->sceneRT ? renderer->sceneRT->GetDepthTextureID() : 0)
+                    )),
+                    ImVec2(64, 64)
+                );
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("MSAA Resolve RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)static_cast<uint32_t>(renderer->msaaResolveRT ? renderer->msaaResolveRT->GetTextureID() : 0), ImVec2(64, 64));
+                ImGui::Image(
+                    static_cast<ImTextureID>(static_cast<intptr_t>(
+                        static_cast<uint32_t>(renderer->msaaResolveRT ? renderer->msaaResolveRT->GetTextureID() : 0)
+                    )),
+                    ImVec2(64, 64)
+                );
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Position RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.positionRT, ImVec2(64, 64));
+                ImGui::Image(
+                    static_cast<ImTextureID>(static_cast<intptr_t>(renderer->gl.gBuffer.positionRT)), ImVec2(64, 64)
+                );
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Normal RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.normalRT, ImVec2(64, 64));
+                ImGui::Image(
+                    static_cast<ImTextureID>(static_cast<intptr_t>(renderer->gl.gBuffer.normalRT)), ImVec2(64, 64)
+                );
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Albedo RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.albedoRT, ImVec2(64, 64));
+                ImGui::Image(
+                    static_cast<ImTextureID>(static_cast<intptr_t>(renderer->gl.gBuffer.albedoRT)), ImVec2(64, 64)
+                );
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Material RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.materialRT, ImVec2(64, 64));
+                ImGui::Image(
+                    static_cast<ImTextureID>(static_cast<intptr_t>(renderer->gl.gBuffer.materialRT)), ImVec2(64, 64)
+                );
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Depth RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)renderer->gl.gBuffer.depthRT, ImVec2(64, 64));
+                ImGui::Image(
+                    static_cast<ImTextureID>(static_cast<intptr_t>(renderer->gl.gBuffer.depthRT)), ImVec2(64, 64)
+                );
                 ImGui::TreePop();
             }
             ImGui::Separator();
             auto& assetManager = AssetManager::Get();
             for (auto t : assetManager.GetDefaultTextures()) {
                 if (ImGui::TreeNode(fmt::format("Default Tex #{}", t).c_str())) {
-                    ImGui::Image((ImTextureID)(intptr_t)t, ImVec2(64, 64));
+                    ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(t)), ImVec2(64, 64));
                     ImGui::TreePop();
                 }
             }
             ImGui::Separator();
             for (auto t : assetManager.GetTextures()) {
                 if (ImGui::TreeNode(fmt::format("Tex #{}", t).c_str())) {
-                    ImGui::Image((ImTextureID)(intptr_t)t, ImVec2(64, 64));
+                    ImGui::Image(static_cast<ImTextureID>(static_cast<intptr_t>(t)), ImVec2(64, 64));
                     ImGui::TreePop();
                 }
             }
@@ -410,29 +431,29 @@ MeshHandle GraphicsSubsystem::GetMesh(const std::string& name) const {
 
 
 void GraphicsSubsystem::PushCanvasQuad(
-  float x,
-  float y,
-  float w,
-  float h,
-  float angle,
-  float pivotX,
-  float pivotY,
-  const glm::vec4& color,
-  int texIndex,
-  CanvasLayer layer,
-  const glm::vec2& uvMin,
-  const glm::vec2& uvMax
+    float x,
+    float y,
+    float w,
+    float h,
+    float angle,
+    float pivotX,
+    float pivotY,
+    const glm::vec4& color,
+    int texIndex,
+    CanvasLayer layer,
+    const glm::vec2& uvMin,
+    const glm::vec2& uvMax
 ) {
     glm::vec2 pivotOffset = glm::vec2(w * pivotX, h * pivotY);
     // glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(position, 0.0f));
     // transform = glm::rotate(transform, rotation, glm::vec3(0.0f, 0.0f, 1.0f));
     // transform = glm::scale(transform, glm::vec3(size, 1.0f));
 
-    glm::mat4 T = glm::translate(glm::mat4(1.0f), glm::vec3(x + pivotOffset.x, y + pivotOffset.y, 0.0f));
-    glm::mat4 R = glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 0.0f, 1.0f));
-    glm::mat4 S = glm::scale(glm::mat4(1.0f), glm::vec3(w, h, 1.0f));
-    glm::mat4 O = glm::translate(glm::mat4(1.0f), glm::vec3(-pivotX, -pivotY, 0.0f));
-    glm::mat4 transform = T * R * S * O;
+    glm::mat4 t = glm::translate(glm::mat4(1.0f), glm::vec3(x + pivotOffset.x, y + pivotOffset.y, 0.0f));
+    glm::mat4 r = glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 0.0f, 1.0f));
+    glm::mat4 s = glm::scale(glm::mat4(1.0f), glm::vec3(w, h, 1.0f));
+    glm::mat4 o = glm::translate(glm::mat4(1.0f), glm::vec3(-pivotX, -pivotY, 0.0f));
+    glm::mat4 transform = t * r * s * o;
 
     glm::vec4 bl = transform * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
     glm::vec4 br = transform * glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
@@ -448,18 +469,18 @@ void GraphicsSubsystem::PushCanvasQuad(
 }
 
 void GraphicsSubsystem::PushCanvasQuadTiled(
-  float x,
-  float y,
-  float w,
-  float h,
-  float angle,
-  float pivotX,
-  float pivotY,
-  const glm::vec4& color,
-  int texIndex,
-  CanvasLayer layer,
-  const glm::vec2& tilesetSize,
-  const glm::vec2& tileIndex
+    float x,
+    float y,
+    float w,
+    float h,
+    float angle,
+    float pivotX,
+    float pivotY,
+    const glm::vec4& color,
+    int texIndex,
+    CanvasLayer layer,
+    const glm::vec2& tilesetSize,
+    const glm::vec2& tileIndex
 ) {
     glm::vec2 uvMin = tileIndex / tilesetSize;
     glm::vec2 uvMax = (tileIndex + glm::vec2(1.0f)) / tilesetSize;
@@ -643,11 +664,11 @@ Buffer* GraphicsSubsystem::GetRenderMesh(RenderMeshHandle handle) {
 // ===== 2D Rendering (Queued for UI) =====
 
 static void CreateQuad(
-  std::vector<BatchVertex>& vertices,
-  std::vector<uint32_t>& indices,
-  const glm::mat4& transform,
-  const glm::vec4& color,
-  const glm::vec2* uvs = nullptr
+    std::vector<BatchVertex>& vertices,
+    std::vector<uint32_t>& indices,
+    const glm::mat4& transform,
+    const glm::vec4& color,
+    const glm::vec2* uvs = nullptr
 ) {
     uint32_t startIndex = vertices.size();
 
@@ -682,7 +703,7 @@ void GraphicsSubsystem::DrawQuad(float x, float y, float w, float h, float rotat
 }
 
 void GraphicsSubsystem::DrawTexturedQuad(
-  float x, float y, float w, float h, float rotation, uint32_t textureID, const glm::vec4& color
+    float x, float y, float w, float h, float rotation, uint32_t textureID, const glm::vec4& color
 ) {
     BatchDrawCommand cmd;
     cmd.textureID = textureID;
@@ -726,11 +747,11 @@ void GraphicsSubsystem::DrawCircle(float x, float y, float radius, const glm::ve
         float a0 = i * angleStep;
         float a1 = (i + 1) * angleStep;
         DrawLine(
-          x + std::cos(a0) * radius,
-          y + std::sin(a0) * radius,
-          x + std::cos(a1) * radius,
-          y + std::sin(a1) * radius,
-          color
+            x + std::cos(a0) * radius,
+            y + std::sin(a0) * radius,
+            x + std::cos(a1) * radius,
+            y + std::sin(a1) * radius,
+            color
         );
     }
 }
@@ -753,13 +774,12 @@ FontHandle GraphicsSubsystem::GetOrCreateDefaultFont() {
 }
 
 float GraphicsSubsystem::GetFontBaseSize(FontHandle fontID) {
-    if (auto* font = _fontManager.GetFont(fontID))
-        return font->fontSize;
+    if (auto* font = _fontManager.GetFont(fontID)) return font->fontSize;
     return 48.0f;
 }
 
 void GraphicsSubsystem::DrawText(
-  FontHandle fontID, const std::string& text, float x, float y, float scale, const glm::vec4& color
+    FontHandle fontID, const std::string& text, float x, float y, float scale, const glm::vec4& color
 ) {
     _textCommands.push_back({ fontID, text, x, y, scale, color });
 }
@@ -818,7 +838,7 @@ void GraphicsSubsystem::FlushTextToCommands(std::vector<BatchDrawCommand>& out) 
             if (!glyph) continue;
             float drawX = cursorX + glyph->xOffset * cmd.scale;
             float drawY = cmd.y + glyph->yOffset * cmd.scale + font->ascent * cmd.scale;
-            float drawW = glyph->width  * cmd.scale;
+            float drawW = glyph->width * cmd.scale;
             float drawH = glyph->height * cmd.scale;
             if (drawW > 0 && drawH > 0) {
                 float finalX = drawX + drawW * 0.5f;
@@ -854,7 +874,7 @@ float GraphicsSubsystem::GetFontLineHeight(FontHandle fontID, float scale) {
 
 // Draw text at 3D position
 void GraphicsSubsystem::DrawText3D(
-  FontHandle fontID, const std::string& text, glm::vec3 position, float scale, const glm::vec4& color
+    FontHandle fontID, const std::string& text, glm::vec3 position, float scale, const glm::vec4& color
 ) {
     auto* camera = GetMainCamera();
     if (!camera) return;
@@ -876,7 +896,7 @@ void GraphicsSubsystem::DrawText3D(
     // Viewport transform — use logical size to match UIPass projection space
     auto [width, height] = Window::Get()->GetLogicalSize();
     float x = (ndc.x + 1.0f) * 0.5f * width;
-    float y = (1.0f - ndc.y) * 0.5f * height; // Y-Down: match UIPass coordinate space
+    float y = (1.0f - ndc.y) * 0.5f * height;// Y-Down: match UIPass coordinate space
 
     DrawText(fontID, text, x, y, scale, color);
 }

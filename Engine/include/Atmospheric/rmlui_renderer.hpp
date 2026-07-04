@@ -19,9 +19,10 @@ public:
     ~RmlUiRenderer() override;
 
     Rml::CompiledGeometryHandle
-      CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) override;
-    void RenderGeometry(Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, Rml::TextureHandle texture)
-      override;
+        CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) override;
+    void RenderGeometry(
+        Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, Rml::TextureHandle texture
+    ) override;
     void ReleaseGeometry(Rml::CompiledGeometryHandle geometry) override;
 
     void EnableScissorRegion(bool enable) override;

@@ -6,17 +6,20 @@
 #ifdef __APPLE__
 #include <TargetConditionals.h>
 #endif
+#include "action.hpp"
+#include "action_manager.hpp"
 #include "animator_2d.hpp"
 #include "asset_manager.hpp"
-#include "material.hpp"
 #include "camera_component.hpp"
 #include "component_factory.hpp"
 #include "deserializer.hpp"
-#include "json_deserializer.hpp"
+#include "file_system.hpp"
 #include "game_layer.hpp"
 #include "game_object.hpp"
 #include "job_system.hpp"
+#include "json_deserializer.hpp"
 #include "light_component.hpp"
+#include "material.hpp"
 #include "mesh_component.hpp"
 #include "rigidbody_2d_component.hpp"
 #include "rigidbody_component.hpp"
@@ -28,13 +31,8 @@
 #include "sprite_component.hpp"
 #include "text_2d_component.hpp"
 #include "text_3d_component.hpp"
-#include "ui_page_manager.hpp"
-#include "action_manager.hpp"
-#include "action.hpp"
-#include "file_system.hpp"
-#include <nlohmann/json.hpp>
-#include <spdlog/spdlog.h>
 #include "transform_component.hpp"
+#include "ui_page_manager.hpp"
 #include "video_recorder.hpp"
 #include "window.hpp"
 #include <algorithm>
@@ -45,6 +43,8 @@
 #include <ctime>
 #include <filesystem>
 #include <fmt/format.h>
+#include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 #ifndef NDEBUG
 #include "editor_layer.hpp"
 #endif
@@ -53,9 +53,9 @@
 #endif
 
 #ifdef __EMSCRIPTEN__
-#include <malloc.h>
 #include <emscripten.h>
 #include <emscripten/heap.h>
+#include <malloc.h>
 #endif
 
 // ─── Minimal PNG writer ─────────────────────────────────────────────────────
@@ -65,147 +65,144 @@
 // trivially correct and fast, which is all a debug screenshot needs.
 namespace {
 
-uint32_t pngCrc32(const uint8_t* buf, size_t len) {
-    static uint32_t table[256];
-    static bool init = false;
-    if (!init) {
-        for (uint32_t n = 0; n < 256; ++n) {
-            uint32_t c = n;
-            for (int k = 0; k < 8; ++k)
-                c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
-            table[n] = c;
+    uint32_t PngCrc32(const uint8_t* buf, size_t len) {
+        static uint32_t table[256];
+        static bool init = false;
+        if (!init) {
+            for (uint32_t n = 0; n < 256; ++n) {
+                uint32_t c = n;
+                for (int k = 0; k < 8; ++k)
+                    c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
+                table[n] = c;
+            }
+            init = true;
         }
-        init = true;
-    }
-    uint32_t crc = 0xFFFFFFFFu;
-    for (size_t i = 0; i < len; ++i)
-        crc = table[(crc ^ buf[i]) & 0xFF] ^ (crc >> 8);
-    return crc ^ 0xFFFFFFFFu;
-}
-
-void pngPutU32(std::vector<uint8_t>& v, uint32_t x) {
-    v.push_back(static_cast<uint8_t>((x >> 24) & 0xFF));
-    v.push_back(static_cast<uint8_t>((x >> 16) & 0xFF));
-    v.push_back(static_cast<uint8_t>((x >> 8) & 0xFF));
-    v.push_back(static_cast<uint8_t>(x & 0xFF));
-}
-
-void pngWriteChunk(std::vector<uint8_t>& out, const char (&type)[5],
-                   const std::vector<uint8_t>& data) {
-    pngPutU32(out, static_cast<uint32_t>(data.size()));
-    size_t crcStart = out.size();
-    out.insert(out.end(), type, type + 4);
-    out.insert(out.end(), data.begin(), data.end());
-    pngPutU32(out, pngCrc32(out.data() + crcStart, out.size() - crcStart));
-}
-
-bool pngWrite(const std::string& path, const uint8_t* pixels, uint32_t w,
-              uint32_t h, uint32_t channels) {
-    if (!pixels || w == 0 || h == 0 || (channels != 3 && channels != 4))
-        return false;
-
-    // Scanlines, each prefixed by filter byte 0 (None).
-    std::vector<uint8_t> raw;
-    raw.reserve((static_cast<size_t>(w) * channels + 1) * h);
-    for (uint32_t y = 0; y < h; ++y) {
-        raw.push_back(0);
-        const uint8_t* row = pixels + static_cast<size_t>(y) * w * channels;
-        raw.insert(raw.end(), row, row + static_cast<size_t>(w) * channels);
+        uint32_t crc = 0xFFFFFFFFu;
+        for (size_t i = 0; i < len; ++i)
+            crc = table[(crc ^ buf[i]) & 0xFF] ^ (crc >> 8);
+        return crc ^ 0xFFFFFFFFu;
     }
 
-    // zlib stream: header + stored blocks (<=65535 bytes each) + Adler-32.
-    std::vector<uint8_t> zlib;
-    zlib.push_back(0x78);
-    zlib.push_back(0x01);
-    for (size_t pos = 0; pos < raw.size();) {
-        size_t block = std::min<size_t>(65535, raw.size() - pos);
-        bool last = (pos + block >= raw.size());
-        zlib.push_back(last ? 1 : 0);
-        zlib.push_back(static_cast<uint8_t>(block & 0xFF));
-        zlib.push_back(static_cast<uint8_t>((block >> 8) & 0xFF));
-        uint16_t nlen = static_cast<uint16_t>(~block);
-        zlib.push_back(static_cast<uint8_t>(nlen & 0xFF));
-        zlib.push_back(static_cast<uint8_t>((nlen >> 8) & 0xFF));
-        zlib.insert(zlib.end(), raw.begin() + pos, raw.begin() + pos + block);
-        pos += block;
+    void PngPutU32(std::vector<uint8_t>& v, uint32_t x) {
+        v.push_back(static_cast<uint8_t>((x >> 24) & 0xFF));
+        v.push_back(static_cast<uint8_t>((x >> 16) & 0xFF));
+        v.push_back(static_cast<uint8_t>((x >> 8) & 0xFF));
+        v.push_back(static_cast<uint8_t>(x & 0xFF));
     }
-    uint32_t a = 1, b = 0;
-    for (uint8_t byte : raw) {
-        a = (a + byte) % 65521;
-        b = (b + a) % 65521;
+
+    void PngWriteChunk(std::vector<uint8_t>& out, const char (&type)[5], const std::vector<uint8_t>& data) {
+        PngPutU32(out, static_cast<uint32_t>(data.size()));
+        size_t crcStart = out.size();
+        out.insert(out.end(), type, type + 4);
+        out.insert(out.end(), data.begin(), data.end());
+        PngPutU32(out, PngCrc32(out.data() + crcStart, out.size() - crcStart));
     }
-    pngPutU32(zlib, (b << 16) | a);
 
-    std::vector<uint8_t> out;
-    const uint8_t sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
-    out.insert(out.end(), sig, sig + 8);
+    bool PngWrite(const std::string& path, const uint8_t* pixels, uint32_t w, uint32_t h, uint32_t channels) {
+        if (!pixels || w == 0 || h == 0 || (channels != 3 && channels != 4)) return false;
 
-    std::vector<uint8_t> ihdr;
-    pngPutU32(ihdr, w);
-    pngPutU32(ihdr, h);
-    ihdr.push_back(8);                                    // bit depth
-    ihdr.push_back(static_cast<uint8_t>(channels == 4 ? 6 : 2));// 6=RGBA, 2=RGB
-    ihdr.push_back(0);                                    // compression
-    ihdr.push_back(0);                                    // filter
-    ihdr.push_back(0);                                    // interlace
+        // Scanlines, each prefixed by filter byte 0 (None).
+        std::vector<uint8_t> raw;
+        raw.reserve((static_cast<size_t>(w) * channels + 1) * h);
+        for (uint32_t y = 0; y < h; ++y) {
+            raw.push_back(0);
+            const uint8_t* row = pixels + static_cast<size_t>(y) * w * channels;
+            raw.insert(raw.end(), row, row + static_cast<size_t>(w) * channels);
+        }
 
-    const char ihdrType[5] = "IHDR";
-    const char idatType[5] = "IDAT";
-    const char iendType[5] = "IEND";
-    pngWriteChunk(out, ihdrType, ihdr);
-    pngWriteChunk(out, idatType, zlib);
-    pngWriteChunk(out, iendType, {});
+        // zlib stream: header + stored blocks (<=65535 bytes each) + Adler-32.
+        std::vector<uint8_t> zlib;
+        zlib.push_back(0x78);
+        zlib.push_back(0x01);
+        for (size_t pos = 0; pos < raw.size();) {
+            size_t block = std::min<size_t>(65535, raw.size() - pos);
+            bool last = (pos + block >= raw.size());
+            zlib.push_back(last ? 1 : 0);
+            zlib.push_back(static_cast<uint8_t>(block & 0xFF));
+            zlib.push_back(static_cast<uint8_t>((block >> 8) & 0xFF));
+            auto nlen = static_cast<uint16_t>(~block);
+            zlib.push_back(static_cast<uint8_t>(nlen & 0xFF));
+            zlib.push_back(static_cast<uint8_t>((nlen >> 8) & 0xFF));
+            zlib.insert(zlib.end(), raw.begin() + pos, raw.begin() + pos + block);
+            pos += block;
+        }
+        uint32_t a = 1, b = 0;
+        for (uint8_t byte : raw) {
+            a = (a + byte) % 65521;
+            b = (b + a) % 65521;
+        }
+        PngPutU32(zlib, (b << 16) | a);
 
-    std::FILE* f = std::fopen(path.c_str(), "wb");
-    if (!f)
-        return false;
-    std::fwrite(out.data(), 1, out.size(), f);
-    std::fclose(f);
-    return true;
-}
+        std::vector<uint8_t> out;
+        const uint8_t sig[8] = { 137, 80, 78, 71, 13, 10, 26, 10 };
+        out.insert(out.end(), sig, sig + 8);
 
-// Cheap whole-frame statistics used to decide whether a captured frame is
-// "blank" (essentially a single solid color → nothing was rendered). Also
-// reports mean color so smoke captures can be eyeballed / diffed as a baseline.
-struct FrameStats {
-    double meanR = 0.0, meanG = 0.0, meanB = 0.0;
-    int    spread = 0;   // max(max-min) across the R/G/B channels
-    bool   blank  = true;
-};
+        std::vector<uint8_t> ihdr;
+        PngPutU32(ihdr, w);
+        PngPutU32(ihdr, h);
+        ihdr.push_back(8);// bit depth
+        ihdr.push_back(static_cast<uint8_t>(channels == 4 ? 6 : 2));// 6=RGBA, 2=RGB
+        ihdr.push_back(0);// compression
+        ihdr.push_back(0);// filter
+        ihdr.push_back(0);// interlace
 
-FrameStats analyzeFrame(const uint8_t* px, uint32_t w, uint32_t h, uint32_t channels) {
-    FrameStats s;
-    if (!px || w == 0 || h == 0 || channels < 3)
+        const char ihdrType[5] = "IHDR";
+        const char idatType[5] = "IDAT";
+        const char iendType[5] = "IEND";
+        PngWriteChunk(out, ihdrType, ihdr);
+        PngWriteChunk(out, idatType, zlib);
+        PngWriteChunk(out, iendType, {});
+
+        std::FILE* f = std::fopen(path.c_str(), "wb");
+        if (!f) return false;
+        std::fwrite(out.data(), 1, out.size(), f);
+        std::fclose(f);
+        return true;
+    }
+
+    // Cheap whole-frame statistics used to decide whether a captured frame is
+    // "blank" (essentially a single solid color → nothing was rendered). Also
+    // reports mean color so smoke captures can be eyeballed / diffed as a baseline.
+    struct FrameStats {
+        double meanR = 0.0, meanG = 0.0, meanB = 0.0;
+        int spread = 0;// max(max-min) across the R/G/B channels
+        bool blank = true;
+    };
+
+    FrameStats AnalyzeFrame(const uint8_t* px, uint32_t w, uint32_t h, uint32_t channels) {
+        FrameStats s;
+        if (!px || w == 0 || h == 0 || channels < 3) return s;
+
+        uint64_t sumR = 0, sumG = 0, sumB = 0;
+        uint8_t minR = 255, minG = 255, minB = 255;
+        uint8_t maxR = 0, maxG = 0, maxB = 0;
+        const size_t count = static_cast<size_t>(w) * h;
+        for (size_t i = 0; i < count; ++i) {
+            const uint8_t* p = px + i * channels;
+            sumR += p[0];
+            sumG += p[1];
+            sumB += p[2];
+            minR = std::min(minR, p[0]);
+            maxR = std::max(maxR, p[0]);
+            minG = std::min(minG, p[1]);
+            maxG = std::max(maxG, p[1]);
+            minB = std::min(minB, p[2]);
+            maxB = std::max(maxB, p[2]);
+        }
+        s.meanR = static_cast<double>(sumR) / count;
+        s.meanG = static_cast<double>(sumG) / count;
+        s.meanB = static_cast<double>(sumB) / count;
+        s.spread = std::max({ maxR - minR, maxG - minG, maxB - minB });
+        s.blank = s.spread <= 3;// tolerate dithering; a real scene varies far more
         return s;
-
-    uint64_t sumR = 0, sumG = 0, sumB = 0;
-    uint8_t minR = 255, minG = 255, minB = 255;
-    uint8_t maxR = 0, maxG = 0, maxB = 0;
-    const size_t count = static_cast<size_t>(w) * h;
-    for (size_t i = 0; i < count; ++i) {
-        const uint8_t* p = px + i * channels;
-        sumR += p[0];
-        sumG += p[1];
-        sumB += p[2];
-        minR = std::min(minR, p[0]);
-        maxR = std::max(maxR, p[0]);
-        minG = std::min(minG, p[1]);
-        maxG = std::max(maxG, p[1]);
-        minB = std::min(minB, p[2]);
-        maxB = std::max(maxB, p[2]);
     }
-    s.meanR  = static_cast<double>(sumR) / count;
-    s.meanG  = static_cast<double>(sumG) / count;
-    s.meanB  = static_cast<double>(sumB) / count;
-    s.spread = std::max({maxR - minR, maxG - minG, maxB - minB});
-    s.blank  = s.spread <= 3;// tolerate dithering; a real scene varies far more
-    return s;
-}
 
 }// namespace
 
 Application* Application::s_instance = nullptr;
-Application* Application::Get() { return s_instance; }
+Application* Application::Get() {
+    return s_instance;
+}
 
 Application::Application(AppConfig config) : _config(config) {
     s_instance = this;
@@ -214,24 +211,22 @@ Application::Application(AppConfig config) : _config(config) {
 #ifdef __EMSCRIPTEN__
     // Polyfill document.exitPointerLock globally to prevent crash in Safari (iOS / iframes)
     EM_ASM({
-        if (typeof document !== 'undefined' && !document.exitPointerLock) {
-            document.exitPointerLock = document.webkitExitPointerLock || 
-                                       document.mozExitPointerLock || 
-                                       function() { 
-                                           console.warn("Pointer lock not supported/allowed in this browser context"); 
-                                       };
+        if (typeof document != = 'undefined' && !document.exitPointerLock) {
+            document.exitPointerLock = document.webkitExitPointerLock || document.mozExitPointerLock || function() {
+                console.warn("Pointer lock not supported/allowed in this browser context");
+            };
         }
     });
 #endif
 
     _window = std::make_unique<Window>(WindowProps{
-      .title = config.windowTitle,
-      .width = config.windowWidth,
-      .height = config.windowHeight,
-      .resizable = config.windowResizable,
-      .floating = config.windowFloating,
-      .fullscreen = config.fullscreen,
-      .vsync = config.vsync,
+        .title = config.windowTitle,
+        .width = config.windowWidth,
+        .height = config.windowHeight,
+        .resizable = config.windowResizable,
+        .floating = config.windowFloating,
+        .fullscreen = config.fullscreen,
+        .vsync = config.vsync,
     });// Multi-window not supported now
     _window->Init();
     _window->InitImGui();
@@ -274,265 +269,267 @@ void Application::ParseAutoCaptureEnv() {
     };
 
     if (const char* m = std::getenv("AE_CAPTURE_MODE")) {
-        _autoCap.mode = (std::strcmp(m, "screenshot") == 0)
-                          ? AutoCaptureConfig::Mode::Screenshot
-                          : AutoCaptureConfig::Mode::Video;
+        _autoCap.mode =
+            (std::strcmp(m, "screenshot") == 0) ? AutoCaptureConfig::Mode::Screenshot : AutoCaptureConfig::Mode::Video;
     }
 
     float duration = 0.0f;
     if (readFloat("AE_CAPTURE_DURATION", duration)) {
         _autoCap.duration = duration;
-        _autoCap.enabled  = true;
+        _autoCap.enabled = true;
     }
     readFloat("AE_CAPTURE_WARMUP", _autoCap.warmup);
 
     if (const char* o = std::getenv("AE_CAPTURE_OUTPUT")) {
         _autoCap.outputPath = o;
     } else {
-        _autoCap.outputPath = (_autoCap.mode == AutoCaptureConfig::Mode::Screenshot)
-                                ? "output/capture.png"
-                                : "output/capture.mp4";
+        _autoCap.outputPath =
+            (_autoCap.mode == AutoCaptureConfig::Mode::Screenshot) ? "output/capture.png" : "output/capture.mp4";
     }
 
     if (_autoCap.enabled) {
         _capState = CaptureState::Warmup;
-        ENGINE_LOG("Auto-capture enabled: mode={}, warmup={}s, duration={}s, output={}",
-                   _autoCap.mode == AutoCaptureConfig::Mode::Screenshot ? "screenshot" : "video",
-                   _autoCap.warmup, _autoCap.duration, _autoCap.outputPath);
+        ENGINE_LOG(
+            "Auto-capture enabled: mode={}, warmup={}s, duration={}s, output={}",
+            _autoCap.mode == AutoCaptureConfig::Mode::Screenshot ? "screenshot" : "video",
+            _autoCap.warmup,
+            _autoCap.duration,
+            _autoCap.outputPath
+        );
     }
 }
 
 // ── CanvasLayer helper ────────────────────────────────────────────────────────
 static CanvasLayer ParseCanvasLayer(const std::string& s, CanvasLayer def = CanvasLayer::LAYER_WORLD) {
-    if (s == "LAYER_BACKGROUND")  return CanvasLayer::LAYER_BACKGROUND;
-    if (s == "LAYER_WORLD_BACK")  return CanvasLayer::LAYER_WORLD_BACK;
-    if (s == "LAYER_WORLD")       return CanvasLayer::LAYER_WORLD;
+    if (s == "LAYER_BACKGROUND") return CanvasLayer::LAYER_BACKGROUND;
+    if (s == "LAYER_WORLD_BACK") return CanvasLayer::LAYER_WORLD_BACK;
+    if (s == "LAYER_WORLD") return CanvasLayer::LAYER_WORLD;
     if (s == "LAYER_WORLD_FRONT") return CanvasLayer::LAYER_WORLD_FRONT;
-    if (s == "LAYER_EFFECTS")     return CanvasLayer::LAYER_EFFECTS;
-    if (s == "LAYER_WORLD_2D")    return CanvasLayer::LAYER_WORLD_2D;
-    if (s == "LAYER_UI_BACK")     return CanvasLayer::LAYER_UI_BACK;
-    if (s == "LAYER_UI")          return CanvasLayer::LAYER_UI;
-    if (s == "LAYER_UI_FRONT")    return CanvasLayer::LAYER_UI_FRONT;
-    if (s == "LAYER_OVERLAY")     return CanvasLayer::LAYER_OVERLAY;
+    if (s == "LAYER_EFFECTS") return CanvasLayer::LAYER_EFFECTS;
+    if (s == "LAYER_WORLD_2D") return CanvasLayer::LAYER_WORLD_2D;
+    if (s == "LAYER_UI_BACK") return CanvasLayer::LAYER_UI_BACK;
+    if (s == "LAYER_UI") return CanvasLayer::LAYER_UI;
+    if (s == "LAYER_UI_FRONT") return CanvasLayer::LAYER_UI_FRONT;
+    if (s == "LAYER_OVERLAY") return CanvasLayer::LAYER_OVERLAY;
     return def;
 }
 
 void Application::RegisterComponents() {
     // ── TransformComponent ────────────────────────────────────────────────────
-    ComponentFactory::Register("TransformComponent",
-      [](GameObject* o, Deserializer& /*d*/) -> Component* {
-          return new TransformComponent(o, {0,0,0}, {0,0,0}, {1,1,1});
-      });
+    ComponentFactory::Register("TransformComponent", [](GameObject* o, Deserializer& /*d*/) -> Component* {
+        return new TransformComponent(o, { 0, 0, 0 }, { 0, 0, 0 }, { 1, 1, 1 });
+    });
 
     // ── SpriteComponent ───────────────────────────────────────────────────────
-    ComponentFactory::Register("SpriteComponent",
-      [](GameObject* o, Deserializer& d) -> Component* {
-          SpriteProps props;
-          d.Read("size",   props.size,   glm::vec2(100.0f, 100.0f));
-          d.Read("pivot",  props.pivot,  glm::vec2(0.5f, 0.5f));
-          d.Read("color",  props.color,  glm::vec4(1.0f));
-          d.Read("flipX",  props.flipX,  false);
-          d.Read("flipY",  props.flipY,  false);
-          d.Read("zOrder", props.zOrder, 0);
+    ComponentFactory::Register("SpriteComponent", [](GameObject* o, Deserializer& d) -> Component* {
+        SpriteProps props;
+        d.Read("size", props.size, glm::vec2(100.0f, 100.0f));
+        d.Read("pivot", props.pivot, glm::vec2(0.5f, 0.5f));
+        d.Read("color", props.color, glm::vec4(1.0f));
+        d.Read("flipX", props.flipX, false);
+        d.Read("flipY", props.flipY, false);
+        d.Read("zOrder", props.zOrder, 0);
 
-          std::string layerStr;
-          d.Read("layer", layerStr, std::string("LAYER_WORLD"));
-          props.layer = ParseCanvasLayer(layerStr);
+        std::string layerStr;
+        d.Read("layer", layerStr, std::string("LAYER_WORLD"));
+        props.layer = ParseCanvasLayer(layerStr);
 
-          if (d.Has("texture")) {
-              std::string texPath;
-              d.Read("texture", texPath);
-              if (!texPath.empty()) {
-                  GLuint texID = AssetManager::Get().GetTexture(texPath);
-                  if (texID == 0) {
-                      try { texID = AssetManager::Get().CreateTexture(texPath); }
-                      catch (const std::exception& e) {
-                          spdlog::warn("SpriteComponent deserializer: failed to load '{}': {}", texPath, e.what());
-                      }
-                  }
-                  props.texture = texID;
-              }
-          }
+        if (d.Has("texture")) {
+            std::string texPath;
+            d.Read("texture", texPath);
+            if (!texPath.empty()) {
+                GLuint texID = AssetManager::Get().GetTexture(texPath);
+                if (texID == 0) {
+                    try {
+                        texID = AssetManager::Get().CreateTexture(texPath);
+                    } catch (const std::exception& e) {
+                        spdlog::warn("SpriteComponent deserializer: failed to load '{}': {}", texPath, e.what());
+                    }
+                }
+                props.texture = texID;
+            }
+        }
 
-          return new SpriteComponent(o, props);
-      });
+        return new SpriteComponent(o, props);
+    });
 
     // ── Text2DComponent ─────────────────────────────────────────────────────────
-    ComponentFactory::Register("Text2DComponent",
-      [](GameObject* o, Deserializer& d) -> Component* {
-          Text2DProps props;
-          d.Read("text",     props.text,     std::string(""));
-          d.Read("fontSize", props.fontSize, 24.0f);
-          d.Read("size",     props.size,     glm::vec2(100.0f, 100.0f));
-          d.Read("pivot",    props.pivot,    glm::vec2(0.0f, 0.0f));
-          d.Read("color",    props.color,    glm::vec4(1.0f));
-          d.Read("zOrder",   props.zOrder,   0);
+    ComponentFactory::Register("Text2DComponent", [](GameObject* o, Deserializer& d) -> Component* {
+        Text2DProps props;
+        d.Read("text", props.text, std::string(""));
+        d.Read("fontSize", props.fontSize, 24.0f);
+        d.Read("size", props.size, glm::vec2(100.0f, 100.0f));
+        d.Read("pivot", props.pivot, glm::vec2(0.0f, 0.0f));
+        d.Read("color", props.color, glm::vec4(1.0f));
+        d.Read("zOrder", props.zOrder, 0);
 
-          std::string fontPath = "";
-          d.Read("fontPath", fontPath, std::string(""));
-          if (!fontPath.empty()) {
-              props.font = GraphicsSubsystem::Get()->LoadFont(fontPath, props.fontSize);
-          } else {
-              int fontVal = 0;
-              d.Read("font", fontVal, 0);
-              if (fontVal > 0) {
-                  props.font = FontHandle(fontVal);
-              }
-          }
+        std::string fontPath = "";
+        d.Read("fontPath", fontPath, std::string(""));
+        if (!fontPath.empty()) {
+            props.font = GraphicsSubsystem::Get()->LoadFont(fontPath, props.fontSize);
+        } else {
+            int fontVal = 0;
+            d.Read("font", fontVal, 0);
+            if (fontVal > 0) {
+                props.font = FontHandle(fontVal);
+            }
+        }
 
-          std::string hAlignStr, vAlignStr, layerStr;
-          d.Read("hAlign", hAlignStr, std::string("Left"));
-          d.Read("vAlign", vAlignStr, std::string("Top"));
-          d.Read("layer",  layerStr,  std::string("LAYER_WORLD"));
+        std::string hAlignStr, vAlignStr, layerStr;
+        d.Read("hAlign", hAlignStr, std::string("Left"));
+        d.Read("vAlign", vAlignStr, std::string("Top"));
+        d.Read("layer", layerStr, std::string("LAYER_WORLD"));
 
-          if (hAlignStr == "Center") props.hAlign = TextHAlignment::Center;
-          else if (hAlignStr == "Right") props.hAlign = TextHAlignment::Right;
-          else props.hAlign = TextHAlignment::Left;
+        if (hAlignStr == "Center")
+            props.hAlign = TextHAlignment::Center;
+        else if (hAlignStr == "Right")
+            props.hAlign = TextHAlignment::Right;
+        else
+            props.hAlign = TextHAlignment::Left;
 
-          if (vAlignStr == "Center") props.vAlign = TextVAlignment::Center;
-          else if (vAlignStr == "Bottom") props.vAlign = TextVAlignment::Bottom;
-          else props.vAlign = TextVAlignment::Top;
+        if (vAlignStr == "Center")
+            props.vAlign = TextVAlignment::Center;
+        else if (vAlignStr == "Bottom")
+            props.vAlign = TextVAlignment::Bottom;
+        else
+            props.vAlign = TextVAlignment::Top;
 
-          props.layer = ParseCanvasLayer(layerStr);
+        props.layer = ParseCanvasLayer(layerStr);
 
-          return new Text2DComponent(o, props);
-      });
+        return new Text2DComponent(o, props);
+    });
 
 
     // ── Text3DComponent ─────────────────────────────────────────────────────────
-    ComponentFactory::Register("Text3DComponent",
-      [](GameObject* o, Deserializer& d) -> Component* {
-          Text3DProps props;
-          d.Read("text",     props.text,     std::string(""));
-          d.Read("fontSize", props.fontSize, 24.0f);
-          d.Read("offset",   props.offset,   glm::vec3(0.0f, 1.2f, 0.0f));
-          d.Read("color",    props.color,    glm::vec4(1.0f));
+    ComponentFactory::Register("Text3DComponent", [](GameObject* o, Deserializer& d) -> Component* {
+        Text3DProps props;
+        d.Read("text", props.text, std::string(""));
+        d.Read("fontSize", props.fontSize, 24.0f);
+        d.Read("offset", props.offset, glm::vec3(0.0f, 1.2f, 0.0f));
+        d.Read("color", props.color, glm::vec4(1.0f));
 
-          std::string fontPath = "";
-          d.Read("fontPath", fontPath, std::string(""));
-          if (!fontPath.empty()) {
-              props.font = GraphicsSubsystem::Get()->LoadFont(fontPath, props.fontSize);
-          } else {
-              int fontVal = 0;
-              d.Read("font", fontVal, 0);
-              if (fontVal > 0) {
-                  props.font = FontHandle(fontVal);
-              }
-          }
+        std::string fontPath = "";
+        d.Read("fontPath", fontPath, std::string(""));
+        if (!fontPath.empty()) {
+            props.font = GraphicsSubsystem::Get()->LoadFont(fontPath, props.fontSize);
+        } else {
+            int fontVal = 0;
+            d.Read("font", fontVal, 0);
+            if (fontVal > 0) {
+                props.font = FontHandle(fontVal);
+            }
+        }
 
-          return new Text3DComponent(o, props);
-      });
+        return new Text3DComponent(o, props);
+    });
 
     // ── CameraComponent ───────────────────────────────────────────────────────
-    ComponentFactory::Register("CameraComponent",
-      [](GameObject* o, Deserializer& d) -> Component* {
-          CameraProps props;
-          d.Read("orthographic",   props.isOrthographic, false);
-          d.Read("verticalAngle",  props.verticalAngle,  0.0f);
-          d.Read("horizontalAngle",props.horizontalAngle,0.0f);
-          d.Read("eyeOffset",      props.eyeOffset,      glm::vec3(0.0f));
-          if (props.isOrthographic) {
-              d.Read("width",    props.orthographic.width,    500.0f);
-              d.Read("height",   props.orthographic.height,   500.0f);
-              d.Read("nearClip", props.orthographic.nearClip, -1.0f);
-              d.Read("farClip",  props.orthographic.farClip,   1.0f);
-          } else {
-              d.Read("fieldOfView",  props.perspective.fieldOfView,  45.0f);
-              d.Read("aspectRatio",  props.perspective.aspectRatio,   1.333f);
-              d.Read("nearClip",     props.perspective.nearClip,      0.1f);
-              d.Read("farClip",      props.perspective.farClip,       500.0f);
-          }
-          return new CameraComponent(o, props);
-      });
+    ComponentFactory::Register("CameraComponent", [](GameObject* o, Deserializer& d) -> Component* {
+        CameraProps props;
+        d.Read("orthographic", props.isOrthographic, false);
+        d.Read("verticalAngle", props.verticalAngle, 0.0f);
+        d.Read("horizontalAngle", props.horizontalAngle, 0.0f);
+        d.Read("eyeOffset", props.eyeOffset, glm::vec3(0.0f));
+        if (props.isOrthographic) {
+            d.Read("width", props.orthographic.width, 500.0f);
+            d.Read("height", props.orthographic.height, 500.0f);
+            d.Read("nearClip", props.orthographic.nearClip, -1.0f);
+            d.Read("farClip", props.orthographic.farClip, 1.0f);
+        } else {
+            d.Read("fieldOfView", props.perspective.fieldOfView, 45.0f);
+            d.Read("aspectRatio", props.perspective.aspectRatio, 1.333f);
+            d.Read("nearClip", props.perspective.nearClip, 0.1f);
+            d.Read("farClip", props.perspective.farClip, 500.0f);
+        }
+        return new CameraComponent(o, props);
+    });
 
     // ── LightComponent ────────────────────────────────────────────────────────
-    ComponentFactory::Register("LightComponent",
-      [](GameObject* o, Deserializer& d) -> Component* {
-          LightProps props;
-          props.type       = LightType::Directional;
-          props.ambient    = glm::vec3(0.1f);
-          props.diffuse    = glm::vec3(1.0f);
-          props.specular   = glm::vec3(1.0f);
-          props.direction  = glm::vec3(0.0f, -1.0f, 0.0f);
-          props.attenuation= glm::vec3(1.0f, 0.0f, 0.0f);
-          props.intensity  = 1.0f;
-          props.castShadow = false;
+    ComponentFactory::Register("LightComponent", [](GameObject* o, Deserializer& d) -> Component* {
+        LightProps props;
+        props.type = LightType::Directional;
+        props.ambient = glm::vec3(0.1f);
+        props.diffuse = glm::vec3(1.0f);
+        props.specular = glm::vec3(1.0f);
+        props.direction = glm::vec3(0.0f, -1.0f, 0.0f);
+        props.attenuation = glm::vec3(1.0f, 0.0f, 0.0f);
+        props.intensity = 1.0f;
+        props.castShadow = false;
 
-          std::string lightTypeStr;
-          d.Read("lightType",  lightTypeStr, std::string("Directional"));
-          d.Read("ambient",    props.ambient,    glm::vec3(0.1f));
-          d.Read("diffuse",    props.diffuse,    glm::vec3(1.0f));
-          d.Read("specular",   props.specular,   glm::vec3(1.0f));
-          d.Read("direction",  props.direction,  glm::vec3(0.0f, -1.0f, 0.0f));
-          d.Read("attenuation",props.attenuation,glm::vec3(1.0f, 0.0f, 0.0f));
-          d.Read("intensity",  props.intensity,  1.0f);
-          d.Read("castShadow", props.castShadow, false);
+        std::string lightTypeStr;
+        d.Read("lightType", lightTypeStr, std::string("Directional"));
+        d.Read("ambient", props.ambient, glm::vec3(0.1f));
+        d.Read("diffuse", props.diffuse, glm::vec3(1.0f));
+        d.Read("specular", props.specular, glm::vec3(1.0f));
+        d.Read("direction", props.direction, glm::vec3(0.0f, -1.0f, 0.0f));
+        d.Read("attenuation", props.attenuation, glm::vec3(1.0f, 0.0f, 0.0f));
+        d.Read("intensity", props.intensity, 1.0f);
+        d.Read("castShadow", props.castShadow, false);
 
-          if (lightTypeStr == "Point")  props.type = LightType::Point;
-          else if (lightTypeStr == "Spot")  props.type = LightType::Spot;
-          else if (lightTypeStr == "Area")  props.type = LightType::Area;
+        if (lightTypeStr == "Point")
+            props.type = LightType::Point;
+        else if (lightTypeStr == "Spot")
+            props.type = LightType::Spot;
+        else if (lightTypeStr == "Area")
+            props.type = LightType::Area;
 
-          return new LightComponent(o, props);
-      });
+        return new LightComponent(o, props);
+    });
 
     // ── ShapeRendererComponent ────────────────────────────────────────────────
-    ComponentFactory::Register("ShapeRendererComponent",
-      [](GameObject* o, Deserializer& d) -> Component* {
-          ShapeRendererProps props;
-          d.Read("color",     props.color,    glm::vec4(1.0f));
-          d.Read("thickness", props.thickness, 1.0f);
-          d.Read("filled",    props.filled,   false);
-          d.Read("radius",    props.radius,   10.0f);
-          d.Read("boxHalfSize",props.boxHalfSize, glm::vec2(10.0f));
-          std::string layerStr;
-          d.Read("layer", layerStr, std::string("LAYER_WORLD_2D"));
-          props.layer = ParseCanvasLayer(layerStr, CanvasLayer::LAYER_WORLD_2D);
-          return new ShapeRendererComponent(o, props);
-      });
+    ComponentFactory::Register("ShapeRendererComponent", [](GameObject* o, Deserializer& d) -> Component* {
+        ShapeRendererProps props;
+        d.Read("color", props.color, glm::vec4(1.0f));
+        d.Read("thickness", props.thickness, 1.0f);
+        d.Read("filled", props.filled, false);
+        d.Read("radius", props.radius, 10.0f);
+        d.Read("boxHalfSize", props.boxHalfSize, glm::vec2(10.0f));
+        std::string layerStr;
+        d.Read("layer", layerStr, std::string("LAYER_WORLD_2D"));
+        props.layer = ParseCanvasLayer(layerStr, CanvasLayer::LAYER_WORLD_2D);
+        return new ShapeRendererComponent(o, props);
+    });
 
     // ── Animator2D ────────────────────────────────────────────────────────────
     // Clip data is read via ReadArray so it lives entirely inside this lambda.
-    ComponentFactory::Register("Animator2D",
-      [](GameObject* o, Deserializer& d) -> Component* {
-          auto* animator = new Animator2D(o);
-          for (auto& animD : d.ReadArray("animations")) {
-              AnimationClip clip;
-              animD->Read("name", clip.name, std::string(""));
-              animD->Read("loop", clip.loop, true);
-              for (auto& frameD : animD->ReadArray("frames")) {
-                  AnimationFrame f;
-                  frameD->Read("duration", f.duration, 0.1f);
-                  frameD->Read("uvMin", f.uvMin, glm::vec2(0.0f));
-                  frameD->Read("uvMax", f.uvMax, glm::vec2(1.0f));
-                  clip.frames.push_back(f);
-              }
-              if (!clip.name.empty())
-                  animator->AddAnimation(clip.name, clip);
-          }
-          std::string autoPlay;
-          d.Read("autoPlay", autoPlay, std::string(""));
-          if (!autoPlay.empty()) animator->Play(autoPlay);
-          return animator;
-      });
+    ComponentFactory::Register("Animator2D", [](GameObject* o, Deserializer& d) -> Component* {
+        auto* animator = new Animator2D(o);
+        for (auto& animD : d.ReadArray("animations")) {
+            AnimationClip clip;
+            animD->Read("name", clip.name, std::string(""));
+            animD->Read("loop", clip.loop, true);
+            for (auto& frameD : animD->ReadArray("frames")) {
+                AnimationFrame f;
+                frameD->Read("duration", f.duration, 0.1f);
+                frameD->Read("uvMin", f.uvMin, glm::vec2(0.0f));
+                frameD->Read("uvMax", f.uvMax, glm::vec2(1.0f));
+                clip.frames.push_back(f);
+            }
+            if (!clip.name.empty()) animator->AddAnimation(clip.name, clip);
+        }
+        std::string autoPlay;
+        d.Read("autoPlay", autoPlay, std::string(""));
+        if (!autoPlay.empty()) animator->Play(autoPlay);
+        return animator;
+    });
 
     // ── ActionManager ─────────────────────────────────────────────────────────
     // Action parsing is recursive and format-specific; we delegate back to the
     // existing ParseAction helper by capturing the JSON node via ReadArray.
     // This preserves all easing / Sequence / RepeatForever logic without
     // duplicating it in the lambda.
-    ComponentFactory::Register("ActionManager",
-      [](GameObject* o, Deserializer& d) -> Component* {
-          auto* mgr = new ActionManager(o);
-          // ParseAction expects a raw nlohmann::json, so we reach through the
-          // Deserializer only to enumerate the top-level "actions" array.
-          // Each element is reconstructed as a JSONDeserializer-owned value.
-          // Since ParseAction is a file-local static function declared later in
-          // this translation unit, ActionManager registration is wired up in
-          // Application::RegisterActionManager() called from RegisterComponents.
-          // See below for the ActionManager post-init hook.
-          (void)d; // actions wired up in ParseEntity fallback for now
-          return mgr;
-      });
+    ComponentFactory::Register("ActionManager", [](GameObject* o, Deserializer& d) -> Component* {
+        auto* mgr = new ActionManager(o);
+        // ParseAction expects a raw nlohmann::json, so we reach through the
+        // Deserializer only to enumerate the top-level "actions" array.
+        // Each element is reconstructed as a JSONDeserializer-owned value.
+        // Since ParseAction is a file-local static function declared later in
+        // this translation unit, ActionManager registration is wired up in
+        // Application::RegisterActionManager() called from RegisterComponents.
+        // See below for the ActionManager post-init hook.
+        (void)d;// actions wired up in ParseEntity fallback for now
+        return mgr;
+    });
 }
 
 Application::~Application() {
@@ -694,14 +691,12 @@ static std::unique_ptr<Action> ParseAction(const nlohmann::json& val) {
         auto action = std::make_unique<MoveTo>(duration, pos);
         action->SetEasing(easing);
         return action;
-    }
-    else if (type == "MoveBy") {
+    } else if (type == "MoveBy") {
         glm::vec3 delta = ParseVec3(val.value("deltaPosition", nlohmann::json::array()), glm::vec3(0.0f));
         auto action = std::make_unique<MoveBy>(duration, delta);
         action->SetEasing(easing);
         return action;
-    }
-    else if (type == "RotateTo") {
+    } else if (type == "RotateTo") {
         glm::vec3 rot(0.0f);
         if (val.contains("rotation") && val["rotation"].is_array() && !val["rotation"].empty()) {
             rot.x = glm::radians(val["rotation"][0].get<float>());
@@ -711,8 +706,7 @@ static std::unique_ptr<Action> ParseAction(const nlohmann::json& val) {
         auto action = std::make_unique<RotateTo>(duration, rot);
         action->SetEasing(easing);
         return action;
-    }
-    else if (type == "RotateBy") {
+    } else if (type == "RotateBy") {
         glm::vec3 delta(0.0f);
         if (val.contains("deltaRotation") && val["deltaRotation"].is_array() && !val["deltaRotation"].empty()) {
             delta.x = glm::radians(val["deltaRotation"][0].get<float>());
@@ -722,26 +716,22 @@ static std::unique_ptr<Action> ParseAction(const nlohmann::json& val) {
         auto action = std::make_unique<RotateBy>(duration, delta);
         action->SetEasing(easing);
         return action;
-    }
-    else if (type == "ScaleTo") {
+    } else if (type == "ScaleTo") {
         glm::vec3 scale = ParseVec3(val.value("scale", nlohmann::json::array()), glm::vec3(1.0f));
         auto action = std::make_unique<ScaleTo>(duration, scale);
         action->SetEasing(easing);
         return action;
-    }
-    else if (type == "ColorTo") {
+    } else if (type == "ColorTo") {
         glm::vec4 color = ParseVec4(val.value("color", nlohmann::json::array()), glm::vec4(1.0f));
         auto action = std::make_unique<ColorTo>(duration, color);
         action->SetEasing(easing);
         return action;
-    }
-    else if (type == "FadeTo") {
+    } else if (type == "FadeTo") {
         float alpha = val.value("alpha", 1.0f);
         auto action = std::make_unique<FadeTo>(duration, alpha);
         action->SetEasing(easing);
         return action;
-    }
-    else if (type == "Sequence") {
+    } else if (type == "Sequence") {
         std::vector<FiniteTimeAction*> seqActions;
         if (val.contains("actions") && val["actions"].is_array()) {
             for (const auto& actVal : val["actions"]) {
@@ -759,8 +749,7 @@ static std::unique_ptr<Action> ParseAction(const nlohmann::json& val) {
         if (!seqActions.empty()) {
             return std::make_unique<Sequence>(seqActions);
         }
-    }
-    else if (type == "RepeatForever") {
+    } else if (type == "RepeatForever") {
         if (val.contains("action")) {
             auto parsed = ParseAction(val["action"]);
             if (parsed) {
@@ -777,11 +766,11 @@ static std::unique_ptr<Action> ParseAction(const nlohmann::json& val) {
 
 static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameObject* parent) {
     std::string name = entityVal.value("name", "Entity");
-    glm::vec3 position      = ParseVec3(entityVal.value("position", nlohmann::json::array()), glm::vec3(0.0f));
+    glm::vec3 position = ParseVec3(entityVal.value("position", nlohmann::json::array()), glm::vec3(0.0f));
     glm::vec3 rotationDegrees = ParseVec3(entityVal.value("rotation", nlohmann::json::array()), glm::vec3(0.0f));
-    glm::vec3 rotation      = glm::radians(rotationDegrees);
-    glm::vec3 scale         = ParseVec3(entityVal.value("scale", nlohmann::json::array()), glm::vec3(1.0f));
-    bool active             = entityVal.value("active", true);
+    glm::vec3 rotation = glm::radians(rotationDegrees);
+    glm::vec3 scale = ParseVec3(entityVal.value("scale", nlohmann::json::array()), glm::vec3(1.0f));
+    bool active = entityVal.value("active", true);
 
     auto* go = app->CreateGameObject(position, rotation, scale);
     go->SetName(name);
@@ -835,7 +824,7 @@ static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::s
     } catch (const std::exception& e) {
         ConsoleSubsystem::Get()->Error(fmt::format("ParseSceneBlueprint: JSON parse error: {}", e.what()));
         if (error) *error = e.what();
-        return bp; // bp.name is "" — caller checks this
+        return bp;// bp.name is "" — caller checks this
     }
 
     bp.name = j.value("name", "Unnamed");
@@ -859,18 +848,18 @@ static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::s
     if (j.contains("materials") && j["materials"].is_object()) {
         for (const auto& [name, matVal] : j["materials"].items()) {
             MaterialBlueprint mb;
-            mb.name     = name;
-            mb.diffuse  = ParseVec3(matVal.value("diffuse",  nlohmann::json::array()), mb.diffuse);
+            mb.name = name;
+            mb.diffuse = ParseVec3(matVal.value("diffuse", nlohmann::json::array()), mb.diffuse);
             mb.specular = ParseVec3(matVal.value("specular", nlohmann::json::array()), mb.specular);
-            mb.ambient  = ParseVec3(matVal.value("ambient",  nlohmann::json::array()), mb.ambient);
-            mb.shininess       = matVal.value("shininess", mb.shininess);
+            mb.ambient = ParseVec3(matVal.value("ambient", nlohmann::json::array()), mb.ambient);
+            mb.shininess = matVal.value("shininess", mb.shininess);
             mb.cullFaceEnabled = matVal.value("cullFaceEnabled", mb.cullFaceEnabled);
-            mb.baseMap      = matVal.value("baseMap",      std::string(""));
-            mb.normalMap    = matVal.value("normalMap",    std::string(""));
-            mb.aoMap        = matVal.value("aoMap",        std::string(""));
+            mb.baseMap = matVal.value("baseMap", std::string(""));
+            mb.normalMap = matVal.value("normalMap", std::string(""));
+            mb.aoMap = matVal.value("aoMap", std::string(""));
             mb.roughnessMap = matVal.value("roughnessMap", std::string(""));
-            mb.metallicMap  = matVal.value("metallicMap",  std::string(""));
-            mb.heightMap    = matVal.value("heightMap",    std::string(""));
+            mb.metallicMap = matVal.value("metallicMap", std::string(""));
+            mb.heightMap = matVal.value("heightMap", std::string(""));
             bp.materials.push_back(std::move(mb));
         }
     }
@@ -900,13 +889,11 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
     // materials and meshes rely on the defaults even in texture-less scenes
     // (e.g. HelloWorld's cube).  There is no startup load point for these, unlike
     // default shaders (loaded once by GraphicsSubsystem).
-    if (_config.useDefaultTextures)
-        AssetManager::Get().LoadDefaultTextures();
+    if (_config.useDefaultTextures) AssetManager::Get().LoadDefaultTextures();
 
     std::vector<std::string> texturesToLoad;
     for (const auto& path : bp.textures) {
-        if (AssetManager::Get().GetTexture(path) == 0)
-            texturesToLoad.push_back(path);
+        if (AssetManager::Get().GetTexture(path) == 0) texturesToLoad.push_back(path);
     }
     if (!texturesToLoad.empty()) {
         AssetManager::Get().LoadTextures(texturesToLoad);
@@ -919,8 +906,7 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
         shadersToLoad[name] = props;
     }
     if (!shadersToLoad.empty()) {
-        if (_config.useDefaultShaders)
-            AssetManager::Get().LoadDefaultShaders();
+        if (_config.useDefaultShaders) AssetManager::Get().LoadDefaultShaders();
         AssetManager::Get().LoadShaders(shadersToLoad);
         ENGINE_LOG("JSON Shaders created.");
     }
@@ -929,21 +915,20 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
     // already-loaded TextureHandles. CreateMaterial dedups by name.
     for (const auto& mb : bp.materials) {
         MaterialProps props;
-        props.diffuse         = mb.diffuse;
-        props.specular        = mb.specular;
-        props.ambient         = mb.ambient;
-        props.shininess       = mb.shininess;
+        props.diffuse = mb.diffuse;
+        props.specular = mb.specular;
+        props.ambient = mb.ambient;
+        props.shininess = mb.shininess;
         props.cullFaceEnabled = mb.cullFaceEnabled;
-        if (!mb.baseMap.empty())      props.baseMap      = TextureHandle(mb.baseMap);
-        if (!mb.normalMap.empty())    props.normalMap    = TextureHandle(mb.normalMap);
-        if (!mb.aoMap.empty())        props.aoMap        = TextureHandle(mb.aoMap);
+        if (!mb.baseMap.empty()) props.baseMap = TextureHandle(mb.baseMap);
+        if (!mb.normalMap.empty()) props.normalMap = TextureHandle(mb.normalMap);
+        if (!mb.aoMap.empty()) props.aoMap = TextureHandle(mb.aoMap);
         if (!mb.roughnessMap.empty()) props.roughnessMap = TextureHandle(mb.roughnessMap);
-        if (!mb.metallicMap.empty())  props.metallicMap  = TextureHandle(mb.metallicMap);
-        if (!mb.heightMap.empty())    props.heightMap    = TextureHandle(mb.heightMap);
+        if (!mb.metallicMap.empty()) props.metallicMap = TextureHandle(mb.metallicMap);
+        if (!mb.heightMap.empty()) props.heightMap = TextureHandle(mb.heightMap);
         AssetManager::Get().CreateMaterial(mb.name, props);
     }
-    if (!bp.materials.empty())
-        ENGINE_LOG("JSON Materials created.");
+    if (!bp.materials.empty()) ENGINE_LOG("JSON Materials created.");
 
     // TODO: load meshes from bp.meshes
 }
@@ -959,8 +944,7 @@ void Application::InstantiateScene(const SceneBlueprint& bp) {
     for (const auto& eb : bp.entities)
         ParseEntity(this, eb.resolvedData, container);
 
-    if (!bp.entities.empty())
-        ENGINE_LOG("JSON Game objects created.");
+    if (!bp.entities.empty()) ENGINE_LOG("JSON Game objects created.");
 
     mainCamera = _graphics->GetMainCamera();
     mainLight = _graphics->GetMainLight();
@@ -979,8 +963,7 @@ void Application::HideLoadingScreen() {
 // their .ktx2 variants on WebGL), the default PBR textures (when the app uses
 // them), and every shader stage source.  Mirrors the redirect logic in
 // AssetManager::LoadTextures so the prefetched path and the loaded path match.
-static std::vector<std::string> CollectPrefetchPaths(const SceneBlueprint& bp, bool useDefaultTextures)
-{
+static std::vector<std::string> CollectPrefetchPaths(const SceneBlueprint& bp, bool useDefaultTextures) {
     std::vector<std::string> paths;
 
 #if defined(AE_USE_BASIS_UNIVERSAL) && defined(__EMSCRIPTEN__)
@@ -1033,8 +1016,7 @@ static std::vector<std::string> CollectPrefetchPaths(const SceneBlueprint& bp, b
 //   unload current scene → load new scene → run onReady, hide loading screen.
 // On native the prefetches are synchronous; on WASM they resolve via the browser
 // event loop, so the load completes after this returns.
-void Application::GoScene(const std::string& sceneName, std::function<void()> onReady)
-{
+void Application::GoScene(const std::string& sceneName, std::function<void()> onReady) {
     _sceneReady = false;
     ShowLoadingScreen();
 
@@ -1092,11 +1074,10 @@ void Application::GoScene(const std::string& sceneName, std::function<void()> on
 
 void Application::ReloadScene() {
     if (_currentSceneName.empty()) return;
-    GoScene(_currentSceneName, [this]{ OnLoad(); });
+    GoScene(_currentSceneName, [this] { OnLoad(); });
 }
 
-void Application::LoadEditorScene(const uint8_t* data, size_t len)
-{
+void Application::LoadEditorScene(const uint8_t* data, size_t len) {
     // Mirror GoScene's entity-clearing logic without requiring a scene file.
     std::erase_if(_entities, [this](const std::unique_ptr<GameObject>& e) { return e.get() != _defaultGameObject; });
     _nextEntityID = _defaultGameObject ? 1 : 0;
@@ -1121,8 +1102,7 @@ void Application::LoadEditorScene(const uint8_t* data, size_t len)
     _sceneReady = true;
 }
 
-void Application::UnloadScene(const std::string& name)
-{
+void Application::UnloadScene(const std::string& name) {
     if (!_defaultGameObject) return;
 
     // Find the scene container (direct child of __root__ with this name).
@@ -1137,9 +1117,10 @@ void Application::UnloadScene(const std::string& name)
 
     // Collect the full subtree iteratively (no children list on GameObject).
     std::unordered_set<GameObject*> toRemove;
-    std::vector<GameObject*> stack = {container};
+    std::vector<GameObject*> stack = { container };
     while (!stack.empty()) {
-        auto* node = stack.back(); stack.pop_back();
+        auto* node = stack.back();
+        stack.pop_back();
         toRemove.insert(node);
         for (const auto& e : _entities) {
             if (e->parent == node) stack.push_back(e.get());
@@ -1148,8 +1129,7 @@ void Application::UnloadScene(const std::string& name)
 
     // Erasing destroys the objects; each GameObject detaches its components
     // (unregistering them from the graphics/physics servers) as it dies.
-    std::erase_if(_entities,
-                  [&toRemove](const std::unique_ptr<GameObject>& e) { return toRemove.contains(e.get()); });
+    std::erase_if(_entities, [&toRemove](const std::unique_ptr<GameObject>& e) { return toRemove.contains(e.get()); });
 
     // Free GPU/CPU assets that were first loaded by this scene.
     // Must come after GameObjects are deleted so no component holds a dangling ref.
@@ -1160,22 +1140,20 @@ void Application::UnloadScene(const std::string& name)
     _console->Info(fmt::format("[Scene] Unloaded scene '{}'.", name));
 }
 
-void Application::ClearScenes()
-{
+void Application::ClearScenes() {
     if (!_defaultGameObject) return;
     // Collect names of all direct children of __root__ first to avoid
     // iterator invalidation inside UnloadScene.
     std::vector<std::string> names;
     for (const auto& e : _entities) {
-        if (e.get() != _defaultGameObject && e->parent == _defaultGameObject)
-            names.push_back(e->GetName());
+        if (e.get() != _defaultGameObject && e->parent == _defaultGameObject) names.push_back(e->GetName());
     }
-    for (const auto& n : names) UnloadScene(n);
+    for (const auto& n : names)
+        UnloadScene(n);
 }
 
-void Application::UnloadCurrentScene()
-{
-    ClearScenes();                              // delete scene GameObjects
+void Application::UnloadCurrentScene() {
+    ClearScenes();// delete scene GameObjects
 
     // Deleting the GameObjects does not unregister their components from the
     // graphics render lists (GameObject's destructor doesn't run OnDetach — see
@@ -1186,20 +1164,18 @@ void Application::UnloadCurrentScene()
     _graphics->directionalLights.clear();
     _graphics->pointLights.clear();
     _graphics->sunComponents.clear();
-    _graphics->renderables.clear();      // MeshComponent
-    _graphics->canvasDrawables.clear();  // SpriteComponent / Text2DComponent / ...
+    _graphics->renderables.clear();// MeshComponent
+    _graphics->canvasDrawables.clear();// SpriteComponent / Text2DComponent / ...
 
     _audio->StopAll();
     _physics->Reset();
-    if (!_currentSceneName.empty())
-        AssetManager::Get().ClearSceneAssets(); // free scene GPU assets
+    if (!_currentSceneName.empty()) AssetManager::Get().ClearSceneAssets();// free scene GPU assets
     _currentSceneName.clear();
 }
 
-void Application::AddScene(const std::string& json)
-{
+void Application::AddScene(const std::string& json) {
     SceneBlueprint bp = ParseSceneBlueprint(json, &_editorSceneError);
-    if (bp.name.empty()) { // parse failed — _editorSceneError set by ParseSceneBlueprint
+    if (bp.name.empty()) {// parse failed — _editorSceneError set by ParseSceneBlueprint
         _lastLoadedScene = "";
         _console->Warn(fmt::format("[Scene] AddScene JSON parse error: {}", _editorSceneError));
         return;
@@ -1216,30 +1192,26 @@ void Application::AddScene(const std::string& json)
         _console->Info(fmt::format("[Scene] Added scene '{}'.", bp.name));
     } catch (const std::exception& e) {
         _editorSceneError = e.what();
-        _lastLoadedScene  = "";
+        _lastLoadedScene = "";
         _console->Warn(fmt::format("[Scene] AddScene '{}' failed: {}", bp.name, e.what()));
     }
 }
 
-std::string Application::GetLoadedScenes() const
-{
+std::string Application::GetLoadedScenes() const {
     nlohmann::json arr = nlohmann::json::array();
     if (_defaultGameObject) {
         for (const auto& e : _entities) {
-            if (e.get() != _defaultGameObject && e->parent == _defaultGameObject)
-                arr.push_back(e->GetName());
+            if (e.get() != _defaultGameObject && e->parent == _defaultGameObject) arr.push_back(e->GetName());
         }
     }
     return arr.dump();
 }
 
-std::string Application::GetLastLoadedScene() const
-{
+std::string Application::GetLastLoadedScene() const {
     return _lastLoadedScene;
 }
 
-const std::string& Application::GetEditorSceneError() const
-{
+const std::string& Application::GetEditorSceneError() const {
     return _editorSceneError;
 }
 
@@ -1271,7 +1243,8 @@ void Application::Update(const FrameData& props) {
     {
         std::vector<std::function<void()>> queue;
         queue.swap(_spawnQueue);
-        for (auto& cmd : queue) cmd();
+        for (auto& cmd : queue)
+            cmd();
     }
 
     OnUpdate(dt, GetWindowTime());
@@ -1322,8 +1295,7 @@ void Application::Render(const FrameData& props) {
 
     // Feed the encoder one frame per render tick whenever recording is active,
     // whether it was started by the auto-capture sequence or the manual F2 key.
-    if (_recorder && _recorder->isRecording())
-        _recorder->captureFrame();
+    if (_recorder && _recorder->isRecording()) _recorder->captureFrame();
 
 #if SHOW_RENDER_AND_DRAW_COST
     ENGINE_LOG(fmt::format("Render & draw cost {} ms", (GetWindowTime() - time) * 1000));
@@ -1331,12 +1303,10 @@ void Application::Render(const FrameData& props) {
 }
 
 void Application::UpdateAutoCapture() {
-    if (_capState == CaptureState::Idle || _capState == CaptureState::Done)
-        return;
+    if (_capState == CaptureState::Idle || _capState == CaptureState::Done) return;
 
     float now = GetWindowTime();
-    if (_capPhaseStart < 0.0f)
-        _capPhaseStart = now;// lazy init: anchor to the first rendered frame
+    if (_capPhaseStart < 0.0f) _capPhaseStart = now;// lazy init: anchor to the first rendered frame
     float elapsed = now - _capPhaseStart;
 
     Renderer* renderer = _graphics->renderer.get();
@@ -1344,19 +1314,16 @@ void Application::UpdateAutoCapture() {
     auto ensureParentDir = [](const std::string& path) {
         std::error_code ec;
         auto parent = std::filesystem::path(path).parent_path();
-        if (!parent.empty())
-            std::filesystem::create_directories(parent, ec);
+        if (!parent.empty()) std::filesystem::create_directories(parent, ec);
     };
 
     // Builds "name_000.png" style paths for a screenshot burst, or the bare
     // output path when only a single shot is requested (duration <= 0).
     auto screenshotPath = [this](int index) -> std::string {
-        if (_autoCap.duration <= 0.0f)
-            return _autoCap.outputPath;
+        if (_autoCap.duration <= 0.0f) return _autoCap.outputPath;
         std::filesystem::path p(_autoCap.outputPath);
         std::string ext = p.extension().string();
-        if (ext.empty())
-            ext = ".png";
+        if (ext.empty()) ext = ".png";
         char suffix[16];
         std::snprintf(suffix, sizeof(suffix), "_%03d", index);
         return (p.parent_path() / (p.stem().string() + suffix + ext)).string();
@@ -1373,25 +1340,23 @@ void Application::UpdateAutoCapture() {
                 _recorder->startRecording(renderer, cfg);
             }
             _screenshotIndex = 0;
-            _nextShotTime    = 0.0f;
-            _capState        = CaptureState::Capturing;
+            _nextShotTime = 0.0f;
+            _capState = CaptureState::Capturing;
         }
         break;
 
     case CaptureState::Capturing: {
         // Video frames are pumped by Render() via captureFrame(); here we only
         // drive the screenshot cadence and the overall capture-window timing.
-        if (_autoCap.mode == AutoCaptureConfig::Mode::Screenshot &&
-            elapsed >= _nextShotTime) {
+        if (_autoCap.mode == AutoCaptureConfig::Mode::Screenshot && elapsed >= _nextShotTime) {
             SaveScreenshot(screenshotPath(_screenshotIndex));
             ++_screenshotIndex;
             _nextShotTime += 1.0f;// one shot per second across the window
         }
 
-        bool singleShotDone = _autoCap.mode == AutoCaptureConfig::Mode::Screenshot &&
-                              _autoCap.duration <= 0.0f && _screenshotIndex >= 1;
-        if (singleShotDone || elapsed >= _autoCap.duration)
-            _capState = CaptureState::Finishing;
+        bool singleShotDone =
+            _autoCap.mode == AutoCaptureConfig::Mode::Screenshot && _autoCap.duration <= 0.0f && _screenshotIndex >= 1;
+        if (singleShotDone || elapsed >= _autoCap.duration) _capState = CaptureState::Finishing;
         break;
     }
 
@@ -1408,19 +1373,25 @@ void Application::UpdateAutoCapture() {
 }
 
 void Application::SaveScreenshot(const std::string& path) {
-    if (!_graphics->renderer)
-        return;
+    if (!_graphics->renderer) return;
     _graphics->renderer->readPixelsAsync([&path](const GpuImageData& img) {
-        if (img.data.empty())
-            return;
-        bool ok = pngWrite(path, img.data.data(), img.width, img.height, img.channelCount);
-        FrameStats st = analyzeFrame(img.data.data(), img.width, img.height, img.channelCount);
+        if (img.data.empty()) return;
+        bool ok = PngWrite(path, img.data.data(), img.width, img.height, img.channelCount);
+        FrameStats st = AnalyzeFrame(img.data.data(), img.width, img.height, img.channelCount);
         // Machine-readable marker consumed by scripts/smokeTest.sh (grepped from
         // stdout). Flushed so it survives the imminent auto-quit.
         fmt::print(
             "[Smoke] result path={} size={}x{} meanRGB={:.1f},{:.1f},{:.1f} spread={} blank={} write={}\n",
-            path, img.width, img.height, st.meanR, st.meanG, st.meanB, st.spread,
-            st.blank ? 1 : 0, ok ? 1 : 0);
+            path,
+            img.width,
+            img.height,
+            st.meanR,
+            st.meanG,
+            st.meanB,
+            st.spread,
+            st.blank ? 1 : 0,
+            ok ? 1 : 0
+        );
         std::fflush(stdout);
         if (ok)
             ENGINE_LOG("Screenshot saved: {} ({}x{})", path, img.width, img.height);
@@ -1462,7 +1433,8 @@ GameObject* Application::CreateGameObject(glm::vec3 position, glm::vec3 rotation
 
 GameObject* Application::CreateGameObject(glm::vec2 position, float angle) {
     auto owned = std::make_unique<GameObject>(
-      this, glm::vec3(position.x, position.y, 0.0f), glm::vec3(0.0f, 0.0f, angle), glm::vec3(1.0f));
+        this, glm::vec3(position.x, position.y, 0.0f), glm::vec3(0.0f, 0.0f, angle), glm::vec3(1.0f)
+    );
     auto* e = owned.get();
     e->SetName(fmt::format("entity #{}", _nextEntityID++));
     _entities.push_back(std::move(owned));
@@ -1472,37 +1444,37 @@ GameObject* Application::CreateGameObject(glm::vec2 position, float angle) {
 #ifdef __EMSCRIPTEN__
 extern "C" {
 
-EMSCRIPTEN_KEEPALIVE
-void printMemoryStats() {
-    struct mallinfo mi = mallinfo();
-    double mb = 1024.0 * 1024.0;
-    size_t heapSize = emscripten_get_heap_size();
-    size_t vramBytes = AssetManager::Get().getTotalTextureBytes();
+    EMSCRIPTEN_KEEPALIVE
+    void printMemoryStats() {
+        struct mallinfo mi = mallinfo();
+        double mb = 1024.0 * 1024.0;
+        size_t heapSize = emscripten_get_heap_size();
+        size_t vramBytes = AssetManager::Get().getTotalTextureBytes();
 
-    double jsHeapSizeMB = -1.0;
-    int jsHeapBytes = EM_ASM_INT({
-        if (globalThis.performance && globalThis.performance.memory) {
-            return globalThis.performance.memory.usedJSHeapSize;
+        double jsHeapSizeMB = -1.0;
+        int jsHeapBytes = EM_ASM_INT({
+            if (globalThis.performance && globalThis.performance.memory) {
+                return globalThis.performance.memory.usedJSHeapSize;
+            }
+            return -1;
+        });
+        if (jsHeapBytes >= 0) {
+            jsHeapSizeMB = static_cast<double>(jsHeapBytes) / mb;
         }
-        return -1;
-    });
-    if (jsHeapBytes >= 0) {
-        jsHeapSizeMB = static_cast<double>(jsHeapBytes) / mb;
+
+        printf("========== Memory Stats ==========\n");
+        printf("WASM Heap Size     : %.2f MB\n", heapSize / mb);
+        printf("dlmalloc Arena     : %.2f MB\n", mi.arena / mb);
+        printf("Used               : %.2f MB\n", mi.uordblks / mb);
+        printf("Free               : %.2f MB\n", mi.fordblks / mb);
+        if (jsHeapSizeMB >= 0.0) {
+            printf("JS Heap Size       : %.2f MB\n", jsHeapSizeMB);
+        } else {
+            printf("JS Heap Size       : N/A (unsupported)\n");
+        }
+        printf("VRAM (textures)    : %.2f MB\n", vramBytes / mb);
+        printf("==================================\n");
     }
 
-    printf("========== Memory Stats ==========\n");
-    printf("WASM Heap Size     : %.2f MB\n", heapSize / mb);
-    printf("dlmalloc Arena     : %.2f MB\n", mi.arena / mb);
-    printf("Used               : %.2f MB\n", mi.uordblks / mb);
-    printf("Free               : %.2f MB\n", mi.fordblks / mb);
-    if (jsHeapSizeMB >= 0.0) {
-        printf("JS Heap Size       : %.2f MB\n", jsHeapSizeMB);
-    } else {
-        printf("JS Heap Size       : N/A (unsupported)\n");
-    }
-    printf("VRAM (textures)    : %.2f MB\n", vramBytes / mb);
-    printf("==================================\n");
-}
-
-} // extern "C"
+}// extern "C"
 #endif

@@ -19,7 +19,8 @@ struct SceneNode {
 
 class Scene {
 public:
-    Scene() : root(nullptr) {}
+    Scene() : root(nullptr) {
+    }
 
     SceneNode* GetRoot() {
         return root;

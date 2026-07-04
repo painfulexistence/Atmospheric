@@ -10,8 +10,12 @@
 // owned by the app (must outlive the elements they're attached to).
 class RmlEventCallback : public Rml::EventListener {
 public:
-    explicit RmlEventCallback(std::function<void()> cb) : _cb(std::move(cb)) {}
-    void ProcessEvent(Rml::Event& /*event*/) override { if (_cb) _cb(); }
+    explicit RmlEventCallback(std::function<void()> cb) : _cb(std::move(cb)) {
+    }
+    void ProcessEvent(Rml::Event& /*event*/) override {
+        if (_cb) _cb();
+    }
+
 private:
     std::function<void()> _cb;
 };
@@ -20,26 +24,26 @@ class TerrainDemo : public Application {
     using Application::Application;
 
     CameraComponent* _cam = nullptr;
-    GameObject*      _camGO = nullptr;
-    float _moveSpeed   = 20.0f;
-    float _slowSpeed   =  4.0f;
-    bool  _slow        = false;
-    bool  _wireframe   = false;
+    GameObject* _camGO = nullptr;
+    float _moveSpeed = 20.0f;
+    float _slowSpeed = 4.0f;
+    bool _slow = false;
+    bool _wireframe = false;
 
     GameObject* _proceduralTerrain = nullptr;
-    GameObject* _heightmapTerrain  = nullptr;
-    bool        _showProcedural    = true;
-    int         _paletteIndex      = 0;  // 0-5; 0 = default warm pink/gold
+    GameObject* _heightmapTerrain = nullptr;
+    bool _showProcedural = true;
+    int _paletteIndex = 0;// 0-5; 0 = default warm pink/gold
 
-    static constexpr int PALETTE_COUNT = 6;
-    static constexpr std::array<const char*, PALETTE_COUNT> PALETTE_NAMES = {
+    static constexpr int paletteCount = 6;
+    static constexpr std::array<const char*, paletteCount> paletteNames = {
         "1 - Warm Pink/Gold", "2 - Cool Blue/Purple", "3 - Earthy Green",
         "4 - Forest",         "5 - Soft Cool",        "6 - Vivid Mint/Coral"
     };
 
     // HUD (RmlUi native <select> controls)
-    Rml::ElementDocument*          _hud        = nullptr;
-    Rml::ElementFormControlSelect* _selMode    = nullptr;
+    Rml::ElementDocument* _hud = nullptr;
+    Rml::ElementFormControlSelect* _selMode = nullptr;
     Rml::ElementFormControlSelect* _selPalette = nullptr;
     // Guards SetSelection() so syncing the UI from code doesn't re-enter the
     // change handler (which would call Apply* again).
@@ -47,53 +51,62 @@ class TerrainDemo : public Application {
     std::vector<std::unique_ptr<RmlEventCallback>> _listeners;
 
     void OnInit() override {
-        GoScene("main", [this]{ OnLoad(); });
+        GoScene("main", [this] { OnLoad(); });
     }
 
     // ── State application (keeps terrain + HUD in sync) ──────────────────────
     void ApplyProcedural(bool procedural) {
         _showProcedural = procedural;
         if (_proceduralTerrain) _proceduralTerrain->SetActive(procedural);
-        if (_heightmapTerrain)  _heightmapTerrain->SetActive(!procedural);
-        if (_selMode) { _syncing = true; _selMode->SetSelection(procedural ? 0 : 1); _syncing = false; }
-        ConsoleSubsystem::Get()->Info(procedural ? "Switched to procedural noise terrain"
-                                : "Switched to heightmap terrain");
+        if (_heightmapTerrain) _heightmapTerrain->SetActive(!procedural);
+        if (_selMode) {
+            _syncing = true;
+            _selMode->SetSelection(procedural ? 0 : 1);
+            _syncing = false;
+        }
+        ConsoleSubsystem::Get()->Info(
+            procedural ? "Switched to procedural noise terrain" : "Switched to heightmap terrain"
+        );
     }
 
     void ApplyPalette(int index) {
-        _paletteIndex = ((index % PALETTE_COUNT) + PALETTE_COUNT) % PALETTE_COUNT;
+        _paletteIndex = ((index % paletteCount) + paletteCount) % paletteCount;
         for (auto* go : { _proceduralTerrain, _heightmapTerrain }) {
             if (!go) continue;
             if (auto* tm = go->GetComponent<TerrainMeshComponent>())
-                if (auto* mat = tm->GetTerrainMaterial())
-                    mat->paletteIndex = _paletteIndex;
+                if (auto* mat = tm->GetTerrainMaterial()) mat->paletteIndex = _paletteIndex;
         }
-        if (_selPalette) { _syncing = true; _selPalette->SetSelection(_paletteIndex); _syncing = false; }
-        ConsoleSubsystem::Get()->Info(std::string("Terrain palette ") + PALETTE_NAMES[_paletteIndex]);
+        if (_selPalette) {
+            _syncing = true;
+            _selPalette->SetSelection(_paletteIndex);
+            _syncing = false;
+        }
+        ConsoleSubsystem::Get()->Info(std::string("Terrain palette ") + paletteNames[_paletteIndex]);
     }
 
     GameObject* CreateTerrain(const std::string& name, const std::shared_ptr<HeightField>& hf) {
-        const float worldSize   = 1024.0f;
+        const float worldSize = 1024.0f;
         const float heightScale = 64.0f;
 
         auto* terrain = CreateGameObject(glm::vec3(0.0f, -10.0f, 0.0f));
         terrain->SetName(name);
         terrain->AddComponent<TerrainMeshComponent>(
-            GraphicsSubsystem::Get(), hf,
+            GraphicsSubsystem::Get(),
+            hf,
             TerrainMeshProps{
-                .worldSize          = worldSize,
-                .resolution         = 256,
-                .heightScale        = heightScale,
+                .worldSize = worldSize,
+                .resolution = 256,
+                .heightScale = heightScale,
                 .tessellationFactor = 16.0f,
             }
         );
         terrain->AddComponent<HeightFieldColliderComponent>(
             hf,
             HeightFieldColliderProps{
-                .worldSize   = worldSize,
+                .worldSize = worldSize,
                 .heightScale = heightScale,
-                .minHeight   = -64.0f,
-                .maxHeight   =  64.0f,
+                .minHeight = -64.0f,
+                .maxHeight = 64.0f,
             }
         );
         return terrain;
@@ -118,42 +131,44 @@ class TerrainDemo : public Application {
 #if defined(__EMSCRIPTEN__)
         // Wireframe (glPolygonMode) is unavailable on WebGL — hide its hint.
         // The I-key handler stays active but is a harmless no-op on the web.
-        if (auto* hint = _hud->GetElementById("hint_wireframe"))
-            hint->SetProperty("display", "none");
+        if (auto* hint = _hud->GetElementById("hint_wireframe")) hint->SetProperty("display", "none");
 #endif
 
-        _selMode    = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("mode_select"));
+        _selMode = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("mode_select"));
         _selPalette = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("palette_select"));
 
         // Native <select> fires "change" on user selection; apply it to the
         // terrain. The _syncing guard skips changes we triggered from code.
-        AddListener(_selMode, "change", [this]{
+        AddListener(_selMode, "change", [this] {
             if (!_syncing && _selMode) ApplyProcedural(_selMode->GetSelection() == 0);
         });
-        AddListener(_selPalette, "change", [this]{
+        AddListener(_selPalette, "change", [this] {
             if (!_syncing && _selPalette) ApplyPalette(_selPalette->GetSelection());
         });
     }
 
     void OnLoad() override {
-        _cam   = mainCamera;
+        _cam = mainCamera;
         _camGO = _cam->gameObject;
         _camGO->SetPosition(glm::vec3(0.0f, 64.0f, 0.0f));
 
         // Procedural Noise HeightField
-        _proceduralTerrain = CreateTerrain("ProceduralTerrain", std::make_shared<NoiseHeightField>(NoiseHeightFieldParams{
-            .resolution = 256,
-            .seed       = 42,
-            .frequency  = 0.02f,
-            .octaves    = 8,
-            .lacunarity = 2.0f,
-            .gain       = 0.5f,
-        }));
+        _proceduralTerrain = CreateTerrain(
+            "ProceduralTerrain",
+            std::make_shared<NoiseHeightField>(NoiseHeightFieldParams{
+                .resolution = 256,
+                .seed = 42,
+                .frequency = 0.02f,
+                .octaves = 8,
+                .lacunarity = 2.0f,
+                .gain = 0.5f,
+            })
+        );
 
         // Image-based HeightField. 16-bit sources (16-bit PNG, .r16/.raw,
         // .r32) keep full precision end-to-end; 8-bit images also work.
-        _heightmapTerrain = CreateTerrain("HeightmapTerrain",
-            std::make_shared<ImageHeightField>("assets/textures/test_heightmap.r16"));
+        _heightmapTerrain =
+            CreateTerrain("HeightmapTerrain", std::make_shared<ImageHeightField>("assets/textures/test_heightmap.r16"));
 
         // ── Using WorldCreator / Gaea exports ────────────────────────────────
         // 1. Export the heightmap as 16-bit PNG or RAW (.r16/.r32), square.
@@ -191,25 +206,30 @@ class TerrainDemo : public Application {
         ApplyProcedural(_showProcedural);
         ApplyPalette(_paletteIndex);
 
-        ConsoleSubsystem::Get()->Info("Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, ESC quit.");
+        ConsoleSubsystem::Get()->Info(
+            "Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, ESC "
+            "quit."
+        );
     }
 
     void OnUpdate(float dt, float /*time*/) override {
         _slow = InputSubsystem::Get()->IsKeyDown(Key::Z);
 
-        if (InputSubsystem::Get()->IsKeyDown(Key::UP))    _cam->Pitch( CAMERA_ANGULAR_OFFSET);
-        if (InputSubsystem::Get()->IsKeyDown(Key::DOWN))  _cam->Pitch(-CAMERA_ANGULAR_OFFSET);
-        if (InputSubsystem::Get()->IsKeyDown(Key::RIGHT)) _cam->Yaw(   CAMERA_ANGULAR_OFFSET);
-        if (InputSubsystem::Get()->IsKeyDown(Key::LEFT))  _cam->Yaw(  -CAMERA_ANGULAR_OFFSET);
+        if (InputSubsystem::Get()->IsKeyDown(Key::UP)) _cam->Pitch(CAMERA_ANGULAR_OFFSET);
+        if (InputSubsystem::Get()->IsKeyDown(Key::DOWN)) _cam->Pitch(-CAMERA_ANGULAR_OFFSET);
+        if (InputSubsystem::Get()->IsKeyDown(Key::RIGHT)) _cam->Yaw(CAMERA_ANGULAR_OFFSET);
+        if (InputSubsystem::Get()->IsKeyDown(Key::LEFT)) _cam->Yaw(-CAMERA_ANGULAR_OFFSET);
 
-        const float speed  = (_slow ? _slowSpeed : _moveSpeed) * dt;
-        glm::vec3   pos    = _camGO->GetPosition();
-        glm::vec3   fwd    = _cam->GetEyeDirection();
+        const float speed = (_slow ? _slowSpeed : _moveSpeed) * dt;
+        glm::vec3 pos = _camGO->GetPosition();
+        glm::vec3 fwd = _cam->GetEyeDirection();
 
         if (InputSubsystem::Get()->IsKeyDown(Key::W)) pos += fwd * speed;
         if (InputSubsystem::Get()->IsKeyDown(Key::S)) pos -= fwd * speed;
-        if (InputSubsystem::Get()->IsKeyDown(Key::A)) pos -= glm::normalize(glm::cross(fwd, glm::vec3(0,1,0))) * speed;
-        if (InputSubsystem::Get()->IsKeyDown(Key::D)) pos += glm::normalize(glm::cross(fwd, glm::vec3(0,1,0))) * speed;
+        if (InputSubsystem::Get()->IsKeyDown(Key::A))
+            pos -= glm::normalize(glm::cross(fwd, glm::vec3(0, 1, 0))) * speed;
+        if (InputSubsystem::Get()->IsKeyDown(Key::D))
+            pos += glm::normalize(glm::cross(fwd, glm::vec3(0, 1, 0))) * speed;
         if (InputSubsystem::Get()->IsKeyDown(Key::R)) pos.y += speed;
         if (InputSubsystem::Get()->IsKeyDown(Key::F)) pos.y -= speed;
         _camGO->SetPosition(pos);
@@ -232,10 +252,12 @@ class TerrainDemo : public Application {
 };
 
 int main(int argc, char* argv[]) {
-    TerrainDemo game({
-        .useDefaultTextures = true,
-        .useDefaultShaders  = true,
-    });
+    TerrainDemo game(
+        {
+            .useDefaultTextures = true,
+            .useDefaultShaders = true,
+        }
+    );
     game.Run();
     return 0;
 }

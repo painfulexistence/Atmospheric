@@ -41,8 +41,7 @@ public:
 
     // Retrieve a previously registered page, cast to the concrete type.
     // Returns nullptr if the id is unknown or the cast fails.
-    template<typename T>
-    T* GetPage(const UIPageID& id) const {
+    template<typename T> T* GetPage(const UIPageID& id) const {
         auto it = _pages.find(id);
         if (it == _pages.end()) return nullptr;
         return dynamic_cast<T*>(it->second.page.get());

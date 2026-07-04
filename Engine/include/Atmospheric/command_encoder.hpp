@@ -25,8 +25,8 @@ class GLCommandEncoder : public CommandEncoder {};
 // same struct will be used for native Dawn once integrated).
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 struct GPUCommandEncoder : public CommandEncoder {
-    WGPUCommandEncoder    encoder = nullptr;
-    WGPURenderPassEncoder pass    = nullptr;
+    WGPUCommandEncoder encoder = nullptr;
+    WGPURenderPassEncoder pass = nullptr;
 };
 #endif
 // TODO: add native Dawn GPUCommandEncoder guard once Dawn is integrated.

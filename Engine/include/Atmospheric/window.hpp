@@ -5,7 +5,7 @@
 #include <unordered_map>
 
 struct ImageSize {
-    ImageSize(int width, int height) : width(width), height(height){};
+    ImageSize(int width, int height) : width(width), height(height) {};
     int width;
     int height;
 };
@@ -22,18 +22,18 @@ struct WindowProps {
 
 // Active graphics backend.
 enum class GfxBackend {
-    WebGPU,  // Primary: Dawn on native / browser WebGPU on web
-    OpenGL,  // Fallback: OpenGL 4.1 (native) / WebGL 2.0 (Emscripten)
+    WebGPU,// Primary: Dawn on native / browser WebGPU on web
+    OpenGL,// Fallback: OpenGL 4.1 (native) / WebGL 2.0 (Emscripten)
 };
 
 // Negotiated block-compressed texture support on the active WebGPU device.
 // Reflects the WGPUFeatureName_TextureCompression* features actually granted
 // by the adapter/device (queried via wgpuAdapterHasFeature), not just requested.
 enum class TextureCompressionFormat {
-    None,    // No compressed-texture feature negotiated; upload uncompressed RGBA32.
-    BC7,     // Desktop browsers (Chrome/Firefox on Windows/Mac/Linux)
-    ETC2,    // Mobile / some integrated GPUs
-    ASTC4x4, // Mobile (newer Android GPUs)
+    None,// No compressed-texture feature negotiated; upload uncompressed RGBA32.
+    BC7,// Desktop browsers (Chrome/Firefox on Windows/Mac/Linux)
+    ETC2,// Mobile / some integrated GPUs
+    ASTC4x4,// Mobile (newer Android GPUs)
 };
 
 // Minification/magnification filter hint for a 2D texture.
@@ -184,13 +184,15 @@ public:
     glm::vec2 GetDPI();
 
     // Returns the native window handle (SDL_Window* on SDL backend).
-    void* GetNativeHandle() const { return _internal; }
+    void* GetNativeHandle() const {
+        return _internal;
+    }
 
 private:
     void* _internal = nullptr;
     bool _isRunning = true;
     bool _isFullscreen = false;
-    bool _webGPUCanvas = false; // true if canvas was left free for WebGPU (no GL context)
+    bool _webGPUCanvas = false;// true if canvas was left free for WebGPU (no GL context)
     int _windowedX = 0;
     int _windowedY = 0;
     int _windowedWidth = 0;

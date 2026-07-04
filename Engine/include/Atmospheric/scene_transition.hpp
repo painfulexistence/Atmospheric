@@ -1,6 +1,8 @@
 #pragma once
 
-namespace Rml { class ElementDocument; }
+namespace Rml {
+    class ElementDocument;
+}
 
 // Loading-screen / transition controller.
 //

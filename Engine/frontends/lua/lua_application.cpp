@@ -1,8 +1,8 @@
 #include "lua_application.hpp"
 #include "Atmospheric/gfx_factory.hpp"
 
-#include <filesystem>
 #include "Atmospheric/file_system.hpp"
+#include <filesystem>
 
 // Forward declarations for binding functions
 void BindCoreTypes(sol::state& lua);
@@ -26,7 +26,7 @@ void LuaApplication::OnInit() {
 #if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
     if (GfxFactory::GetBackend() != GfxBackend::WebGPU)
 #endif
-    AssetManager::Get().LoadDefaultShaders();
+        AssetManager::Get().LoadDefaultShaders();
     AssetManager::Get().LoadDefaultTextures();
 
     // Create a default material
@@ -42,7 +42,7 @@ void LuaApplication::OnInit() {
     // GoScene must be called AFTER CacheCallbacks() so that _luaLoad is valid
     // when OnLoad() fires. On native, Prefetch is synchronous, meaning the
     // onReady callback (→ OnLoad → Lua load()) executes immediately inside GoScene.
-    GoScene("main", [this]{ OnLoad(); });
+    GoScene("main", [this] { OnLoad(); });
 }
 
 void LuaApplication::OnLoad() {
@@ -72,14 +72,14 @@ void LuaApplication::InitializeLua() {
     // written there by FileSystem::Prefetch() are accessible via io.open()
     // and the Lua require() system.
     _lua.open_libraries(
-      sol::lib::base,
-      sol::lib::package,
-      sol::lib::string,
-      sol::lib::math,
-      sol::lib::table,
-      sol::lib::io,
-      sol::lib::os,
-      sol::lib::debug
+        sol::lib::base,
+        sol::lib::package,
+        sol::lib::string,
+        sol::lib::math,
+        sol::lib::table,
+        sol::lib::io,
+        sol::lib::os,
+        sol::lib::debug
     );
 
     std::string packagePath = _lua["package"]["path"];
@@ -161,7 +161,7 @@ void LuaApplication::LoadUserScripts() {
                 HandleError(result, "Loading " + targetPath);
             } else {
                 ENGINE_LOG("Loaded script: {}", targetPath);
-                
+
                 // Dynamically update package.path to prioritize the loaded script's directory
                 std::filesystem::path p(targetPath);
                 std::string baseDir = p.parent_path().string();

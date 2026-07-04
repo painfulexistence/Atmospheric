@@ -1,7 +1,7 @@
 #pragma once
 
-#include "renderer.hpp"
 #include "imgui.h"
+#include "renderer.hpp"
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -45,8 +45,8 @@ class AudioSubsystem;
 class VideoRecorder {
 public:
     enum class CaptureResult {
-        Captured, // frame queued for encoding
-        Dropped,  // encoder queue full; frame silently dropped to preserve FPS
+        Captured,// frame queued for encoding
+        Dropped,// encoder queue full; frame silently dropped to preserve FPS
     };
 
     struct Config {
@@ -67,7 +67,7 @@ public:
         int audioBitrate = 128000;
         // Must match the PCM supplied to writeAudio().
         int audioSampleRate = 44100;
-        int audioChannels   = 2;
+        int audioChannels = 2;
     };
 
     VideoRecorder();
@@ -82,7 +82,9 @@ public:
     // Stop recording and flush remaining frames to disk.
     void stopRecording();
 
-    bool isRecording() const { return m_recording.load(); }
+    bool isRecording() const {
+        return m_recording.load();
+    }
 
     // Schedule capture of the current rendered frame. Call once per frame
     // from the render/GL thread. Uses a 3-PBO async ring buffer so the GPU
@@ -97,7 +99,9 @@ public:
     // Wire this recorder to an AudioSubsystem so startRecording/stopRecording
     // automatically attach/detach raudio's mixed processor.
     // Call once after construction (e.g. in Application::Run).
-    void setAudioManager(AudioSubsystem* mgr) { m_audioManager = mgr; }
+    void setAudioManager(AudioSubsystem* mgr) {
+        m_audioManager = mgr;
+    }
 
     // Set the directory where timestamped recordings are saved.
     void setBaseOutputDir(const std::string& dir) {
@@ -114,13 +118,12 @@ public:
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.55f, 0.15f, 1.0f));
             if (ImGui::Button("Start##rec", ImVec2(-1.0f, 0.0f))) {
                 std::error_code ec;
-                std::filesystem::create_directories(
-                    std::filesystem::path(m_outputBuf).parent_path(), ec);
+                std::filesystem::create_directories(std::filesystem::path(m_outputBuf).parent_path(), ec);
                 Config cfg;
-                cfg.outputPath      = m_outputBuf;
-                cfg.captureAudio    = (m_audioManager != nullptr);
+                cfg.outputPath = m_outputBuf;
+                cfg.captureAudio = (m_audioManager != nullptr);
                 cfg.audioSampleRate = 44100;
-                cfg.audioChannels   = 2;
+                cfg.audioChannels = 2;
                 if (startRecording(&renderer, cfg))
                     m_status.clear();
                 else
@@ -136,12 +139,15 @@ public:
             }
             ImGui::PopStyleColor();
             auto elapsed = std::chrono::steady_clock::now() - m_recordingStart;
-            auto secs    = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
-            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-                               "REC  %02d:%02d", static_cast<int>(secs / 60), static_cast<int>(secs % 60));
+            auto secs = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+            ImGui::TextColored(
+                ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
+                "REC  %02d:%02d",
+                static_cast<int>(secs / 60),
+                static_cast<int>(secs % 60)
+            );
         }
-        if (!m_status.empty())
-            ImGui::TextDisabled("%s", m_status.c_str());
+        if (!m_status.empty()) ImGui::TextDisabled("%s", m_status.c_str());
     }
 
 private:
@@ -149,8 +155,8 @@ private:
         std::vector<uint8_t> pixels;
         uint32_t width = 0;
         uint32_t height = 0;
-        double timestamp; // seconds since recording started (wall-clock)
-        bool bottomUp = false; // true when coming from PBO; encodeFrame uses negative stride
+        double timestamp;// seconds since recording started (wall-clock)
+        bool bottomUp = false;// true when coming from PBO; encodeFrame uses negative stride
     };
 
     struct FFmpegContext;
@@ -167,12 +173,12 @@ private:
     void flushAudioEncoder();
 
     std::string m_baseOutputDir = "output";
-    char        m_outputBuf[256] = {};
+    char m_outputBuf[256] = {};
     std::string m_status;
 
     void refreshOutputPath() {
         auto now = std::chrono::system_clock::now();
-        auto t   = std::chrono::system_clock::to_time_t(now);
+        auto t = std::chrono::system_clock::to_time_t(now);
         std::tm tm{};
 #ifdef _WIN32
         localtime_s(&tm, &t);
@@ -187,28 +193,28 @@ private:
     }
 
     Renderer* m_renderer = nullptr;
-    Config    m_config;
+    Config m_config;
     std::chrono::steady_clock::time_point m_recordingStart;
 
     std::unique_ptr<FFmpegContext> m_ffmpeg;
 
-    std::queue<RawFrame>    m_frameQueue;
-    std::mutex              m_mutex;
+    std::queue<RawFrame> m_frameQueue;
+    std::mutex m_mutex;
     std::condition_variable m_cv;
-    std::thread             m_encoderThread;
+    std::thread m_encoderThread;
 
-    std::atomic<bool> m_recording{false};
-    std::atomic<bool> m_stop{false};
+    std::atomic<bool> m_recording{ false };
+    std::atomic<bool> m_stop{ false };
 
     static constexpr size_t MAX_QUEUE_FRAMES = 16;
 
     AudioSubsystem* m_audioManager = nullptr;
 
     // ── Audio capture state ──────────────────────────────────────────────────
-    bool m_audioActive = false; // true when this session records an audio track
+    bool m_audioActive = false;// true when this session records an audio track
 
     // Interleaved float32 PCM from writeAudio(), consumed by the encoder thread.
     // Bounded to ~5 s to prevent unbounded growth if the encoder falls behind.
     std::deque<float> m_audioQueue;
-    std::mutex        m_audioMutex;
+    std::mutex m_audioMutex;
 };

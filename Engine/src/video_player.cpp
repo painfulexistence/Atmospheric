@@ -22,38 +22,31 @@ extern "C" {
 #include <emscripten.h>
 
 extern "C" {
-void js_video_open(uintptr_t playerId, const char* pathStr);
-void js_video_close(uintptr_t playerId);
-void js_video_play(uintptr_t playerId);
-void js_video_pause(uintptr_t playerId);
-void js_video_get_info(uintptr_t playerId, double* outInfo);
-int js_video_grab_frame(uintptr_t playerId, uint8_t* outPixels);
+    void js_video_open(uintptr_t playerId, const char* pathStr);
+    void js_video_close(uintptr_t playerId);
+    void js_video_play(uintptr_t playerId);
+    void js_video_pause(uintptr_t playerId);
+    void js_video_get_info(uintptr_t playerId, double* outInfo);
+    int js_video_grab_frame(uintptr_t playerId, uint8_t* outPixels);
 }
 
 EM_JS(void, js_video_open, (uintptr_t playerId, const char* pathStr), {
     var path = UTF8ToString(pathStr);
     window.videoPlayers = window.videoPlayers || {};
-    
+
     var video = document.createElement('video');
     video.src = path;
-    if (path.indexOf('://') !== -1 || path.indexOf('//') === 0) {
+    if (path.indexOf('://') != = -1 || path.indexOf('//') == = 0) {
         video.crossOrigin = "anonymous";
     }
-    video.muted = false; // Enable audio playback
+    video.muted = false;// Enable audio playback
     video.playsInline = true;
     video.load();
-    
+
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
-    
-    window.videoPlayers[playerId] = {
-        video: video,
-        canvas: canvas,
-        ctx: ctx,
-        lastTime: -1,
-        width: 0,
-        height: 0
-    };
+
+    window.videoPlayers[playerId] = { video : video, canvas : canvas, ctx : ctx, lastTime : -1, width : 0, height : 0 };
 });
 
 EM_JS(void, js_video_close, (uintptr_t playerId), {
@@ -71,7 +64,7 @@ EM_JS(void, js_video_play, (uintptr_t playerId), {
         video.play().catch(function(e) {
             console.warn("Video autoplay with audio blocked. Registering interaction listeners to start audio.");
             var startVideo = function() {
-                video.play().catch(function(err) {});
+                video.play().catch(function(err){});
                 document.removeEventListener('click', startVideo);
                 document.removeEventListener('touchend', startVideo);
                 document.removeEventListener('keydown', startVideo);
@@ -104,24 +97,24 @@ EM_JS(int, js_video_grab_frame, (uintptr_t playerId, uint8_t* outPixels), {
     var player = window.videoPlayers[playerId];
     var video = player.video;
     if (video.readyState < 2) return 0;
-    if (video.currentTime === player.lastTime) return 0;
-    
+    if (video.currentTime == = player.lastTime) return 0;
+
     var w = video.videoWidth;
     var h = video.videoHeight;
     if (w <= 0 || h <= 0) return 0;
-    
-    if (player.canvas.width !== w || player.canvas.height !== h) {
+
+    if (player.canvas.width != = w || player.canvas.height != = h) {
         player.canvas.width = w;
         player.canvas.height = h;
     }
-    
+
     try {
         player.ctx.drawImage(video, 0, 0, w, h);
         var imgData = player.ctx.drawImage ? player.ctx.getImageData(0, 0, w, h) : null;
         if (imgData) {
             HEAPU8.set(imgData.data, outPixels);
         }
-    } catch(e) {
+    } catch (e) {
         if (!player.hasTaintError) {
             console.error("Failed to grab video frame (CORS/security issue?):", e);
             player.hasTaintError = true;
@@ -138,34 +131,34 @@ EM_JS(int, js_video_grab_frame, (uintptr_t playerId, uint8_t* outPixels), {
 struct VideoPlayer::FFmpegDecodeContext {
 #ifdef AE_HAS_FFMPEG
     // Video
-    AVFormatContext* fmtCtx         = nullptr;
-    AVCodecContext*  codecCtx       = nullptr;
-    SwsContext*      swsCtx         = nullptr;
-    AVFrame*         frame          = nullptr;
-    AVFrame*         hwFrame        = nullptr; // CPU staging frame for HW transfer
-    AVPacket*        packet         = nullptr;
-    int              videoStreamIdx = -1;
-    double           timeBase       = 0.0;
+    AVFormatContext* fmtCtx = nullptr;
+    AVCodecContext* codecCtx = nullptr;
+    SwsContext* swsCtx = nullptr;
+    AVFrame* frame = nullptr;
+    AVFrame* hwFrame = nullptr;// CPU staging frame for HW transfer
+    AVPacket* packet = nullptr;
+    int videoStreamIdx = -1;
+    double timeBase = 0.0;
 
     // Hardware acceleration
-    AVBufferRef*  hwDeviceCtx = nullptr;
-    AVPixelFormat hwPixFmt    = AV_PIX_FMT_NONE; // HW pixel format for this session
+    AVBufferRef* hwDeviceCtx = nullptr;
+    AVPixelFormat hwPixFmt = AV_PIX_FMT_NONE;// HW pixel format for this session
 
     // Audio decode
-    AVCodecContext*  audioCodecCtx  = nullptr;
-    SwrContext*      audioSwrCtx    = nullptr;
-    AVFrame*         audioFrame     = nullptr;
-    int              audioStreamIdx = -1;
-    int              audioSampleRate = 0;
-    int              audioChannels  = 0;
+    AVCodecContext* audioCodecCtx = nullptr;
+    SwrContext* audioSwrCtx = nullptr;
+    AVFrame* audioFrame = nullptr;
+    int audioStreamIdx = -1;
+    int audioSampleRate = 0;
+    int audioChannels = 0;
 
     // Audio playback (raudio)
-    AudioStream      audioStream    = {};
-    bool             audioReady     = false;
+    AudioStream audioStream = {};
+    bool audioReady = false;
 
     // PCM queue shared between decode thread and main thread
     std::deque<int16_t> audioPCM;
-    std::mutex          audioMutex;
+    std::mutex audioMutex;
 #endif
 };
 
@@ -185,10 +178,10 @@ bool VideoPlayer::open(const std::string& path) {
         resolvedPath = FileSystem::Get().ResolvePath(path).value_or(path);
     }
     js_video_open(reinterpret_cast<uintptr_t>(this), resolvedPath.c_str());
-    m_currentTime     = 0.0;
+    m_currentTime = 0.0;
     m_hasCurrentFrame = false;
-    m_finished        = false;
-    m_open            = true;
+    m_finished = false;
+    m_open = true;
     return true;
 #else
 #ifndef AE_HAS_FFMPEG
@@ -208,11 +201,11 @@ bool VideoPlayer::open(const std::string& path) {
         return false;
     }
 
-    m_currentTime     = 0.0;
+    m_currentTime = 0.0;
     m_hasCurrentFrame = false;
-    m_stop            = false;
-    m_finished        = false;
-    m_open            = true;
+    m_stop = false;
+    m_finished = false;
+    m_open = true;
 
     m_decodeThread = std::thread(&VideoPlayer::decodeThreadFunc, this);
     return true;
@@ -227,11 +220,11 @@ void VideoPlayer::close() {
 
 #ifdef __EMSCRIPTEN__
     js_video_close(reinterpret_cast<uintptr_t>(this));
-    m_open            = false;
-    m_playing         = false;
-    m_finished        = false;
-    m_currentTime     = 0.0;
-    m_duration        = 0.0;
+    m_open = false;
+    m_playing = false;
+    m_finished = false;
+    m_currentTime = 0.0;
+    m_duration = 0.0;
     m_hasCurrentFrame = false;
     m_frameQueue.clear();
     return;
@@ -258,11 +251,11 @@ void VideoPlayer::close() {
 
     cleanup();
 
-    m_open            = false;
-    m_playing         = false;
-    m_finished        = false;
-    m_currentTime     = 0.0;
-    m_duration        = 0.0;
+    m_open = false;
+    m_playing = false;
+    m_finished = false;
+    m_currentTime = 0.0;
+    m_duration = 0.0;
     m_hasCurrentFrame = false;
 
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -303,30 +296,30 @@ bool VideoPlayer::update(double deltaTime) {
     }
 
 #ifdef __EMSCRIPTEN__
-    double info[5] = {0};
+    double info[5] = { 0 };
     js_video_get_info(reinterpret_cast<uintptr_t>(this), info);
-    
+
     uint32_t w = static_cast<uint32_t>(info[0]);
     uint32_t h = static_cast<uint32_t>(info[1]);
     m_duration = info[2];
     m_currentTime = info[3];
     m_finished = (info[4] > 0.5);
-    
+
     if (m_finished) {
         m_playing = false;
         return false;
     }
-    
+
     if (w <= 0 || h <= 0) {
         return false;
     }
-    
+
     if (m_currentFrame.width != w || m_currentFrame.height != h) {
         m_currentFrame.pixels.resize(w * h * 4);
         m_currentFrame.width = w;
         m_currentFrame.height = h;
     }
-    
+
     int updated = js_video_grab_frame(reinterpret_cast<uintptr_t>(this), m_currentFrame.pixels.data());
     if (updated) {
         m_hasCurrentFrame = true;
@@ -351,10 +344,10 @@ bool VideoPlayer::update(double deltaTime) {
         std::lock_guard<std::mutex> lock(m_mutex);
 
         while (!m_frameQueue.empty() && m_frameQueue.front().pts <= m_currentTime) {
-            m_currentFrame    = std::move(m_frameQueue.front());
+            m_currentFrame = std::move(m_frameQueue.front());
             m_frameQueue.pop_front();
             m_hasCurrentFrame = true;
-            frameChanged      = true;
+            frameChanged = true;
         }
     }
 
@@ -364,10 +357,10 @@ bool VideoPlayer::update(double deltaTime) {
     if (m_ffmpeg && m_ffmpeg->audioReady) {
         if (IsAudioStreamProcessed(m_ffmpeg->audioStream)) {
             std::lock_guard<std::mutex> al(m_ffmpeg->audioMutex);
-            static constexpr int CHUNK_FRAMES = 4096;
+            static constexpr int chunkFrames = 4096;
             int ch = m_ffmpeg->audioChannels;
             int available = static_cast<int>(m_ffmpeg->audioPCM.size()) / ch;
-            int toSend    = std::min(available, CHUNK_FRAMES);
+            int toSend = std::min(available, chunkFrames);
             if (toSend > 0) {
                 std::vector<int16_t> buf(static_cast<size_t>(toSend) * ch, 0);
                 for (int i = 0; i < toSend * ch; ++i) {
@@ -413,11 +406,9 @@ void VideoPlayer::decodeThreadFunc() {
         }
 
         std::vector<int16_t> pcm(static_cast<size_t>(outSamples) * ff.audioChannels);
-        uint8_t* outPlanes[1] = {reinterpret_cast<uint8_t*>(pcm.data())};
-        int converted = swr_convert(ff.audioSwrCtx,
-                                    outPlanes, outSamples,
-                                    const_cast<const uint8_t**>(af->data),
-                                    af->nb_samples);
+        uint8_t* outPlanes[1] = { reinterpret_cast<uint8_t*>(pcm.data()) };
+        int converted =
+            swr_convert(ff.audioSwrCtx, outPlanes, outSamples, const_cast<const uint8_t**>(af->data), af->nb_samples);
         if (converted <= 0) {
             return;
         }
@@ -425,8 +416,8 @@ void VideoPlayer::decodeThreadFunc() {
 
         std::lock_guard<std::mutex> al(ff.audioMutex);
         // Cap at ~5 seconds of audio to prevent unbounded growth.
-        static constexpr size_t MAX_PCM = 48000 * 2 * 5;
-        if (ff.audioPCM.size() + pcm.size() <= MAX_PCM) {
+        static constexpr size_t maxPcm = 48000 * 2 * 5;
+        if (ff.audioPCM.size() + pcm.size() <= maxPcm) {
             ff.audioPCM.insert(ff.audioPCM.end(), pcm.begin(), pcm.end());
         }
     };
@@ -434,9 +425,7 @@ void VideoPlayer::decodeThreadFunc() {
     while (!m_stop) {
         {
             std::unique_lock<std::mutex> lock(m_mutex);
-            m_cv.wait(lock, [this] {
-                return m_frameQueue.size() < MAX_BUFFERED_FRAMES || m_stop.load();
-            });
+            m_cv.wait(lock, [this] { return m_frameQueue.size() < MAX_BUFFERED_FRAMES || m_stop.load(); });
         }
         if (m_stop) {
             break;
@@ -471,9 +460,7 @@ void VideoPlayer::decodeThreadFunc() {
                     break;
                 }
             }
-        } else if (ff.audioStreamIdx >= 0 &&
-                   ff.packet->stream_index == ff.audioStreamIdx &&
-                   ff.audioCodecCtx) {
+        } else if (ff.audioStreamIdx >= 0 && ff.packet->stream_index == ff.audioStreamIdx && ff.audioCodecCtx) {
             avcodec_send_packet(ff.audioCodecCtx, ff.packet);
             av_packet_unref(ff.packet);
             while (avcodec_receive_frame(ff.audioCodecCtx, ff.audioFrame) >= 0) {
@@ -512,7 +499,7 @@ bool VideoPlayer::initDecoder(const std::string& path) {
     }
 
     AVStream* vstream = ff.fmtCtx->streams[ff.videoStreamIdx];
-    ff.timeBase       = av_q2d(vstream->time_base);
+    ff.timeBase = av_q2d(vstream->time_base);
 
     if (ff.fmtCtx->duration != AV_NOPTS_VALUE) {
         m_duration = static_cast<double>(ff.fmtCtx->duration) / AV_TIME_BASE;
@@ -528,10 +515,10 @@ bool VideoPlayer::initDecoder(const std::string& path) {
     // Try each HW type in priority order; first success wins.
     // Falls through to pure software if nothing works.
     static constexpr AVHWDeviceType kHwPriority[] = {
-        AV_HWDEVICE_TYPE_VIDEOTOOLBOX, // macOS
-        AV_HWDEVICE_TYPE_CUDA,         // NVIDIA
-        AV_HWDEVICE_TYPE_VAAPI,        // Linux / Intel
-        AV_HWDEVICE_TYPE_D3D11VA,      // Windows
+        AV_HWDEVICE_TYPE_VIDEOTOOLBOX,// macOS
+        AV_HWDEVICE_TYPE_CUDA,// NVIDIA
+        AV_HWDEVICE_TYPE_VAAPI,// Linux / Intel
+        AV_HWDEVICE_TYPE_D3D11VA,// Windows
         AV_HWDEVICE_TYPE_NONE,
     };
     for (const AVHWDeviceType hwType : kHwPriority) {
@@ -541,20 +528,22 @@ bool VideoPlayer::initDecoder(const std::string& path) {
 
         // Does the selected software codec advertise support for this HW type?
         AVPixelFormat hwPix = AV_PIX_FMT_NONE;
-        for (int i = 0; ; ++i) {
+        for (int i = 0;; ++i) {
             const AVCodecHWConfig* cfg = avcodec_get_hw_config(codec, i);
-            if (!cfg) { break; }
-            if ((cfg->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX)
-                && cfg->device_type == hwType) {
+            if (!cfg) {
+                break;
+            }
+            if ((cfg->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) && cfg->device_type == hwType) {
                 hwPix = cfg->pix_fmt;
                 break;
             }
         }
-        if (hwPix == AV_PIX_FMT_NONE) { continue; }
+        if (hwPix == AV_PIX_FMT_NONE) {
+            continue;
+        }
 
-        if (av_hwdevice_ctx_create(&ff.hwDeviceCtx, hwType,
-                                   nullptr, nullptr, 0) < 0) {
-            continue; // this HW type isn't available on this machine
+        if (av_hwdevice_ctx_create(&ff.hwDeviceCtx, hwType, nullptr, nullptr, 0) < 0) {
+            continue;// this HW type isn't available on this machine
         }
 
         ff.hwPixFmt = hwPix;
@@ -562,18 +551,17 @@ bool VideoPlayer::initDecoder(const std::string& path) {
 
         // Captureless lambda — convertible to C function pointer.
         ff.codecCtx->opaque = &ff.hwPixFmt;
-        ff.codecCtx->get_format = [](AVCodecContext* ctx,
-                                     const AVPixelFormat* fmts) -> AVPixelFormat {
+        ff.codecCtx->get_format = [](AVCodecContext* ctx, const AVPixelFormat* fmts) -> AVPixelFormat {
             const auto target = *static_cast<AVPixelFormat*>(ctx->opaque);
             for (const AVPixelFormat* f = fmts; *f != AV_PIX_FMT_NONE; ++f) {
-                if (*f == target) { return *f; }
+                if (*f == target) {
+                    return *f;
+                }
             }
-            return fmts[0]; // codec didn't offer HW fmt — accept software fallback
+            return fmts[0];// codec didn't offer HW fmt — accept software fallback
         };
 
-        fmt::print("[VideoPlayer] HW decode: {} ({})\n",
-                   av_hwdevice_get_type_name(hwType),
-                   av_get_pix_fmt_name(hwPix));
+        fmt::print("[VideoPlayer] HW decode: {} ({})\n", av_hwdevice_get_type_name(hwType), av_get_pix_fmt_name(hwPix));
         break;
     }
 
@@ -585,9 +573,9 @@ bool VideoPlayer::initDecoder(const std::string& path) {
     int w = ff.codecCtx->width;
     int h = ff.codecCtx->height;
 
-    ff.frame   = av_frame_alloc();
-    ff.hwFrame = av_frame_alloc(); // CPU staging frame for HW→CPU transfer
-    ff.packet  = av_packet_alloc();
+    ff.frame = av_frame_alloc();
+    ff.hwFrame = av_frame_alloc();// CPU staging frame for HW→CPU transfer
+    ff.packet = av_packet_alloc();
 
     // swsCtx is created lazily in convertAndEnqueue() once we know the actual
     // pixel format — HW decoders report the real CPU format only after transfer.
@@ -602,10 +590,10 @@ bool VideoPlayer::initDecoder(const std::string& path) {
         if (ff.audioCodecCtx) {
             avcodec_parameters_to_context(ff.audioCodecCtx, astream->codecpar);
             if (avcodec_open2(ff.audioCodecCtx, acodec, nullptr) >= 0) {
-                ff.audioStreamIdx  = aIdx;
+                ff.audioStreamIdx = aIdx;
                 ff.audioSampleRate = ff.audioCodecCtx->sample_rate;
-                ff.audioChannels   = std::min(ff.audioCodecCtx->ch_layout.nb_channels, 2);
-                ff.audioFrame      = av_frame_alloc();
+                ff.audioChannels = std::min(ff.audioCodecCtx->ch_layout.nb_channels, 2);
+                ff.audioFrame = av_frame_alloc();
 
                 // Convert any input audio format → S16 interleaved stereo.
                 AVChannelLayout outLayout{};
@@ -619,7 +607,9 @@ bool VideoPlayer::initDecoder(const std::string& path) {
                     &ff.audioCodecCtx->ch_layout,
                     ff.audioCodecCtx->sample_fmt,
                     ff.audioCodecCtx->sample_rate,
-                    0, nullptr);
+                    0,
+                    nullptr
+                );
 
                 av_channel_layout_uninit(&outLayout);
 
@@ -628,15 +618,17 @@ bool VideoPlayer::initDecoder(const std::string& path) {
                     // UpdateAudioStream never rejects our writes.
                     SetAudioStreamBufferSizeDefault(4096);
                     ff.audioStream = LoadAudioStream(
-                        static_cast<unsigned int>(ff.audioSampleRate),
-                        16,
-                        static_cast<unsigned int>(ff.audioChannels));
+                        static_cast<unsigned int>(ff.audioSampleRate), 16, static_cast<unsigned int>(ff.audioChannels)
+                    );
                     ff.audioReady = true;
-                    fmt::print("[VideoPlayer] Audio: {} Hz, {} ch ({})\n",
-                               ff.audioSampleRate, ff.audioChannels, acodec->name);
+                    fmt::print(
+                        "[VideoPlayer] Audio: {} Hz, {} ch ({})\n", ff.audioSampleRate, ff.audioChannels, acodec->name
+                    );
                 } else {
                     fmt::print(stderr, "[VideoPlayer] swr init failed; audio disabled\n");
-                    if (ff.audioSwrCtx) { swr_free(&ff.audioSwrCtx); }
+                    if (ff.audioSwrCtx) {
+                        swr_free(&ff.audioSwrCtx);
+                    }
                     avcodec_free_context(&ff.audioCodecCtx);
                     av_frame_free(&ff.audioFrame);
                     ff.audioStreamIdx = -1;
@@ -647,26 +639,24 @@ bool VideoPlayer::initDecoder(const std::string& path) {
         }
     }
 
-    fmt::print("[VideoPlayer] Opened '{}' — {}x{} {:.1f}s ({})\n",
-               path, w, h, m_duration, codec->name);
+    fmt::print("[VideoPlayer] Opened '{}' — {}x{} {:.1f}s ({})\n", path, w, h, m_duration, codec->name);
     return true;
 #endif
 }
 
-bool VideoPlayer::convertAndEnqueue(void* avframe_ptr) {
+bool VideoPlayer::convertAndEnqueue(void* avframePtr) {
 #ifndef AE_HAS_FFMPEG
     return false;
 #else
-    auto& ff      = *m_ffmpeg;
-    auto* avframe = static_cast<AVFrame*>(avframe_ptr);
+    auto& ff = *m_ffmpeg;
+    auto* avframe = static_cast<AVFrame*>(avframePtr);
 
     // If the frame is in hardware memory, transfer it to a CPU frame first.
     AVFrame* swFrame = avframe;
-    if (ff.hwPixFmt != AV_PIX_FMT_NONE
-        && avframe->format == static_cast<int>(ff.hwPixFmt)) {
+    if (ff.hwPixFmt != AV_PIX_FMT_NONE && avframe->format == static_cast<int>(ff.hwPixFmt)) {
         av_frame_unref(ff.hwFrame);
         if (av_hwframe_transfer_data(ff.hwFrame, avframe, 0) < 0) {
-            return true; // skip this frame rather than hard-failing
+            return true;// skip this frame rather than hard-failing
         }
         ff.hwFrame->pts = avframe->pts;
         swFrame = ff.hwFrame;
@@ -678,9 +668,17 @@ bool VideoPlayer::convertAndEnqueue(void* avframe_ptr) {
     // Lazy swsCtx init: pixel format is unknown until after the first HW transfer.
     if (!ff.swsCtx) {
         ff.swsCtx = sws_getContext(
-            w, h, static_cast<AVPixelFormat>(swFrame->format),
-            w, h, AV_PIX_FMT_RGBA,
-            SWS_BILINEAR, nullptr, nullptr, nullptr);
+            w,
+            h,
+            static_cast<AVPixelFormat>(swFrame->format),
+            w,
+            h,
+            AV_PIX_FMT_RGBA,
+            SWS_BILINEAR,
+            nullptr,
+            nullptr,
+            nullptr
+        );
         if (!ff.swsCtx) {
             fmt::print(stderr, "[VideoPlayer] Failed to create colour converter\n");
             return false;
@@ -689,21 +687,17 @@ bool VideoPlayer::convertAndEnqueue(void* avframe_ptr) {
 
     Frame decoded;
     decoded.pixels.resize(static_cast<size_t>(w) * h * 4);
-    decoded.width  = static_cast<uint32_t>(w);
+    decoded.width = static_cast<uint32_t>(w);
     decoded.height = static_cast<uint32_t>(h);
-    decoded.pts    = (swFrame->pts != AV_NOPTS_VALUE)
-                         ? static_cast<double>(swFrame->pts) * ff.timeBase
-                         : 0.0;
+    decoded.pts = (swFrame->pts != AV_NOPTS_VALUE) ? static_cast<double>(swFrame->pts) * ff.timeBase : 0.0;
 
-    uint8_t* dstPlanes[1]  = {decoded.pixels.data()};
-    int      dstStrides[1] = {w * 4};
+    uint8_t* dstPlanes[1] = { decoded.pixels.data() };
+    int dstStrides[1] = { w * 4 };
     sws_scale(ff.swsCtx, swFrame->data, swFrame->linesize, 0, h, dstPlanes, dstStrides);
 
     {
         std::unique_lock<std::mutex> lock(m_mutex);
-        m_cv.wait(lock, [this] {
-            return m_frameQueue.size() < MAX_BUFFERED_FRAMES || m_stop.load();
-        });
+        m_cv.wait(lock, [this] { return m_frameQueue.size() < MAX_BUFFERED_FRAMES || m_stop.load(); });
         if (m_stop) {
             return false;
         }

@@ -5,13 +5,9 @@
 #include "imgui.h"
 #include <algorithm>
 
-SunComponent::SunComponent(glm::vec3 billboardColor,
-                           float     billboardRadius,
-                           float     height)
-    : billboardColor(billboardColor)
-    , billboardRadius(billboardRadius)
-    , height(height)
-{}
+SunComponent::SunComponent(glm::vec3 billboardColor, float billboardRadius, float height)
+  : billboardColor(billboardColor), billboardRadius(billboardRadius), height(height) {
+}
 
 void SunComponent::OnAttach() {
     if (auto* gfx = GraphicsSubsystem::Get()) {
@@ -20,9 +16,9 @@ void SunComponent::OnAttach() {
 }
 
 void SunComponent::DrawImGui() {
-    ImGui::DragFloat3("Billboard Color",  &billboardColor.x,  1.0f, 0.0f, 500.0f);
-    ImGui::DragFloat("Billboard Radius", &billboardRadius,   0.5f, 1.0f, 200.0f);
-    ImGui::DragFloat("Height",           &height,            1.0f);
+    ImGui::DragFloat3("Billboard Color", &billboardColor.x, 1.0f, 0.0f, 500.0f);
+    ImGui::DragFloat("Billboard Radius", &billboardRadius, 0.5f, 1.0f, 200.0f);
+    ImGui::DragFloat("Height", &height, 1.0f);
 }
 
 void SunComponent::OnDetach() {

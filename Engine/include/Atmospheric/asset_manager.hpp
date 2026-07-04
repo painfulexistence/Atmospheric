@@ -29,12 +29,11 @@ public:
 };
 
 
-
 struct Texture2D {
-    GLuint   glID   = 0;
-    uint32_t width  = 0;
+    GLuint glID = 0;
+    uint32_t width = 0;
     uint32_t height = 0;
-    size_t   bytes  = 0;
+    size_t bytes = 0;
 };
 
 // Owned by Application (see Application's service members); Get() is a
@@ -104,7 +103,8 @@ public:
     void UnregisterMesh(MeshHandle handle);
     // Upload a normalized [0,1] float grid as a GL_R8 grayscale texture.
     // Returns the scene-texture index usable as Material::heightMap.
-    TextureHandle CreateHeightmapTexture(const std::string& name, const std::vector<float>& grid, int width, int height);
+    TextureHandle
+        CreateHeightmapTexture(const std::string& name, const std::vector<float>& grid, int width, int height);
     // Re-upload the pixel data of a heightmap texture previously created with
     // CreateHeightmapTexture (e.g. after regenerating a NoiseHeightField).
     void UpdateHeightmapTexture(TextureHandle handle, const std::vector<float>& grid, int width, int height);
@@ -143,7 +143,7 @@ public:
 
     // ========== Cleanup ==========
     void Clear();
-    void ClearSceneAssets();  // Clears scene assets only, preserving defaults.
+    void ClearSceneAssets();// Clears scene assets only, preserving defaults.
 
 private:
     static AssetManager* instance;
@@ -171,7 +171,7 @@ private:
     // Meshes
     std::unordered_map<uint32_t, Mesh*> _meshByID;
     std::unordered_map<std::string, uint32_t> _meshCache;
-    std::unordered_set<uint32_t> _ownedMeshIDs;  // IDs AssetManager must delete; excludes RegisterMesh entries
+    std::unordered_set<uint32_t> _ownedMeshIDs;// IDs AssetManager must delete; excludes RegisterMesh entries
     uint32_t _nextMeshID = 1;
 
     // Raw JSON strings keyed by scene name — re-parsed on unload.

@@ -2,20 +2,18 @@
 #include "graphics_subsystem.hpp"
 #include <algorithm>
 
-Tilemap2D::Tilemap2D(const Tilemap2DData& data, uint32_t tilesetTexID)
-    : _data(data), _tilesetTexID(tilesetTexID) {}
+Tilemap2D::Tilemap2D(const Tilemap2DData& data, uint32_t tilesetTexID) : _data(data), _tilesetTexID(tilesetTexID) {
+}
 
-void Tilemap2D::Draw(GraphicsSubsystem* gfx,
-                     float camX, float camY,
-                     int screenW, int screenH) const {
-    const int ts   = _data.tileSize;
+void Tilemap2D::Draw(GraphicsSubsystem* gfx, float camX, float camY, int screenW, int screenH) const {
+    const int ts = _data.tileSize;
     const int cols = _data.tilesetCols;
     const int rows = _data.tilesetRows;
 
     const int startCol = std::max(0, static_cast<int>(camX / ts));
     const int startRow = std::max(0, static_cast<int>(camY / ts));
-    const int endCol   = std::min(_data.width,  startCol + screenW / ts + 2);
-    const int endRow   = std::min(_data.height, startRow + screenH / ts + 2);
+    const int endCol = std::min(_data.width, startCol + screenW / ts + 2);
+    const int endRow = std::min(_data.height, startRow + screenH / ts + 2);
 
     for (int row = startRow; row < endRow; row++) {
         for (int col = startCol; col < endCol; col++) {
@@ -25,11 +23,16 @@ void Tilemap2D::Draw(GraphicsSubsystem* gfx,
             float wx = static_cast<float>(col * ts) - camX;
             float wy = static_cast<float>(row * ts) - camY;
 
-            gfx->DrawTile(wx, wy, static_cast<float>(ts), static_cast<float>(ts),
-                          _tilesetTexID,
-                          glm::vec2(static_cast<float>(cols), static_cast<float>(rows)),
-                          tileIdx % cols,
-                          tileIdx / cols);
+            gfx->DrawTile(
+                wx,
+                wy,
+                static_cast<float>(ts),
+                static_cast<float>(ts),
+                _tilesetTexID,
+                glm::vec2(static_cast<float>(cols), static_cast<float>(rows)),
+                tileIdx % cols,
+                tileIdx / cols
+            );
         }
     }
 }

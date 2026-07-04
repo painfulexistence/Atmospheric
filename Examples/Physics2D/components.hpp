@@ -6,34 +6,39 @@
 // Marks a shape as participating in the merge/match system.
 class MergeableComponent : public Component {
 public:
-    int  sides        = 3;
-    int  minGroup     = 2;    // minimum connected group size to trigger merge
+    int sides = 3;
+    int minGroup = 2;// minimum connected group size to trigger merge
     bool pendingRemove = false;
-    bool launched     = false;
+    bool launched = false;
 
-    MergeableComponent(GameObject* go, int sides, int minGroup = 2)
-        : sides(sides), minGroup(minGroup) { gameObject = go; }
+    MergeableComponent(GameObject* go, int sides, int minGroup = 2) : sides(sides), minGroup(minGroup) {
+        gameObject = go;
+    }
 
-    std::string GetName() const override { return "MergeableComponent"; }
+    std::string GetName() const override {
+        return "MergeableComponent";
+    }
 };
 
 // Eases the ShapeRendererComponent colour toward a target each tick.
 // If no target is provided, captures the spawn colour in OnAttach.
 // Used to recover from a collision flash (e.g. SetColor to white on contact).
 class ColorRestoreComponent : public Component {
-    float     _speed;
-    glm::vec4 _base{-1.0f};   // sentinel: -1 means "capture on attach"
+    float _speed;
+    glm::vec4 _base{ -1.0f };// sentinel: -1 means "capture on attach"
 public:
-    ColorRestoreComponent(GameObject* go, float speed = 2.0f,
-                          glm::vec4 target = glm::vec4(-1.0f))
-        : _speed(speed), _base(target) { gameObject = go; }
+    ColorRestoreComponent(GameObject* go, float speed = 2.0f, glm::vec4 target = glm::vec4(-1.0f))
+      : _speed(speed), _base(target) {
+        gameObject = go;
+    }
 
-    std::string GetName() const override { return "ColorRestoreComponent"; }
+    std::string GetName() const override {
+        return "ColorRestoreComponent";
+    }
 
     void OnAttach() override {
-        if (_base.r < 0.0f)   // no explicit target — use spawn colour
-            if (auto* s = gameObject->GetComponent<ShapeRendererComponent>())
-                _base = s->GetColor();
+        if (_base.r < 0.0f)// no explicit target — use spawn colour
+            if (auto* s = gameObject->GetComponent<ShapeRendererComponent>()) _base = s->GetColor();
     }
 
     void OnTick(float dt) override {

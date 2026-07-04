@@ -69,11 +69,11 @@ void Animator2D::Stop() {
 }
 
 void Animator2D::CreateAnimationFromTileset(
-  const std::string& name,
-  const glm::vec2& tilesetSize,
-  const std::vector<int>& tileIndices,
-  float frameDuration,
-  bool loop
+    const std::string& name,
+    const glm::vec2& tilesetSize,
+    const std::vector<int>& tileIndices,
+    float frameDuration,
+    bool loop
 ) {
     AnimationClip clip;
     clip.name = name;

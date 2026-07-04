@@ -4,14 +4,12 @@
 #include "window.hpp"
 #include <deque>
 
-class InputSubsystem : public Subsystem
-{
+class InputSubsystem : public Subsystem {
 private:
     static InputSubsystem* _instance;
 
 public:
-    static InputSubsystem* Get()
-    {
+    static InputSubsystem* Get() {
         return _instance;
     }
 
@@ -33,7 +31,9 @@ public:
     // True when the cursor is over an interactive RmlUi element this frame.
     // Games should gate world-space mouse actions on !IsMouseOverUI() so a
     // click on the HUD doesn't also hit the scene behind it.
-    bool IsMouseOverUI() const { return _mouseOverUi; }
+    bool IsMouseOverUI() const {
+        return _mouseOverUi;
+    }
 
     glm::vec2 GetMousePosition();
 

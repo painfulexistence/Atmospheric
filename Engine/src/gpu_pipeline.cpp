@@ -5,7 +5,7 @@ GpuPipeline GpuPipelineBuilder::build() {
     // Compile shader module
     WGPUShaderSourceWGSL wgslDesc{};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code        = { _src.c_str(), WGPU_STRLEN };
+    wgslDesc.code = { _src.c_str(), WGPU_STRLEN };
     WGPUShaderModuleDescriptor shaderDesc{};
     shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
     WGPUShaderModule shader = wgpuDeviceCreateShaderModule(_device, &shaderDesc);
@@ -30,40 +30,40 @@ GpuPipeline GpuPipelineBuilder::build() {
         wgpuEntries.reserve(entries.size());
         for (const auto& e : entries) {
             WGPUBindGroupLayoutEntry we{};
-            we.binding    = e.binding;
+            we.binding = e.binding;
             we.visibility = e.visibility;
             switch (e.kind) {
-                case GpuBGLEntry::Kind::Uniform:
-                    we.buffer.type           = WGPUBufferBindingType_Uniform;
-                    we.buffer.minBindingSize  = e.minBindingSize;
-                    break;
-                case GpuBGLEntry::Kind::DynamicUniform:
-                    we.buffer.type             = WGPUBufferBindingType_Uniform;
-                    we.buffer.hasDynamicOffset = true;
-                    we.buffer.minBindingSize   = e.minBindingSize;
-                    break;
-                case GpuBGLEntry::Kind::Texture:
-                    we.texture.sampleType    = WGPUTextureSampleType_Float;
-                    we.texture.viewDimension = WGPUTextureViewDimension_2D;
-                    we.texture.multisampled  = false;
-                    break;
-                case GpuBGLEntry::Kind::Sampler:
-                    we.sampler.type = WGPUSamplerBindingType_Filtering;
-                    break;
-                case GpuBGLEntry::Kind::DepthTexture:
-                    we.texture.sampleType    = WGPUTextureSampleType_Depth;
-                    we.texture.viewDimension = WGPUTextureViewDimension_2D;
-                    we.texture.multisampled  = false;
-                    break;
-                case GpuBGLEntry::Kind::ComparisonSampler:
-                    we.sampler.type = WGPUSamplerBindingType_Comparison;
-                    break;
+            case GpuBGLEntry::Kind::Uniform:
+                we.buffer.type = WGPUBufferBindingType_Uniform;
+                we.buffer.minBindingSize = e.minBindingSize;
+                break;
+            case GpuBGLEntry::Kind::DynamicUniform:
+                we.buffer.type = WGPUBufferBindingType_Uniform;
+                we.buffer.hasDynamicOffset = true;
+                we.buffer.minBindingSize = e.minBindingSize;
+                break;
+            case GpuBGLEntry::Kind::Texture:
+                we.texture.sampleType = WGPUTextureSampleType_Float;
+                we.texture.viewDimension = WGPUTextureViewDimension_2D;
+                we.texture.multisampled = false;
+                break;
+            case GpuBGLEntry::Kind::Sampler:
+                we.sampler.type = WGPUSamplerBindingType_Filtering;
+                break;
+            case GpuBGLEntry::Kind::DepthTexture:
+                we.texture.sampleType = WGPUTextureSampleType_Depth;
+                we.texture.viewDimension = WGPUTextureViewDimension_2D;
+                we.texture.multisampled = false;
+                break;
+            case GpuBGLEntry::Kind::ComparisonSampler:
+                we.sampler.type = WGPUSamplerBindingType_Comparison;
+                break;
             }
             wgpuEntries.push_back(we);
         }
         WGPUBindGroupLayoutDescriptor bglDesc{};
         bglDesc.entryCount = (uint32_t)wgpuEntries.size();
-        bglDesc.entries    = wgpuEntries.data();
+        bglDesc.entries = wgpuEntries.data();
         WGPUBindGroupLayout bgl = wgpuDeviceCreateBindGroupLayout(_device, &bglDesc);
         result.bgls.push_back(bgl);
         layouts.push_back(bgl);
@@ -72,26 +72,24 @@ GpuPipeline GpuPipelineBuilder::build() {
     // Build pipeline layout
     WGPUPipelineLayoutDescriptor plDesc{};
     plDesc.bindGroupLayoutCount = (uint32_t)layouts.size();
-    plDesc.bindGroupLayouts     = layouts.empty() ? nullptr : layouts.data();
+    plDesc.bindGroupLayouts = layouts.empty() ? nullptr : layouts.data();
     WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(_device, &plDesc);
 
     // Blend state (standard src-alpha / one-minus-src-alpha)
-    WGPUBlendComponent blendColor{ WGPUBlendOperation_Add, WGPUBlendFactor_SrcAlpha,
-                                   WGPUBlendFactor_OneMinusSrcAlpha };
-    WGPUBlendComponent blendAlpha{ WGPUBlendOperation_Add, WGPUBlendFactor_One,
-                                   WGPUBlendFactor_OneMinusSrcAlpha };
+    WGPUBlendComponent blendColor{ WGPUBlendOperation_Add, WGPUBlendFactor_SrcAlpha, WGPUBlendFactor_OneMinusSrcAlpha };
+    WGPUBlendComponent blendAlpha{ WGPUBlendOperation_Add, WGPUBlendFactor_One, WGPUBlendFactor_OneMinusSrcAlpha };
     WGPUBlendState blendState{ blendColor, blendAlpha };
 
     WGPUColorTargetState colorTarget{};
-    colorTarget.format    = _colorFmt;
-    colorTarget.blend     = _blend ? &blendState : nullptr;
+    colorTarget.format = _colorFmt;
+    colorTarget.blend = _blend ? &blendState : nullptr;
     colorTarget.writeMask = WGPUColorWriteMask_All;
 
     WGPUFragmentState frag{};
-    frag.module      = shader;
-    frag.entryPoint  = { "fs", WGPU_STRLEN };
+    frag.module = shader;
+    frag.entryPoint = { "fs", WGPU_STRLEN };
     frag.targetCount = 1;
-    frag.targets     = &colorTarget;
+    frag.targets = &colorTarget;
 
     // Vertex buffer layout (optional — fullscreen-triangle passes skip this)
     std::vector<WGPUVertexAttribute> wgpuAttrs;
@@ -100,43 +98,42 @@ GpuPipeline GpuPipelineBuilder::build() {
         wgpuAttrs.reserve(_vertexAttrs.size());
         for (const auto& a : _vertexAttrs) {
             WGPUVertexAttribute wa{};
-            wa.format         = a.format;
-            wa.offset         = a.offset;
+            wa.format = a.format;
+            wa.offset = a.offset;
             wa.shaderLocation = a.shaderLocation;
             wgpuAttrs.push_back(wa);
         }
-        vbl.arrayStride    = _stride;
-        vbl.stepMode       = WGPUVertexStepMode_Vertex;
+        vbl.arrayStride = _stride;
+        vbl.stepMode = WGPUVertexStepMode_Vertex;
         vbl.attributeCount = (uint32_t)wgpuAttrs.size();
-        vbl.attributes     = wgpuAttrs.data();
+        vbl.attributes = wgpuAttrs.data();
     }
 
     // Depth stencil (optional)
     WGPUDepthStencilState depthStencil{};
     if (_depthEnabled) {
-        depthStencil.format               = WGPUTextureFormat_Depth32Float;
-        depthStencil.depthWriteEnabled    = _depthWrite ? WGPUOptionalBool_True
-                                                        : WGPUOptionalBool_False;
-        depthStencil.depthCompare         = _depthCompare;
+        depthStencil.format = WGPUTextureFormat_Depth32Float;
+        depthStencil.depthWriteEnabled = _depthWrite ? WGPUOptionalBool_True : WGPUOptionalBool_False;
+        depthStencil.depthCompare = _depthCompare;
         depthStencil.stencilFront.compare = WGPUCompareFunction_Always;
-        depthStencil.stencilBack.compare  = WGPUCompareFunction_Always;
-        depthStencil.stencilReadMask      = 0xFFFFFFFFu;
-        depthStencil.stencilWriteMask     = 0xFFFFFFFFu;
+        depthStencil.stencilBack.compare = WGPUCompareFunction_Always;
+        depthStencil.stencilReadMask = 0xFFFFFFFFu;
+        depthStencil.stencilWriteMask = 0xFFFFFFFFu;
     }
 
     WGPURenderPipelineDescriptor pd{};
-    pd.layout              = pipelineLayout;
-    pd.vertex.module       = shader;
-    pd.vertex.entryPoint   = { "vs", WGPU_STRLEN };
-    pd.vertex.bufferCount  = _vertexAttrs.empty() ? 0u : 1u;
-    pd.vertex.buffers      = _vertexAttrs.empty() ? nullptr : &vbl;
-    pd.fragment            = _depthOnlyPipeline ? nullptr : &frag;
-    pd.depthStencil        = _depthEnabled ? &depthStencil : nullptr;
-    pd.primitive.topology  = WGPUPrimitiveTopology_TriangleList;
+    pd.layout = pipelineLayout;
+    pd.vertex.module = shader;
+    pd.vertex.entryPoint = { "vs", WGPU_STRLEN };
+    pd.vertex.bufferCount = _vertexAttrs.empty() ? 0u : 1u;
+    pd.vertex.buffers = _vertexAttrs.empty() ? nullptr : &vbl;
+    pd.fragment = _depthOnlyPipeline ? nullptr : &frag;
+    pd.depthStencil = _depthEnabled ? &depthStencil : nullptr;
+    pd.primitive.topology = WGPUPrimitiveTopology_TriangleList;
     pd.primitive.frontFace = WGPUFrontFace_CCW;
-    pd.primitive.cullMode  = _cullMode;
-    pd.multisample.count   = _sampleCount;
-    pd.multisample.mask    = 0xFFFFFFFFu;
+    pd.primitive.cullMode = _cullMode;
+    pd.multisample.count = _sampleCount;
+    pd.multisample.mask = 0xFFFFFFFFu;
     result.pipeline = wgpuDeviceCreateRenderPipeline(_device, &pd);
 
     wgpuPipelineLayoutRelease(pipelineLayout);
@@ -144,4 +141,4 @@ GpuPipeline GpuPipelineBuilder::build() {
     return result;
 }
 
-#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+#endif// AE_USE_WEBGPU && __EMSCRIPTEN__

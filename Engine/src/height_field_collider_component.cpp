@@ -7,10 +7,9 @@
 #include "rigidbody_component.hpp"
 
 HeightFieldColliderComponent::HeightFieldColliderComponent(
-    GameObject*                         owner,
-    const std::shared_ptr<HeightField>& heightField,
-    const HeightFieldColliderProps&     props
-) : _heightField(heightField), _heightScale(props.heightScale) {
+    GameObject* owner, const std::shared_ptr<HeightField>& heightField, const HeightFieldColliderProps& props
+)
+  : _heightField(heightField), _heightScale(props.heightScale) {
     gameObject = owner;
 
     _width = props.resolution > 0 ? props.resolution : heightField->Width();
@@ -19,36 +18,37 @@ HeightFieldColliderComponent::HeightFieldColliderComponent(
     SyncFromHeightField();
 
     _shape = std::make_unique<btHeightfieldTerrainShape>(
-        _width, _depth,
+        _width,
+        _depth,
         _scaledGrid.data(),
-        1.0f,                       // heightScale parameter (data is pre-scaled)
+        1.0f,// heightScale parameter (data is pre-scaled)
         props.minHeight,
         props.maxHeight,
-        1,                          // upAxis Y
+        1,// upAxis Y
         PHY_FLOAT,
-        true                        // flipQuadEdges
+        true// flipQuadEdges
     );
 
     // Bullet heightfield has 1 unit per sample by default; scale XZ to match worldSize.
-    const float xzScale = props.worldSize / float(_width);
+    const float xzScale = props.worldSize / static_cast<float>(_width);
     _shape->setLocalScaling(btVector3(xzScale, 1.0f, xzScale));
 
     // btHeightfieldTerrainShape centres itself at (minHeight+maxHeight)/2 in Y.
     // Offset the rigidbody origin to compensate so the collider aligns with the
     // rendered mesh, which is displaced by heightScale*[0,1] above the GO position.
     const float bulletCenterY = (props.minHeight + props.maxHeight) * 0.5f;
-    const float meshCenterY   = props.heightScale * 0.5f;
-    const float yOffset       = meshCenterY - bulletCenterY;
+    const float meshCenterY = props.heightScale * 0.5f;
+    const float yOffset = meshCenterY - bulletCenterY;
 
     glm::vec3 pos = owner->GetPosition();
     pos.y += yOffset;
 
     auto* rb = static_cast<RigidbodyComponent*>(owner->AddComponent<RigidbodyComponent>(RigidbodyProps{
-        .mass        = props.mass,
-        .friction    = props.friction,
+        .mass = props.mass,
+        .friction = props.friction,
         .restitution = props.restitution,
-        .shape       = _shape.get(),
-        .useGravity  = false,
+        .shape = _shape.get(),
+        .useGravity = false,
     }));
     rb->SetWorldTransform(pos, owner->GetRotation());
 }
@@ -69,9 +69,9 @@ void HeightFieldColliderComponent::SyncFromHeightField() {
         return;
     }
     for (int z = 0; z < _depth; ++z) {
-        const float v = _depth > 1 ? z / float(_depth - 1) : 0.0f;
+        const float v = _depth > 1 ? z / static_cast<float>(_depth - 1) : 0.0f;
         for (int x = 0; x < _width; ++x) {
-            const float u = _width > 1 ? x / float(_width - 1) : 0.0f;
+            const float u = _width > 1 ? x / static_cast<float>(_width - 1) : 0.0f;
             _scaledGrid[static_cast<size_t>(z) * _width + x] = _heightField->SampleNormalized(u, v) * _heightScale;
         }
     }

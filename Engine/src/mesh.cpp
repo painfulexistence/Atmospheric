@@ -6,21 +6,21 @@
 
 void PrintVertex(const Vertex& v) {
     fmt::print(
-      "P: ({},{},{}), UV: ({},{})\n, N: ({},{},{}), T: ({},{},{}), B: ({},{},{})\n",
-      v.position.x,
-      v.position.y,
-      v.position.z,
-      v.uv.x,
-      v.uv.y,
-      v.normal.x,
-      v.normal.y,
-      v.normal.z,
-      v.tangent.x,
-      v.tangent.y,
-      v.tangent.z,
-      v.bitangent.x,
-      v.bitangent.y,
-      v.bitangent.z
+        "P: ({},{},{}), UV: ({},{})\n, N: ({},{},{}), T: ({},{},{}), B: ({},{},{})\n",
+        v.position.x,
+        v.position.y,
+        v.position.z,
+        v.uv.x,
+        v.uv.y,
+        v.normal.x,
+        v.normal.y,
+        v.normal.z,
+        v.tangent.x,
+        v.tangent.y,
+        v.tangent.z,
+        v.bitangent.x,
+        v.bitangent.y,
+        v.bitangent.z
     );
 }
 
@@ -59,7 +59,8 @@ void Mesh::Initialize(const std::vector<Vertex>& verts) {
     // heightmap-displacement pipeline, mirroring terrain_simple.vert).
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         if (!_renderMeshHandle.IsValid()) {
-            _renderMeshHandle = GraphicsSubsystem::Get()->AllocateRenderMesh(VertexFormat::Standard, BufferUsage::Static);
+            _renderMeshHandle =
+                GraphicsSubsystem::Get()->AllocateRenderMesh(VertexFormat::Standard, BufferUsage::Static);
         }
         Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle);
         if (renderMesh) {
@@ -97,7 +98,8 @@ void Mesh::Initialize(const std::vector<Vertex>& verts, const std::vector<uint16
     // system only (ForwardOpaquePass/WaterPass draw from the render mesh).
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         if (!_renderMeshHandle.IsValid()) {
-            _renderMeshHandle = GraphicsSubsystem::Get()->AllocateRenderMesh(VertexFormat::Standard, BufferUsage::Static);
+            _renderMeshHandle =
+                GraphicsSubsystem::Get()->AllocateRenderMesh(VertexFormat::Standard, BufferUsage::Static);
         }
         Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle);
         if (renderMesh) {
@@ -161,7 +163,7 @@ void Mesh::Update(const std::vector<VoxelVertex>& vertices) {
     // Allocate GLBuffer on first use
     if (!_renderMeshHandle.IsValid()) {
         _renderMeshHandle = GraphicsSubsystem::Get()->AllocateRenderMesh(
-          VertexFormat::Voxel, updateFreq == UpdateFrequency::Static ? BufferUsage::Static : BufferUsage::Dynamic
+            VertexFormat::Voxel, updateFreq == UpdateFrequency::Static ? BufferUsage::Static : BufferUsage::Dynamic
         );
     }
 
@@ -194,14 +196,20 @@ template<typename VertexType> void Mesh::InitializeDynamic(GLenum primType) {
     if constexpr (std::is_same_v<VertexType, DebugVertex>) {
         // DebugVertex: position (vec3) + color (vec3)
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), nullptr);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), reinterpret_cast<void*>(3 * sizeof(float)));
+        glVertexAttribPointer(
+            1, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), reinterpret_cast<void*>(3 * sizeof(float))
+        );
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
     } else if constexpr (std::is_same_v<VertexType, CanvasVertex>) {
         // CanvasVertex: position (vec2) + texCoord (vec2) + color (vec4) + texIndex (int)
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), nullptr);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(2 * sizeof(float)));
-        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(4 * sizeof(float)));
+        glVertexAttribPointer(
+            1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(2 * sizeof(float))
+        );
+        glVertexAttribPointer(
+            2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(4 * sizeof(float))
+        );
         glVertexAttribIPointer(3, 1, GL_INT, sizeof(CanvasVertex), reinterpret_cast<void*>(8 * sizeof(float)));
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
@@ -237,10 +245,10 @@ template<typename VertexType> void Mesh::UpdateDynamic(const std::vector<VertexT
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(
-      GL_ARRAY_BUFFER,
-      verts.size() * sizeof(VertexType),
-      verts.data(),
-      updateFreq == UpdateFrequency::Stream ? GL_STREAM_DRAW : GL_DYNAMIC_DRAW
+        GL_ARRAY_BUFFER,
+        verts.size() * sizeof(VertexType),
+        verts.data(),
+        updateFreq == UpdateFrequency::Stream ? GL_STREAM_DRAW : GL_DYNAMIC_DRAW
     );
 }
 

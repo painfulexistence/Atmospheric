@@ -3,7 +3,7 @@
 #include "Atmospheric/renderer.hpp"
 
 // Keep track of current draw color
-static glm::vec4 s_CurrentColor = glm::vec4(1.0f);
+static glm::vec4 sCurrentColor = glm::vec4(1.0f);
 
 void BindGraphicsAPI(sol::state& lua, GraphicsSubsystem* graphics) {
     sol::table atmos = lua["atmos"];
@@ -33,51 +33,51 @@ void BindGraphicsAPI(sol::state& lua, GraphicsSubsystem* graphics) {
 
     // Set current draw color
     gfx["setColor"] = sol::overload(
-      [](float r, float g, float b) { s_CurrentColor = glm::vec4(r, g, b, 1.0f); },
-      [](float r, float g, float b, float a) { s_CurrentColor = glm::vec4(r, g, b, a); },
-      [](const glm::vec4& color) { s_CurrentColor = color; }
+        [](float r, float g, float b) { sCurrentColor = glm::vec4(r, g, b, 1.0f); },
+        [](float r, float g, float b, float a) { sCurrentColor = glm::vec4(r, g, b, a); },
+        [](const glm::vec4& color) { sCurrentColor = color; }
     );
 
-    gfx["getColor"] = []() -> glm::vec4 { return s_CurrentColor; };
+    gfx["getColor"] = []() -> glm::vec4 { return sCurrentColor; };
 
     // Draw line
     gfx["drawLine"] = [graphics](float x1, float y1, float x2, float y2) {
-        graphics->DrawLine(x1, y1, x2, y2, s_CurrentColor);
+        graphics->DrawLine(x1, y1, x2, y2, sCurrentColor);
     };
 
     // Draw circle (outline)
     gfx["drawCircle"] = [graphics](float x, float y, float radius) {
-        graphics->DrawCircle(x, y, radius, s_CurrentColor);
+        graphics->DrawCircle(x, y, radius, sCurrentColor);
     };
 
     gfx["drawRect"] = sol::overload(
-      [graphics](float x, float y, float w, float h) { graphics->DrawQuad(x, y, w, h, 0.0f, s_CurrentColor); },
-      [graphics](float x, float y, float w, float h, float rotation) {
-          graphics->DrawQuad(x, y, w, h, rotation, s_CurrentColor);
-      }
+        [graphics](float x, float y, float w, float h) { graphics->DrawQuad(x, y, w, h, 0.0f, sCurrentColor); },
+        [graphics](float x, float y, float w, float h, float rotation) {
+            graphics->DrawQuad(x, y, w, h, rotation, sCurrentColor);
+        }
     );
 
     // I should probably add drawRectangleOutline for outline?
     gfx["drawRectangle"] = [graphics](float x, float y, float w, float h) {
-        graphics->DrawRect(x, y, w, h, s_CurrentColor);
+        graphics->DrawRect(x, y, w, h, sCurrentColor);
     };
 
     // Draw textured sprite
     // Draw textured sprite
     gfx["drawSprite"] = sol::overload(
-      // Draw with texture ID at position
-      [graphics](uint32_t texID, float x, float y) {
-          // Assume 64x64 default size. DrawTexturedQuad expects center position.
-          graphics->DrawTexturedQuad(x, y, 64.0f, 64.0f, 0.0f, texID, s_CurrentColor);
-      },
-      // Draw with texture ID, position, and size
-      [graphics](uint32_t texID, float x, float y, float w, float h) {
-          graphics->DrawTexturedQuad(x, y, w, h, 0.0f, texID, s_CurrentColor);
-      },
-      // Draw with texture ID, position, size, and rotation
-      [graphics](uint32_t texID, float x, float y, float w, float h, float rotation) {
-          graphics->DrawTexturedQuad(x, y, w, h, rotation, texID, s_CurrentColor);
-      }
+        // Draw with texture ID at position
+        [graphics](uint32_t texID, float x, float y) {
+            // Assume 64x64 default size. DrawTexturedQuad expects center position.
+            graphics->DrawTexturedQuad(x, y, 64.0f, 64.0f, 0.0f, texID, sCurrentColor);
+        },
+        // Draw with texture ID, position, and size
+        [graphics](uint32_t texID, float x, float y, float w, float h) {
+            graphics->DrawTexturedQuad(x, y, w, h, 0.0f, texID, sCurrentColor);
+        },
+        // Draw with texture ID, position, size, and rotation
+        [graphics](uint32_t texID, float x, float y, float w, float h, float rotation) {
+            graphics->DrawTexturedQuad(x, y, w, h, rotation, texID, sCurrentColor);
+        }
     );
 
     // ===== Text Rendering =====
@@ -95,24 +95,24 @@ void BindGraphicsAPI(sol::state& lua, GraphicsSubsystem* graphics) {
     // drawText(font, text, x, y)           -- uses base font size
     // drawText(font, text, x, y, scale)    -- scale relative to base size
     gfx["drawText"] = sol::overload(
-      [graphics](FontHandle fontID, const std::string& text, float x, float y) {
-          graphics->DrawText(fontID, text, x, y, 1.0f, s_CurrentColor);
-      },
-      [graphics](FontHandle fontID, const std::string& text, float x, float y, float scale) {
-          graphics->DrawText(fontID, text, x, y, scale, s_CurrentColor);
-      }
+        [graphics](FontHandle fontID, const std::string& text, float x, float y) {
+            graphics->DrawText(fontID, text, x, y, 1.0f, sCurrentColor);
+        },
+        [graphics](FontHandle fontID, const std::string& text, float x, float y, float scale) {
+            graphics->DrawText(fontID, text, x, y, scale, sCurrentColor);
+        }
     );
 
     // Measure text dimensions
     gfx["measureText"] = sol::overload(
-      [graphics](FontHandle fontID, const std::string& text) -> std::tuple<float, float> {
-          glm::vec2 size = graphics->MeasureText(fontID, text, 1.0f);
-          return std::make_tuple(size.x, size.y);
-      },
-      [graphics](FontHandle fontID, const std::string& text, float scale) -> std::tuple<float, float> {
-          glm::vec2 size = graphics->MeasureText(fontID, text, scale);
-          return std::make_tuple(size.x, size.y);
-      }
+        [graphics](FontHandle fontID, const std::string& text) -> std::tuple<float, float> {
+            glm::vec2 size = graphics->MeasureText(fontID, text, 1.0f);
+            return std::make_tuple(size.x, size.y);
+        },
+        [graphics](FontHandle fontID, const std::string& text, float scale) -> std::tuple<float, float> {
+            glm::vec2 size = graphics->MeasureText(fontID, text, scale);
+            return std::make_tuple(size.x, size.y);
+        }
     );
 
     // Get font line height
@@ -123,43 +123,43 @@ void BindGraphicsAPI(sol::state& lua, GraphicsSubsystem* graphics) {
 
     // ===== CameraComponent usertype =====
     lua.new_usertype<CameraComponent>(
-      "CameraComponent",
-      sol::no_constructor,
+        "CameraComponent",
+        sol::no_constructor,
 
-      "gameObject",
-      sol::readonly(&CameraComponent::gameObject),
+        "gameObject",
+        sol::readonly(&CameraComponent::gameObject),
 
-      "yaw",
-      &CameraComponent::Yaw,
-      "pitch",
-      &CameraComponent::Pitch,
-      "setPerspective",
-      &CameraComponent::SetPerspective,
-      "setOrthographic",
-      &CameraComponent::SetOrthographic,
-      "setSize",
-      &CameraComponent::SetSize
+        "yaw",
+        &CameraComponent::Yaw,
+        "pitch",
+        &CameraComponent::Pitch,
+        "setPerspective",
+        &CameraComponent::SetPerspective,
+        "setOrthographic",
+        &CameraComponent::SetOrthographic,
+        "setSize",
+        &CameraComponent::SetSize
     );
 
     // ===== LightComponent usertype =====
     lua.new_usertype<LightComponent>(
-      "LightComponent",
-      sol::no_constructor,
+        "LightComponent",
+        sol::no_constructor,
 
-      "gameObject",
-      sol::readonly(&LightComponent::gameObject),
+        "gameObject",
+        sol::readonly(&LightComponent::gameObject),
 
-      // Direct access to public members
-      "intensity",
-      &LightComponent::intensity,
-      "ambient",
-      &LightComponent::ambient,
-      "diffuse",
-      &LightComponent::diffuse,
-      "specular",
-      &LightComponent::specular,
-      "castShadow",
-      &LightComponent::castShadow
+        // Direct access to public members
+        "intensity",
+        &LightComponent::intensity,
+        "ambient",
+        &LightComponent::ambient,
+        "diffuse",
+        &LightComponent::diffuse,
+        "specular",
+        &LightComponent::specular,
+        "castShadow",
+        &LightComponent::castShadow
     );
 
     // ===== Asset management =====
@@ -192,16 +192,16 @@ void BindGraphicsAPI(sol::state& lua, GraphicsSubsystem* graphics) {
 
     // ===== Mesh usertype =====
     lua.new_usertype<Mesh>(
-      "Mesh",
-      sol::no_constructor,
+        "Mesh",
+        sol::no_constructor,
 
-      "setMaterial",
-      [](Mesh* mesh, int index) {
-          auto& materials = AssetManager::Get().GetMaterials();
-          if (index >= 0 && index < static_cast<int>(materials.size())) {
-              // Handles are 1-based; 0 is reserved for INVALID.
-              mesh->SetMaterial(MaterialHandle(static_cast<uint32_t>(index) + 1));
-          }
-      }
+        "setMaterial",
+        [](Mesh* mesh, int index) {
+            auto& materials = AssetManager::Get().GetMaterials();
+            if (index >= 0 && index < static_cast<int>(materials.size())) {
+                // Handles are 1-based; 0 is reserved for INVALID.
+                mesh->SetMaterial(MaterialHandle(static_cast<uint32_t>(index) + 1));
+            }
+        }
     );
 }

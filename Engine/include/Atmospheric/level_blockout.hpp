@@ -26,13 +26,13 @@ namespace LevelBlockout {
     // ============================================================================
 
     inline CSG::NodePtr SimpleRoom(
-      glm::vec3 center,
-      glm::vec3 size,
-      float wallThickness = 0.5f,
-      bool openFront = false,
-      bool openBack = false,
-      bool openLeft = false,
-      bool openRight = false
+        glm::vec3 center,
+        glm::vec3 size,
+        float wallThickness = 0.5f,
+        bool openFront = false,
+        bool openBack = false,
+        bool openLeft = false,
+        bool openRight = false
     ) {
         // Create outer shell
         auto outer = CSG::Box(center, size);
@@ -81,7 +81,7 @@ namespace LevelBlockout {
     // ============================================================================
 
     inline CSG::NodePtr
-      Corridor(glm::vec3 start, glm::vec3 end, float width = 3.0f, float height = 3.0f, float wallThickness = 0.3f) {
+        Corridor(glm::vec3 start, glm::vec3 end, float width = 3.0f, float height = 3.0f, float wallThickness = 0.3f) {
         glm::vec3 direction = end - start;
         glm::vec3 center = (start + end) * 0.5f;
         float length = glm::length(direction);
@@ -120,9 +120,9 @@ namespace LevelBlockout {
 
             for (int i = 0; i < stairSteps; i++) {
                 glm::vec3 stepCenter(
-                  center.x,
-                  center.y - size.y / 2 + stepHeight * (i + 0.5f),
-                  center.z + size.z / 2 + stepDepth * (i + 0.5f)
+                    center.x,
+                    center.y - size.y / 2 + stepHeight * (i + 0.5f),
+                    center.z + size.z / 2 + stepDepth * (i + 0.5f)
                 );
                 glm::vec3 stepSize(size.x, stepHeight, stepDepth);
                 auto step = CSG::Box(stepCenter, stepSize);
@@ -138,12 +138,12 @@ namespace LevelBlockout {
     // ============================================================================
 
     inline CSG::NodePtr WindowCutout(
-      glm::vec3 wallCenter,
-      glm::vec3 wallNormal,// Which way the wall faces
-      float windowWidth = 1.5f,
-      float windowHeight = 1.5f,
-      float sillHeight = 1.0f,
-      float wallThickness = 0.5f
+        glm::vec3 wallCenter,
+        glm::vec3 wallNormal,// Which way the wall faces
+        float windowWidth = 1.5f,
+        float windowHeight = 1.5f,
+        float sillHeight = 1.0f,
+        float wallThickness = 0.5f
     ) {
         glm::vec3 windowSize;
         if (std::abs(wallNormal.x) > 0.5f) {
@@ -174,13 +174,13 @@ namespace LevelBlockout {
     // Simple dungeon room with one doorway
     inline CSG::NodePtr ExampleDungeonRoom() {
         return SimpleRoom(
-          glm::vec3(0, 2.5f, 0),// center
-          glm::vec3(10, 5, 10),// size
-          0.5f,// wall thickness
-          true,// open front
-          false,
-          false,
-          false// closed other sides
+            glm::vec3(0, 2.5f, 0),// center
+            glm::vec3(10, 5, 10),// size
+            0.5f,// wall thickness
+            true,// open front
+            false,
+            false,
+            false// closed other sides
         );
     }
 
@@ -199,12 +199,12 @@ namespace LevelBlockout {
 
         // Add window on the right wall
         auto window = WindowCutout(
-          glm::vec3(4, 2.5f, 0),// right wall center
-          glm::vec3(1, 0, 0),// facing +X
-          1.5f,
-          1.5f,
-          1.0f,
-          0.5f
+            glm::vec3(4, 2.5f, 0),// right wall center
+            glm::vec3(1, 0, 0),// facing +X
+            1.5f,
+            1.5f,
+            1.0f,
+            0.5f
         );
 
         return CSG::Subtract(room, window);
@@ -234,7 +234,7 @@ namespace LevelBlockout {
     inline CSG::NodePtr ExampleDungeonLayout() {
         // Entry room
         auto entryRoom = SimpleRoom(
-          glm::vec3(0, 2.5f, 0), glm::vec3(8, 5, 8), 0.4f, false, true, false, true// open back and right
+            glm::vec3(0, 2.5f, 0), glm::vec3(8, 5, 8), 0.4f, false, true, false, true// open back and right
         );
 
         // Corridor to main hall
@@ -242,12 +242,12 @@ namespace LevelBlockout {
 
         // Main hall
         auto mainHall = SimpleRoom(
-          glm::vec3(0, 3.0f, -20), glm::vec3(15, 6, 12), 0.5f, true, false, true, true// open front, left, right
+            glm::vec3(0, 3.0f, -20), glm::vec3(15, 6, 12), 0.5f, true, false, true, true// open front, left, right
         );
 
         // Side room (connected via right door of entry)
         auto sideRoom = SimpleRoom(
-          glm::vec3(10, 2.5f, 0), glm::vec3(6, 5, 6), 0.4f, false, false, true, false// open left
+            glm::vec3(10, 2.5f, 0), glm::vec3(6, 5, 6), 0.4f, false, false, true, false// open left
         );
 
         // Combine all
@@ -257,10 +257,10 @@ namespace LevelBlockout {
 
         // Add a raised platform in main hall
         auto platform = Platform(
-          glm::vec3(0, 0.5f, -24),
-          glm::vec3(8, 1, 4),
-          3,// 3 steps
-          2.0f// stair width
+            glm::vec3(0, 0.5f, -24),
+            glm::vec3(8, 1, 4),
+            3,// 3 steps
+            2.0f// stair width
         );
         result = CSG::Union(result, platform);
 

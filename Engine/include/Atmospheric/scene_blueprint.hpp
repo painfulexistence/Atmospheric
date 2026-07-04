@@ -11,11 +11,11 @@
 // TextureHandles in LoadSceneResources (Phase 2). An empty path means "no map".
 struct MaterialBlueprint {
     std::string name;
-    glm::vec3   diffuse  = glm::vec3(0.55f, 0.55f, 0.55f);
-    glm::vec3   specular = glm::vec3(0.70f, 0.70f, 0.70f);
-    glm::vec3   ambient  = glm::vec3(0.00f, 0.00f, 0.00f);
-    float       shininess       = 0.25f;
-    bool        cullFaceEnabled = true;
+    glm::vec3 diffuse = glm::vec3(0.55f, 0.55f, 0.55f);
+    glm::vec3 specular = glm::vec3(0.70f, 0.70f, 0.70f);
+    glm::vec3 ambient = glm::vec3(0.00f, 0.00f, 0.00f);
+    float shininess = 0.25f;
+    bool cullFaceEnabled = true;
     std::string baseMap, normalMap, aoMap, roughnessMap, metallicMap, heightMap;
 };
 
@@ -42,13 +42,13 @@ struct EntityBlueprint {
 // filesystem or parse JSON.
 struct SceneBlueprint {
     std::string name;
-    std::string rawJson; // preserved verbatim for AssetManager::StoreSceneJson
+    std::string rawJson;// preserved verbatim for AssetManager::StoreSceneJson
 
     // Resource declarations (loaded before entity instantiation)
-    std::vector<std::string>                             textures;
-    std::unordered_map<std::string, ShaderProgramProps>  shaders;
-    std::vector<MaterialBlueprint>                       materials;
-    std::vector<std::string>                             meshes; // TODO: unload in UnloadSceneAssets
+    std::vector<std::string> textures;
+    std::unordered_map<std::string, ShaderProgramProps> shaders;
+    std::vector<MaterialBlueprint> materials;
+    std::vector<std::string> meshes;// TODO: unload in UnloadSceneAssets
 
     // Top-level entity blueprints (children embedded in resolvedData["children"])
     std::vector<EntityBlueprint> entities;

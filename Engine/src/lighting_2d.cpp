@@ -7,17 +7,18 @@ void LightingSystem2D::Apply(GraphicsSubsystem* gfx, int screenW, int screenH) c
     // ---------------------------------------------------------------------------
     // 1. Dark ambient overlay
     // ---------------------------------------------------------------------------
-    float ambientBrightness = std::max({ambientR * ambientA,
-                                        ambientG * ambientA,
-                                        ambientB * ambientA});
+    float ambientBrightness = std::max({ ambientR * ambientA, ambientG * ambientA, ambientB * ambientA });
     float darkness = std::max(0.0f, 1.0f - ambientBrightness * 1.5f);
 
     if (darkness > 0.01f) {
-        gfx->DrawQuad(screenW * 0.5f, screenH * 0.5f, static_cast<float>(screenW), static_cast<float>(screenH), 0.0f,
-                      glm::vec4(ambientR * 0.05f,
-                                ambientG * 0.05f,
-                                ambientB * 0.05f,
-                                darkness));
+        gfx->DrawQuad(
+            screenW * 0.5f,
+            screenH * 0.5f,
+            static_cast<float>(screenW),
+            static_cast<float>(screenH),
+            0.0f,
+            glm::vec4(ambientR * 0.05f, ambientG * 0.05f, ambientB * 0.05f, darkness)
+        );
     }
 
     // ---------------------------------------------------------------------------
@@ -26,25 +27,21 @@ void LightingSystem2D::Apply(GraphicsSubsystem* gfx, int screenW, int screenH) c
     // Draw rings from innermost (bright) to outermost (transparent) using a
     // quadratic falloff so the centre is clearly the brightest point.
     // 16 rings gives a smooth-enough gradient without being too costly.
-    static const int RINGS = 16;
+    static const int rings = 16;
 
     for (const auto& light : lights) {
         float clampedIntensity = std::min(light.intensity, 2.0f);
 
-        for (int k = 0; k < RINGS; k++) {
+        for (int k = 0; k < rings; k++) {
             // t = 0 → innermost ring, t = 1 → outermost ring
-            float t     = static_cast<float>(k + 1) / RINGS;
-            float rad   = light.radius * t;
+            float t = static_cast<float>(k + 1) / rings;
+            float rad = light.radius * t;
             // Quadratic falloff: brightest at centre, fades quickly outward
             float alpha = clampedIntensity * (1.0f - t) * (1.0f - t) * 0.30f;
             if (alpha < 0.003f) continue;
 
             // DrawQuad(x, y, ...) centres the quad on (x, y)
-            gfx->DrawQuad(
-                light.x, light.y,
-                rad * 2.0f, rad * 2.0f,
-                0.0f,
-                glm::vec4(light.r, light.g, light.b, alpha));
+            gfx->DrawQuad(light.x, light.y, rad * 2.0f, rad * 2.0f, 0.0f, glm::vec4(light.r, light.g, light.b, alpha));
         }
     }
 }

@@ -25,11 +25,11 @@ class Physics3DSubsystem;
 class RigidbodyComponent : public Component {
 public:
     RigidbodyComponent(
-      GameObject* gameObject,
-      btCollisionShape* shape,
-      float mass = 0.0f,
-      glm::vec3 linearFactor = glm::vec3(1.0f),
-      glm::vec3 angularFactor = glm::vec3(1.0f)
+        GameObject* gameObject,
+        btCollisionShape* shape,
+        float mass = 0.0f,
+        glm::vec3 linearFactor = glm::vec3(1.0f),
+        glm::vec3 angularFactor = glm::vec3(1.0f)
     );
     RigidbodyComponent(GameObject* gameObject, const RigidbodyProps& props);
     ~RigidbodyComponent();

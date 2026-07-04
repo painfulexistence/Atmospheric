@@ -1,8 +1,4 @@
 #include "asset_manager.hpp"
-#include <algorithm>
-#include <cassert>
-#include <unordered_set>
-#include <nlohmann/json.hpp>
 #include "console_subsystem.hpp"
 #include "file_system.hpp"
 #include "gfx_factory.hpp"
@@ -11,6 +7,10 @@
 #include "mesh.hpp"
 #include "mesh_builder.hpp"
 #include "shader.hpp"
+#include <algorithm>
+#include <cassert>
+#include <nlohmann/json.hpp>
+#include <unordered_set>
 
 TextureHandle::TextureHandle(const char* path) {
     *this = AssetManager::Get().CreateTexture(path);
@@ -50,63 +50,68 @@ TextureHandle::TextureHandle(const std::string& path) {
 // ── ETC2 constants (part of GLES3 core; defined in GLES3/gl3.h for Emscripten,
 //    and available on desktop via GL_ARB_ES3_compatibility / OpenGL 4.3+).
 #ifndef GL_COMPRESSED_RGB8_ETC2
-#define GL_COMPRESSED_RGB8_ETC2           0x9274
+#define GL_COMPRESSED_RGB8_ETC2 0x9274
 #endif
 #ifndef GL_COMPRESSED_RGBA8_ETC2_EAC
-#define GL_COMPRESSED_RGBA8_ETC2_EAC      0x9278
+#define GL_COMPRESSED_RGBA8_ETC2_EAC 0x9278
 #endif
 // ── S3TC / DXT constants (desktop, via GL_EXT_texture_compression_s3tc)
 #ifndef GL_COMPRESSED_RGB_S3TC_DXT1_EXT
-#define GL_COMPRESSED_RGB_S3TC_DXT1_EXT   0x83F0
+#define GL_COMPRESSED_RGB_S3TC_DXT1_EXT 0x83F0
 #endif
 #ifndef GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
-#define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT  0x83F3
+#define GL_COMPRESSED_RGBA_S3TC_DXT5_EXT 0x83F3
 #endif
 
 namespace {
-// Returns true if the named GL/WebGL extension is exposed by the current context.
-bool HasGLExtension(const char* name) {
+    // Returns true if the named GL/WebGL extension is exposed by the current context.
+    bool HasGLExtension(const char* name) {
 #ifdef __EMSCRIPTEN__
-    // In WebGL2 (GLES3) glGetString(GL_EXTENSIONS) is deprecated; use glGetStringi.
-    GLint numExt = 0;
-    glGetIntegerv(GL_NUM_EXTENSIONS, &numExt);
-    for (GLint i = 0; i < numExt; ++i) {
-        const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, i));
-        if (ext && strcmp(ext, name) == 0) return true;
-    }
-    return false;
+        // In WebGL2 (GLES3) glGetString(GL_EXTENSIONS) is deprecated; use glGetStringi.
+        GLint numExt = 0;
+        glGetIntegerv(GL_NUM_EXTENSIONS, &numExt);
+        for (GLint i = 0; i < numExt; ++i) {
+            const char* ext = reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, i));
+            if (ext && strcmp(ext, name) == 0) return true;
+        }
+        return false;
 #else
-    const char* exts = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
-    return exts && (strstr(exts, name) != nullptr);
+        const char* exts = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
+        return exts && (strstr(exts, name) != nullptr);
 #endif
-}
-
-// Returns bytes per block for the chosen basisu target format.
-uint32_t BasisBytesPerBlock(basist::transcoder_texture_format fmt) {
-    switch (fmt) {
-    case basist::transcoder_texture_format::cTFETC2_RGBA:
-    case basist::transcoder_texture_format::cTFBC3_RGBA:
-        return 16; // 128-bit blocks
-    case basist::transcoder_texture_format::cTFETC1_RGB:
-    case basist::transcoder_texture_format::cTFBC1_RGB:
-        return 8;  //  64-bit blocks
-    default:
-        return 16;
     }
-}
 
-// Maps a basisu target format to the matching GL compressed internal format.
-GLenum BasisToGLFormat(basist::transcoder_texture_format fmt) {
-    switch (fmt) {
-    case basist::transcoder_texture_format::cTFETC2_RGBA: return GL_COMPRESSED_RGBA8_ETC2_EAC;
-    case basist::transcoder_texture_format::cTFETC1_RGB:  return GL_COMPRESSED_RGB8_ETC2; // ETC1 ⊂ ETC2
-    case basist::transcoder_texture_format::cTFBC3_RGBA:  return GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
-    case basist::transcoder_texture_format::cTFBC1_RGB:   return GL_COMPRESSED_RGB_S3TC_DXT1_EXT;
-    default:                                              return GL_COMPRESSED_RGBA8_ETC2_EAC;
+    // Returns bytes per block for the chosen basisu target format.
+    uint32_t BasisBytesPerBlock(basist::transcoder_texture_format fmt) {
+        switch (fmt) {
+        case basist::transcoder_texture_format::cTFETC2_RGBA:
+        case basist::transcoder_texture_format::cTFBC3_RGBA:
+            return 16;// 128-bit blocks
+        case basist::transcoder_texture_format::cTFETC1_RGB:
+        case basist::transcoder_texture_format::cTFBC1_RGB:
+            return 8;//  64-bit blocks
+        default:
+            return 16;
+        }
     }
-}
-} // anonymous namespace
-#endif // AE_USE_BASIS_UNIVERSAL
+
+    // Maps a basisu target format to the matching GL compressed internal format.
+    GLenum BasisToGLFormat(basist::transcoder_texture_format fmt) {
+        switch (fmt) {
+        case basist::transcoder_texture_format::cTFETC2_RGBA:
+            return GL_COMPRESSED_RGBA8_ETC2_EAC;
+        case basist::transcoder_texture_format::cTFETC1_RGB:
+            return GL_COMPRESSED_RGB8_ETC2;// ETC1 ⊂ ETC2
+        case basist::transcoder_texture_format::cTFBC3_RGBA:
+            return GL_COMPRESSED_RGBA_S3TC_DXT5_EXT;
+        case basist::transcoder_texture_format::cTFBC1_RGB:
+            return GL_COMPRESSED_RGB_S3TC_DXT1_EXT;
+        default:
+            return GL_COMPRESSED_RGBA8_ETC2_EAC;
+        }
+    }
+}// anonymous namespace
+#endif// AE_USE_BASIS_UNIVERSAL
 
 
 AssetManager* AssetManager::instance = nullptr;
@@ -173,7 +178,7 @@ void AssetManager::ClearSceneAssets() {
     }
     // Remove scene texture cache entries (keep default texture entries by glID).
     std::unordered_set<GLuint> defaultIDs(defaultTextures.begin(), defaultTextures.end());
-    for (auto it = _textureCache.begin(); it != _textureCache.end(); ) {
+    for (auto it = _textureCache.begin(); it != _textureCache.end();) {
         if (defaultIDs.contains(it->second.glID))
             ++it;
         else
@@ -185,7 +190,7 @@ void AssetManager::ClearSceneAssets() {
     // resize destroys the tail via unique_ptr either way.
     shaders.resize(_defaultShaderCount);
     // Rebuild shader cache to only contain default shaders.
-    for (auto it = _shaderCache.begin(); it != _shaderCache.end(); )
+    for (auto it = _shaderCache.begin(); it != _shaderCache.end();)
         it = (it->second < _defaultShaderCount) ? std::next(it) : _shaderCache.erase(it);
     _nextShaderID = _defaultShaderCount;
 
@@ -194,7 +199,8 @@ void AssetManager::ClearSceneAssets() {
     _materialCache.clear();
     _nextMaterialID = 0;
 
-    for (uint32_t id : _ownedMeshIDs) delete _meshByID[id];
+    for (uint32_t id : _ownedMeshIDs)
+        delete _meshByID[id];
     _meshByID.clear();
     _meshCache.clear();
     _ownedMeshIDs.clear();
@@ -313,13 +319,17 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
     // Read raw bytes via FileSystem to support transparent web prefetching
     FileSystem::Bytes fileData = FileSystem::Get().ReadSync(path);
     if (fileData.empty()) {
-        ConsoleSubsystem::Get()->Warn(fmt::format("AssetManager::LoadImage: Failed to read file bytes via FileSystem at '{}'", path));
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format("AssetManager::LoadImage: Failed to read file bytes via FileSystem at '{}'", path)
+        );
         return nullptr;
     }
 
     int width, height, numChannels;
     if (!stbi_info_from_memory(fileData.data(), static_cast<int>(fileData.size()), &width, &height, &numChannels)) {
-        ConsoleSubsystem::Get()->Warn(fmt::format("stbi_info_from_memory: Failed to read image metadata at '{}'", path));
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format("stbi_info_from_memory: Failed to read image metadata at '{}'", path)
+        );
         return nullptr;
     }
 
@@ -340,7 +350,9 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
     }
 
     stbi_set_flip_vertically_on_load(true);
-    uint8_t* data = stbi_load_from_memory(fileData.data(), static_cast<int>(fileData.size()), &width, &height, &numChannels, desiredChannels);
+    uint8_t* data = stbi_load_from_memory(
+        fileData.data(), static_cast<int>(fileData.size()), &width, &height, &numChannels, desiredChannels
+    );
     if (data) {
         auto image = std::make_shared<Image>(width, height, desiredChannels, data);
         stbi_image_free(data);
@@ -356,53 +368,56 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
 // ============================================================================
 
 void AssetManager::LoadDefaultShaders() {
-    LoadShaders({ {
-                    "color",
-                    { .vert = "assets/shaders/tbn.vert", .frag = "assets/shaders/pbr.frag" },
-                  },
-                  { "debug_line",
-                    {
-                      .vert = "assets/shaders/debug.vert",
-                      .frag = "assets/shaders/flat.frag",
-                    } },
-                  {
-                    "depth",
-                    { .vert = "assets/shaders/depth_simple.vert", .frag = "assets/shaders/depth_simple.frag" },
-                  },
-                  {
-                    "depth_cubemap",
-                    { .vert = "assets/shaders/depth_cubemap.vert", .frag = "assets/shaders/depth_cubemap.frag" },
-                  },
-                  {
-                    "post_composite",
-                    { .vert = "assets/shaders/hdr.vert", .frag = "assets/shaders/post_composite.frag" },
-                  },
+    LoadShaders(
+        { {
+              "color",
+              { .vert = "assets/shaders/tbn.vert", .frag = "assets/shaders/pbr.frag" },
+          },
+          { "debug_line",
+            {
+                .vert = "assets/shaders/debug.vert",
+                .frag = "assets/shaders/flat.frag",
+            } },
+          {
+              "depth",
+              { .vert = "assets/shaders/depth_simple.vert", .frag = "assets/shaders/depth_simple.frag" },
+          },
+          {
+              "depth_cubemap",
+              { .vert = "assets/shaders/depth_cubemap.vert", .frag = "assets/shaders/depth_cubemap.frag" },
+          },
+          {
+              "post_composite",
+              { .vert = "assets/shaders/hdr.vert", .frag = "assets/shaders/post_composite.frag" },
+          },
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
-                  {
-                    "terrain",
-                    { .vert = "assets/shaders/terrain_simple.vert",
-                      .frag = "assets/shaders/terrain.frag" },
-                  },
+          {
+              "terrain",
+              { .vert = "assets/shaders/terrain_simple.vert", .frag = "assets/shaders/terrain.frag" },
+          },
 #else
-                  {
-                    "terrain",
-                    { .vert = "assets/shaders/terrain.vert",
-                      .frag = "assets/shaders/terrain.frag",
-                      .tesc = "assets/shaders/terrain.tesc",
-                      .tese = "assets/shaders/terrain.tese" },
-                  },
+          {
+              "terrain",
+              { .vert = "assets/shaders/terrain.vert",
+                .frag = "assets/shaders/terrain.frag",
+                .tesc = "assets/shaders/terrain.tesc",
+                .tese = "assets/shaders/terrain.tese" },
+          },
 #endif
-                  { "canvas", { .vert = "assets/shaders/canvas.vert", .frag = "assets/shaders/canvas.frag" } },
-                  { "geometry", { .vert = "assets/shaders/geometry.vert", .frag = "assets/shaders/geometry.frag" } },
-                  { "lighting", { .vert = "assets/shaders/lighting.vert", .frag = "assets/shaders/lighting.frag" } },
-                  { "skybox",          { .vert = "assets/shaders/skybox.vert",           .frag = "assets/shaders/skybox.frag" } },
-                  { "sun",             { .vert = "assets/shaders/sun.vert",              .frag = "assets/shaders/sun.frag" } },
-                  { "voxel",           { .vert = "assets/shaders/voxel.vert",            .frag = "assets/shaders/voxel.frag" } },
-                  { "water",           { .vert = "assets/shaders/water.vert",            .frag = "assets/shaders/water.frag" } },
-                  { "bloom_threshold", { .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_threshold.frag" } },
-                  { "bloom_downsample",{ .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_downsample.frag" } },
-                  { "bloom_upsample",  { .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_upsample.frag" } },
-                  { "bloom_composite",    { .vert = "assets/shaders/bloom.vert",  .frag = "assets/shaders/bloom_composite.frag"    } } });
+          { "canvas", { .vert = "assets/shaders/canvas.vert", .frag = "assets/shaders/canvas.frag" } },
+          { "geometry", { .vert = "assets/shaders/geometry.vert", .frag = "assets/shaders/geometry.frag" } },
+          { "lighting", { .vert = "assets/shaders/lighting.vert", .frag = "assets/shaders/lighting.frag" } },
+          { "skybox", { .vert = "assets/shaders/skybox.vert", .frag = "assets/shaders/skybox.frag" } },
+          { "sun", { .vert = "assets/shaders/sun.vert", .frag = "assets/shaders/sun.frag" } },
+          { "voxel", { .vert = "assets/shaders/voxel.vert", .frag = "assets/shaders/voxel.frag" } },
+          { "water", { .vert = "assets/shaders/water.vert", .frag = "assets/shaders/water.frag" } },
+          { "bloom_threshold", { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_threshold.frag" } },
+          { "bloom_downsample",
+            { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_downsample.frag" } },
+          { "bloom_upsample", { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_upsample.frag" } },
+          { "bloom_composite",
+            { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_composite.frag" } } }
+    );
     _defaultShaderCount = static_cast<uint32_t>(shaders.size());
 }
 
@@ -557,17 +572,21 @@ void AssetManager::LoadDefaultTextures() {
     // and to store textures on the GPU in ETC2 format (~4× less VRAM than RGBA).
     // These bytes must already be in FileSystem cache before this function is called
     // — populate them with FileSystem::Get().Prefetch() before Application::Run().
-    LoadTextures({ "assets/textures/default_diff.ktx2",
-                   "assets/textures/default_norm.ktx2",
-                   "assets/textures/default_ao.ktx2",
-                   "assets/textures/default_rough.ktx2",
-                   "assets/textures/default_metallic.ktx2" });
+    LoadTextures(
+        { "assets/textures/default_diff.ktx2",
+          "assets/textures/default_norm.ktx2",
+          "assets/textures/default_ao.ktx2",
+          "assets/textures/default_rough.ktx2",
+          "assets/textures/default_metallic.ktx2" }
+    );
 #else
-    LoadTextures({ "assets/textures/default_diff.jpg",
-                   "assets/textures/default_norm.jpg",
-                   "assets/textures/default_ao.jpg",
-                   "assets/textures/default_rough.jpg",
-                   "assets/textures/default_metallic.jpg" });
+    LoadTextures(
+        { "assets/textures/default_diff.jpg",
+          "assets/textures/default_norm.jpg",
+          "assets/textures/default_ao.jpg",
+          "assets/textures/default_rough.jpg",
+          "assets/textures/default_metallic.jpg" }
+    );
 #endif
 
     // Store as default textures
@@ -604,7 +623,7 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
     // ── Pass 1: KTX2 files (GPU-compressed; must be transcoded on the main
     //           thread because we make GL calls inside LoadKTX2Texture).
     // ── Pass 2: Regular images (parallel CPU load → batch GPU upload).
-    std::vector<int>         regularIndices;
+    std::vector<int> regularIndices;
     std::vector<std::string> regularPaths;
 
     for (int i = 0; i < newCount; i++) {
@@ -626,7 +645,8 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
             }
 #else
             throw std::runtime_error(
-                fmt::format("KTX2 texture requested but AE_USE_BASIS_UNIVERSAL is disabled: {}", path));
+                fmt::format("KTX2 texture requested but AE_USE_BASIS_UNIVERSAL is disabled: {}", path)
+            );
 #endif
         } else {
             regularIndices.push_back(i);
@@ -639,7 +659,7 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
     // ── Parallel CPU image decode for regular (non-KTX2) textures
     std::vector<std::shared_ptr<Image>> images(regularPaths.size());
     for (int j = 0; j < static_cast<int>(regularPaths.size()); j++) {
-        auto path  = regularPaths[j];
+        const auto& path = regularPaths[j];
         auto image = &images[j];
         JobSystem::Get()->Execute([this, path, image](int /*threadID*/) { *image = LoadImage(path); });
     }
@@ -651,10 +671,12 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
     // the same slot/cache bookkeeping the GL loop uses so lookups by path work.
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         for (int j = 0; j < static_cast<int>(regularPaths.size()); j++) {
-            int   i   = regularIndices[j];
+            int i = regularIndices[j];
             auto& img = images[j];
             if (!img) {
-                ConsoleSubsystem::Get()->Warn(fmt::format("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]));
+                ConsoleSubsystem::Get()->Warn(
+                    fmt::format("Failed to load texture at '{}', using default fallback texture.", regularPaths[j])
+                );
                 textures[oldCount + i] = defaultTextures.empty() ? 0u : defaultTextures[0];
                 _textureCache[regularPaths[j]] = { textures[oldCount + i], 0, 0, 0 };
                 continue;
@@ -669,15 +691,18 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
                     uint8_t g = (img->channelCount >= 3) ? img->byteArray[px * img->channelCount + 1] : r;
                     uint8_t b = (img->channelCount >= 3) ? img->byteArray[px * img->channelCount + 2] : r;
                     uint8_t a = (img->channelCount == 4) ? img->byteArray[px * img->channelCount + 3] : 255;
-                    expanded[px * 4 + 0] = r; expanded[px * 4 + 1] = g;
-                    expanded[px * 4 + 2] = b; expanded[px * 4 + 3] = a;
+                    expanded[px * 4 + 0] = r;
+                    expanded[px * 4 + 1] = g;
+                    expanded[px * 4 + 2] = b;
+                    expanded[px * 4 + 3] = a;
                 }
                 rgba = expanded.data();
             }
             uint32_t texID = GfxFactory::UploadTexture2D(rgba, img->width, img->height);
             textures[oldCount + i] = texID;
-            _textureCache[regularPaths[j]] = { texID, (uint32_t)img->width, (uint32_t)img->height,
-                                               (size_t)img->width * img->height * 4 };
+            _textureCache[regularPaths[j]] = {
+                texID, (uint32_t)img->width, (uint32_t)img->height, (size_t)img->width * img->height * 4
+            };
         }
         return;
     }
@@ -688,12 +713,14 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
     glGenTextures(static_cast<GLsizei>(regularPaths.size()), regularTexIDs.data());
 
     for (int j = 0; j < static_cast<int>(regularPaths.size()); j++) {
-        int i      = regularIndices[j];
-        auto& img  = images[j];
+        int i = regularIndices[j];
+        auto& img = images[j];
         GLuint texID = regularTexIDs[j];
 
         if (!img) {
-            ConsoleSubsystem::Get()->Warn(fmt::format("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]));
+            ConsoleSubsystem::Get()->Warn(
+                fmt::format("Failed to load texture at '{}', using default fallback texture.", regularPaths[j])
+            );
             // Re-use the default texture (defaultTextures[0]) as a safe fallback
             textures[oldCount + i] = defaultTextures.empty() ? 0u : defaultTextures[0];
             _textureCache[regularPaths[j]] = { textures[oldCount + i], 0, 0, 0 };
@@ -703,29 +730,34 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
         textures[oldCount + i] = texID;
 
         glBindTexture(GL_TEXTURE_2D, texID);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,       GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,       GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,   GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,   GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
         switch (img->channelCount) {
         case 1:
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_R8,   img->width, img->height, 0,
-                         GL_RED,  GL_UNSIGNED_BYTE, img->byteArray.data());
+            glTexImage2D(
+                GL_TEXTURE_2D, 0, GL_R8, img->width, img->height, 0, GL_RED, GL_UNSIGNED_BYTE, img->byteArray.data()
+            );
             break;
         case 3:
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,  img->width, img->height, 0,
-                         GL_RGB,  GL_UNSIGNED_BYTE, img->byteArray.data());
+            glTexImage2D(
+                GL_TEXTURE_2D, 0, GL_RGB, img->width, img->height, 0, GL_RGB, GL_UNSIGNED_BYTE, img->byteArray.data()
+            );
             break;
         case 4:
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, img->width, img->height, 0,
-                         GL_RGBA, GL_UNSIGNED_BYTE, img->byteArray.data());
+            glTexImage2D(
+                GL_TEXTURE_2D, 0, GL_RGBA, img->width, img->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img->byteArray.data()
+            );
             break;
         default:
             throw std::runtime_error(fmt::format("Unknown texture format at {}\n", regularPaths[j]));
         }
         glGenerateMipmap(GL_TEXTURE_2D);
-        _textureCache[regularPaths[j]] = { texID, static_cast<uint32_t>(img->width), static_cast<uint32_t>(img->height),
+        _textureCache[regularPaths[j]] = { texID,
+                                           static_cast<uint32_t>(img->width),
+                                           static_cast<uint32_t>(img->height),
                                            static_cast<size_t>(img->width) * img->height * img->channelCount };
     }
 }
@@ -735,7 +767,7 @@ TextureHandle AssetManager::CreateTexture(const std::string& path) {
     if (redirectedPath.size() >= 2 && redirectedPath[0] == '.' && redirectedPath[1] == '/')
         redirectedPath = redirectedPath.substr(2);
 #if defined(AE_USE_BASIS_UNIVERSAL) && defined(__EMSCRIPTEN__)
-    redirectedPath = RedirectToKTX2(redirectedPath); // also normalizes "./" internally
+    redirectedPath = RedirectToKTX2(redirectedPath);// also normalizes "./" internally
 #endif
 
     // Return cached texture (TextureHandle) if already uploaded.
@@ -758,7 +790,12 @@ TextureHandle AssetManager::CreateTexture(const std::string& path) {
     // Regular image (PNG / JPG / etc.) via stb_image.
     auto image = LoadImage(redirectedPath);
     if (!image) {
-        ConsoleSubsystem::Get()->Warn(fmt::format("AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.", redirectedPath));
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format(
+                "AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.",
+                redirectedPath
+            )
+        );
         GLuint fallbackTex = defaultTextures.empty() ? 0u : defaultTextures[0];
         _textureCache[redirectedPath] = { fallbackTex, 0, 0, 0 };
         return TextureHandle(fallbackTex);
@@ -768,7 +805,9 @@ TextureHandle AssetManager::CreateTexture(const std::string& path) {
 
 TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>& image) {
     if (!image) {
-        ConsoleSubsystem::Get()->Warn("AssetManager::CreateTextureFromImage: Null image, returning default fallback texture.");
+        ConsoleSubsystem::Get()->Warn(
+            "AssetManager::CreateTextureFromImage: Null image, returning default fallback texture."
+        );
         GLuint fallbackTex = defaultTextures.empty() ? 0u : defaultTextures[0];
         return TextureHandle(fallbackTex);
     }
@@ -796,7 +835,9 @@ TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>&
         }
         uint32_t texID = GfxFactory::UploadTexture2D(rgba, image->width, image->height);
         size_t bytes = (size_t)image->width * image->height * 4;
-        _textureCache["unnamed_" + std::to_string(_nextTextureID++)] = { texID, (uint32_t)image->width, (uint32_t)image->height, bytes };
+        _textureCache["unnamed_" + std::to_string(_nextTextureID++)] = {
+            texID, (uint32_t)image->width, (uint32_t)image->height, bytes
+        };
         textures.push_back(texID);
         return TextureHandle(texID);
     }
@@ -813,24 +854,34 @@ TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>&
     switch (image->channelCount) {
     case 1:
         glTexImage2D(
-          GL_TEXTURE_2D, 0, GL_R8, image->width, image->height, 0, GL_RED, GL_UNSIGNED_BYTE, image->byteArray.data()
+            GL_TEXTURE_2D, 0, GL_R8, image->width, image->height, 0, GL_RED, GL_UNSIGNED_BYTE, image->byteArray.data()
         );
         break;
     case 3:
         glTexImage2D(
-          GL_TEXTURE_2D, 0, GL_RGB, image->width, image->height, 0, GL_RGB, GL_UNSIGNED_BYTE, image->byteArray.data()
+            GL_TEXTURE_2D, 0, GL_RGB, image->width, image->height, 0, GL_RGB, GL_UNSIGNED_BYTE, image->byteArray.data()
         );
         break;
     case 4:
         glTexImage2D(
-          GL_TEXTURE_2D, 0, GL_RGBA, image->width, image->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image->byteArray.data()
+            GL_TEXTURE_2D,
+            0,
+            GL_RGBA,
+            image->width,
+            image->height,
+            0,
+            GL_RGBA,
+            GL_UNSIGNED_BYTE,
+            image->byteArray.data()
         );
         break;
     }
     glGenerateMipmap(GL_TEXTURE_2D);
 
     size_t bytes = static_cast<size_t>(image->width) * image->height * image->channelCount;
-    _textureCache["unnamed_" + std::to_string(_nextTextureID++)] = { texID, static_cast<uint32_t>(image->width), static_cast<uint32_t>(image->height), bytes };
+    _textureCache["unnamed_" + std::to_string(_nextTextureID++)] = {
+        texID, static_cast<uint32_t>(image->width), static_cast<uint32_t>(image->height), bytes
+    };
     textures.push_back(texID);
     return TextureHandle(texID);
 }
@@ -840,7 +891,7 @@ TextureHandle AssetManager::GetTexture(const std::string& name) const {
     if (it != _textureCache.end()) {
         return TextureHandle(it->second.glID);
     }
-    return TextureHandle(); // Return invalid handle (id = INVALID)
+    return TextureHandle();// Return invalid handle (id = INVALID)
 }
 
 GLuint AssetManager::GetTextureByID(uint32_t id) const {
@@ -862,8 +913,7 @@ size_t AssetManager::getTotalTextureBytes() const {
     std::unordered_set<GLuint> seen;
     size_t total = 0;
     for (auto& kv : _textureCache) {
-        if (kv.second.glID != 0 && seen.insert(kv.second.glID).second)
-            total += kv.second.bytes;
+        if (kv.second.glID != 0 && seen.insert(kv.second.glID).second) total += kv.second.bytes;
     }
     return total;
 }
@@ -903,8 +953,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
     //
     std::vector<uint8_t> fileData = FileSystem::Get().ConsumeSync(path);
 
-    if (fileData.empty())
-        throw std::runtime_error(fmt::format("Failed to load KTX2 file: {}", path));
+    if (fileData.empty()) throw std::runtime_error(fmt::format("Failed to load KTX2 file: {}", path));
 
     // ── Parse KTX2 container ─────────────────────────────────────────────────
     basist::ktx2_transcoder ktx2Dec;
@@ -938,15 +987,15 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
             switch (wgpuCompression) {
             case TextureCompressionFormat::BC7:
                 basisFmt = basist::transcoder_texture_format::cTFBC7_RGBA;
-                fmtName  = "BC7";
+                fmtName = "BC7";
                 break;
             case TextureCompressionFormat::ETC2:
                 basisFmt = basist::transcoder_texture_format::cTFETC2_RGBA;
-                fmtName  = "ETC2";
+                fmtName = "ETC2";
                 break;
-            default: // ASTC4x4
+            default:// ASTC4x4
                 basisFmt = basist::transcoder_texture_format::cTFASTC_4x4_RGBA;
-                fmtName  = "ASTC4x4";
+                fmtName = "ASTC4x4";
                 break;
             }
 
@@ -958,10 +1007,10 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
                 throw std::runtime_error(fmt::format("KTX2 transcode_image_level failed (level 0): {}", path));
 
             uint32_t texID = GfxFactory::UploadCompressedTexture2D(
-              wgpuCompression, buf.data(), buf.size(), (int)info0.m_width, (int)info0.m_height
+                wgpuCompression, buf.data(), buf.size(), (int)info0.m_width, (int)info0.m_height
             );
             ENGINE_LOG(
-              "Loaded KTX2 texture '{}' ({}×{}, WebGPU {}, no mips)", path, info0.m_width, info0.m_height, fmtName
+                "Loaded KTX2 texture '{}' ({}×{}, WebGPU {}, no mips)", path, info0.m_width, info0.m_height, fmtName
             );
             if (out) *out = { texID, info0.m_width, info0.m_height, buf.size() };
             return texID;
@@ -972,15 +1021,21 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         // fall back to uncompressed RGBA32.
         std::vector<uint8_t> buf((size_t)info0.m_orig_width * info0.m_orig_height * 4);
         if (!ktx2Dec.transcode_image_level(
-              0, 0, 0, buf.data(), info0.m_orig_width * info0.m_orig_height,
-              basist::transcoder_texture_format::cTFRGBA32
+                0,
+                0,
+                0,
+                buf.data(),
+                info0.m_orig_width * info0.m_orig_height,
+                basist::transcoder_texture_format::cTFRGBA32
             ))
             throw std::runtime_error(fmt::format("KTX2 transcode_image_level failed (level 0): {}", path));
 
         uint32_t texID = GfxFactory::UploadTexture2D(buf.data(), (int)info0.m_orig_width, (int)info0.m_orig_height);
         ENGINE_LOG(
-          "Loaded KTX2 texture '{}' ({}×{}, WebGPU RGBA32 fallback, no mips)", path, info0.m_orig_width,
-          info0.m_orig_height
+            "Loaded KTX2 texture '{}' ({}×{}, WebGPU RGBA32 fallback, no mips)",
+            path,
+            info0.m_orig_width,
+            info0.m_orig_height
         );
         if (out) *out = { texID, info0.m_orig_width, info0.m_orig_height, buf.size() };
         return texID;
@@ -990,25 +1045,22 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
     // Unified format check: prefer S3TC (DXT) on both native and web, falling back to ETC2
     basist::transcoder_texture_format basisFmt;
     if (HasGLExtension("GL_EXT_texture_compression_s3tc")) {
-        basisFmt = hasAlpha
-            ? basist::transcoder_texture_format::cTFBC3_RGBA
-            : basist::transcoder_texture_format::cTFBC1_RGB;
+        basisFmt =
+            hasAlpha ? basist::transcoder_texture_format::cTFBC3_RGBA : basist::transcoder_texture_format::cTFBC1_RGB;
     } else {
-        basisFmt = hasAlpha
-            ? basist::transcoder_texture_format::cTFETC2_RGBA
-            : basist::transcoder_texture_format::cTFETC1_RGB;
+        basisFmt =
+            hasAlpha ? basist::transcoder_texture_format::cTFETC2_RGBA : basist::transcoder_texture_format::cTFETC1_RGB;
     }
 
-    GLenum   glFmt        = BasisToGLFormat(basisFmt);
-    uint32_t bytesPerBlk  = BasisBytesPerBlock(basisFmt);
+    GLenum glFmt = BasisToGLFormat(basisFmt);
+    uint32_t bytesPerBlk = BasisBytesPerBlock(basisFmt);
 
     // ── Start transcoding ────────────────────────────────────────────────────
-    if (!ktx2Dec.start_transcoding())
-        throw std::runtime_error(fmt::format("KTX2 start_transcoding failed: {}", path));
+    if (!ktx2Dec.start_transcoding()) throw std::runtime_error(fmt::format("KTX2 start_transcoding failed: {}", path));
 
-    uint32_t baseWidth  = ktx2Dec.get_width();
+    uint32_t baseWidth = ktx2Dec.get_width();
     uint32_t baseHeight = ktx2Dec.get_height();
-    uint32_t levels     = std::max(1u, ktx2Dec.get_levels());
+    uint32_t levels = std::max(1u, ktx2Dec.get_levels());
 
     // ── Create GL texture object ─────────────────────────────────────────────
     GLuint texID = 0;
@@ -1033,31 +1085,30 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         basist::ktx2_image_level_info info;
         if (!ktx2Dec.get_image_level_info(info, level, 0, 0)) {
             glDeleteTextures(1, &texID);
-            throw std::runtime_error(
-                fmt::format("KTX2 get_image_level_info failed (level {}): {}", level, path));
+            throw std::runtime_error(fmt::format("KTX2 get_image_level_info failed (level {}): {}", level, path));
         }
 
-        uint32_t numBlocks  = info.m_total_blocks;
+        uint32_t numBlocks = info.m_total_blocks;
         uint32_t bufferSize = numBlocks * bytesPerBlk;
         std::vector<uint8_t> buf(bufferSize);
 
         if (!ktx2Dec.transcode_image_level(level, 0, 0, buf.data(), numBlocks, basisFmt)) {
             glDeleteTextures(1, &texID);
-            throw std::runtime_error(
-                fmt::format("KTX2 transcode_image_level failed (level {}): {}", level, path));
+            throw std::runtime_error(fmt::format("KTX2 transcode_image_level failed (level {}): {}", level, path));
         }
 
         // Level dimensions (clamped to 1 for very small mips).
-        GLsizei w = static_cast<GLsizei>(std::max(1u, baseWidth  >> level));
+        GLsizei w = static_cast<GLsizei>(std::max(1u, baseWidth >> level));
         GLsizei h = static_cast<GLsizei>(std::max(1u, baseHeight >> level));
 
-        glCompressedTexImage2D(GL_TEXTURE_2D, static_cast<GLint>(level), glFmt,
-                               w, h, 0, static_cast<GLsizei>(bufferSize), buf.data());
+        glCompressedTexImage2D(
+            GL_TEXTURE_2D, static_cast<GLint>(level), glFmt, w, h, 0, static_cast<GLsizei>(bufferSize), buf.data()
+        );
     }
 
-    ENGINE_LOG("Loaded KTX2 texture '{}' ({}×{}, {} mips, {})",
-               path, baseWidth, baseHeight, levels,
-               hasAlpha ? "RGBA" : "RGB");
+    ENGINE_LOG(
+        "Loaded KTX2 texture '{}' ({}×{}, {} mips, {})", path, baseWidth, baseHeight, levels, hasAlpha ? "RGBA" : "RGB"
+    );
 
     if (out) {
         // Sum compressed bytes across all mip levels for accurate VRAM accounting.
@@ -1072,7 +1123,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
 
     return texID;
 }
-#endif // AE_USE_BASIS_UNIVERSAL
+#endif// AE_USE_BASIS_UNIVERSAL
 
 // ============================================================================
 // GPU Mesh Management
@@ -1122,8 +1173,8 @@ MeshHandle AssetManager::CreatePlaneMesh(const std::string& name, float width, f
     return CreateMesh(name, mesh);
 }
 
-MeshHandle AssetManager::CreatePlaneMeshSubdivided(const std::string& name,
-                                                    float width, float height, int subdivisions) {
+MeshHandle
+    AssetManager::CreatePlaneMeshSubdivided(const std::string& name, float width, float height, int subdivisions) {
     int n = std::max(1, subdivisions);
     float hw = width * 0.5f, hh = height * 0.5f;
 
@@ -1134,19 +1185,19 @@ MeshHandle AssetManager::CreatePlaneMeshSubdivided(const std::string& name,
 
     for (int z = 0; z <= n; ++z) {
         for (int x = 0; x <= n; ++x) {
-            float fx = -hw + width  * x / n;
+            float fx = -hw + width * x / n;
             float fz = -hh + height * z / n;
-            verts.push_back({ { fx, 0.0f, fz },
-                              { static_cast<float>(x) / n, static_cast<float>(z) / n },
-                              { 0.0f, 1.0f, 0.0f } });
+            verts.push_back(
+                { { fx, 0.0f, fz }, { static_cast<float>(x) / n, static_cast<float>(z) / n }, { 0.0f, 1.0f, 0.0f } }
+            );
         }
     }
     for (int z = 0; z < n; ++z) {
         for (int x = 0; x < n; ++x) {
-            uint16_t i0 = static_cast<uint16_t>( z      * (n + 1) + x    );
-            uint16_t i1 = static_cast<uint16_t>( z      * (n + 1) + x + 1);
-            uint16_t i2 = static_cast<uint16_t>((z + 1) * (n + 1) + x    );
-            uint16_t i3 = static_cast<uint16_t>((z + 1) * (n + 1) + x + 1);
+            auto i0 = static_cast<uint16_t>(z * (n + 1) + x);
+            auto i1 = static_cast<uint16_t>(z * (n + 1) + x + 1);
+            auto i2 = static_cast<uint16_t>((z + 1) * (n + 1) + x);
+            auto i3 = static_cast<uint16_t>((z + 1) * (n + 1) + x + 1);
             tris.insert(tris.end(), { i0, i2, i1, i1, i2, i3 });
         }
     }
@@ -1203,7 +1254,7 @@ std::shared_ptr<Mesh> AssetManager::LoadOBJ(const std::string& path) {
     auto mesh = std::make_shared<Mesh>(MeshType::PRIM);
     mesh->Initialize(vertices, indices);
 
-    return mesh;  // LoadOBJ is unimplemented; returns unregistered mesh
+    return mesh;// LoadOBJ is unimplemented; returns unregistered mesh
 }
 
 MeshHandle AssetManager::LoadGLTF(const std::string& path) {
@@ -1214,17 +1265,22 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     // Custom image loader: decode embedded image bytes with explicit flip for OpenGL UV origin.
     // This runs during LoadASCIIFromFile / LoadBinaryFromFile before we get control back.
     loader.SetImageLoader(
-        [](tinygltf::Image* img, const int /*imageIdx*/,
-           std::string* /*err*/, std::string* /*warn*/,
-           int /*reqWidth*/, int /*reqHeight*/,
-           const unsigned char* bytes, int size, void* /*userdata*/) -> bool {
+        [](tinygltf::Image* img,
+           const int /*imageIdx*/,
+           std::string* /*err*/,
+           std::string* /*warn*/,
+           int /*reqWidth*/,
+           int /*reqHeight*/,
+           const unsigned char* bytes,
+           int size,
+           void* /*userdata*/) -> bool {
             int w, h, c;
             stbi_set_flip_vertically_on_load(true);
             unsigned char* data = stbi_load_from_memory(bytes, size, &w, &h, &c, 4);
             stbi_set_flip_vertically_on_load(false);
             if (!data) return false;
-            img->width     = w;
-            img->height    = h;
+            img->width = w;
+            img->height = h;
             img->component = 4;
             img->image.assign(data, data + w * h * 4);
             stbi_image_free(data);
@@ -1241,7 +1297,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     }
 
     if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF '{}': {}", path, warn));
-    if (!err.empty())  ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF '{}' error: {}", path, err));
+    if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF '{}' error: {}", path, err));
     if (!result || model.meshes.empty()) return MeshHandle{};
 
     // Upload each referenced image to GPU immediately; CPU copy is discarded afterwards.
@@ -1256,8 +1312,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
         const auto& img = model.images[tex.source];
         if (!img.image.empty()) {
             auto cpuImg = std::make_shared<Image>(
-                img.width, img.height, img.component,
-                const_cast<unsigned char*>(img.image.data())
+                img.width, img.height, img.component, const_cast<unsigned char*>(img.image.data())
             );
             texHandles.push_back(CreateTextureFromImage(cpuImg));
         } else if (!img.uri.empty()) {
@@ -1274,16 +1329,14 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
         if (matIdx < 0 || matIdx >= static_cast<int>(model.materials.size())) return nullptr;
         const auto& mat = model.materials[matIdx];
         auto texAt = [&](int texIdx) -> TextureHandle {
-            return (texIdx >= 0 && texIdx < static_cast<int>(texHandles.size()))
-                       ? texHandles[texIdx]
-                       : TextureHandle{};
+            return (texIdx >= 0 && texIdx < static_cast<int>(texHandles.size())) ? texHandles[texIdx] : TextureHandle{};
         };
         MaterialProps props;
-        props.baseMap      = texAt(mat.pbrMetallicRoughness.baseColorTexture.index);
-        props.normalMap    = texAt(mat.normalTexture.index);
-        props.aoMap        = texAt(mat.occlusionTexture.index);
+        props.baseMap = texAt(mat.pbrMetallicRoughness.baseColorTexture.index);
+        props.normalMap = texAt(mat.normalTexture.index);
+        props.aoMap = texAt(mat.occlusionTexture.index);
         props.roughnessMap = texAt(mat.pbrMetallicRoughness.metallicRoughnessTexture.index);
-        props.metallicMap  = texAt(mat.pbrMetallicRoughness.metallicRoughnessTexture.index);
+        props.metallicMap = texAt(mat.pbrMetallicRoughness.metallicRoughnessTexture.index);
         const std::string matName = mat.name.empty() ? "gltf_mat" : mat.name;
         return CreateMaterial(matName, props);
     };
@@ -1294,7 +1347,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     // tightly packed (stride == component size * component count).
 
     auto readFloat3 = [&](const tinygltf::Accessor& acc) {
-        const auto& bv  = model.bufferViews[acc.bufferView];
+        const auto& bv = model.bufferViews[acc.bufferView];
         const auto& buf = model.buffers[bv.buffer];
         const size_t stride = bv.byteStride ? bv.byteStride : sizeof(float) * 3;
         const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
@@ -1307,7 +1360,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     };
 
     auto readFloat4 = [&](const tinygltf::Accessor& acc) {
-        const auto& bv  = model.bufferViews[acc.bufferView];
+        const auto& bv = model.bufferViews[acc.bufferView];
         const auto& buf = model.buffers[bv.buffer];
         const size_t stride = bv.byteStride ? bv.byteStride : sizeof(float) * 4;
         const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
@@ -1321,7 +1374,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
 
     // TEXCOORD may be FLOAT, UNSIGNED_BYTE normalized, or UNSIGNED_SHORT normalized per GLTF spec.
     auto readTexcoord = [&](const tinygltf::Accessor& acc) {
-        const auto& bv  = model.bufferViews[acc.bufferView];
+        const auto& bv = model.bufferViews[acc.bufferView];
         const auto& buf = model.buffers[bv.buffer];
         const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
         std::vector<glm::vec2> out(acc.count);
@@ -1351,7 +1404,9 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
             break;
         }
         default:
-            ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF: unsupported TEXCOORD component type {}", acc.componentType));
+            ConsoleSubsystem::Get()->Warn(
+                fmt::format("LoadGLTF: unsupported TEXCOORD component type {}", acc.componentType)
+            );
             break;
         }
         return out;
@@ -1360,7 +1415,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     // ── Concatenate all primitives from all meshes into a single Mesh ─────────
     // This flattening approach means one GPU buffer upload and no per-primitive
     // draw call overhead. Multi-material rendering is a Scene-level concern.
-    std::vector<Vertex>   allVerts;
+    std::vector<Vertex> allVerts;
     std::vector<uint16_t> allIndices;
     Material* material = nullptr;
 
@@ -1368,24 +1423,25 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
         for (const auto& prim : srcMesh.primitives) {
             if (!prim.attributes.contains("POSITION")) continue;
 
-            const size_t vertBase  = allVerts.size();
-            const auto&  posAcc    = model.accessors[prim.attributes.at("POSITION")];
+            const size_t vertBase = allVerts.size();
+            const auto& posAcc = model.accessors[prim.attributes.at("POSITION")];
             const size_t vertCount = posAcc.count;
 
             if (vertBase + vertCount > 65535) {
-                ConsoleSubsystem::Get()->Warn(fmt::format(
-                    "LoadGLTF '{}': vertex count exceeds uint16_t limit, primitive skipped. "
-                    "Consider splitting the mesh or upgrading to 32-bit indices.",
-                    path
-                ));
+                ConsoleSubsystem::Get()->Warn(
+                    fmt::format(
+                        "LoadGLTF '{}': vertex count exceeds uint16_t limit, primitive skipped. "
+                        "Consider splitting the mesh or upgrading to 32-bit indices.",
+                        path
+                    )
+                );
                 continue;
             }
 
             auto positions = readFloat3(posAcc);
 
             std::vector<glm::vec3> normals(vertCount, glm::vec3(0.f, 1.f, 0.f));
-            if (prim.attributes.contains("NORMAL"))
-                normals = readFloat3(model.accessors[prim.attributes.at("NORMAL")]);
+            if (prim.attributes.contains("NORMAL")) normals = readFloat3(model.accessors[prim.attributes.at("NORMAL")]);
 
             std::vector<glm::vec2> uvs(vertCount, glm::vec2(0.f));
             if (prim.attributes.contains("TEXCOORD_0"))
@@ -1404,10 +1460,10 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
 
             // Index buffer: GLTF scalar accessors are always tightly packed (byteStride == 0).
             if (prim.indices >= 0) {
-                const auto&    idxAcc = model.accessors[prim.indices];
-                const auto&    bv     = model.bufferViews[idxAcc.bufferView];
-                const auto&    buf    = model.buffers[bv.buffer];
-                const uint8_t* base   = buf.data.data() + bv.byteOffset + idxAcc.byteOffset;
+                const auto& idxAcc = model.accessors[prim.indices];
+                const auto& bv = model.bufferViews[idxAcc.bufferView];
+                const auto& buf = model.buffers[bv.buffer];
+                const uint8_t* base = buf.data.data() + bv.byteOffset + idxAcc.byteOffset;
 
                 switch (idxAcc.componentType) {
                 case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
@@ -1429,7 +1485,9 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
                         allIndices.push_back(static_cast<uint16_t>(vertBase + base[i]));
                     break;
                 default:
-                    ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF: unsupported index component type {}", idxAcc.componentType));
+                    ConsoleSubsystem::Get()->Warn(
+                        fmt::format("LoadGLTF: unsupported index component type {}", idxAcc.componentType)
+                    );
                     break;
                 }
             } else {
@@ -1437,8 +1495,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
                     allIndices.push_back(static_cast<uint16_t>(vertBase + i));
             }
 
-            if (!material && prim.material >= 0)
-                material = buildMaterial(prim.material);
+            if (!material && prim.material >= 0) material = buildMaterial(prim.material);
         }
     }
 
@@ -1507,13 +1564,13 @@ TextureHandle AssetManager::CreateHeightmapTexture(
 
     textures.push_back(texID);
     // 2 bytes per texel: heightmaps upload as GL_R16 (see UploadHeightmapPixels).
-    _textureCache[name] = { texID, static_cast<uint32_t>(width), static_cast<uint32_t>(height), static_cast<size_t>(width) * height * 2 };
+    _textureCache[name] = {
+        texID, static_cast<uint32_t>(width), static_cast<uint32_t>(height), static_cast<size_t>(width) * height * 2
+    };
     return TextureHandle(texID);
 }
 
-void AssetManager::UpdateHeightmapTexture(
-    TextureHandle handle, const std::vector<float>& grid, int width, int height
-) {
+void AssetManager::UpdateHeightmapTexture(TextureHandle handle, const std::vector<float>& grid, int width, int height) {
     if (!handle.IsValid()) return;
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {

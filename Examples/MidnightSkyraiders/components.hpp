@@ -1,11 +1,11 @@
 #pragma once
 #include "Atmospheric.hpp"
-#include <cmath>
 #include <algorithm>
+#include <cmath>
 #include <functional>
+#include <iomanip>
 #include <random>
 #include <sstream>
-#include <iomanip>
 #include <string>
 
 static std::mt19937 g_rng{ std::random_device{}() };
@@ -14,21 +14,30 @@ static inline float rnd() {
 }
 
 static constexpr float WORLD = 600.0f;
-static constexpr float HALF  = WORLD * 0.5f;
-static inline float toEngX(float ox) { return ox + HALF; }
-static inline float toEngY(float oy) { return oy + HALF; }
+static constexpr float HALF = WORLD * 0.5f;
+static inline float toEngX(float ox) {
+    return ox + HALF;
+}
+static inline float toEngY(float oy) {
+    return oy + HALF;
+}
 
 // A single horizontally-scrolling background layer.
 class ParallaxLayerComponent : public Component {
-    TextureHandle _texture; float _worldSize, _speed; int _zOrder;
+    TextureHandle _texture;
+    float _worldSize, _speed;
+    int _zOrder;
     GameObject* _tiles[2] = {};
     float _t = 0;
+
 public:
     ParallaxLayerComponent(GameObject* go, TextureHandle texture, float worldSize, float speed, int zOrder)
-        : _texture(texture), _worldSize(worldSize), _speed(speed), _zOrder(zOrder) {
+      : _texture(texture), _worldSize(worldSize), _speed(speed), _zOrder(zOrder) {
         gameObject = go;
     }
-    std::string GetName() const override { return "ParallaxLayerComponent"; }
+    std::string GetName() const override {
+        return "ParallaxLayerComponent";
+    }
     void OnAttach() override {
         auto* app = gameObject->GetApp();
         for (int i = 0; i < 2; i++) {
@@ -56,19 +65,28 @@ public:
 // Moves a bullet each tick according to its type; self-deactivates when done.
 // Negative types are enemy bullets; non-negative are player bullets.
 class BulletMovementComponent : public Component {
-    int   _type;
+    int _type;
     float _bx, _by;
     float _lifetime = 0.0f, _maxLife;
+
 public:
     BulletMovementComponent(GameObject* go, int type, float x, float y, float maxLife)
-        : _type(type), _bx(x), _by(y), _maxLife(maxLife) {}
+      : _type(type), _bx(x), _by(y), _maxLife(maxLife) {
+    }
 
-    std::string GetName() const override { return "BulletMovementComponent"; }
-    int GetType() const { return _type; }
+    std::string GetName() const override {
+        return "BulletMovementComponent";
+    }
+    int GetType() const {
+        return _type;
+    }
 
     void OnTick(float dt) override {
         _lifetime += dt;
-        if (_lifetime >= _maxLife) { gameObject->SetActive(false); return; }
+        if (_lifetime >= _maxLife) {
+            gameObject->SetActive(false);
+            return;
+        }
 
         const float lt = _lifetime;
         switch (_type) {
@@ -84,7 +102,8 @@ public:
             _by += 300.0f * -std::cos(20.0f * lt) * dt;
             break;
         }
-        case -1: case -2:
+        case -1:
+        case -2:
             _bx -= 600.0f * dt;
             break;
         case -3: {
@@ -101,27 +120,38 @@ public:
         // that have not yet scrolled into view, so culling them on the right
         // edge (as a symmetric box did) deleted them before they ever
         // appeared — which is why enemy fire looked absent.
-        const bool offscreen = (_type >= 0) ? (_bx > WORLD + 50.0f)
-                                            : (_bx < -50.0f);
-        if (offscreen) { gameObject->SetActive(false); return; }
+        const bool offscreen = (_type >= 0) ? (_bx > WORLD + 50.0f) : (_bx < -50.0f);
+        if (offscreen) {
+            gameObject->SetActive(false);
+            return;
+        }
         gameObject->SetPosition(glm::vec3(_bx, _by, 0.0f));
     }
 };
 
 // Drives an enemy's horizontal scroll + optional vertical raid each tick.
 class EnemyMovementComponent : public Component {
-    int   _type, _level;
+    int _type, _level;
     float _speed;
     float _raidDist, _raidStart, _raidEnd, _raidDur;
-public:
-    EnemyMovementComponent(GameObject* go, int type, int level, float speed,
-                           float raidDist, float raidStart, float raidDur)
-        : _type(type), _level(level), _speed(speed),
-          _raidDist(raidDist), _raidStart(raidStart), _raidEnd(raidDur), _raidDur(raidDur) {}
 
-    std::string GetName() const override { return "EnemyMovementComponent"; }
-    int GetLevel()     const { return _level; }
-    int GetEnemyType() const { return _type; }
+public:
+    EnemyMovementComponent(
+        GameObject* go, int type, int level, float speed, float raidDist, float raidStart, float raidDur
+    )
+      : _type(type), _level(level), _speed(speed), _raidDist(raidDist), _raidStart(raidStart), _raidEnd(raidDur),
+        _raidDur(raidDur) {
+    }
+
+    std::string GetName() const override {
+        return "EnemyMovementComponent";
+    }
+    int GetLevel() const {
+        return _level;
+    }
+    int GetEnemyType() const {
+        return _type;
+    }
 
     void OnTick(float dt) override {
         glm::vec3 pos = gameObject->GetPosition();
@@ -133,25 +163,36 @@ public:
             _raidEnd -= dt;
         }
 
-        if (pos.x < -48.0f) { gameObject->SetActive(false); return; }
+        if (pos.x < -48.0f) {
+            gameObject->SetActive(false);
+            return;
+        }
         gameObject->SetPosition(pos);
     }
 };
 
 // Counts down a fire timer and invokes onFire when ready.
 class EnemyFireComponent : public Component {
-    int   _type;
+    int _type;
     float _fireCD, _fireTimer;
     float* _sysFireTimer;
     std::function<void(int, float, float)> _onFire;
-public:
-    EnemyFireComponent(GameObject* go, int type, float fireCD, float initTimer,
-                       float* sysFireTimer,
-                       std::function<void(int, float, float)> onFire)
-        : _type(type), _fireCD(fireCD), _fireTimer(initTimer),
-          _sysFireTimer(sysFireTimer), _onFire(std::move(onFire)) {}
 
-    std::string GetName() const override { return "EnemyFireComponent"; }
+public:
+    EnemyFireComponent(
+        GameObject* go,
+        int type,
+        float fireCD,
+        float initTimer,
+        float* sysFireTimer,
+        std::function<void(int, float, float)> onFire
+    )
+      : _type(type), _fireCD(fireCD), _fireTimer(initTimer), _sysFireTimer(sysFireTimer), _onFire(std::move(onFire)) {
+    }
+
+    std::string GetName() const override {
+        return "EnemyFireComponent";
+    }
 
     void OnTick(float dt) override {
         _fireTimer -= dt;
@@ -162,7 +203,7 @@ public:
             glm::vec3 pos = gameObject->GetPosition();
             int bt = (_type == 1) ? -1 : (_type == 2 ? -2 : -3);
             if (_onFire) _onFire(bt, pos.x - 16.0f, pos.y);
-            _fireTimer    = _fireCD;
+            _fireTimer = _fireCD;
             *_sysFireTimer = 0.5f;
         }
     }
@@ -170,22 +211,37 @@ public:
 
 // Player progression state (level / XP / fire cooldown).
 class PlayerComponent : public Component {
-    int   _level   = 1;
-    float _xp      = 0.0f;
-    float _nextXP  = 100.0f;
-    float _fireCD  = 0.5f;
+    int _level = 1;
+    float _xp = 0.0f;
+    float _nextXP = 100.0f;
+    float _fireCD = 0.5f;
+
 public:
-    PlayerComponent(GameObject* go) {}
+    PlayerComponent(GameObject* go) {
+    }
 
-    std::string GetName() const override { return "PlayerComponent"; }
+    std::string GetName() const override {
+        return "PlayerComponent";
+    }
 
-    int   Level()        const { return _level; }
-    float XP()           const { return _xp; }
-    float NextXP()       const { return _nextXP; }
-    float FireCooldown() const { return _fireCD; }
+    int Level() const {
+        return _level;
+    }
+    float XP() const {
+        return _xp;
+    }
+    float NextXP() const {
+        return _nextXP;
+    }
+    float FireCooldown() const {
+        return _fireCD;
+    }
 
     void Reset() {
-        _level = 1; _xp = 0.0f; _nextXP = 100.0f; _fireCD = 0.5f;
+        _level = 1;
+        _xp = 0.0f;
+        _nextXP = 100.0f;
+        _fireCD = 0.5f;
     }
 
     void AddXP(int enemyLevel) {
@@ -207,26 +263,30 @@ public:
 
 // Handles WASD movement and auto-fire. Reads fire cooldown from PlayerComponent.
 class PlayerInputComponent : public Component {
-    float  _speed = 500.0f;
-    float  _plW, _plH;
+    float _speed = 500.0f;
+    float _plW, _plH;
     PlayerComponent* _player;
-    float  _fireTimer;
+    float _fireTimer;
     std::function<void(float, float)> _onFire;
-public:
-    PlayerInputComponent(GameObject* go, PlayerComponent* player, float w, float h,
-                         std::function<void(float, float)> onFire)
-        : _plW(w), _plH(h), _player(player), _fireTimer(player->FireCooldown()),
-          _onFire(std::move(onFire)) {}
 
-    std::string GetName() const override { return "PlayerInputComponent"; }
+public:
+    PlayerInputComponent(
+        GameObject* go, PlayerComponent* player, float w, float h, std::function<void(float, float)> onFire
+    )
+      : _plW(w), _plH(h), _player(player), _fireTimer(player->FireCooldown()), _onFire(std::move(onFire)) {
+    }
+
+    std::string GetName() const override {
+        return "PlayerInputComponent";
+    }
 
     void OnTick(float dt) override {
         auto* inp = InputSubsystem::Get();
         float dx = 0, dy = 0;
-        if (inp->IsKeyDown(Key::LEFT))  dx = -_speed * dt;
+        if (inp->IsKeyDown(Key::LEFT)) dx = -_speed * dt;
         if (inp->IsKeyDown(Key::RIGHT)) dx = +_speed * dt;
-        if (inp->IsKeyDown(Key::UP))    dy = -_speed * dt;
-        if (inp->IsKeyDown(Key::DOWN))  dy = +_speed * dt;
+        if (inp->IsKeyDown(Key::UP)) dy = -_speed * dt;
+        if (inp->IsKeyDown(Key::DOWN)) dy = +_speed * dt;
 
         glm::vec3 pos = gameObject->GetPosition();
         pos.x = std::clamp(pos.x + dx, _plW * 0.5f, WORLD - _plW * 0.5f);
@@ -248,34 +308,56 @@ public:
 // World-level director: score / wave / system-fire state for the whole match.
 class GameDirectorComponent : public Component {
     double _score = 0.0;
-    int    _kills = 0;
-    int    _waveCount = 0;
-    float  _waveTimer = 0.0f;
-    float  _waveInterval = 10.0f;
-    float  _scoreRate = 100.0f;
-    float  _enemySysFireTimer = 0.0f;
-    bool   _running = false;
+    int _kills = 0;
+    int _waveCount = 0;
+    float _waveTimer = 0.0f;
+    float _waveInterval = 10.0f;
+    float _scoreRate = 100.0f;
+    float _enemySysFireTimer = 0.0f;
+    bool _running = false;
     std::function<void()> _onSpawnWave;
-public:
-    GameDirectorComponent(GameObject* go, std::function<void()> onSpawnWave)
-        : _onSpawnWave(std::move(onSpawnWave)) {}
 
-    std::string GetName() const override { return "GameDirectorComponent"; }
+public:
+    GameDirectorComponent(GameObject* go, std::function<void()> onSpawnWave) : _onSpawnWave(std::move(onSpawnWave)) {
+    }
+
+    std::string GetName() const override {
+        return "GameDirectorComponent";
+    }
 
     void Reset() {
-        _score = 0.0; _kills = 0; _waveCount = 0;
-        _waveTimer = 0.0f; _enemySysFireTimer = 0.0f;
+        _score = 0.0;
+        _kills = 0;
+        _waveCount = 0;
+        _waveTimer = 0.0f;
+        _enemySysFireTimer = 0.0f;
     }
-    void SetRunning(bool r) { _running = r; }
+    void SetRunning(bool r) {
+        _running = r;
+    }
 
-    double Score()     const { return _score; }
-    int    Kills()     const { return _kills; }
-    int    WaveCount() const { return _waveCount; }
-    float* SysFireTimer()    { return &_enemySysFireTimer; }
+    double Score() const {
+        return _score;
+    }
+    int Kills() const {
+        return _kills;
+    }
+    int WaveCount() const {
+        return _waveCount;
+    }
+    float* SysFireTimer() {
+        return &_enemySysFireTimer;
+    }
 
-    void AddScore(double s) { _score += s; }
-    void AddKill()          { _kills++; }
-    void OnWaveSpawned()    { _waveCount++; }
+    void AddScore(double s) {
+        _score += s;
+    }
+    void AddKill() {
+        _kills++;
+    }
+    void OnWaveSpawned() {
+        _waveCount++;
+    }
 
     void OnTick(float dt) override {
         if (!_running) return;
@@ -306,52 +388,69 @@ public:
 // Draws the player HUD (score / kills / level / XP) each tick while active.
 class HUDComponent : public Component {
     GameDirectorComponent* _director;
-    PlayerComponent*       _player = nullptr;
-    FontHandle                 _fontID;
+    PlayerComponent* _player = nullptr;
+    FontHandle _fontID;
+
 public:
     HUDComponent(GameObject* go, GameDirectorComponent* director, FontHandle fontID)
-        : _director(director), _fontID(fontID) { gameObject = go; }
+      : _director(director), _fontID(fontID) {
+        gameObject = go;
+    }
 
-    std::string GetName() const override { return "HUDComponent"; }
+    std::string GetName() const override {
+        return "HUDComponent";
+    }
 
-    void SetPlayer(PlayerComponent* p) { _player = p; }
+    void SetPlayer(PlayerComponent* p) {
+        _player = p;
+    }
 
     void OnTick(float /*dt*/) override {
         if (!_player || !_director) return;
         auto* gs = GraphicsSubsystem::Get();
         std::ostringstream oss;
         oss << "Score: " << std::setw(8) << std::setfill('0') << (long long)_director->Score()
-            << "  Kills: " << std::setw(4) << std::setfill('0') << _director->Kills()
-            << "  Lv." << _player->Level()
-            << " (" << std::fixed << std::setprecision(1)
-            << (_player->XP() / _player->NextXP() * 100.0f) << "%)";
-        gs->DrawText(_fontID, oss.str(), 10.0f, 10.0f, 0.8f, glm::vec4(1,1,0,1));
+            << "  Kills: " << std::setw(4) << std::setfill('0') << _director->Kills() << "  Lv." << _player->Level()
+            << " (" << std::fixed << std::setprecision(1) << (_player->XP() / _player->NextXP() * 100.0f) << "%)";
+        gs->DrawText(_fontID, oss.str(), 10.0f, 10.0f, 0.8f, glm::vec4(1, 1, 0, 1));
     }
 };
 
 // Tracks spawned bullets and enemies; resolves AABB collisions and flushes
 // inactive objects each tick. Active only during GameState::Playing.
 class CollisionSystemComponent : public Component {
-    GameDirectorComponent*   _director;
-    PlayerComponent*         _player = nullptr;
-    std::function<void()>    _onExplosion;
+    GameDirectorComponent* _director;
+    PlayerComponent* _player = nullptr;
+    std::function<void()> _onExplosion;
     std::vector<GameObject*> _bullets;
     std::vector<GameObject*> _enemies;
+
 public:
-    CollisionSystemComponent(GameObject* go, GameDirectorComponent* director,
-                             std::function<void()> onExplosion)
-        : _director(director), _onExplosion(std::move(onExplosion)) { gameObject = go; }
+    CollisionSystemComponent(GameObject* go, GameDirectorComponent* director, std::function<void()> onExplosion)
+      : _director(director), _onExplosion(std::move(onExplosion)) {
+        gameObject = go;
+    }
 
-    std::string GetName() const override { return "CollisionSystemComponent"; }
+    std::string GetName() const override {
+        return "CollisionSystemComponent";
+    }
 
-    void SetPlayer(PlayerComponent* p) { _player = p; }
+    void SetPlayer(PlayerComponent* p) {
+        _player = p;
+    }
 
-    void AddBullet(GameObject* b) { _bullets.push_back(b); }
-    void AddEnemy (GameObject* e) { _enemies.push_back(e); }
+    void AddBullet(GameObject* b) {
+        _bullets.push_back(b);
+    }
+    void AddEnemy(GameObject* e) {
+        _enemies.push_back(e);
+    }
 
     void ClearAll() {
-        for (auto* b : _bullets) b->SetActive(false);
-        for (auto* e : _enemies) e->SetActive(false);
+        for (auto* b : _bullets)
+            b->SetActive(false);
+        for (auto* e : _enemies)
+            e->SetActive(false);
         _bullets.clear();
         _enemies.clear();
     }
@@ -400,9 +499,7 @@ private:
         _enemies.erase(std::remove_if(_enemies.begin(), _enemies.end(), inactive), _enemies.end());
     }
 
-    static bool aabb(float ax, float ay, float aw, float ah,
-                     float bx, float by, float bw, float bh) {
-        return std::abs(ax - bx) < (aw + bw) * 0.5f &&
-               std::abs(ay - by) < (ah + bh) * 0.5f;
+    static bool aabb(float ax, float ay, float aw, float ah, float bx, float by, float bw, float bh) {
+        return std::abs(ax - bx) < (aw + bw) * 0.5f && std::abs(ay - by) < (ah + bh) * 0.5f;
     }
 };

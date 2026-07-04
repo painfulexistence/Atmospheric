@@ -9,11 +9,18 @@
 class FlyCameraComponent : public Component {
     float _moveSpeed, _lookSpeed;
     CameraComponent* _camera = nullptr;
+
 public:
     FlyCameraComponent(GameObject* go, float moveSpeed = 20.0f, float lookSpeed = 1.5f)
-        : _moveSpeed(moveSpeed), _lookSpeed(lookSpeed) { gameObject = go; }
-    std::string GetName() const override { return "FlyCameraComponent"; }
-    void OnAttach() override { _camera = gameObject->GetComponent<CameraComponent>(); }
+      : _moveSpeed(moveSpeed), _lookSpeed(lookSpeed) {
+        gameObject = go;
+    }
+    std::string GetName() const override {
+        return "FlyCameraComponent";
+    }
+    void OnAttach() override {
+        _camera = gameObject->GetComponent<CameraComponent>();
+    }
     void OnTick(float dt) override {
         auto* input = InputSubsystem::Get();
         if (!input) return;
@@ -38,16 +45,20 @@ public:
 // Owns the voxel world: initialises it on attach, streams chunks and submits
 // render commands each tick relative to the main camera position.
 class VoxelWorldComponent : public Component {
-    VoxelWorld     _world;
-    int            _seed;
-    CameraComponent* _camera  = nullptr;
-    GameObject*    _waterGO   = nullptr;
+    VoxelWorld _world;
+    int _seed;
+    CameraComponent* _camera = nullptr;
+    GameObject* _waterGO = nullptr;
+
 public:
     float waterLine = 32.0f;
 
-    explicit VoxelWorldComponent(GameObject* go, int seed = 42)
-        : _seed(seed) { gameObject = go; }
-    std::string GetName() const override { return "VoxelWorld"; }
+    explicit VoxelWorldComponent(GameObject* go, int seed = 42) : _seed(seed) {
+        gameObject = go;
+    }
+    std::string GetName() const override {
+        return "VoxelWorld";
+    }
     void OnAttach() override {
         _world.Init(gameObject->GetApp(), _seed, gameObject);
         _camera = gameObject->GetApp()->GetMainCamera();
@@ -61,19 +72,17 @@ public:
         _waterGO->SetName("VoxelWater");
         _waterGO->parent = gameObject;
         _waterGO->AddComponent<WaterComponent>(WaterProps{
-            .width        = waterExt,
-            .depth        = waterExt,
+            .width = waterExt,
+            .depth = waterExt,
             .subdivisions = 64,
         });
     }
     void OnTick(float dt) override {
         if (!_camera) return;
-        glm::vec3 pos     = _camera->gameObject->GetPosition();
+        glm::vec3 pos = _camera->gameObject->GetPosition();
         glm::mat4 viewProj = _camera->GetProjectionMatrix() * _camera->GetViewMatrix();
         _world.Update(dt, pos);
-        _world.SubmitRenderCommands(
-            GraphicsSubsystem::Get()->renderer.get(), viewProj, pos
-        );
+        _world.SubmitRenderCommands(GraphicsSubsystem::Get()->renderer.get(), viewProj, pos);
 
         // Slide the water plane with the camera so it always covers the visible area.
         if (_waterGO) {

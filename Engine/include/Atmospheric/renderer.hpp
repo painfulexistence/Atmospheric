@@ -1,11 +1,11 @@
 #pragma once
 #include "asset_manager.hpp"
-#include "gpu_timer.hpp"
 #include "batch_renderer_2d.hpp"
 #include "buffer.hpp"
 #include "config.hpp"
 #include "glm/mat4x4.hpp"
 #include "globals.hpp"
+#include "gpu_timer.hpp"
 #include "mesh.hpp"
 #include "render_target.hpp"
 #include <cstdint>
@@ -59,18 +59,18 @@ public:
 private:
     void _initGPU(WGPUDevice device, WGPUQueue queue);
     void _ensureDrawCapacity(uint32_t drawCount);
-    WGPUDevice          _gpuDevice       = nullptr;
-    WGPUQueue           _gpuQueue        = nullptr;
-    WGPURenderPipeline  _pipeline        = nullptr;
-    WGPUBindGroupLayout _uniformBGL      = nullptr;
-    WGPUBindGroup       _uniformBG       = nullptr;
-    WGPUBuffer          _frameUniformBuf = nullptr; // light-space viewProj
-    WGPUBuffer          _drawUniformBuf  = nullptr; // per-draw model, dynamic offset
-    uint32_t            _drawSlotCapacity = 0;
+    WGPUDevice _gpuDevice = nullptr;
+    WGPUQueue _gpuQueue = nullptr;
+    WGPURenderPipeline _pipeline = nullptr;
+    WGPUBindGroupLayout _uniformBGL = nullptr;
+    WGPUBindGroup _uniformBG = nullptr;
+    WGPUBuffer _frameUniformBuf = nullptr;// light-space viewProj
+    WGPUBuffer _drawUniformBuf = nullptr;// per-draw model, dynamic offset
+    uint32_t _drawSlotCapacity = 0;
     // Directional shadow map. The view is published to Renderer each frame
     // for ForwardOpaquePass to sample; this pass owns both handles.
-    WGPUTexture         _shadowTex  = nullptr;
-    WGPUTextureView     _shadowView = nullptr;
+    WGPUTexture _shadowTex = nullptr;
+    WGPUTextureView _shadowView = nullptr;
 #endif
 };
 
@@ -91,38 +91,41 @@ private:
     void _ensureDrawCapacity(uint32_t drawCount);
     WGPUBindGroup _getOrCreateTexBG(uint32_t texID);
 
-    WGPUDevice          _gpuDevice       = nullptr;
-    WGPUQueue           _gpuQueue        = nullptr;
-    WGPURenderPipeline  _pipeline        = nullptr;
+    WGPUDevice _gpuDevice = nullptr;
+    WGPUQueue _gpuQueue = nullptr;
+    WGPURenderPipeline _pipeline = nullptr;
     // Heightmap-displacement terrain (TERRAIN_WGSL); shares group 0/1 layouts
     // with _pipeline so _uniformBG and the texture BG cache are reused.
-    WGPURenderPipeline  _terrainPipeline = nullptr;
-    WGPUBindGroupLayout _uniformBGL      = nullptr;
-    WGPUBindGroupLayout _texBGL          = nullptr;
-    WGPUBindGroup       _uniformBG       = nullptr;
+    WGPURenderPipeline _terrainPipeline = nullptr;
+    WGPUBindGroupLayout _uniformBGL = nullptr;
+    WGPUBindGroupLayout _texBGL = nullptr;
+    WGPUBindGroup _uniformBG = nullptr;
     // Frame-constant data (viewProj, camera, light) — one fixed-size binding.
-    WGPUBuffer          _frameUniformBuf = nullptr;
+    WGPUBuffer _frameUniformBuf = nullptr;
     // Per-draw data (model, surface params) — dynamic-offset slot per mesh,
     // mirrors VoxelChunkPass's pattern (see voxel_chunk_pass.cpp).
-    WGPUBuffer          _drawUniformBuf  = nullptr;
-    uint32_t            _drawSlotCapacity = 0;
+    WGPUBuffer _drawUniformBuf = nullptr;
+    uint32_t _drawSlotCapacity = 0;
 
     // AssetManager::GetDefaultTextures() is GL-only; this pass owns its own
     // fallback texture/sampler for meshes with no base map under WebGPU.
     WGPUTexture _whiteTex = nullptr;
-    WGPUSampler _sampler  = nullptr;
+    WGPUSampler _sampler = nullptr;
     // `tex` records the WGPUTexture each bind group was built from so the
     // cache self-invalidates when GfxFactory::UpdateTexture2D recreates the
     // texture under the same synthetic ID (see GPUCanvasPass::CachedTexBG).
-    struct CachedTexBG { WGPUBindGroup bg = nullptr; WGPUTexture tex = nullptr; };
+    struct CachedTexBG {
+        WGPUBindGroup bg = nullptr;
+        WGPUTexture tex = nullptr;
+    };
     std::unordered_map<uint32_t, CachedTexBG> _texBGCache;
 
     // Shadow-map bind group (group 2): rebuilt only when the view published
     // by ShadowPass on the Renderer changes.
-    WGPUBindGroupLayout _shadowBGL      = nullptr;
-    WGPUSampler         _shadowSampler  = nullptr;
-    WGPUBindGroup       _shadowBG       = nullptr;
-    WGPUTextureView     _shadowBGSource = nullptr;
+    WGPUBindGroupLayout _shadowBGL = nullptr;
+    WGPUSampler _shadowSampler = nullptr;
+    WGPUBindGroup _shadowBG = nullptr;
+    WGPUTextureView _shadowBGSource = nullptr;
 #endif
 };
 
@@ -167,35 +170,35 @@ public:
 #endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
-    bool  tonemapEnabled = true;
-    float exposure       = 0.5f;
+    bool tonemapEnabled = true;
+    float exposure = 0.5f;
 
-    bool  caEnabled  = false;
+    bool caEnabled = false;
     float caStrength = 0.005f;
 
-    bool  crtEnabled       = false;
-    bool  vhsEnabled       = false;
-    bool  gradingEnabled   = false;
-    bool  posterizeEnabled = false;
-    bool  sobelEnabled     = false;
-    bool  edgesEnabled     = false;
-    bool  vignetteEnabled  = false;
+    bool crtEnabled = false;
+    bool vhsEnabled = false;
+    bool gradingEnabled = false;
+    bool posterizeEnabled = false;
+    bool sobelEnabled = false;
+    bool edgesEnabled = false;
+    bool vignetteEnabled = false;
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
     void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat swapchainFormat);
-    WGPUDevice          _gpuDevice   = nullptr;
-    WGPUQueue           _gpuQueue    = nullptr;
-    WGPURenderPipeline  _pipeline    = nullptr;
-    WGPUBindGroupLayout _uniformBGL  = nullptr;
-    WGPUBindGroupLayout _texBGL      = nullptr;
-    WGPUBindGroup       _uniformBG   = nullptr;
-    WGPUBuffer          _uniformBuf  = nullptr;
-    WGPUSampler         _sampler     = nullptr;
+    WGPUDevice _gpuDevice = nullptr;
+    WGPUQueue _gpuQueue = nullptr;
+    WGPURenderPipeline _pipeline = nullptr;
+    WGPUBindGroupLayout _uniformBGL = nullptr;
+    WGPUBindGroupLayout _texBGL = nullptr;
+    WGPUBindGroup _uniformBG = nullptr;
+    WGPUBuffer _uniformBuf = nullptr;
+    WGPUSampler _sampler = nullptr;
     // Texture bind group is recreated whenever sceneRT's texture changes
     // (e.g. on resize); cached here to avoid rebuilding it every frame.
-    WGPUBindGroup       _texBG       = nullptr;
-    WGPUTexture         _texBGSource = nullptr;
+    WGPUBindGroup _texBG = nullptr;
+    WGPUTexture _texBGSource = nullptr;
 #endif
 };
 
@@ -216,13 +219,13 @@ public:
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
     void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
-    WGPUDevice          _gpuDevice  = nullptr;
-    WGPUQueue           _gpuQueue   = nullptr;
-    WGPURenderPipeline  _pipeline   = nullptr;
+    WGPUDevice _gpuDevice = nullptr;
+    WGPUQueue _gpuQueue = nullptr;
+    WGPURenderPipeline _pipeline = nullptr;
     WGPUBindGroupLayout _uniformBGL = nullptr;
-    WGPUBindGroup       _uniformBG  = nullptr;
-    WGPUBuffer          _uniformBuf = nullptr;
-    WGPUBuffer          _vertexBuf  = nullptr;
+    WGPUBindGroup _uniformBG = nullptr;
+    WGPUBuffer _uniformBuf = nullptr;
+    WGPUBuffer _vertexBuf = nullptr;
 #endif
 };
 
@@ -234,19 +237,19 @@ public:
 #endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
-    glm::vec3 skyColor     = glm::vec3(0.686f, 0.933f, 0.933f); // VX COLOR_MINT_GREEN
-    glm::vec3 horizonColor = glm::vec3(1.000f, 0.980f, 0.804f); // VX COLOR_LEMON_CREAM
+    glm::vec3 skyColor = glm::vec3(0.686f, 0.933f, 0.933f);// VX COLOR_MINT_GREEN
+    glm::vec3 horizonColor = glm::vec3(1.000f, 0.980f, 0.804f);// VX COLOR_LEMON_CREAM
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
     void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
-    WGPUDevice          _gpuDevice  = nullptr;
-    WGPUQueue           _gpuQueue   = nullptr;
-    WGPURenderPipeline  _pipeline   = nullptr;
+    WGPUDevice _gpuDevice = nullptr;
+    WGPUQueue _gpuQueue = nullptr;
+    WGPURenderPipeline _pipeline = nullptr;
     WGPUBindGroupLayout _uniformBGL = nullptr;
-    WGPUBindGroup       _uniformBG  = nullptr;
-    WGPUBuffer          _uniformBuf = nullptr;
-    WGPUBuffer          _vertexBuf  = nullptr;
+    WGPUBindGroup _uniformBG = nullptr;
+    WGPUBuffer _uniformBuf = nullptr;
+    WGPUBuffer _vertexBuf = nullptr;
 #endif
 };
 
@@ -258,26 +261,26 @@ public:
 #endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
-    int paletteIndex = 4;  // 0-5; 4 = VX Palette 5 (soft cool blue-grey)
+    int paletteIndex = 4;// 0-5; 4 = VX Palette 5 (soft cool blue-grey)
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
     void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
     // Grows _drawUniformBuf/_uniformBG to fit at least drawCount dynamic-offset slots.
     void _ensureDrawCapacity(uint32_t drawCount);
-    WGPUDevice          _gpuDevice       = nullptr;
-    WGPUQueue           _gpuQueue        = nullptr;
-    WGPURenderPipeline  _pipeline        = nullptr;
-    WGPUBindGroupLayout _uniformBGL      = nullptr;
-    WGPUBindGroup       _uniformBG       = nullptr;
+    WGPUDevice _gpuDevice = nullptr;
+    WGPUQueue _gpuQueue = nullptr;
+    WGPURenderPipeline _pipeline = nullptr;
+    WGPUBindGroupLayout _uniformBGL = nullptr;
+    WGPUBindGroup _uniformBG = nullptr;
     // Frame-constant data (viewProj, light, fog, camera) — one fixed-size binding.
-    WGPUBuffer          _frameUniformBuf = nullptr;
+    WGPUBuffer _frameUniformBuf = nullptr;
     // Per-draw data (model, normalMat) — one slot per mesh, selected via dynamic offset.
     // Sized lazily; all slots are written in a single call before any draw is
     // recorded each frame, since wgpuQueueWriteBuffer ordering is relative to
     // Queue::Submit, not to render-pass recording order.
-    WGPUBuffer          _drawUniformBuf  = nullptr;
-    uint32_t            _drawSlotCapacity = 0;
+    WGPUBuffer _drawUniformBuf = nullptr;
+    uint32_t _drawSlotCapacity = 0;
 #endif
 };
 
@@ -296,17 +299,17 @@ private:
     void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
     void _ensureDrawCapacity(uint32_t drawCount);
 
-    WGPUDevice          _gpuDevice       = nullptr;
-    WGPUQueue           _gpuQueue        = nullptr;
-    WGPURenderPipeline  _pipeline        = nullptr;
-    WGPUBindGroupLayout _uniformBGL      = nullptr;
-    WGPUBindGroup       _uniformBG       = nullptr;
+    WGPUDevice _gpuDevice = nullptr;
+    WGPUQueue _gpuQueue = nullptr;
+    WGPURenderPipeline _pipeline = nullptr;
+    WGPUBindGroupLayout _uniformBGL = nullptr;
+    WGPUBindGroup _uniformBG = nullptr;
     // Frame-constant data (viewProj, camera, light, time) — one fixed-size binding.
-    WGPUBuffer          _frameUniformBuf = nullptr;
+    WGPUBuffer _frameUniformBuf = nullptr;
     // Per-draw data (model, water shading params) — dynamic-offset slot per
     // mesh, mirrors ForwardOpaquePass/VoxelChunkPass's pattern.
-    WGPUBuffer          _drawUniformBuf  = nullptr;
-    uint32_t            _drawSlotCapacity = 0;
+    WGPUBuffer _drawUniformBuf = nullptr;
+    uint32_t _drawSlotCapacity = 0;
 #endif
 };
 
@@ -316,9 +319,9 @@ public:
     ~BloomPass() override;
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
-    bool  enabled       = false;
-    float threshold     = 1.0f;  // VX: brightness.frag hard cutoff
-    float bloomStrength = 0.08f; // VX: u_bloom_strength
+    bool enabled = false;
+    float threshold = 1.0f;// VX: brightness.frag hard cutoff
+    float bloomStrength = 0.08f;// VX: u_bloom_strength
 
 private:
     static constexpr int MIP_LEVELS = 5;
@@ -326,15 +329,15 @@ private:
     struct MipRT {
         GLuint fbo = 0;
         GLuint tex = 0;
-        int    w   = 0;
-        int    h   = 0;
+        int w = 0;
+        int h = 0;
     };
 
     MipRT _mips[MIP_LEVELS];
     GLuint _tempFBO = 0;
     GLuint _tempTex = 0;
-    bool  _initialized = false;
-    int   _lastW = 0, _lastH = 0;
+    bool _initialized = false;
+    int _lastW = 0, _lastH = 0;
 
     void InitMips(int w, int h);
     void DrawScreenQuad(GLuint screenVAO);
@@ -350,34 +353,34 @@ private:
     void _initGPU(WGPUDevice device, WGPUQueue queue, uint32_t sceneSampleCount);
     void _resizeGPU(int width, int height);
 
-    WGPUDevice  _gpuDevice = nullptr;
-    WGPUQueue   _gpuQueue  = nullptr;
-    WGPUSampler _sampler   = nullptr;
+    WGPUDevice _gpuDevice = nullptr;
+    WGPUQueue _gpuQueue = nullptr;
+    WGPUSampler _sampler = nullptr;
 
     WGPURenderPipeline _threshPipeline = nullptr;
-    WGPURenderPipeline _blurPipeline   = nullptr;
-    WGPURenderPipeline _compPipeline   = nullptr;
+    WGPURenderPipeline _blurPipeline = nullptr;
+    WGPURenderPipeline _compPipeline = nullptr;
 
     WGPUBindGroupLayout _threshBGL = nullptr;
-    WGPUBindGroupLayout _blurBGL   = nullptr;
-    WGPUBindGroupLayout _compBGL   = nullptr;
+    WGPUBindGroupLayout _blurBGL = nullptr;
+    WGPUBindGroupLayout _compBGL = nullptr;
 
     WGPUBuffer _threshUniformBuf = nullptr;
-    WGPUBuffer _blurHUniformBuf  = nullptr; // direction+texelSize, fixed per resize
-    WGPUBuffer _blurVUniformBuf  = nullptr;
-    WGPUBuffer _compUniformBuf   = nullptr;
+    WGPUBuffer _blurHUniformBuf = nullptr;// direction+texelSize, fixed per resize
+    WGPUBuffer _blurVUniformBuf = nullptr;
+    WGPUBuffer _compUniformBuf = nullptr;
 
     // Half-resolution ping-pong textures for the blur chain.
-    WGPUTexture     _brightA = nullptr, _brightB = nullptr;
+    WGPUTexture _brightA = nullptr, _brightB = nullptr;
     WGPUTextureView _brightAView = nullptr, _brightBView = nullptr;
     // Full-resolution copy of sceneRT, refreshed each frame before composite.
-    WGPUTexture     _snapshotTex  = nullptr;
+    WGPUTexture _snapshotTex = nullptr;
     WGPUTextureView _snapshotView = nullptr;
 
     WGPUBindGroup _threshBG = nullptr;
-    WGPUBindGroup _blurHBG  = nullptr; // reads _brightA, writes _brightB
-    WGPUBindGroup _blurVBG  = nullptr; // reads _brightB, writes _brightA
-    WGPUBindGroup _compBG   = nullptr; // reads _snapshotTex + _brightB(final)
+    WGPUBindGroup _blurHBG = nullptr;// reads _brightA, writes _brightB
+    WGPUBindGroup _blurVBG = nullptr;// reads _brightB, writes _brightA
+    WGPUBindGroup _compBG = nullptr;// reads _snapshotTex + _brightB(final)
 
     int _gpuWidth = 0, _gpuHeight = 0, _gpuHalfW = 0, _gpuHalfH = 0;
 
@@ -388,8 +391,8 @@ private:
 class RenderGraph {
     struct PassEntry {
         std::unique_ptr<RenderPass> pass;
-        GpuTimer                    timer;
-        std::string                 name;
+        GpuTimer timer;
+        std::string name;
     };
     std::vector<PassEntry> _entries;
 
@@ -407,8 +410,7 @@ public:
     // Returns {passName, gpuMs} for every pass (one frame behind, stall-free).
     std::vector<std::pair<std::string, float>> GetTimings() const;
 
-    template<typename T>
-    T* GetPass() {
+    template<typename T> T* GetPass() {
         for (auto& e : _entries) {
             if (auto* t = dynamic_cast<T*>(e.pass.get())) return t;
         }
@@ -442,15 +444,18 @@ public:
         wireframeEnabled = enable;
     }
 
-    template<typename T>
-    T* GetPass() { return _renderGraph ? _renderGraph->GetPass<T>() : nullptr; }
+    template<typename T> T* GetPass() {
+        return _renderGraph ? _renderGraph->GetPass<T>() : nullptr;
+    }
 
     std::vector<std::pair<std::string, float>> GetTimings() const {
         return _renderGraph ? _renderGraph->GetTimings() : std::vector<std::pair<std::string, float>>{};
     }
 
 #ifdef AE_GPU_TIMER_ENABLED
-    bool& GpuProfilingEnabled() { return _renderGraph->gpuProfilingEnabled; }
+    bool& GpuProfilingEnabled() {
+        return _renderGraph->gpuProfilingEnabled;
+    }
 #endif
 
     void SetCapability(const GLenum& cap, bool enable = true) {
@@ -518,7 +523,7 @@ public:
     // All OpenGL-specific state grouped here; WebGPU paths never touch these fields.
     struct GL {
         GLuint finalFBO = 0;
-        std::array<GLuint, MAX_UNI_LIGHTS>  uniShadowMaps = {};
+        std::array<GLuint, MAX_UNI_LIGHTS> uniShadowMaps = {};
         std::array<GLuint, MAX_OMNI_LIGHTS> omniShadowMaps = {};
         GLuint envMap = 0, irradianceMap = 0;
         struct GBuffer {
@@ -536,8 +541,8 @@ public:
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
         GLuint glesResolvedDepthTex = 0;
         GLuint glesResolvedDepthFBO = 0;
-        int    glesResolvedDepthWidth = 0;
-        int    glesResolvedDepthHeight = 0;
+        int glesResolvedDepthWidth = 0;
+        int glesResolvedDepthHeight = 0;
 #endif
     } gl;
 
@@ -571,12 +576,12 @@ private:
     std::vector<RenderCommand> _commandList;
 
     // Bucketed and sorted queues
-    std::vector<SortableCommand> _opaqueQueue;      // scene, voxel chunks, skybox
-    std::vector<SortableCommand> _afterOpaqueQueue; // raymarching, GPU particles
-    std::vector<SortableCommand> _transparentQueue; // particles, world UI
-    std::vector<SortableCommand> _gizmoQueue;       // world debug UI
-    std::vector<BatchDrawCommand> _hudQueue;        // HUD (RmlUi)
-    std::vector<BatchDrawCommand> _canvasQueue;     // immediate mode canvas (Lua)
+    std::vector<SortableCommand> _opaqueQueue;// scene, voxel chunks, skybox
+    std::vector<SortableCommand> _afterOpaqueQueue;// raymarching, GPU particles
+    std::vector<SortableCommand> _transparentQueue;// particles, world UI
+    std::vector<SortableCommand> _gizmoQueue;// world debug UI
+    std::vector<BatchDrawCommand> _hudQueue;// HUD (RmlUi)
+    std::vector<BatchDrawCommand> _canvasQueue;// immediate mode canvas (Lua)
 
     std::unique_ptr<RenderGraph> _renderGraph;
     RenderPath _currRenderPath = RenderPath::Forward;
@@ -617,13 +622,15 @@ public:
     }
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    GPUCanvasPass* GetGPUCanvasPass() const { return m_GPUCanvasPass.get(); }
+    GPUCanvasPass* GetGPUCanvasPass() const {
+        return m_GPUCanvasPass.get();
+    }
 
     // Shadow-map handoff: written by ShadowPass each frame (non-owning view —
     // ShadowPass owns the texture), consumed by ForwardOpaquePass. The light
     // VP already includes the GL→WebGPU [-1,1]→[0,1] depth-range fixup, so
     // consumers use it as-is for textureSampleCompare.
     WGPUTextureView wgpuShadowMapView = nullptr;
-    glm::mat4       wgpuShadowLightVP = glm::mat4(1.0f);
+    glm::mat4 wgpuShadowLightVP = glm::mat4(1.0f);
 #endif
 };

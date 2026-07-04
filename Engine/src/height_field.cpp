@@ -1,6 +1,6 @@
 #include "height_field.hpp"
-#include "file_system.hpp"
 #include "FastNoiseLite.h"
+#include "file_system.hpp"
 #include "stb_image.h"
 #include <algorithm>
 #include <cctype>
@@ -14,12 +14,12 @@
 
 float HeightField::SampleNormalized(float u, float v) const {
     const int w = Width(), d = Depth();
-    const float x = std::clamp(u, 0.0f, 1.0f) * float(w - 1);
-    const float z = std::clamp(v, 0.0f, 1.0f) * float(d - 1);
-    const int   x0 = static_cast<int>(x), z0 = static_cast<int>(z);
-    const int   x1 = std::min(x0 + 1, w - 1), z1 = std::min(z0 + 1, d - 1);
-    const float fx = x - float(x0), fz = z - float(z0);
-    const float top    = Sample(x0, z0) * (1.0f - fx) + Sample(x1, z0) * fx;
+    const float x = std::clamp(u, 0.0f, 1.0f) * static_cast<float>(w - 1);
+    const float z = std::clamp(v, 0.0f, 1.0f) * static_cast<float>(d - 1);
+    const int x0 = static_cast<int>(x), z0 = static_cast<int>(z);
+    const int x1 = std::min(x0 + 1, w - 1), z1 = std::min(z0 + 1, d - 1);
+    const float fx = x - static_cast<float>(x0), fz = z - static_cast<float>(z0);
+    const float top = Sample(x0, z0) * (1.0f - fx) + Sample(x1, z0) * fx;
     const float bottom = Sample(x0, z1) * (1.0f - fx) + Sample(x1, z1) * fx;
     return top * (1.0f - fz) + bottom * fz;
 }
@@ -39,8 +39,7 @@ static bool HasExtension(const std::string& path, const char* ext) {
 
 ImageHeightField::ImageHeightField(const std::string& path) {
     FileSystem::Bytes bytes = FileSystem::Get().ReadSync(path);
-    if (bytes.empty())
-        throw std::runtime_error("ImageHeightField: cannot read file: " + path);
+    if (bytes.empty()) throw std::runtime_error("ImageHeightField: cannot read file: " + path);
 
     if (HasExtension(path, ".r16") || HasExtension(path, ".raw"))
         LoadRaw16(bytes, path);
@@ -50,16 +49,17 @@ ImageHeightField::ImageHeightField(const std::string& path) {
         LoadStb(bytes, path);
 
     if (_width != _depth) {
-        throw std::runtime_error("ImageHeightField: Heightmap at '" + path +
-                                 "' must be square! Dimensions: " +
-                                 std::to_string(_width) + "x" + std::to_string(_depth));
+        throw std::runtime_error(
+            "ImageHeightField: Heightmap at '" + path + "' must be square! Dimensions: " + std::to_string(_width) + "x"
+            + std::to_string(_depth)
+        );
     }
 }
 
 // Headerless square little-endian uint16 (Gaea .r16 / WorldCreator RAW export).
 void ImageHeightField::LoadRaw16(const std::vector<unsigned char>& bytes, const std::string& path) {
     const size_t count = bytes.size() / sizeof(uint16_t);
-    const int    side  = static_cast<int>(std::lround(std::sqrt(static_cast<double>(count))));
+    const int side = static_cast<int>(std::lround(std::sqrt(static_cast<double>(count))));
     if (count == 0 || static_cast<size_t>(side) * side * sizeof(uint16_t) != bytes.size())
         throw std::runtime_error("ImageHeightField: '" + path + "' is not a square 16-bit RAW heightmap");
 
@@ -79,7 +79,7 @@ void ImageHeightField::LoadRaw16(const std::vector<unsigned char>& bytes, const 
 // Headerless square little-endian float32 in [0,1] (Gaea .r32 export).
 void ImageHeightField::LoadRaw32(const std::vector<unsigned char>& bytes, const std::string& path) {
     const size_t count = bytes.size() / sizeof(float);
-    const int    side  = static_cast<int>(std::lround(std::sqrt(static_cast<double>(count))));
+    const int side = static_cast<int>(std::lround(std::sqrt(static_cast<double>(count))));
     if (count == 0 || static_cast<size_t>(side) * side * sizeof(float) != bytes.size())
         throw std::runtime_error("ImageHeightField: '" + path + "' is not a square 32-bit RAW heightmap");
 
@@ -98,24 +98,24 @@ void ImageHeightField::LoadRaw32(const std::vector<unsigned char>& bytes, const 
 // carries 16-bit data (16-bit PNG), otherwise falls back to 8-bit.
 void ImageHeightField::LoadStb(const std::vector<unsigned char>& bytes, const std::string& path) {
     const auto* data = bytes.data();
-    const int   len  = static_cast<int>(bytes.size());
+    const int len = static_cast<int>(bytes.size());
     int w = 0, h = 0, ch = 0;
 
     stbi_set_flip_vertically_on_load(true);
     if (stbi_is_16_bit_from_memory(data, len)) {
         stbi_us* pixels = stbi_load_16_from_memory(data, len, &w, &h, &ch, 1);
-        if (!pixels)
-            throw std::runtime_error("ImageHeightField: cannot decode 16-bit image: " + path);
-        _width = w; _depth = h;
+        if (!pixels) throw std::runtime_error("ImageHeightField: cannot decode 16-bit image: " + path);
+        _width = w;
+        _depth = h;
         _grid.resize(static_cast<size_t>(w) * h);
         for (size_t i = 0; i < _grid.size(); ++i)
             _grid[i] = pixels[i] / 65535.0f;
         stbi_image_free(pixels);
     } else {
         stbi_uc* pixels = stbi_load_from_memory(data, len, &w, &h, &ch, 1);
-        if (!pixels)
-            throw std::runtime_error("ImageHeightField: cannot decode image: " + path);
-        _width = w; _depth = h;
+        if (!pixels) throw std::runtime_error("ImageHeightField: cannot decode image: " + path);
+        _width = w;
+        _depth = h;
         _grid.resize(static_cast<size_t>(w) * h);
         for (size_t i = 0; i < _grid.size(); ++i)
             _grid[i] = pixels[i] / 255.0f;
@@ -131,8 +131,7 @@ float ImageHeightField::Sample(int xi, int zi) const {
 // NoiseHeightField
 // ----------------------------------------------------------------------------
 
-NoiseHeightField::NoiseHeightField(const NoiseHeightFieldParams& p)
-    : _params(p) {
+NoiseHeightField::NoiseHeightField(const NoiseHeightFieldParams& p) : _params(p) {
     Regenerate();
 }
 
@@ -151,7 +150,7 @@ void NoiseHeightField::Regenerate() {
     for (int z = 0; z < res; ++z) {
         for (int x = 0; x < res; ++x) {
             float v = noise.GetNoise(static_cast<float>(x), static_cast<float>(z));
-            _grid[static_cast<size_t>(z) * res + x] = (v + 1.0f) * 0.5f;  // map [-1,1] → [0,1]
+            _grid[static_cast<size_t>(z) * res + x] = (v + 1.0f) * 0.5f;// map [-1,1] → [0,1]
         }
     }
 }

@@ -55,10 +55,7 @@ void UIPageManager::RemovePage(const UIPageID& id) {
     entry.page->OnDetach();
 
     // Remove from navigation stack if present
-    _navigationStack.erase(
-      std::remove(_navigationStack.begin(), _navigationStack.end(), id),
-      _navigationStack.end()
-    );
+    _navigationStack.erase(std::remove(_navigationStack.begin(), _navigationStack.end(), id), _navigationStack.end());
 
     _pages.erase(it);
 }

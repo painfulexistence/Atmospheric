@@ -1,6 +1,6 @@
 #pragma once
-#include "globals.hpp"
 #include "bullet_linear_math.hpp"
+#include "globals.hpp"
 
 class PhysicsDebugDrawer : public btIDebugDraw {
 private:

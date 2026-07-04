@@ -21,7 +21,7 @@ void RmlUiRenderer::Shutdown() {
 }
 
 Rml::CompiledGeometryHandle
-  RmlUiRenderer::CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) {
+    RmlUiRenderer::CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) {
     CompiledGeometry geom;
     geom.vertices.reserve(vertices.size());
     geom.indices.reserve(indices.size());
@@ -33,7 +33,7 @@ Rml::CompiledGeometryHandle
         // Wait, BatchVertex color is glm::vec4.
         // Rml::Colourb is 4 bytes.
         bv.color =
-          glm::vec4(v.colour.red / 255.0f, v.colour.green / 255.0f, v.colour.blue / 255.0f, v.colour.alpha / 255.0f);
+            glm::vec4(v.colour.red / 255.0f, v.colour.green / 255.0f, v.colour.blue / 255.0f, v.colour.alpha / 255.0f);
         bv.uv = glm::vec2(v.tex_coord.x, v.tex_coord.y);
         bv.texIndex = 0.0f;// Set later
         bv.entityID = -1.0f;
@@ -51,7 +51,7 @@ Rml::CompiledGeometryHandle
 }
 
 void RmlUiRenderer::RenderGeometry(
-  Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, Rml::TextureHandle texture
+    Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, Rml::TextureHandle texture
 ) {
     auto it = m_geometry.find(geometry);
     if (it == m_geometry.end()) return;
@@ -91,7 +91,7 @@ void RmlUiRenderer::SetScissorRegion(Rml::Rectanglei region) {
     // TODO: Pass scissor command
 }
 
-Rml::TextureHandle RmlUiRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& source) {
+Rml::TextureHandle RmlUiRenderer::LoadTexture(Rml::Vector2i& textureDimensions, const Rml::String& source) {
     // In a real engine, we would load the texture via AssetManager
     // For now, we return 0 or implement basic loading if needed
     // But since we are refactoring, let's keep it minimal
@@ -99,11 +99,11 @@ Rml::TextureHandle RmlUiRenderer::LoadTexture(Rml::Vector2i& texture_dimensions,
     return 0;
 }
 
-Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions) {
+Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i sourceDimensions) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         uint32_t texture_id = GfxFactory::UploadTexture2D(
-          reinterpret_cast<const uint8_t*>(source.data()), source_dimensions.x, source_dimensions.y
+            reinterpret_cast<const uint8_t*>(source.data()), source_dimensions.x, source_dimensions.y
         );
         return (Rml::TextureHandle)texture_id;
     }
@@ -112,12 +112,12 @@ Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> sou
     // OpenGL path: GfxFactory::UploadTexture2D's GL fallback uses GL_NEAREST,
     // which would regress RmlUi's text/UI rendering quality — upload directly
     // with GL_LINEAR filtering instead, as before.
-    GLuint texture_id;
-    glGenTextures(1, &texture_id);
-    glBindTexture(GL_TEXTURE_2D, texture_id);
+    GLuint textureId;
+    glGenTextures(1, &textureId);
+    glBindTexture(GL_TEXTURE_2D, textureId);
 
     glTexImage2D(
-      GL_TEXTURE_2D, 0, GL_RGBA8, source_dimensions.x, source_dimensions.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, source.data()
+        GL_TEXTURE_2D, 0, GL_RGBA8, sourceDimensions.x, sourceDimensions.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, source.data()
     );
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -127,11 +127,11 @@ Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> sou
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    return (Rml::TextureHandle)texture_id;
+    return static_cast<Rml::TextureHandle>(textureId);
 }
 
-void RmlUiRenderer::ReleaseTexture(Rml::TextureHandle texture_handle) {
-    GfxFactory::ReleaseTexture(static_cast<uint32_t>(texture_handle));
+void RmlUiRenderer::ReleaseTexture(Rml::TextureHandle textureHandle) {
+    GfxFactory::ReleaseTexture(static_cast<uint32_t>(textureHandle));
 }
 
 void RmlUiRenderer::SetTransform(const Rml::Matrix4f* transform) {

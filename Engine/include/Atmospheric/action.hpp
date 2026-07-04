@@ -4,8 +4,8 @@
 #include "game_object.hpp"
 #include <functional>
 #include <glm/glm.hpp>
-#include <string>
 #include <memory>
+#include <string>
 #include <vector>
 
 class GameObject;

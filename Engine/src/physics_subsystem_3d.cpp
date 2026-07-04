@@ -1,5 +1,4 @@
 #include "physics_subsystem_3d.hpp"
-#include <algorithm>
 #include "LinearMath/btThreads.h"
 #include "bullet_task_scheduler.hpp"
 #include "game_object.hpp"
@@ -8,19 +7,20 @@
 #include "rigidbody_component.hpp"
 #include <BulletCollision/CollisionDispatch/btCollisionDispatcherMt.h>
 #include <BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolverMt.h>
+#include <algorithm>
 #include <spdlog/spdlog.h>
 
 class RaycastCallback : public btCollisionWorld::ClosestRayResultCallback {
 private:
-    btVector3 m_rayFromWorld;
-    btVector3 m_rayToWorld;
+    btVector3 _m_rayFromWorld;
+    btVector3 _m_rayToWorld;
 
 public:
     // float m_hitDistance;
 
     RaycastCallback(const btVector3& rayFromWorld, const btVector3& rayToWorld)
-      : btCollisionWorld::ClosestRayResultCallback(rayFromWorld, rayToWorld), m_rayFromWorld(rayFromWorld),
-        m_rayToWorld(rayToWorld) {
+      : btCollisionWorld::ClosestRayResultCallback(rayFromWorld, rayToWorld), _m_rayFromWorld(rayFromWorld),
+        _m_rayToWorld(rayToWorld) {
     }
 
     btScalar addSingleResult(btCollisionWorld::LocalRayResult& rayResult, bool normalInWorldSpace) override {
@@ -56,8 +56,7 @@ void Physics3DSubsystem::Init(Application* app) {
     btSetTaskScheduler(_taskScheduler.get());
 
     auto* scheduler = btGetTaskScheduler();
-    spdlog::info("[Physics] Bullet worker threads: {}",
-        scheduler ? scheduler->getNumThreads() : 0);
+    spdlog::info("[Physics] Bullet worker threads: {}", scheduler ? scheduler->getNumThreads() : 0);
     spdlog::info("[Physics] JobSystem threads: {}", JobSystem::Get()->GetThreadCount());
 
     _config = std::make_unique<btDefaultCollisionConfiguration>();
@@ -72,7 +71,8 @@ void Physics3DSubsystem::Init(Application* app) {
     // Use parallel solver
     _solver = std::make_unique<btSequentialImpulseConstraintSolverMt>();
 
-    _world = std::make_unique<btDiscreteDynamicsWorld>(_dispatcher.get(), _broadphase.get(), _solver.get(), _config.get());
+    _world =
+        std::make_unique<btDiscreteDynamicsWorld>(_dispatcher.get(), _broadphase.get(), _solver.get(), _config.get());
     SetGravity(glm::vec3(0, -GRAVITY, 0));
 
     _debugDrawer = std::make_unique<PhysicsDebugDrawer>();
@@ -96,11 +96,11 @@ void Physics3DSubsystem::Process(float dt) {
     for (int i = 0; i < numManifolds; i++) {
         btPersistentManifold* contactManifold = _dispatcher->getManifoldByIndexInternal(i);
 
-        btCollisionObject* objA = const_cast<btCollisionObject*>(contactManifold->getBody0());
-        btCollisionObject* objB = const_cast<btCollisionObject*>(contactManifold->getBody1());
+        auto* objA = const_cast<btCollisionObject*>(contactManifold->getBody0());
+        auto* objB = const_cast<btCollisionObject*>(contactManifold->getBody1());
 
-        GameObject* gameObjA = static_cast<GameObject*>(objA->getUserPointer());
-        GameObject* gameObjB = static_cast<GameObject*>(objB->getUserPointer());
+        auto* gameObjA = static_cast<GameObject*>(objA->getUserPointer());
+        auto* gameObjB = static_cast<GameObject*>(objB->getUserPointer());
 
         if (gameObjA && gameObjB) {
             if (contactManifold->getNumContacts() > 0) {
@@ -158,7 +158,7 @@ ColliderID Physics3DSubsystem::CreateCollider(const Shape& shape) {
     switch (shape.type) {
     case ShapeType::Cube:
         col = new btBoxShape(btVector3(
-          0.5f * shape.data.cubeData.size.x, 0.5f * shape.data.cubeData.size.y, 0.5f * shape.data.cubeData.size.z
+            0.5f * shape.data.cubeData.size.x, 0.5f * shape.data.cubeData.size.y, 0.5f * shape.data.cubeData.size.z
         ));
         break;
     case ShapeType::Sphere:
@@ -169,7 +169,7 @@ ColliderID Physics3DSubsystem::CreateCollider(const Shape& shape) {
         break;
     case ShapeType::Cylinder:
         col = new btCylinderShape(
-          btVector3(shape.data.cylinderData.radius, shape.data.cylinderData.height, shape.data.cylinderData.radius)
+            btVector3(shape.data.cylinderData.radius, shape.data.cylinderData.height, shape.data.cylinderData.radius)
         );
         break;
     case ShapeType::Cone:
@@ -196,7 +196,7 @@ bool Physics3DSubsystem::Raycast(const glm::vec3& from, const glm::vec3& to, Ray
     if (callback.hasHit()) {
         btVector3 hitPoint = callback.m_hitPointWorld;
         btVector3 hitNormal = callback.m_hitNormalWorld;
-        GameObject* hitObject = static_cast<GameObject*>(callback.m_collisionObject->getUserPointer());
+        auto* hitObject = static_cast<GameObject*>(callback.m_collisionObject->getUserPointer());
         hit.point = glm::vec3(hitPoint.x(), hitPoint.y(), hitPoint.z());
         hit.normal = glm::vec3(hitNormal.x(), hitNormal.y(), hitNormal.z());
         hit.gameObject = hitObject;

@@ -1,6 +1,6 @@
 #include "camera_component.hpp"
-#include "game_object.hpp"
 #include "application.hpp"
+#include "game_object.hpp"
 #include "graphics_subsystem.hpp"
 
 static const float maxVAngle = PI / 2.0f - 0.01f;
@@ -15,12 +15,12 @@ CameraComponent::CameraComponent(GameObject* gameObject, const CameraProps& prop
         _nearZ = props.orthographic.nearClip;
         _farZ = props.orthographic.farClip;
         _projectionMatrix = glm::ortho(
-          -props.orthographic.width * .5f,
-          props.orthographic.width * .5f,
-          -props.orthographic.height * .5f,
-          props.orthographic.height * .5f,
-          props.orthographic.nearClip,
-          props.orthographic.farClip
+            -props.orthographic.width * .5f,
+            props.orthographic.width * .5f,
+            -props.orthographic.height * .5f,
+            props.orthographic.height * .5f,
+            props.orthographic.nearClip,
+            props.orthographic.farClip
         );
     } else {
         _isOrthographic = false;
@@ -29,10 +29,10 @@ CameraComponent::CameraComponent(GameObject* gameObject, const CameraProps& prop
         _nearZ = props.perspective.nearClip;
         _farZ = props.perspective.farClip;
         _projectionMatrix = glm::perspective(
-          props.perspective.fieldOfView,
-          props.perspective.aspectRatio,
-          props.perspective.nearClip,
-          props.perspective.farClip
+            props.perspective.fieldOfView,
+            props.perspective.aspectRatio,
+            props.perspective.nearClip,
+            props.perspective.farClip
         );
     }
     _eyeOffset = props.eyeOffset;
@@ -122,6 +122,6 @@ void CameraComponent::SetSize(float size) {
         _orthoHeight = size;
         _orthoWidth = size * aspectRatio;
         _projectionMatrix =
-          glm::ortho(-_orthoWidth * .5f, _orthoWidth * .5f, -_orthoHeight * .5f, _orthoHeight * .5f, _nearZ, _farZ);
+            glm::ortho(-_orthoWidth * .5f, _orthoWidth * .5f, -_orthoHeight * .5f, _orthoHeight * .5f, _nearZ, _farZ);
     }
 }

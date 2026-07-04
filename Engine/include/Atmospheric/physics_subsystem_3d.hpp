@@ -30,14 +30,12 @@ class BulletTaskScheduler;
 
 using ColliderID = uint32_t;
 
-class Physics3DSubsystem : public Subsystem
-{
+class Physics3DSubsystem : public Subsystem {
 private:
     static Physics3DSubsystem* _instance;
 
 public:
-    static Physics3DSubsystem* Get()
-    {
+    static Physics3DSubsystem* Get() {
         return _instance;
     }
 

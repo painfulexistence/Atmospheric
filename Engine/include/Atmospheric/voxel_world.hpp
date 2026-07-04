@@ -1,7 +1,7 @@
 #pragma once
-#include "voxel_chunk_component.hpp"
 #include "frustum.hpp"
 #include "renderer.hpp"
+#include "voxel_chunk_component.hpp"
 #include <glm/vec3.hpp>
 #include <unordered_map>
 #include <vector>
@@ -22,11 +22,11 @@ struct IVec3Hash {
 class VoxelWorld {
 public:
     // Y extent is bounded (no underground streaming needed).
-    static constexpr int   WORLD_Y    = 3;
+    static constexpr int WORLD_Y = 3;
     // View radius in chunks for X and Z — chunks within this range are kept loaded.
     // 12 gives a 25x25 total footprint (2*12+1), matching VX's WORLD_WIDTH/WORLD_DEPTH.
-    static constexpr int   VIEW_X     = 12;
-    static constexpr int   VIEW_Z     = 12;
+    static constexpr int VIEW_X = 12;
+    static constexpr int VIEW_Z = 12;
 
     VoxelWorld() = default;
     ~VoxelWorld() = default;
@@ -40,11 +40,10 @@ public:
     // When false (default), only the initial view volume loaded in Init() is kept.
     bool infiniteMode = false;
 
-    void SubmitRenderCommands(Renderer* renderer, const glm::mat4& viewProj,
-                              const glm::vec3& cameraPos);
+    void SubmitRenderCommands(Renderer* renderer, const glm::mat4& viewProj, const glm::vec3& cameraPos);
 
     uint8_t GetVoxel(int wx, int wy, int wz) const;
-    void    SetVoxel(int wx, int wy, int wz, uint8_t type);
+    void SetVoxel(int wx, int wy, int wz, uint8_t type);
 
 private:
     using ChunkMap = std::unordered_map<glm::ivec3, VoxelChunkComponent*, IVec3Hash>;
@@ -52,15 +51,15 @@ private:
     // Max new chunks meshed per Update() to avoid per-frame stutter.
     static constexpr int LOAD_PER_FRAME = 8;
     // Unload margin beyond VIEW_X/Z to prevent thrashing at chunk boundaries.
-    static constexpr int UNLOAD_MARGIN  = 2;
+    static constexpr int UNLOAD_MARGIN = 2;
 
-    ChunkMap                          _chunkMap;
-    std::vector<VoxelChunkComponent*> _pool;      // recycled unloaded slots
-    Application*                      _app       = nullptr;
-    GraphicsSubsystem*                   _gfx       = nullptr;
-    int                               _seed      = 42;
-    glm::ivec3                        _lastCamChunk{INT_MIN, 0, INT_MIN};
-    GameObject*                       _root      = nullptr;
+    ChunkMap _chunkMap;
+    std::vector<VoxelChunkComponent*> _pool;// recycled unloaded slots
+    Application* _app = nullptr;
+    GraphicsSubsystem* _gfx = nullptr;
+    int _seed = 42;
+    glm::ivec3 _lastCamChunk{ INT_MIN, 0, INT_MIN };
+    GameObject* _root = nullptr;
 
     VoxelChunkComponent* GetChunk(int cx, int cy, int cz) const;
     VoxelChunkComponent* AcquireSlot(glm::ivec3 pos);

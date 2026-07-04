@@ -21,13 +21,19 @@ public:
     EditorLayer(Application* app, bool showImGui = true);
     ~EditorLayer() = default;
 
-    void OnAttach() override {}
-    void OnDetach() override {}
+    void OnAttach() override {
+    }
+    void OnDetach() override {
+    }
     void OnUpdate(float dt) override;
     void OnRender(float dt) override;
 
-    bool IsVisible() const { return _showImGui; }
-    void SetVisible(bool show) { _showImGui = show; }
+    bool IsVisible() const {
+        return _showImGui;
+    }
+    void SetVisible(bool show) {
+        _showImGui = show;
+    }
 
 private:
     Application* _app = nullptr;

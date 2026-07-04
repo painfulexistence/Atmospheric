@@ -34,28 +34,34 @@
 // The read-back is always one frame behind, so it never stalls the pipeline.
 struct GpuTimer {
 #ifdef AE_GPU_TIMER_ENABLED
-    GLuint startQ[2] = {0, 0};
-    GLuint endQ[2]   = {0, 0};
-    int    write     = 0;
-    bool   valid     = false;
-    int    pendingFrames = 0;  // consecutive End() calls where last frame's result wasn't available yet
+    GLuint startQ[2] = { 0, 0 };
+    GLuint endQ[2] = { 0, 0 };
+    int write = 0;
+    bool valid = false;
+    int pendingFrames = 0;// consecutive End() calls where last frame's result wasn't available yet
 
     // Move-only: GL handles must not be shared.
     GpuTimer() = default;
     GpuTimer(const GpuTimer&) = delete;
     GpuTimer& operator=(const GpuTimer&) = delete;
 
-    GpuTimer(GpuTimer&& o) noexcept { *this = std::move(o); }
+    GpuTimer(GpuTimer&& o) noexcept {
+        *this = std::move(o);
+    }
     GpuTimer& operator=(GpuTimer&& o) noexcept {
         if (this == &o) return *this;
         std::memcpy(startQ, o.startQ, sizeof(startQ));
-        std::memcpy(endQ,   o.endQ,   sizeof(endQ));
+        std::memcpy(endQ, o.endQ, sizeof(endQ));
         std::memset(o.startQ, 0, sizeof(o.startQ));
-        std::memset(o.endQ,   0, sizeof(o.endQ));
-        write = o.write;  o.write = 0;
-        valid = o.valid;  o.valid = false;
-        pendingFrames = o.pendingFrames; o.pendingFrames = 0;
-        ms    = o.ms;     o.ms   = 0.0f;
+        std::memset(o.endQ, 0, sizeof(o.endQ));
+        write = o.write;
+        o.write = 0;
+        valid = o.valid;
+        o.valid = false;
+        pendingFrames = o.pendingFrames;
+        o.pendingFrames = 0;
+        ms = o.ms;
+        o.ms = 0.0f;
         return *this;
     }
 #endif
@@ -64,7 +70,7 @@ struct GpuTimer {
 
     void Init() {
 #ifdef AE_GPU_TIMER_ENABLED
-        glGetError();  // clear any stale error so the check below is meaningful
+        glGetError();// clear any stale error so the check below is meaningful
         glGenQueries(2, startQ);
         glGenQueries(2, endQ);
         GLenum err = glGetError();
@@ -103,7 +109,7 @@ struct GpuTimer {
             if (avail) {
                 GLuint64 t0 = 0, t1 = 0;
                 glGetQueryObjectui64v(startQ[read], GL_QUERY_RESULT, &t0);
-                glGetQueryObjectui64v(endQ[read],   GL_QUERY_RESULT, &t1);
+                glGetQueryObjectui64v(endQ[read], GL_QUERY_RESULT, &t1);
                 ms = static_cast<float>(t1 - t0) / 1e6f;
                 pendingFrames = 0;
 
@@ -112,10 +118,7 @@ struct GpuTimer {
                 static bool loggedFirstResult = false;
                 if (!loggedFirstResult) {
                     loggedFirstResult = true;
-                    ENGINE_LOG(
-                        "GpuTimer: first result -- t0={} t1={} delta={}ns ({:.3f}ms)",
-                        t0, t1, t1 - t0, ms
-                    );
+                    ENGINE_LOG("GpuTimer: first result -- t0={} t1={} delta={}ns ({:.3f}ms)", t0, t1, t1 - t0, ms);
                 }
             } else if (++pendingFrames == 120) {
                 // ~2s at 60fps with nothing ever becoming available — the driver is
@@ -141,12 +144,14 @@ struct GpuTimer {
     void Destroy() {
 #ifdef AE_GPU_TIMER_ENABLED
         if (startQ[0]) glDeleteQueries(2, startQ);
-        if (endQ[0])   glDeleteQueries(2, endQ);
+        if (endQ[0]) glDeleteQueries(2, endQ);
         std::memset(startQ, 0, sizeof(startQ));
-        std::memset(endQ,   0, sizeof(endQ));
+        std::memset(endQ, 0, sizeof(endQ));
         valid = false;
 #endif
     }
 
-    float GetMs() const { return ms; }
+    float GetMs() const {
+        return ms;
+    }
 };

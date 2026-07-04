@@ -1,8 +1,8 @@
 #include "audio_subsystem.hpp"
-#include "video_recorder.hpp"
 #include "file_system.hpp"
 #include "fmt/format.h"
 #include "imgui.h"
+#include "video_recorder.hpp"
 #include <stdexcept>
 
 // Defined once for both platform builds (the ctors/dtors below are branched).
@@ -31,8 +31,8 @@ AudioSubsystem::AudioSubsystem(void) {
         if (!window.AudioManager) {
             window.AudioManager = (function() {
                 var ctx = null;
-                var bufferCache = new Map(); // url -> AudioBuffer
-                var activeNodes = new Map(); // id -> { source, gain, isMusic, pending, url }
+                var bufferCache = new Map();// url -> AudioBuffer
+                var activeNodes = new Map();// id -> { source, gain, isMusic, pending, url }
                 var nextId = 1;
 
                 function getContext() {
@@ -50,17 +50,18 @@ AudioSubsystem::AudioSubsystem(void) {
                     try {
                         var lookup = FS.lookupPath(url);
                         exists = !!lookup.node;
-                    } catch (e) {}
+                    } catch (e) {
+                    }
 
                     if (exists) {
                         try {
                             var fileData = FS.readFile(url);
-                            var bufferCopy = fileData.buffer.slice(fileData.byteOffset, fileData.byteOffset + fileData.byteLength);
-                            return getContext().decodeAudioData(bufferCopy)
-                                .then(function(buf) {
-                                    bufferCache.set(url, buf);
-                                    return buf;
-                                });
+                            var bufferCopy =
+                                fileData.buffer.slice(fileData.byteOffset, fileData.byteOffset + fileData.byteLength);
+                            return getContext().decodeAudioData(bufferCopy).then(function(buf) {
+                                bufferCache.set(url, buf);
+                                return buf;
+                            });
                         } catch (err) {
                             console.error("Failed to read audio from MEMFS: " + url, err);
                         }
@@ -73,9 +74,7 @@ AudioSubsystem::AudioSubsystem(void) {
                             }
                             return resp.arrayBuffer();
                         })
-                        .then(function(ab) {
-                            return getContext().decodeAudioData(ab);
-                        })
+                        .then(function(ab) { return getContext().decodeAudioData(ab); })
                         .then(function(buf) {
                             bufferCache.set(url, buf);
                             return buf;
@@ -89,19 +88,19 @@ AudioSubsystem::AudioSubsystem(void) {
                     source.buffer = buf;
                     source.loop = loop;
                     gain.gain.value = volume;
-                    if (pitch !== undefined && pitch !== null) {
+                    if (pitch != = undefined&& pitch != = null) {
                         source.playbackRate.value = pitch;
                     }
                     source.connect(gain).connect(c.destination);
-                    
+
                     source.onended = function() {
                         var node = activeNodes.get(id);
-                        if (node && node.source === source) {
+                        if (node&& node.source == = source) {
                             activeNodes.delete(id);
                         }
                     };
-                    
-                    activeNodes.set(id, { source: source, gain: gain, isMusic: isMusic, pending: false });
+
+                    activeNodes.set(id, { source : source, gain : gain, isMusic : isMusic, pending : false });
                     source.start(0);
                 }
 
@@ -110,18 +109,28 @@ AudioSubsystem::AudioSubsystem(void) {
                     var id = nextId++;
                     if (!buf) {
                         // Not cached yet, load async and play if still pending
-                        activeNodes.set(id, { pending: true, url: url, isMusic: isMusic, gain: null, source: null, volume: volume, pitch: pitch });
-                        load(url).then(function(loadedBuf) {
-                            var nodeInfo = activeNodes.get(id);
-                            if (nodeInfo && nodeInfo.pending) {
-                                var vol = nodeInfo.volume !== undefined ? nodeInfo.volume : volume;
-                                var p = nodeInfo.pitch !== undefined ? nodeInfo.pitch : pitch;
-                                startSource(id, loadedBuf, loop, vol, isMusic, p);
-                            }
-                        }).catch(function(err) {
-                            console.error("Failed to load and play audio: " + url, err);
-                            activeNodes.delete(id);
+                        activeNodes.set(id, {
+                            pending : true,
+                            url : url,
+                            isMusic : isMusic,
+                            gain : null,
+                            source : null,
+                            volume : volume,
+                            pitch : pitch
                         });
+                        load(url)
+                            .then(function(loadedBuf) {
+                                var nodeInfo = activeNodes.get(id);
+                                if (nodeInfo && nodeInfo.pending) {
+                                    var vol = nodeInfo.volume != = undefined ? nodeInfo.volume : volume;
+                                    var p = nodeInfo.pitch != = undefined ? nodeInfo.pitch : pitch;
+                                    startSource(id, loadedBuf, loop, vol, isMusic, p);
+                                }
+                            })
+                            .catch(function(err) {
+                                console.error("Failed to load and play audio: " + url, err);
+                                activeNodes.delete(id);
+                            });
                         return id;
                     }
                     startSource(id, buf, loop, volume, isMusic, pitch);
@@ -134,7 +143,8 @@ AudioSubsystem::AudioSubsystem(void) {
                         if (!node.pending && node.source) {
                             try {
                                 node.source.stop();
-                            } catch(e) {}
+                            } catch (e) {
+                            }
                         }
                         activeNodes.delete(id);
                     }
@@ -145,7 +155,8 @@ AudioSubsystem::AudioSubsystem(void) {
                         if (!node.pending && node.source) {
                             try {
                                 node.source.stop();
-                            } catch(e) {}
+                            } catch (e) {
+                            }
                         }
                     });
                     activeNodes.clear();
@@ -157,7 +168,8 @@ AudioSubsystem::AudioSubsystem(void) {
                             if (!node.pending && node.source) {
                                 try {
                                     node.source.stop();
-                                } catch(e) {}
+                                } catch (e) {
+                                }
                             }
                             activeNodes.delete(id);
                         }
@@ -170,7 +182,8 @@ AudioSubsystem::AudioSubsystem(void) {
                             if (!node.pending && node.source) {
                                 try {
                                     node.source.stop();
-                                } catch(e) {}
+                                } catch (e) {
+                                }
                             }
                             activeNodes.delete(id);
                         }
@@ -205,24 +218,25 @@ AudioSubsystem::AudioSubsystem(void) {
                     if (ctx) {
                         try {
                             ctx.close();
-                        } catch (e) {}
+                        } catch (e) {
+                        }
                         ctx = null;
                     }
                     bufferCache.clear();
                 }
 
                 return {
-                    getContext: getContext,
-                    load: load,
-                    play: play,
-                    stop: stop,
-                    stopAll: stopAll,
-                    stopAllMusics: stopAllMusics,
-                    stopAllSounds: stopAllSounds,
-                    setVolume: setVolume,
-                    isPlaying: isPlaying,
-                    unload: unload,
-                    shutdown: shutdown
+                    getContext : getContext,
+                    load : load,
+                    play : play,
+                    stop : stop,
+                    stopAll : stopAll,
+                    stopAllMusics : stopAllMusics,
+                    stopAllSounds : stopAllSounds,
+                    setVolume : setVolume,
+                    isPlaying : isPlaying,
+                    unload : unload,
+                    shutdown : shutdown
                 };
             })();
         }
@@ -230,14 +244,14 @@ AudioSubsystem::AudioSubsystem(void) {
         // Interaction listener to resume audio context
         function resumeAudio() {
             var ctx = window.AudioManager.getContext();
-            if (ctx && ctx.state === 'suspended') {
+            if (ctx&& ctx.state == = 'suspended') {
                 ctx.resume();
             }
-            document.removeEventListener('click',   resumeAudio);
+            document.removeEventListener('click', resumeAudio);
             document.removeEventListener('keydown', resumeAudio);
             document.removeEventListener('touchend', resumeAudio);
         }
-        document.addEventListener('click',   resumeAudio);
+        document.addEventListener('click', resumeAudio);
         document.addEventListener('keydown', resumeAudio);
         document.addEventListener('touchend', resumeAudio);
     });
@@ -300,14 +314,10 @@ void AudioSubsystem::DrawImGui(float dt) {
 void AudioSubsystem::Reset() {
     StopAll();
     for (auto [id, path] : musicPaths) {
-        EM_ASM({
-            window.AudioManager.unload(UTF8ToString($0));
-        }, path.c_str());
+        EM_ASM({ window.AudioManager.unload(UTF8ToString($0)); }, path.c_str());
     }
     for (auto [id, path] : soundPaths) {
-        EM_ASM({
-            window.AudioManager.unload(UTF8ToString($0));
-        }, path.c_str());
+        EM_ASM({ window.AudioManager.unload(UTF8ToString($0)); }, path.c_str());
     }
     musicPaths.clear();
     soundPaths.clear();
@@ -324,13 +334,16 @@ MusicID AudioSubsystem::LoadMusic(const char* filename) {
     std::string path = FileSystem::Get().ResolvePath(filename).value_or(filename);
     musicPaths[id] = path;
     musicVolumes[id] = 1.0f;
-    
-    EM_ASM({
-        window.AudioManager.load(UTF8ToString($0)).catch(function(err) {
-            console.warn("AudioSubsystem: Load failed for: " + UTF8ToString($0) + " (" + err.message + ")");
-        });
-    }, path.c_str());
-    
+
+    EM_ASM(
+        {
+            window.AudioManager.load(UTF8ToString($0)).catch(function(err) {
+                console.warn("AudioSubsystem: Load failed for: " + UTF8ToString($0) + " (" + err.message + ")");
+            });
+        },
+        path.c_str()
+    );
+
     return id;
 }
 
@@ -338,9 +351,7 @@ void AudioSubsystem::UnloadMusic(MusicID id) {
     if (!musicPaths.contains(id)) return;
     StopMusic(id);
     std::string path = musicPaths[id];
-    EM_ASM({
-        window.AudioManager.unload(UTF8ToString($0));
-    }, path.c_str());
+    EM_ASM({ window.AudioManager.unload(UTF8ToString($0)); }, path.c_str());
     musicPaths.erase(id);
     musicActiveJsIds.erase(id);
     musicVolumes.erase(id);
@@ -351,20 +362,17 @@ void AudioSubsystem::PlayMusic(MusicID id) {
     StopMusic(id);
     std::string path = musicPaths[id];
     float vol = musicVolumes[id];
-    
-    int jsId = EM_ASM_INT({
-        return window.AudioManager.play(UTF8ToString($0), true, $1, true, null);
-    }, path.c_str(), vol);
-    
+
+    int jsId =
+        EM_ASM_INT({ return window.AudioManager.play(UTF8ToString($0), true, $1, true, null); }, path.c_str(), vol);
+
     musicActiveJsIds[id].push_back(jsId);
 }
 
 void AudioSubsystem::StopMusic(MusicID id) {
     if (!musicActiveJsIds.contains(id)) return;
     for (int jsId : musicActiveJsIds[id]) {
-        EM_ASM({
-            window.AudioManager.stop($0);
-        }, jsId);
+        EM_ASM({ window.AudioManager.stop($0); }, jsId);
     }
     musicActiveJsIds[id].clear();
 }
@@ -374,9 +382,7 @@ void AudioSubsystem::SmoothStopMusic(MusicID id) {
 }
 
 void AudioSubsystem::StopAllMusics() {
-    EM_ASM({
-        window.AudioManager.stopAllMusics();
-    });
+    EM_ASM({ window.AudioManager.stopAllMusics(); });
     for (auto& [id, ids] : musicActiveJsIds) {
         ids.clear();
     }
@@ -387,9 +393,7 @@ void AudioSubsystem::SetMusicVolume(MusicID id, float volume) {
     musicVolumes[id] = volume;
     if (musicActiveJsIds.contains(id)) {
         for (int jsId : musicActiveJsIds[id]) {
-            EM_ASM({
-                window.AudioManager.setVolume($0, $1);
-            }, jsId, volume);
+            EM_ASM({ window.AudioManager.setVolume($0, $1); }, jsId, volume);
         }
     }
 }
@@ -399,9 +403,7 @@ bool AudioSubsystem::IsMusicPlaying(MusicID id) {
     auto& jsIds = musicActiveJsIds[id];
     for (auto it = jsIds.begin(); it != jsIds.end();) {
         int jsId = *it;
-        bool active = EM_ASM_INT({
-            return window.AudioManager.isPlaying($0);
-        }, jsId);
+        bool active = EM_ASM_INT({ return window.AudioManager.isPlaying($0); }, jsId);
         if (!active) {
             it = jsIds.erase(it);
         } else {
@@ -416,13 +418,16 @@ SoundID AudioSubsystem::LoadSound(const char* filename) {
     std::string path = FileSystem::Get().ResolvePath(filename).value_or(filename);
     soundPaths[id] = path;
     soundVolumes[id] = 1.0f;
-    
-    EM_ASM({
-        window.AudioManager.load(UTF8ToString($0)).catch(function(err) {
-            console.warn("AudioSubsystem: Load failed for: " + UTF8ToString($0) + " (" + err.message + ")");
-        });
-    }, path.c_str());
-    
+
+    EM_ASM(
+        {
+            window.AudioManager.load(UTF8ToString($0)).catch(function(err) {
+                console.warn("AudioSubsystem: Load failed for: " + UTF8ToString($0) + " (" + err.message + ")");
+            });
+        },
+        path.c_str()
+    );
+
     return id;
 }
 
@@ -430,9 +435,7 @@ void AudioSubsystem::UnloadSound(SoundID id) {
     if (!soundPaths.contains(id)) return;
     StopSound(id);
     std::string path = soundPaths[id];
-    EM_ASM({
-        window.AudioManager.unload(UTF8ToString($0));
-    }, path.c_str());
+    EM_ASM({ window.AudioManager.unload(UTF8ToString($0)); }, path.c_str());
     soundPaths.erase(id);
     soundActiveJsIds.erase(id);
     soundVolumes.erase(id);
@@ -442,11 +445,10 @@ void AudioSubsystem::PlaySound(SoundID id) {
     if (!soundPaths.contains(id)) return;
     std::string path = soundPaths[id];
     float vol = soundVolumes[id];
-    
-    int jsId = EM_ASM_INT({
-        return window.AudioManager.play(UTF8ToString($0), false, $1, false, null);
-    }, path.c_str(), vol);
-    
+
+    int jsId =
+        EM_ASM_INT({ return window.AudioManager.play(UTF8ToString($0), false, $1, false, null); }, path.c_str(), vol);
+
     soundActiveJsIds[id].push_back(jsId);
 }
 
@@ -454,7 +456,7 @@ void AudioSubsystem::PlaySoundVariation(SoundID id, float pitchVariation, float 
     if (!soundPaths.contains(id)) return;
     std::string path = soundPaths[id];
     float baseVol = soundVolumes[id];
-    
+
     float vol = baseVol;
     if (volumeVariation > 0.0f) {
         vol = baseVol + RandBipolar() * volumeVariation;
@@ -468,27 +470,23 @@ void AudioSubsystem::PlaySoundVariation(SoundID id, float pitchVariation, float 
         if (pitch < 0.1) pitch = 0.1;
     }
 
-    int jsId = EM_ASM_INT({
-        return window.AudioManager.play(UTF8ToString($0), false, $1, false, $2);
-    }, path.c_str(), vol, pitch);
-    
+    int jsId = EM_ASM_INT(
+        { return window.AudioManager.play(UTF8ToString($0), false, $1, false, $2); }, path.c_str(), vol, pitch
+    );
+
     soundActiveJsIds[id].push_back(jsId);
 }
 
 void AudioSubsystem::StopSound(SoundID id) {
     if (!soundActiveJsIds.contains(id)) return;
     for (int jsId : soundActiveJsIds[id]) {
-        EM_ASM({
-            window.AudioManager.stop($0);
-        }, jsId);
+        EM_ASM({ window.AudioManager.stop($0); }, jsId);
     }
     soundActiveJsIds[id].clear();
 }
 
 void AudioSubsystem::StopAllSounds() {
-    EM_ASM({
-        window.AudioManager.stopAllSounds();
-    });
+    EM_ASM({ window.AudioManager.stopAllSounds(); });
     for (auto& [id, ids] : soundActiveJsIds) {
         ids.clear();
     }
@@ -499,9 +497,7 @@ void AudioSubsystem::SetSoundVolume(SoundID id, float volume) {
     soundVolumes[id] = volume;
     if (soundActiveJsIds.contains(id)) {
         for (int jsId : soundActiveJsIds[id]) {
-            EM_ASM({
-                window.AudioManager.setVolume($0, $1);
-            }, jsId, volume);
+            EM_ASM({ window.AudioManager.setVolume($0, $1); }, jsId, volume);
         }
     }
 }
@@ -511,9 +507,7 @@ bool AudioSubsystem::IsSoundPlaying(SoundID id) {
     auto& jsIds = soundActiveJsIds[id];
     for (auto it = jsIds.begin(); it != jsIds.end();) {
         int jsId = *it;
-        bool active = EM_ASM_INT({
-            return window.AudioManager.isPlaying($0);
-        }, jsId);
+        bool active = EM_ASM_INT({ return window.AudioManager.isPlaying($0); }, jsId);
         if (!active) {
             it = jsIds.erase(it);
         } else {
@@ -524,9 +518,7 @@ bool AudioSubsystem::IsSoundPlaying(SoundID id) {
 }
 
 void AudioSubsystem::StopAll() {
-    EM_ASM({
-        window.AudioManager.stopAll();
-    });
+    EM_ASM({ window.AudioManager.stopAll(); });
     for (auto& [id, ids] : soundActiveJsIds) {
         ids.clear();
     }
@@ -535,26 +527,25 @@ void AudioSubsystem::StopAll() {
     }
 }
 
-#else // !__EMSCRIPTEN__
+#else// !__EMSCRIPTEN__
 
 // Non-owning bridge to the Application-owned VideoRecorder. raudio's C
 // callback API has no userdata parameter, so a file-scope static is the only
 // channel; attach/detach keep it symmetric with the processor registration,
 // and detach always runs before the recorder is destroyed (stopRecording).
-static VideoRecorder* s_captureRecorder = nullptr;
-static void audioCaptureCallback(void* buffer, unsigned int frames) {
-    if (s_captureRecorder)
-        s_captureRecorder->writeAudio(static_cast<const float*>(buffer), frames);
+static VideoRecorder* sCaptureRecorder = nullptr;
+static void AudioCaptureCallback(void* buffer, unsigned int frames) {
+    if (sCaptureRecorder) sCaptureRecorder->writeAudio(static_cast<const float*>(buffer), frames);
 }
 
 void AudioSubsystem::attachVideoRecorder(VideoRecorder* recorder) {
-    s_captureRecorder = recorder;
-    ::AttachAudioMixedProcessor(audioCaptureCallback);
+    sCaptureRecorder = recorder;
+    ::AttachAudioMixedProcessor(AudioCaptureCallback);
 }
 
 void AudioSubsystem::detachVideoRecorder() {
-    ::DetachAudioMixedProcessor(audioCaptureCallback);
-    s_captureRecorder = nullptr;
+    ::DetachAudioMixedProcessor(AudioCaptureCallback);
+    sCaptureRecorder = nullptr;
 }
 
 AudioSubsystem::AudioSubsystem(void) {
@@ -756,4 +747,4 @@ void AudioSubsystem::StopAll() {
     StopAllMusics();
 }
 
-#endif // __EMSCRIPTEN__
+#endif// __EMSCRIPTEN__

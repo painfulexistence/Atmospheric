@@ -1,8 +1,4 @@
 #include "renderer.hpp"
-#include <cctype>
-#include <cstring>
-#include <string>
-#include <utility>
 #include "asset_manager.hpp"
 #include "batch_renderer_2d.hpp"
 #include "canvas_drawable.hpp"
@@ -16,13 +12,17 @@
 #include "physics_subsystem_2d.hpp"
 #include "window.hpp"
 #include <algorithm>
+#include <cctype>
+#include <cstring>
+#include <string>
+#include <utility>
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+#include "command_encoder.hpp"
 #include "gpu_canvas_pass.hpp"
 #include "gpu_pipeline.hpp"
 #include "gpu_render_target.hpp"
-#include "command_encoder.hpp"
-#include <webgpu/webgpu.h>
 #include "renderer_wgsl.hpp"
+#include <webgpu/webgpu.h>
 #endif
 #if defined(__APPLE__) && TARGET_OS_IOS
 #include <SDL3/SDL.h>
@@ -42,11 +42,16 @@
 
 static GLenum GetGLPrimitiveType(PrimitiveTopology topology) {
     switch (topology) {
-        case PrimitiveTopology::Triangles:     return GL_TRIANGLES;
-        case PrimitiveTopology::TriangleStrip: return GL_TRIANGLE_STRIP;
-        case PrimitiveTopology::Lines:          return GL_LINES;
-        case PrimitiveTopology::LineStrip:     return GL_LINE_STRIP;
-        case PrimitiveTopology::Points:        return GL_POINTS;
+    case PrimitiveTopology::Triangles:
+        return GL_TRIANGLES;
+    case PrimitiveTopology::TriangleStrip:
+        return GL_TRIANGLE_STRIP;
+    case PrimitiveTopology::Lines:
+        return GL_LINES;
+    case PrimitiveTopology::LineStrip:
+        return GL_LINE_STRIP;
+    case PrimitiveTopology::Points:
+        return GL_POINTS;
     }
     return GL_TRIANGLES;
 }
@@ -83,13 +88,14 @@ static std::vector<RenderBatch> BuildBatches(const std::vector<Renderer::Sortabl
     return batches;
 }
 
-static constexpr int MAX_CANVAS_TEXTURES = 32;
+static constexpr int maxCanvasTextures = 32;
 
 // Strips the leading digit-length prefix (GCC mangled names) and
 // "class "/"struct " prefix (MSVC) from a typeid name string.
 static std::string CleanTypeName(const char* raw) {
-    while (*raw && std::isdigit(static_cast<unsigned char>(*raw))) ++raw;
-    for (const char* prefix : {"class ", "struct "}) {
+    while (*raw && std::isdigit(static_cast<unsigned char>(*raw)))
+        ++raw;
+    for (const char* prefix : { "class ", "struct " }) {
         if (std::strncmp(raw, prefix, std::strlen(prefix)) == 0) {
             raw += std::strlen(prefix);
             break;
@@ -99,7 +105,8 @@ static std::string CleanTypeName(const char* raw) {
 }
 
 RenderGraph::~RenderGraph() {
-    for (auto& e : _entries) e.timer.Destroy();
+    for (auto& e : _entries)
+        e.timer.Destroy();
 }
 
 void RenderGraph::AddPass(std::unique_ptr<RenderPass> pass) {
@@ -127,10 +134,10 @@ std::vector<std::pair<std::string, float>> RenderGraph::GetTimings() const {
     out.reserve(_entries.size() + 1);
     float total = 0.0f;
     for (auto& e : _entries) {
-        out.push_back({e.name, e.timer.GetMs()});
+        out.push_back({ e.name, e.timer.GetMs() });
         total += e.timer.GetMs();
     }
-    out.push_back({"[Total]", total});
+    out.push_back({ "[Total]", total });
     return out;
 }
 
@@ -152,12 +159,8 @@ void Renderer::Init(int width, int height) {
     // GL-only: no GL context exists when running the WebGPU backend.
     if (GfxFactory::GetBackend() != GfxBackend::WebGPU) {
         static const float quadVerts[] = {
-            -1.f, -1.f, 0.f, 0.f,
-             1.f, -1.f, 1.f, 0.f,
-             1.f,  1.f, 1.f, 1.f,
-            -1.f, -1.f, 0.f, 0.f,
-             1.f,  1.f, 1.f, 1.f,
-            -1.f,  1.f, 0.f, 1.f,
+            -1.f, -1.f, 0.f, 0.f, 1.f, -1.f, 1.f, 0.f, 1.f,  1.f, 1.f, 1.f,
+            -1.f, -1.f, 0.f, 0.f, 1.f, 1.f,  1.f, 1.f, -1.f, 1.f, 0.f, 1.f,
         };
         GLuint vbo;
         glGenVertexArrays(1, &gl.screenQuadVAO);
@@ -173,12 +176,10 @@ void Renderer::Init(int width, int height) {
 
         // ── Skybox cube VAO ───────────────────────────────────────────
         static const float cubeVerts[] = {
-            -1, -1, -1,  1, -1, -1,  1,  1, -1,  1,  1, -1, -1,  1, -1, -1, -1, -1,
-            -1, -1,  1,  1, -1,  1,  1,  1,  1,  1,  1,  1, -1,  1,  1, -1, -1,  1,
-            -1,  1,  1, -1,  1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  1, -1,  1,  1,
-             1,  1,  1,  1,  1, -1,  1, -1, -1,  1, -1, -1,  1, -1,  1,  1,  1,  1,
-            -1, -1, -1, -1, -1,  1,  1, -1,  1,  1, -1,  1,  1, -1, -1, -1, -1, -1,
-            -1,  1, -1, -1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, -1, -1,  1, -1,
+            -1, -1, -1, 1,  -1, -1, 1,  1,  -1, 1,  1,  -1, -1, 1,  -1, -1, -1, -1, -1, -1, 1,  1,  -1, 1,  1,  1,  1,
+            1,  1,  1,  -1, 1,  1,  -1, -1, 1,  -1, 1,  1,  -1, 1,  -1, -1, -1, -1, -1, -1, -1, -1, -1, 1,  -1, 1,  1,
+            1,  1,  1,  1,  1,  -1, 1,  -1, -1, 1,  -1, -1, 1,  -1, 1,  1,  1,  1,  -1, -1, -1, -1, -1, 1,  1,  -1, 1,
+            1,  -1, 1,  1,  -1, -1, -1, -1, -1, -1, 1,  -1, -1, 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  -1, -1, 1,  -1,
         };
         glGenVertexArrays(1, &gl.skyboxVAO);
         glGenBuffers(1, &gl.skyboxVBO);
@@ -193,7 +194,7 @@ void Renderer::Init(int width, int height) {
     _renderGraph = std::make_unique<RenderGraph>();
     _renderGraph->AddPass(std::make_unique<ShadowPass>());
     _renderGraph->AddPass(std::make_unique<ForwardOpaquePass>());
-    _renderGraph->AddPass(std::make_unique<SkyboxPass>());   // after clear, fills empty sky pixels
+    _renderGraph->AddPass(std::make_unique<SkyboxPass>());// after clear, fills empty sky pixels
     _renderGraph->AddPass(std::make_unique<SunPass>());
     _renderGraph->AddPass(std::make_unique<VoxelChunkPass>());
     _renderGraph->AddPass(std::make_unique<MSAAResolvePass>());
@@ -287,7 +288,7 @@ uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& c
     if (!mat) return 0;
 
     // Calculate depth (distance from camera)
-    glm::vec3 objPos = glm::vec3(cmd.transform[3]);
+    auto objPos = glm::vec3(cmd.transform[3]);
     float depth = glm::length(objPos - cameraPos);
 
     // Get render queue
@@ -319,9 +320,9 @@ void Renderer::SortOpaque() {
 void Renderer::SortTransparent() {
     // Back-to-front sorting: render far objects first for correct blending
     std::sort(
-      _transparentQueue.begin(),
-      _transparentQueue.end(),
-      [](const SortableCommand& a, const SortableCommand& b) { return a.sortKey > b.sortKey; }
+        _transparentQueue.begin(), _transparentQueue.end(), [](const SortableCommand& a, const SortableCommand& b) {
+            return a.sortKey > b.sortKey;
+        }
     );
 }
 
@@ -472,61 +473,63 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
 
     // 1. Create and set shadow pass attachments
     if (isGL) {
-    for (int i = 0; i < MAX_UNI_LIGHTS; ++i) {
-        GLuint map;
-        glGenTextures(1, &map);
-        glBindTexture(GL_TEXTURE_2D, map);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, SHADOW_W, SHADOW_H, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
-        gl.uniShadowMaps[i] = map;
-    }
-    for (int i = 0; i < MAX_OMNI_LIGHTS; ++i) {
-        GLuint map;
-        glGenTextures(1, &map);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, map);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-        for (int f = 0; f < 6; ++f) {
+        for (int i = 0; i < MAX_UNI_LIGHTS; ++i) {
+            GLuint map;
+            glGenTextures(1, &map);
+            glBindTexture(GL_TEXTURE_2D, map);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             glTexImage2D(
-              GL_TEXTURE_CUBE_MAP_POSITIVE_X + f,
-              0,
-              GL_DEPTH_COMPONENT32F,
-              SHADOW_W,
-              SHADOW_H,
-              0,
-              GL_DEPTH_COMPONENT,
-              GL_FLOAT,
-              nullptr
+                GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, SHADOW_W, SHADOW_H, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr
             );
+            gl.uniShadowMaps[i] = map;
         }
-        gl.omniShadowMaps[i] = map;
-    }
+        for (int i = 0; i < MAX_OMNI_LIGHTS; ++i) {
+            GLuint map;
+            glGenTextures(1, &map);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, map);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+            for (int f = 0; f < 6; ++f) {
+                glTexImage2D(
+                    GL_TEXTURE_CUBE_MAP_POSITIVE_X + f,
+                    0,
+                    GL_DEPTH_COMPONENT32F,
+                    SHADOW_W,
+                    SHADOW_H,
+                    0,
+                    GL_DEPTH_COMPONENT,
+                    GL_FLOAT,
+                    nullptr
+                );
+            }
+            gl.omniShadowMaps[i] = map;
+        }
 
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
-    glBindFramebuffer(GL_FRAMEBUFFER, gl.shadowFBO);
-    GLenum drawBuffers[] = { GL_NONE };
-    glDrawBuffers(1, drawBuffers);
+        glBindFramebuffer(GL_FRAMEBUFFER, gl.shadowFBO);
+        GLenum drawBuffers[] = { GL_NONE };
+        glDrawBuffers(1, drawBuffers);
 #else
-    glBindFramebuffer(GL_FRAMEBUFFER, gl.shadowFBO);
-    for (int i = 0; i < static_cast<int>(gl.uniShadowMaps.size()); ++i) {
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gl.uniShadowMaps[i], 0);
-        glDrawBuffer(GL_NONE);
-        glReadBuffer(GL_NONE);
-    }
-    for (int i = 0; i < static_cast<int>(gl.omniShadowMaps.size()); ++i) {
-        glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, gl.omniShadowMaps[i], 0);
-        glDrawBuffer(GL_NONE);
-        glReadBuffer(GL_NONE);
-    }
+        glBindFramebuffer(GL_FRAMEBUFFER, gl.shadowFBO);
+        for (int i = 0; i < static_cast<int>(gl.uniShadowMaps.size()); ++i) {
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gl.uniShadowMaps[i], 0);
+            glDrawBuffer(GL_NONE);
+            glReadBuffer(GL_NONE);
+        }
+        for (int i = 0; i < static_cast<int>(gl.omniShadowMaps.size()); ++i) {
+            glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, gl.omniShadowMaps[i], 0);
+            glDrawBuffer(GL_NONE);
+            glReadBuffer(GL_NONE);
+        }
 #endif
-    CheckErrors("Create shadow RTs");
-    } // isGL
+        CheckErrors("Create shadow RTs");
+    }// isGL
 
     // 2. Scene render target (MSAA on forward path; RBO-based on WebGL, texture-based on desktop)
     {
@@ -535,8 +538,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
         p.height = props.height;
         p.withDepth = true;
         p.hdr = true;
-        if (_currRenderPath == RenderPath::Forward)
-            p.numSamples = props.numSamples;
+        if (_currRenderPath == RenderPath::Forward) p.numSamples = props.numSamples;
         sceneRT = GfxFactory::CreateRenderTarget(p);
     }
 
@@ -544,8 +546,9 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
     if (isGL && sceneRT && sceneRT->GetNumSamples() > 1) {
         glGenTextures(1, &gl.glesResolvedDepthTex);
         glBindTexture(GL_TEXTURE_2D, gl.glesResolvedDepthTex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, props.width, props.height, 0,
-                     GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+        glTexImage2D(
+            GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, props.width, props.height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr
+        );
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -579,52 +582,52 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
 
     // 4. Create and set geometry pass attachments
     if (isGL) {
-    glGenTextures(1, &gl.gBuffer.positionRT);
-    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.positionRT);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, props.width, props.height, 0, GL_RGBA, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glGenTextures(1, &gl.gBuffer.positionRT);
+        glBindTexture(GL_TEXTURE_2D, gl.gBuffer.positionRT);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, props.width, props.height, 0, GL_RGBA, GL_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glGenTextures(1, &gl.gBuffer.normalRT);
-    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.normalRT);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, props.width, props.height, 0, GL_RGBA, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glGenTextures(1, &gl.gBuffer.normalRT);
+        glBindTexture(GL_TEXTURE_2D, gl.gBuffer.normalRT);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, props.width, props.height, 0, GL_RGBA, GL_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glGenTextures(1, &gl.gBuffer.albedoRT);
-    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.albedoRT);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, props.width, props.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glGenTextures(1, &gl.gBuffer.albedoRT);
+        glBindTexture(GL_TEXTURE_2D, gl.gBuffer.albedoRT);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, props.width, props.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glGenTextures(1, &gl.gBuffer.materialRT);
-    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.materialRT);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, props.width, props.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glGenTextures(1, &gl.gBuffer.materialRT);
+        glBindTexture(GL_TEXTURE_2D, gl.gBuffer.materialRT);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, props.width, props.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glGenTextures(1, &gl.gBuffer.depthRT);
-    glBindTexture(GL_TEXTURE_2D, gl.gBuffer.depthRT);
-    glTexImage2D(
-      GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, props.width, props.height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr
-    );
+        glGenTextures(1, &gl.gBuffer.depthRT);
+        glBindTexture(GL_TEXTURE_2D, gl.gBuffer.depthRT);
+        glTexImage2D(
+            GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, props.width, props.height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr
+        );
 
-    glGenFramebuffers(1, &gl.gBuffer.id);
-    glBindFramebuffer(GL_FRAMEBUFFER, gl.gBuffer.id);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gl.gBuffer.positionRT, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gl.gBuffer.normalRT, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gl.gBuffer.albedoRT, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, gl.gBuffer.materialRT, 0);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gl.gBuffer.depthRT, 0);
-    std::array<GLuint, 4> attachments = {
-        GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3
-    };
-    glDrawBuffers(attachments.size(), attachments.data());
-    CheckFramebufferStatus("G-buffer incomplete");
+        glGenFramebuffers(1, &gl.gBuffer.id);
+        glBindFramebuffer(GL_FRAMEBUFFER, gl.gBuffer.id);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gl.gBuffer.positionRT, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gl.gBuffer.normalRT, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gl.gBuffer.albedoRT, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, gl.gBuffer.materialRT, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gl.gBuffer.depthRT, 0);
+        std::array<GLuint, 4> attachments = {
+            GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3
+        };
+        glDrawBuffers(attachments.size(), attachments.data());
+        CheckFramebufferStatus("G-buffer incomplete");
 
-    glBindFramebuffer(GL_FRAMEBUFFER, gl.finalFBO);
-    CheckErrors("Create G-buffer RTs");
-    } // isGL
+        glBindFramebuffer(GL_FRAMEBUFFER, gl.finalFBO);
+        CheckErrors("Create G-buffer RTs");
+    }// isGL
 }
 
 void Renderer::DestroyRTs() {
@@ -661,9 +664,15 @@ void Renderer::CreateCanvasVAO() {
     glBindVertexArray(gl.canvasVAO);
     glBindBuffer(GL_ARRAY_BUFFER, gl.canvasVBO);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), nullptr);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(offsetof(CanvasVertex, texCoord)));
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(offsetof(CanvasVertex, color)));
-    glVertexAttribIPointer(3, 1, GL_INT, sizeof(CanvasVertex), reinterpret_cast<void*>(offsetof(CanvasVertex, texIndex)));
+    glVertexAttribPointer(
+        1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(offsetof(CanvasVertex, texCoord))
+    );
+    glVertexAttribPointer(
+        2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(offsetof(CanvasVertex, color))
+    );
+    glVertexAttribIPointer(
+        3, 1, GL_INT, sizeof(CanvasVertex), reinterpret_cast<void*>(offsetof(CanvasVertex, texIndex))
+    );
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
@@ -673,10 +682,10 @@ void Renderer::CreateCanvasVAO() {
 
 void Renderer::CreateScreenBuffer() {
     std::array<ScreenVertex, 4> verts = { {
-        { { -1.0f,  1.0f }, { 0.0f, 1.0f } },
+        { { -1.0f, 1.0f }, { 0.0f, 1.0f } },
         { { -1.0f, -1.0f }, { 0.0f, 0.0f } },
-        { {  1.0f,  1.0f }, { 1.0f, 1.0f } },
-        { {  1.0f, -1.0f }, { 1.0f, 0.0f } },
+        { { 1.0f, 1.0f }, { 1.0f, 1.0f } },
+        { { 1.0f, -1.0f }, { 1.0f, 0.0f } },
     } };
     screenBuffer = GfxFactory::CreateBuffer();
     screenBuffer->Initialize(VertexFormat::Screen, BufferUsage::Static);
@@ -690,50 +699,52 @@ void Renderer::CreateDebugBuffer() {
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 ShadowPass::~ShadowPass() {
-    if (_uniformBG)      wgpuBindGroupRelease(_uniformBG);
-    if (_uniformBGL)     wgpuBindGroupLayoutRelease(_uniformBGL);
-    if (_pipeline)       wgpuRenderPipelineRelease(_pipeline);
+    if (_uniformBG) wgpuBindGroupRelease(_uniformBG);
+    if (_uniformBGL) wgpuBindGroupLayoutRelease(_uniformBGL);
+    if (_pipeline) wgpuRenderPipelineRelease(_pipeline);
     if (_frameUniformBuf) wgpuBufferRelease(_frameUniformBuf);
     if (_drawUniformBuf) wgpuBufferRelease(_drawUniformBuf);
-    if (_shadowView)     wgpuTextureViewRelease(_shadowView);
-    if (_shadowTex)      wgpuTextureRelease(_shadowTex);
+    if (_shadowView) wgpuTextureViewRelease(_shadowView);
+    if (_shadowTex) wgpuTextureRelease(_shadowTex);
 }
 
 void ShadowPass::_initGPU(WGPUDevice device, WGPUQueue queue) {
     _gpuDevice = device;
-    _gpuQueue  = queue;
+    _gpuQueue = queue;
 
     {
         WGPUBufferDescriptor d{};
-        d.size  = SHADOW_FRAME_UNIFORM_SIZE;
+        d.size = SHADOW_FRAME_UNIFORM_SIZE;
         d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
         _frameUniformBuf = wgpuDeviceCreateBuffer(device, &d);
     }
     {
         WGPUTextureDescriptor d{};
-        d.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
-        d.dimension     = WGPUTextureDimension_2D;
-        d.size          = { SHADOW_W, SHADOW_H, 1 };
-        d.format        = WGPUTextureFormat_Depth32Float;
+        d.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+        d.dimension = WGPUTextureDimension_2D;
+        d.size = { SHADOW_W, SHADOW_H, 1 };
+        d.format = WGPUTextureFormat_Depth32Float;
         d.mipLevelCount = 1;
-        d.sampleCount   = 1;
-        _shadowTex  = wgpuDeviceCreateTexture(device, &d);
+        d.sampleCount = 1;
+        _shadowTex = wgpuDeviceCreateTexture(device, &d);
         _shadowView = wgpuTextureCreateView(_shadowTex, nullptr);
     }
 
     // Vertex layout: only position (offset 0) from the 56-byte Standard format.
     auto p = GpuPipelineBuilder(device)
-        .wgsl(SHADOW_WGSL)
-        .bgl({ gpuUniform(0, wgsl_stage::vert, SHADOW_FRAME_UNIFORM_SIZE),
-               gpuDynUniform(1, wgsl_stage::vert, SHADOW_DRAW_UNIFORM_SIZE) })
-        .vertex(56, { {WGPUVertexFormat_Float32x3, 0, 0} })
-        .depth(true, WGPUCompareFunction_Less)
-        .depthOnly()
-        // Front-face culling like classic shadow mapping would change peter-
-        // panning behaviour vs the GL path (which draws per-material culling);
-        // keep None to match GL output most closely.
-        .build();
-    _pipeline   = p.pipeline;
+                 .wgsl(SHADOW_WGSL)
+                 .bgl(
+                     { gpuUniform(0, wgsl_stage::vert, SHADOW_FRAME_UNIFORM_SIZE),
+                       gpuDynUniform(1, wgsl_stage::vert, SHADOW_DRAW_UNIFORM_SIZE) }
+                 )
+                 .vertex(56, { { WGPUVertexFormat_Float32x3, 0, 0 } })
+                 .depth(true, WGPUCompareFunction_Less)
+                 .depthOnly()
+                 // Front-face culling like classic shadow mapping would change peter-
+                 // panning behaviour vs the GL path (which draws per-material culling);
+                 // keep None to match GL output most closely.
+                 .build();
+    _pipeline = p.pipeline;
     _uniformBGL = p.bgl(0);
 }
 
@@ -742,21 +753,27 @@ void ShadowPass::_ensureDrawCapacity(uint32_t drawCount) {
 
     uint32_t newCapacity = std::max<uint32_t>(drawCount, std::max<uint32_t>(_drawSlotCapacity * 2, 16));
 
-    if (_drawUniformBuf) { wgpuBufferRelease(_drawUniformBuf); _drawUniformBuf = nullptr; }
-    if (_uniformBG)      { wgpuBindGroupRelease(_uniformBG);   _uniformBG      = nullptr; }
+    if (_drawUniformBuf) {
+        wgpuBufferRelease(_drawUniformBuf);
+        _drawUniformBuf = nullptr;
+    }
+    if (_uniformBG) {
+        wgpuBindGroupRelease(_uniformBG);
+        _uniformBG = nullptr;
+    }
 
     WGPUBufferDescriptor d{};
-    d.size  = static_cast<uint64_t>(newCapacity) * SHADOW_DRAW_SLOT_STRIDE;
+    d.size = static_cast<uint64_t>(newCapacity) * SHADOW_DRAW_SLOT_STRIDE;
     d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
-    _drawUniformBuf   = wgpuDeviceCreateBuffer(_gpuDevice, &d);
+    _drawUniformBuf = wgpuDeviceCreateBuffer(_gpuDevice, &d);
     _drawSlotCapacity = newCapacity;
 
     _uniformBG = GpuBindGroupBuilder(_gpuDevice, _uniformBGL)
-        .buffer(0, _frameUniformBuf, SHADOW_FRAME_UNIFORM_SIZE)
-        .buffer(1, _drawUniformBuf,  SHADOW_DRAW_UNIFORM_SIZE)
-        .build();
+                     .buffer(0, _frameUniformBuf, SHADOW_FRAME_UNIFORM_SIZE)
+                     .buffer(1, _drawUniformBuf, SHADOW_DRAW_UNIFORM_SIZE)
+                     .build();
 }
-#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+#endif// AE_USE_WEBGPU && __EMSCRIPTEN__
 
 void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
@@ -766,7 +783,10 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
         if (!_pipeline) _initGPU(dev, GfxFactory::GetWebGPUQueue());
 
         // Collect casters: PRIM meshes from both queues, same as the GL path.
-        struct DrawItem { Buffer* buf; glm::mat4 model; };
+        struct DrawItem {
+            Buffer* buf;
+            glm::mat4 model;
+        };
         std::vector<DrawItem> draws;
         auto collect = [&](const std::vector<Renderer::SortableCommand>& queue) {
             for (const auto& sortable : queue) {
@@ -793,14 +813,14 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
         glm::mat4 lightVP;
         if (shadowsOn) {
             const glm::mat4 z01 = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.5f))
-                                * glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 0.5f));
+                                  * glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 0.5f));
             lightVP = z01 * light->GetProjectionMatrix(0) * light->GetViewMatrix();
         } else {
             // Shadowing off: push everything past far so the WGSL guard reads
             // "outside the frustum" → fully lit.
             lightVP = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 3.0f))
-                    * glm::scale(glm::mat4(1.0f), glm::vec3(0.0f));
-            draws.clear(); // nothing to render into the map
+                      * glm::scale(glm::mat4(1.0f), glm::vec3(0.0f));
+            draws.clear();// nothing to render into the map
         }
         renderer.wgpuShadowLightVP = lightVP;
         renderer.wgpuShadowMapView = _shadowView;
@@ -810,8 +830,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             wgpuQueueWriteBuffer(_gpuQueue, _frameUniformBuf, 0, &lightVP, sizeof(lightVP));
             std::vector<uint8_t> drawData(draws.size() * SHADOW_DRAW_SLOT_STRIDE, 0);
             for (size_t i = 0; i < draws.size(); ++i)
-                std::memcpy(drawData.data() + i * SHADOW_DRAW_SLOT_STRIDE,
-                            &draws[i].model, sizeof(glm::mat4));
+                std::memcpy(drawData.data() + i * SHADOW_DRAW_SLOT_STRIDE, &draws[i].model, sizeof(glm::mat4));
             wgpuQueueWriteBuffer(_gpuQueue, _drawUniformBuf, 0, drawData.data(), drawData.size());
         }
 
@@ -820,12 +839,12 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
         // sample it unconditionally.
         auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
         WGPURenderPassDepthStencilAttachment depthAttach{};
-        depthAttach.view            = _shadowView;
-        depthAttach.depthLoadOp     = WGPULoadOp_Clear;
-        depthAttach.depthStoreOp    = WGPUStoreOp_Store;
+        depthAttach.view = _shadowView;
+        depthAttach.depthLoadOp = WGPULoadOp_Clear;
+        depthAttach.depthStoreOp = WGPUStoreOp_Store;
         depthAttach.depthClearValue = 1.0f;
         WGPURenderPassDescriptor passDesc{};
-        passDesc.colorAttachmentCount   = 0;
+        passDesc.colorAttachmentCount = 0;
         passDesc.depthStencilAttachment = &depthAttach;
         WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &passDesc);
 
@@ -833,7 +852,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             wgpuRenderPassEncoderSetPipeline(pass, _pipeline);
             GPUCommandEncoder shadowEnc;
             shadowEnc.encoder = gpuEnc->encoder;
-            shadowEnc.pass    = pass;
+            shadowEnc.pass = pass;
             for (size_t i = 0; i < draws.size(); ++i) {
                 uint32_t dynamicOffset = static_cast<uint32_t>(i * SHADOW_DRAW_SLOT_STRIDE);
                 wgpuRenderPassEncoderSetBindGroup(pass, 0, _uniformBG, 1, &dynamicOffset);
@@ -880,7 +899,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
     auto depthShader = ctx->GetShader("depth");
     depthShader->Activate();
     depthShader->SetUniform(
-      std::string("ProjectionView"), mainLight->GetProjectionMatrix(0) * mainLight->GetViewMatrix()
+        std::string("ProjectionView"), mainLight->GetProjectionMatrix(0) * mainLight->GetViewMatrix()
     );
 
     for (const auto& batch : batches) {
@@ -907,9 +926,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             // WebGL 2.0 Fallback: Non-instanced draw calls using World uniform
             for (const auto& inst : instances) {
                 depthShader->SetUniform(std::string("World"), inst.modelMatrix);
-                glDrawElements(
-                  GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
-                );
+                glDrawElements(GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0);
             }
 #else
             // Upload ALL instances for this batch once
@@ -918,7 +935,11 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
 
             // Instanced Draw
             glDrawElementsInstanced(
-              GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+                GetGLPrimitiveType(material->primitiveType),
+                mesh->triCount * 3,
+                GL_UNSIGNED_SHORT,
+                nullptr,
+                instances.size()
             );
 #endif
         }
@@ -950,7 +971,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             glClear(GL_DEPTH_BUFFER_BIT);
             depthCubemapShader->SetUniform(std::string("LightPosition"), l->GetPosition());
             depthCubemapShader->SetUniform(
-              std::string("ProjectionView"), l->GetProjectionMatrix(0) * l->GetViewMatrix(face)
+                std::string("ProjectionView"), l->GetProjectionMatrix(0) * l->GetViewMatrix(face)
             );
 
             for (const auto& batch : batches) {
@@ -977,19 +998,23 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
                     for (const auto& inst : instances) {
                         depthCubemapShader->SetUniform(std::string("World"), inst.modelMatrix);
                         glDrawElements(
-                          GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
+                            GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
                         );
                     }
 #else
                     // Upload ALL instances for this batch once
                     glBindBuffer(GL_ARRAY_BUFFER, mesh->ibo);
                     glBufferData(
-                      GL_ARRAY_BUFFER, instances.size() * sizeof(InstanceData), instances.data(), GL_DYNAMIC_DRAW
+                        GL_ARRAY_BUFFER, instances.size() * sizeof(InstanceData), instances.data(), GL_DYNAMIC_DRAW
                     );
 
                     // Instanced Draw
                     glDrawElementsInstanced(
-                      GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+                        GetGLPrimitiveType(material->primitiveType),
+                        mesh->triCount * 3,
+                        GL_UNSIGNED_SHORT,
+                        nullptr,
+                        instances.size()
                     );
 #endif
                 }
@@ -1003,28 +1028,31 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 ForwardOpaquePass::~ForwardOpaquePass() {
-    for (auto& [id, entry] : _texBGCache) wgpuBindGroupRelease(entry.bg);
-    if (_uniformBG)       wgpuBindGroupRelease(_uniformBG);
-    if (_uniformBGL)      wgpuBindGroupLayoutRelease(_uniformBGL);
-    if (_texBGL)          wgpuBindGroupLayoutRelease(_texBGL);
-    if (_pipeline)        wgpuRenderPipelineRelease(_pipeline);
+    for (auto& [id, entry] : _texBGCache)
+        wgpuBindGroupRelease(entry.bg);
+    if (_uniformBG) wgpuBindGroupRelease(_uniformBG);
+    if (_uniformBGL) wgpuBindGroupLayoutRelease(_uniformBGL);
+    if (_texBGL) wgpuBindGroupLayoutRelease(_texBGL);
+    if (_pipeline) wgpuRenderPipelineRelease(_pipeline);
     if (_terrainPipeline) wgpuRenderPipelineRelease(_terrainPipeline);
     if (_frameUniformBuf) wgpuBufferRelease(_frameUniformBuf);
-    if (_drawUniformBuf)  wgpuBufferRelease(_drawUniformBuf);
-    if (_whiteTex)        wgpuTextureRelease(_whiteTex);
-    if (_sampler)         wgpuSamplerRelease(_sampler);
-    if (_shadowBG)        wgpuBindGroupRelease(_shadowBG);
-    if (_shadowBGL)       wgpuBindGroupLayoutRelease(_shadowBGL);
-    if (_shadowSampler)   wgpuSamplerRelease(_shadowSampler);
+    if (_drawUniformBuf) wgpuBufferRelease(_drawUniformBuf);
+    if (_whiteTex) wgpuTextureRelease(_whiteTex);
+    if (_sampler) wgpuSamplerRelease(_sampler);
+    if (_shadowBG) wgpuBindGroupRelease(_shadowBG);
+    if (_shadowBGL) wgpuBindGroupLayoutRelease(_shadowBGL);
+    if (_shadowSampler) wgpuSamplerRelease(_shadowSampler);
 }
 
-void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount) {
+void ForwardOpaquePass::_initGPU(
+    WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount
+) {
     _gpuDevice = device;
-    _gpuQueue  = queue;
+    _gpuQueue = queue;
 
     {
         WGPUBufferDescriptor d{};
-        d.size  = FWD_FRAME_UNIFORM_SIZE;
+        d.size = FWD_FRAME_UNIFORM_SIZE;
         d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
         _frameUniformBuf = wgpuDeviceCreateBuffer(device, &d);
     }
@@ -1032,27 +1060,27 @@ void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTexture
     // is GL-only, so meshes with no base map sample this instead.
     {
         WGPUTextureDescriptor d{};
-        d.size          = { 1, 1, 1 };
-        d.format        = WGPUTextureFormat_RGBA8Unorm;
-        d.usage         = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-        d.dimension     = WGPUTextureDimension_2D;
+        d.size = { 1, 1, 1 };
+        d.format = WGPUTextureFormat_RGBA8Unorm;
+        d.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+        d.dimension = WGPUTextureDimension_2D;
         d.mipLevelCount = 1;
-        d.sampleCount   = 1;
+        d.sampleCount = 1;
         _whiteTex = wgpuDeviceCreateTexture(device, &d);
         const uint8_t white[4] = { 255, 255, 255, 255 };
         WGPUTexelCopyTextureInfo dst{};
         dst.texture = _whiteTex;
-        dst.aspect  = WGPUTextureAspect_All;
+        dst.aspect = WGPUTextureAspect_All;
         WGPUTexelCopyBufferLayout layout{};
-        layout.bytesPerRow  = 4;
+        layout.bytesPerRow = 4;
         layout.rowsPerImage = 1;
         WGPUExtent3D extent{ 1, 1, 1 };
         wgpuQueueWriteTexture(queue, &dst, white, 4, &layout, &extent);
     }
     {
         WGPUSamplerDescriptor d = gpuSamplerDesc();
-        d.minFilter    = WGPUFilterMode_Linear;
-        d.magFilter    = WGPUFilterMode_Linear;
+        d.minFilter = WGPUFilterMode_Linear;
+        d.magFilter = WGPUFilterMode_Linear;
         d.addressModeU = WGPUAddressMode_Repeat;
         d.addressModeV = WGPUAddressMode_Repeat;
         _sampler = wgpuDeviceCreateSampler(device, &d);
@@ -1061,7 +1089,7 @@ void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTexture
         WGPUSamplerDescriptor d = gpuSamplerDesc();
         d.minFilter = WGPUFilterMode_Linear;
         d.magFilter = WGPUFilterMode_Linear;
-        d.compare   = WGPUCompareFunction_Less; // hardware PCF compare
+        d.compare = WGPUCompareFunction_Less;// hardware PCF compare
         _shadowSampler = wgpuDeviceCreateSampler(device, &d);
     }
 
@@ -1070,28 +1098,33 @@ void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTexture
     // unused by this simplified (no normal-mapping) shader but stay in the
     // buffer layout since the underlying Buffer is shared with the GL path.
     auto p = GpuPipelineBuilder(device)
-        .wgsl(FORWARD_OPAQUE_WGSL)
-        .bgl({ gpuUniform(0, wgsl_stage::both, FWD_FRAME_UNIFORM_SIZE),
-               gpuDynUniform(1, wgsl_stage::both, FWD_DRAW_UNIFORM_SIZE) })
-        // Group 1 must be vertex-visible too: the terrain pipeline borrows
-        // this BGL and its vertex shader samples the heightmap for
-        // displacement. Fragment-only visibility fails terrain pipeline
-        // creation, and one invalid pipeline poisons the whole frame's
-        // command buffer — nothing presents, black screen.
-        .bgl({ gpuTexture(0, wgsl_stage::both), gpuSampler(1, wgsl_stage::both) })
-        .bgl({ gpuDepthTexture(0), gpuCompareSampler(1) })
-        .vertex(56, { {WGPUVertexFormat_Float32x3,  0, 0},
-                      {WGPUVertexFormat_Float32x2, 12, 1},
-                      {WGPUVertexFormat_Float32x3, 20, 2} })
-        .colorFormat(colorFormat)
-        .depth(true, WGPUCompareFunction_Less)
-        .cull(WGPUCullMode_Back)
-        .multisample(sampleCount)
-        .build();
-    _pipeline   = p.pipeline;
+                 .wgsl(FORWARD_OPAQUE_WGSL)
+                 .bgl(
+                     { gpuUniform(0, wgsl_stage::both, FWD_FRAME_UNIFORM_SIZE),
+                       gpuDynUniform(1, wgsl_stage::both, FWD_DRAW_UNIFORM_SIZE) }
+                 )
+                 // Group 1 must be vertex-visible too: the terrain pipeline borrows
+                 // this BGL and its vertex shader samples the heightmap for
+                 // displacement. Fragment-only visibility fails terrain pipeline
+                 // creation, and one invalid pipeline poisons the whole frame's
+                 // command buffer — nothing presents, black screen.
+                 .bgl({ gpuTexture(0, wgsl_stage::both), gpuSampler(1, wgsl_stage::both) })
+                 .bgl({ gpuDepthTexture(0), gpuCompareSampler(1) })
+                 .vertex(
+                     56,
+                     { { WGPUVertexFormat_Float32x3, 0, 0 },
+                       { WGPUVertexFormat_Float32x2, 12, 1 },
+                       { WGPUVertexFormat_Float32x3, 20, 2 } }
+                 )
+                 .colorFormat(colorFormat)
+                 .depth(true, WGPUCompareFunction_Less)
+                 .cull(WGPUCullMode_Back)
+                 .multisample(sampleCount)
+                 .build();
+    _pipeline = p.pipeline;
     _uniformBGL = p.bgl(0);
-    _texBGL     = p.bgl(1);
-    _shadowBGL  = p.bgl(2);
+    _texBGL = p.bgl(1);
+    _shadowBGL = p.bgl(2);
 
     // Terrain: the non-tessellated GLES/WebGL2 fallback (terrain_simple.vert +
     // terrain.frag) ported to WGSL. Borrows the main pipeline's group 0/1
@@ -1100,16 +1133,15 @@ void ForwardOpaquePass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTexture
     // is off: a displaced heightfield seen from below is a hole either way,
     // and this keeps the terrain visible regardless of patch winding.
     auto tp = GpuPipelineBuilder(device)
-        .wgsl(TERRAIN_WGSL)
-        .bgl(_uniformBGL)
-        .bgl(_texBGL)
-        .vertex(56, { {WGPUVertexFormat_Float32x3,  0, 0},
-                      {WGPUVertexFormat_Float32x2, 12, 1} })
-        .colorFormat(colorFormat)
-        .depth(true, WGPUCompareFunction_Less)
-        .cull(WGPUCullMode_None)
-        .multisample(sampleCount)
-        .build();
+                  .wgsl(TERRAIN_WGSL)
+                  .bgl(_uniformBGL)
+                  .bgl(_texBGL)
+                  .vertex(56, { { WGPUVertexFormat_Float32x3, 0, 0 }, { WGPUVertexFormat_Float32x2, 12, 1 } })
+                  .colorFormat(colorFormat)
+                  .depth(true, WGPUCompareFunction_Less)
+                  .cull(WGPUCullMode_None)
+                  .multisample(sampleCount)
+                  .build();
     _terrainPipeline = tp.pipeline;
 }
 
@@ -1118,19 +1150,25 @@ void ForwardOpaquePass::_ensureDrawCapacity(uint32_t drawCount) {
 
     uint32_t newCapacity = std::max<uint32_t>(drawCount, std::max<uint32_t>(_drawSlotCapacity * 2, 16));
 
-    if (_drawUniformBuf) { wgpuBufferRelease(_drawUniformBuf); _drawUniformBuf = nullptr; }
-    if (_uniformBG)      { wgpuBindGroupRelease(_uniformBG);   _uniformBG      = nullptr; }
+    if (_drawUniformBuf) {
+        wgpuBufferRelease(_drawUniformBuf);
+        _drawUniformBuf = nullptr;
+    }
+    if (_uniformBG) {
+        wgpuBindGroupRelease(_uniformBG);
+        _uniformBG = nullptr;
+    }
 
     WGPUBufferDescriptor d{};
-    d.size  = static_cast<uint64_t>(newCapacity) * FWD_DRAW_SLOT_STRIDE;
+    d.size = static_cast<uint64_t>(newCapacity) * FWD_DRAW_SLOT_STRIDE;
     d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
-    _drawUniformBuf   = wgpuDeviceCreateBuffer(_gpuDevice, &d);
+    _drawUniformBuf = wgpuDeviceCreateBuffer(_gpuDevice, &d);
     _drawSlotCapacity = newCapacity;
 
     _uniformBG = GpuBindGroupBuilder(_gpuDevice, _uniformBGL)
-        .buffer(0, _frameUniformBuf, FWD_FRAME_UNIFORM_SIZE)
-        .buffer(1, _drawUniformBuf,  FWD_DRAW_UNIFORM_SIZE)
-        .build();
+                     .buffer(0, _frameUniformBuf, FWD_FRAME_UNIFORM_SIZE)
+                     .buffer(1, _drawUniformBuf, FWD_DRAW_UNIFORM_SIZE)
+                     .build();
 }
 
 WGPUBindGroup ForwardOpaquePass::_getOrCreateTexBG(uint32_t texID) {
@@ -1146,21 +1184,18 @@ WGPUBindGroup ForwardOpaquePass::_getOrCreateTexBG(uint32_t texID) {
         _texBGCache.erase(it);
     }
 
-    WGPUBindGroup bg = GpuBindGroupBuilder(_gpuDevice, _texBGL)
-        .texture(0, rawTex)
-        .sampler(1, _sampler)
-        .build();
+    WGPUBindGroup bg = GpuBindGroupBuilder(_gpuDevice, _texBGL).texture(0, rawTex).sampler(1, _sampler).build();
     _texBGCache[texID] = { bg, rawTex };
     return bg;
 }
-#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+#endif// AE_USE_WEBGPU && __EMSCRIPTEN__
 
 void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         const auto& gpuQueueCmds = renderer.GetOpaqueQueue();
         if (gpuQueueCmds.empty()) return;
-        if (!renderer.sceneRT)    return;
+        if (!renderer.sceneRT) return;
 
         CameraComponent* camera = ctx->GetMainCamera();
         if (!camera) return;
@@ -1168,13 +1203,17 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
         if (!_pipeline) {
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
-            WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
+            WGPUQueue q = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float,
-                     (uint32_t)renderer.sceneRT->GetNumSamples());
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)renderer.sceneRT->GetNumSamples());
         }
 
-        struct DrawItem { Buffer* buf; glm::mat4 model; Material* mat; MeshType type; };
+        struct DrawItem {
+            Buffer* buf;
+            glm::mat4 model;
+            Material* mat;
+            MeshType type;
+        };
         std::vector<DrawItem> draws;
         draws.reserve(gpuQueueCmds.size());
         for (const auto& sortable : gpuQueueCmds) {
@@ -1193,10 +1232,10 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
         _ensureDrawCapacity(static_cast<uint32_t>(draws.size()));
 
-        glm::vec3 lightDir   = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);
+        glm::vec3 lightDir = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);
         glm::vec3 lightColor = light ? light->diffuse : glm::vec3(1.0f);
-        glm::vec3 ambient    = light ? light->ambient : glm::vec3(0.1f);
-        glm::mat4 viewProj   = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+        glm::vec3 ambient = light ? light->ambient : glm::vec3(0.1f);
+        glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
 
         struct {
             glm::mat4 viewProj;
@@ -1207,7 +1246,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             glm::vec4 ambient;
         } frameUniforms{
             viewProj,
-            renderer.wgpuShadowLightVP, // published by ShadowPass earlier this frame
+            renderer.wgpuShadowLightVP,// published by ShadowPass earlier this frame
             glm::vec4(camera->GetEyePosition(), 1.0f),
             glm::vec4(lightDir, 0.0f),
             glm::vec4(lightColor, 0.0f),
@@ -1217,13 +1256,13 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
         // Shadow map bind group — rebuilt only when ShadowPass publishes a
         // different view (first frame or shadow-map recreation).
-        if (!renderer.wgpuShadowMapView) return; // ShadowPass hasn't run yet
+        if (!renderer.wgpuShadowMapView) return;// ShadowPass hasn't run yet
         if (renderer.wgpuShadowMapView != _shadowBGSource) {
             if (_shadowBG) wgpuBindGroupRelease(_shadowBG);
             _shadowBG = GpuBindGroupBuilder(_gpuDevice, _shadowBGL)
-                .textureView(0, renderer.wgpuShadowMapView)
-                .sampler(1, _shadowSampler)
-                .build();
+                            .textureView(0, renderer.wgpuShadowMapView)
+                            .sampler(1, _shadowSampler)
+                            .build();
             _shadowBGSource = renderer.wgpuShadowMapView;
         }
 
@@ -1239,23 +1278,25 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                 // TERRAIN_WGSL's DrawUniforms: model + (height_scale,
                 // world_size, palette_index, unused) at offset 64.
                 auto* tm = dynamic_cast<TerrainMaterial*>(mat);
-                glm::vec4 params(tm ? tm->heightScale : 32.0f,
-                                 tm ? tm->worldSize   : 1024.0f,
-                                 tm ? static_cast<float>(tm->paletteIndex) : 0.0f,
-                                 0.0f);
+                glm::vec4 params(
+                    tm ? tm->heightScale : 32.0f,
+                    tm ? tm->worldSize : 1024.0f,
+                    tm ? static_cast<float>(tm->paletteIndex) : 0.0f,
+                    0.0f
+                );
                 std::memcpy(slot + 64, &params, sizeof(glm::vec4));
                 continue;
             }
 
-            glm::vec3 diffuse  = mat ? mat->diffuse  : glm::vec3(0.55f);
+            glm::vec3 diffuse = mat ? mat->diffuse : glm::vec3(0.55f);
             glm::vec3 specular = mat ? mat->specular : glm::vec3(0.7f);
             glm::vec3 matAmbient = mat ? mat->ambient : glm::vec3(0.0f);
-            float shininess    = mat ? mat->shininess : 0.25f;
+            float shininess = mat ? mat->shininess : 0.25f;
 
             glm::vec4 d4(diffuse, 0.0f), s4(specular, 0.0f), a4(matAmbient, 0.0f), sh4(shininess, 0.0f, 0.0f, 0.0f);
-            std::memcpy(slot + 64, &d4,  sizeof(glm::vec4));
-            std::memcpy(slot + 80, &s4,  sizeof(glm::vec4));
-            std::memcpy(slot + 96, &a4,  sizeof(glm::vec4));
+            std::memcpy(slot + 64, &d4, sizeof(glm::vec4));
+            std::memcpy(slot + 80, &s4, sizeof(glm::vec4));
+            std::memcpy(slot + 96, &a4, sizeof(glm::vec4));
             std::memcpy(slot + 112, &sh4, sizeof(glm::vec4));
         }
         wgpuQueueWriteBuffer(_gpuQueue, _drawUniformBuf, 0, drawData.data(), drawData.size());
@@ -1274,7 +1315,8 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             if (draws[i].type != boundType) {
                 boundType = draws[i].type;
                 wgpuRenderPassEncoderSetPipeline(
-                    gpuEnc->pass, boundType == MeshType::TERRAIN ? _terrainPipeline : _pipeline);
+                    gpuEnc->pass, boundType == MeshType::TERRAIN ? _terrainPipeline : _pipeline
+                );
             }
 
             Material* mat = draws[i].mat;
@@ -1384,9 +1426,9 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
             auto* tm = dynamic_cast<TerrainMaterial*>(material);
             terrainShader->SetUniform(std::string("tessellation_factor"), tm ? tm->tessellationFactor : 16.0f);
-            terrainShader->SetUniform(std::string("height_scale"),         tm ? tm->heightScale        : 32.0f);
-            terrainShader->SetUniform(std::string("world_size"),           tm ? tm->worldSize          : 1024.0f);
-            terrainShader->SetUniform(std::string("palette_index"),        tm ? tm->paletteIndex       : 0);
+            terrainShader->SetUniform(std::string("height_scale"), tm ? tm->heightScale : 32.0f);
+            terrainShader->SetUniform(std::string("world_size"), tm ? tm->worldSize : 1024.0f);
+            terrainShader->SetUniform(std::string("palette_index"), tm ? tm->paletteIndex : 0);
             glActiveTexture(GL_TEXTURE7);
             TextureHandle heightMap = material->heightMap;
             if (heightMap.IsValid() && static_cast<uint32_t>(heightMap) != 0) {
@@ -1440,8 +1482,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                     terrainShader->SetUniform(fmt::format("layer{}_normal_unit", i), 12 + i);
                     terrainShader->SetUniform(fmt::format("layer_tiling[{}]", i), layer ? layer->tiling : 1.0f);
                     terrainShader->SetUniform(
-                      fmt::format("layer_has_normal[{}]", i),
-                      (layer && layer->normalMap.IsValid()) ? 1.0f : 0.0f
+                        fmt::format("layer_has_normal[{}]", i), (layer && layer->normalMap.IsValid()) ? 1.0f : 0.0f
                     );
                 }
             }
@@ -1487,37 +1528,37 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             for (int i = 0; i < ctx->pointLights.size(); ++i) {
                 LightComponent* l = ctx->pointLights[i];
                 colorShader->SetUniform(
-                  std::string("aux_lights[") + std::to_string(i) + std::string("].position"), l->GetPosition()
+                    std::string("aux_lights[") + std::to_string(i) + std::string("].position"), l->GetPosition()
                 );
                 colorShader->SetUniform(
-                  std::string("aux_lights[") + std::to_string(i) + std::string("].ambient"), l->ambient
+                    std::string("aux_lights[") + std::to_string(i) + std::string("].ambient"), l->ambient
                 );
                 colorShader->SetUniform(
-                  std::string("aux_lights[") + std::to_string(i) + std::string("].diffuse"), l->diffuse
+                    std::string("aux_lights[") + std::to_string(i) + std::string("].diffuse"), l->diffuse
                 );
                 colorShader->SetUniform(
-                  std::string("aux_lights[") + std::to_string(i) + std::string("].specular"), l->specular
+                    std::string("aux_lights[") + std::to_string(i) + std::string("].specular"), l->specular
                 );
                 colorShader->SetUniform(
-                  std::string("aux_lights[") + std::to_string(i) + std::string("].attenuation"), l->attenuation
+                    std::string("aux_lights[") + std::to_string(i) + std::string("].attenuation"), l->attenuation
                 );
                 colorShader->SetUniform(
-                  std::string("aux_lights[") + std::to_string(i) + std::string("].intensity"), l->intensity
+                    std::string("aux_lights[") + std::to_string(i) + std::string("].intensity"), l->intensity
                 );
                 colorShader->SetUniform(
-                  std::string("aux_lights[") + std::to_string(i) + std::string("].cast_shadow"), l->castShadow ? 1 : 0
+                    std::string("aux_lights[") + std::to_string(i) + std::string("].cast_shadow"), l->castShadow ? 1 : 0
                 );
                 for (int f = 0; f < 6; ++f) {
                     GLenum face = GL_TEXTURE_CUBE_MAP_POSITIVE_X + f;
                     colorShader->SetUniform(
-                      std::string("aux_lights[") + std::to_string(i) + std::string("].ProjectionViews[")
-                        + std::to_string(f) + std::string("]"),
-                      l->GetProjectionViewMatrix(0, face)
+                        std::string("aux_lights[") + std::to_string(i) + std::string("].ProjectionViews[")
+                            + std::to_string(f) + std::string("]"),
+                        l->GetProjectionViewMatrix(0, face)
                     );
                 }
             }
             colorShader->SetUniform(std::string("aux_light_count"), static_cast<int>(ctx->pointLights.size()));
-            colorShader->SetUniform(std::string("shadow_map_unit"), (int)0);
+            colorShader->SetUniform(std::string("shadow_map_unit"), 0);
             colorShader->SetUniform(std::string("omni_shadow_map_unit"), static_cast<int>(UNI_SHADOW_MAP_COUNT));
             colorShader->SetUniform(std::string("ProjectionView"), projectionView);
             // Surface parameters
@@ -1595,20 +1636,22 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             AE_GL_PROBE(renderer, "Opaque pass: PRIM-GLES before non-instanced loop");
             for (const auto& inst : instances) {
                 colorShader->SetUniform(std::string("World"), inst.modelMatrix);
-                glDrawElements(
-                  GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
-                );
+                glDrawElements(GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0);
                 AE_GL_PROBE(renderer, "Opaque pass: PRIM-GLES after glDrawElements");
             }
 #else
             // Upload batched instance data
             if (!instances.empty()) {
                 glBufferData(
-                  GL_ARRAY_BUFFER, instances.size() * sizeof(InstanceData), instances.data(), GL_DYNAMIC_DRAW
+                    GL_ARRAY_BUFFER, instances.size() * sizeof(InstanceData), instances.data(), GL_DYNAMIC_DRAW
                 );
                 AE_GL_PROBE(renderer, "Opaque pass: PRIM after upload instance VBO");
                 glDrawElementsInstanced(
-                  GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+                    GetGLPrimitiveType(material->primitiveType),
+                    mesh->triCount * 3,
+                    GL_UNSIGNED_SHORT,
+                    nullptr,
+                    instances.size()
                 );
                 AE_GL_PROBE(renderer, "Opaque pass: PRIM after instanced draw");
             }
@@ -1679,7 +1722,7 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
             glDisable(GL_CULL_FACE);
 
         geometryShader->SetUniform(
-          "ProjectionView", ctx->GetMainCamera()->GetProjectionMatrix() * ctx->GetMainCamera()->GetViewMatrix()
+            "ProjectionView", ctx->GetMainCamera()->GetProjectionMatrix() * ctx->GetMainCamera()->GetViewMatrix()
         );
 
         switch (mesh->type) {
@@ -1759,10 +1802,14 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
             glBindBuffer(GL_ARRAY_BUFFER, mesh->ibo);
             if (!instances.empty()) {
                 glBufferData(
-                  GL_ARRAY_BUFFER, instances.size() * sizeof(InstanceData), instances.data(), GL_DYNAMIC_DRAW
+                    GL_ARRAY_BUFFER, instances.size() * sizeof(InstanceData), instances.data(), GL_DYNAMIC_DRAW
                 );
                 glDrawElementsInstanced(
-                  GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+                    GetGLPrimitiveType(material->primitiveType),
+                    mesh->triCount * 3,
+                    GL_UNSIGNED_SHORT,
+                    nullptr,
+                    instances.size()
                 );
             }
             glBindVertexArray(0);
@@ -1845,18 +1892,18 @@ void MSAAResolvePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
 
     auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
- 
+
     // Resolve MSAA color + depth — both RTs now use GL_DEPTH_COMPONENT32F.
     glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID());
-    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
-                      GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(
+        GL_DRAW_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID()
+    );
+    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     if (renderer.gl.glesResolvedDepthFBO != 0) {
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, renderer.gl.glesResolvedDepthFBO);
-        glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
-                          GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+        glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
     }
 #endif
 
@@ -1876,8 +1923,7 @@ void WorldCanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
         std::vector<CanvasDrawable*> worldDrawables;
         for (auto* drawable : ctx->canvasDrawables) {
             if (!drawable->gameObject->isActive) continue;
-            if ((int)drawable->GetLayer() < (int)CanvasLayer::LAYER_WORLD_2D)
-                worldDrawables.push_back(drawable);
+            if ((int)drawable->GetLayer() < (int)CanvasLayer::LAYER_WORLD_2D) worldDrawables.push_back(drawable);
         }
         if (worldDrawables.empty()) return;
         if (!renderer.sceneRT) return;
@@ -1891,7 +1937,7 @@ void WorldCanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
             if (a->GetLayer() != b->GetLayer()) return a->GetLayer() < b->GetLayer();
             float distA = glm::length(a->gameObject->GetPosition() - camPos);
             float distB = glm::length(b->gameObject->GetPosition() - camPos);
-            return distA > distB; // Back to front
+            return distA > distB;// Back to front
         });
 
         // Drain through BatchRenderer2D's CPU path, same as CanvasPass.
@@ -1906,8 +1952,14 @@ void WorldCanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
         // Render into the already-open sceneRT pass (depth-tested, read-only)
         // so world sprites are occluded by — but never occlude — 3D geometry.
         renderer.sceneRT->Begin(enc);
-        gpuPass->Render(enc, viewProj, allCommands, /*depthTest=*/true, /*toSwapchain=*/false,
-                        (uint32_t)renderer.sceneRT->GetNumSamples());
+        gpuPass->Render(
+            enc,
+            viewProj,
+            allCommands,
+            /*depthTest=*/true,
+            /*toSwapchain=*/false,
+            (uint32_t)renderer.sceneRT->GetNumSamples()
+        );
         renderer.sceneRT->End();
         return;
     }
@@ -1986,8 +2038,7 @@ void CanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
         std::vector<CanvasDrawable*> drawables2D;
         for (auto* drawable : ctx->canvasDrawables) {
             if (!drawable->gameObject->isActive) continue;
-            if (drawable->GetLayer() < CanvasLayer::LAYER_UI_BACK)
-                drawables2D.push_back(drawable);
+            if (drawable->GetLayer() < CanvasLayer::LAYER_UI_BACK) drawables2D.push_back(drawable);
         }
         std::sort(drawables2D.begin(), drawables2D.end(), [](CanvasDrawable* a, CanvasDrawable* b) {
             if (a->GetLayer() != b->GetLayer()) return a->GetLayer() < b->GetLayer();
@@ -2015,9 +2066,9 @@ void CanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             for (auto* drawable : drawables2D)
                 drawable->Draw(br);
             auto drained = br->DrainToCommands();
-            allCommands.insert(allCommands.end(),
-                               std::make_move_iterator(drained.begin()),
-                               std::make_move_iterator(drained.end()));
+            allCommands.insert(
+                allCommands.end(), std::make_move_iterator(drained.begin()), std::make_move_iterator(drained.end())
+            );
         }
         // Append direct canvas queue (text, Lua commands, etc.)
         for (const auto& cmd : renderer.GetCanvasQueue())
@@ -2030,8 +2081,14 @@ void CanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
         // PostProcessPass is the sole pass that later writes sceneRT to the
         // swapchain, so we must not touch the swapchain or present here.
         renderer.sceneRT->Begin(enc);
-        gpuPass->Render(enc, viewProj, allCommands, /*depthTest=*/false, /*toSwapchain=*/false,
-                        (uint32_t)renderer.sceneRT->GetNumSamples());
+        gpuPass->Render(
+            enc,
+            viewProj,
+            allCommands,
+            /*depthTest=*/false,
+            /*toSwapchain=*/false,
+            (uint32_t)renderer.sceneRT->GetNumSamples()
+        );
         renderer.sceneRT->End();
         return;
     }
@@ -2097,22 +2154,22 @@ void CanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 PostProcessPass::~PostProcessPass() {
-    if (_texBG)      wgpuBindGroupRelease(_texBG);
-    if (_uniformBG)  wgpuBindGroupRelease(_uniformBG);
+    if (_texBG) wgpuBindGroupRelease(_texBG);
+    if (_uniformBG) wgpuBindGroupRelease(_uniformBG);
     if (_uniformBGL) wgpuBindGroupLayoutRelease(_uniformBGL);
-    if (_texBGL)     wgpuBindGroupLayoutRelease(_texBGL);
-    if (_pipeline)   wgpuRenderPipelineRelease(_pipeline);
+    if (_texBGL) wgpuBindGroupLayoutRelease(_texBGL);
+    if (_pipeline) wgpuRenderPipelineRelease(_pipeline);
     if (_uniformBuf) wgpuBufferRelease(_uniformBuf);
-    if (_sampler)    wgpuSamplerRelease(_sampler);
+    if (_sampler) wgpuSamplerRelease(_sampler);
 }
 
 void PostProcessPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat swapchainFormat) {
     _gpuDevice = device;
-    _gpuQueue  = queue;
+    _gpuQueue = queue;
 
     {
         WGPUBufferDescriptor d{};
-        d.size  = POST_UNIFORM_SIZE;
+        d.size = POST_UNIFORM_SIZE;
         d.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
         _uniformBuf = wgpuDeviceCreateBuffer(device, &d);
     }
@@ -2124,27 +2181,25 @@ void PostProcessPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFo
     }
 
     auto p = GpuPipelineBuilder(device)
-        .wgsl(POSTPROCESS_WGSL)
-        .bgl({ gpuUniform(0, wgsl_stage::frag, POST_UNIFORM_SIZE) })
-        .bgl({ gpuTexture(0), gpuSampler(1) })
-        .colorFormat(swapchainFormat)
-        .build();
-    _pipeline   = p.pipeline;
+                 .wgsl(POSTPROCESS_WGSL)
+                 .bgl({ gpuUniform(0, wgsl_stage::frag, POST_UNIFORM_SIZE) })
+                 .bgl({ gpuTexture(0), gpuSampler(1) })
+                 .colorFormat(swapchainFormat)
+                 .build();
+    _pipeline = p.pipeline;
     _uniformBGL = p.bgl(0);
-    _texBGL     = p.bgl(1);
+    _texBGL = p.bgl(1);
 
-    _uniformBG = GpuBindGroupBuilder(device, _uniformBGL)
-        .buffer(0, _uniformBuf, POST_UNIFORM_SIZE)
-        .build();
+    _uniformBG = GpuBindGroupBuilder(device, _uniformBGL).buffer(0, _uniformBuf, POST_UNIFORM_SIZE).build();
 }
-#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+#endif// AE_USE_WEBGPU && __EMSCRIPTEN__
 
 void PostProcessPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         if (!_pipeline) {
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
-            WGPUQueue  q   = GfxFactory::GetWebGPUQueue();
+            WGPUQueue q = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
             _initGPU(dev, q, GfxFactory::GetSwapchainFormat());
         }
@@ -2155,16 +2210,13 @@ void PostProcessPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
         if (!sceneTex) return;
 
         WGPUTextureView swapchainView = GfxFactory::GetCurrentSwapchainView();
-        if (!swapchainView) return; // surface not ready (device still initializing)
+        if (!swapchainView) return;// surface not ready (device still initializing)
 
         // Rebuild the texture bind group only when sceneRT's texture object
         // changes (e.g. on resize) — cheap to check, avoids a per-frame alloc.
         if (sceneTex != _texBGSource) {
             if (_texBG) wgpuBindGroupRelease(_texBG);
-            _texBG = GpuBindGroupBuilder(_gpuDevice, _texBGL)
-                .texture(0, sceneTex)
-                .sampler(1, _sampler)
-                .build();
+            _texBG = GpuBindGroupBuilder(_gpuDevice, _texBGL).texture(0, sceneTex).sampler(1, _sampler).build();
             _texBGSource = sceneTex;
         }
 
@@ -2175,32 +2227,30 @@ void PostProcessPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
             float exposure, caEnabled, caStrength, time;
             float crt, vhs, grading, posterize;
             float sobel, edges, vignette, _pad;
-        } u{
-            tonemapEnabled ? exposure : 1.0f,
-            caEnabled ? 1.0f : 0.0f,
-            caStrength,
-            renderer.frameTime,
-            crtEnabled       ? 1.0f : 0.0f,
-            vhsEnabled       ? 1.0f : 0.0f,
-            gradingEnabled   ? 1.0f : 0.0f,
-            posterizeEnabled ? 1.0f : 0.0f,
-            sobelEnabled     ? 1.0f : 0.0f,
-            edgesEnabled     ? 1.0f : 0.0f,
-            vignetteEnabled  ? 1.0f : 0.0f,
-            0.0f
-        };
+        } u{ tonemapEnabled ? exposure : 1.0f,
+             caEnabled ? 1.0f : 0.0f,
+             caStrength,
+             renderer.frameTime,
+             crtEnabled ? 1.0f : 0.0f,
+             vhsEnabled ? 1.0f : 0.0f,
+             gradingEnabled ? 1.0f : 0.0f,
+             posterizeEnabled ? 1.0f : 0.0f,
+             sobelEnabled ? 1.0f : 0.0f,
+             edgesEnabled ? 1.0f : 0.0f,
+             vignetteEnabled ? 1.0f : 0.0f,
+             0.0f };
         wgpuQueueWriteBuffer(_gpuQueue, _uniformBuf, 0, &u, sizeof(u));
 
         auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
         WGPURenderPassColorAttachment ca{};
-        ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED; // required for non-3D attachments
-        ca.view       = swapchainView;
-        ca.loadOp     = WGPULoadOp_Clear;
-        ca.storeOp    = WGPUStoreOp_Store;
+        ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;// required for non-3D attachments
+        ca.view = swapchainView;
+        ca.loadOp = WGPULoadOp_Clear;
+        ca.storeOp = WGPUStoreOp_Store;
         ca.clearValue = { renderer.clearColor.x, renderer.clearColor.y, renderer.clearColor.z, renderer.clearColor.w };
         WGPURenderPassDescriptor rpDesc{};
         rpDesc.colorAttachmentCount = 1;
-        rpDesc.colorAttachments     = &ca;
+        rpDesc.colorAttachments = &ca;
         WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &rpDesc);
 
         wgpuRenderPassEncoderSetPipeline(pass, _pipeline);
@@ -2220,7 +2270,7 @@ void PostProcessPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
     glViewport(0, 0, size.width, size.height);
     glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.finalFBO);
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // fullscreen composite quad — never wireframe
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);// fullscreen composite quad — never wireframe
 #endif
 
     glActiveTexture(GL_TEXTURE0);
@@ -2231,18 +2281,18 @@ void PostProcessPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
 
     auto shader = ctx->GetShader("post_composite");
     shader->Activate();
-    shader->SetUniform(std::string("color_map_unit"),      0);
-    shader->SetUniform(std::string("exposure"),            tonemapEnabled ? exposure : 1.0f);
-    shader->SetUniform(std::string("u_time"),              renderer.frameTime);
-    shader->SetUniform(std::string("u_ca_enabled"),        static_cast<int>(caEnabled));
-    shader->SetUniform(std::string("u_ca_strength"),       caStrength);
-    shader->SetUniform(std::string("u_crt_enabled"),       static_cast<int>(crtEnabled));
-    shader->SetUniform(std::string("u_vhs_enabled"),       static_cast<int>(vhsEnabled));
-    shader->SetUniform(std::string("u_grading_enabled"),   static_cast<int>(gradingEnabled));
+    shader->SetUniform(std::string("color_map_unit"), 0);
+    shader->SetUniform(std::string("exposure"), tonemapEnabled ? exposure : 1.0f);
+    shader->SetUniform(std::string("u_time"), renderer.frameTime);
+    shader->SetUniform(std::string("u_ca_enabled"), static_cast<int>(caEnabled));
+    shader->SetUniform(std::string("u_ca_strength"), caStrength);
+    shader->SetUniform(std::string("u_crt_enabled"), static_cast<int>(crtEnabled));
+    shader->SetUniform(std::string("u_vhs_enabled"), static_cast<int>(vhsEnabled));
+    shader->SetUniform(std::string("u_grading_enabled"), static_cast<int>(gradingEnabled));
     shader->SetUniform(std::string("u_posterize_enabled"), static_cast<int>(posterizeEnabled));
-    shader->SetUniform(std::string("u_sobel_enabled"),     static_cast<int>(sobelEnabled));
-    shader->SetUniform(std::string("u_edges_enabled"),     static_cast<int>(edgesEnabled));
-    shader->SetUniform(std::string("u_vignette_enabled"),  static_cast<int>(vignetteEnabled));
+    shader->SetUniform(std::string("u_sobel_enabled"), static_cast<int>(sobelEnabled));
+    shader->SetUniform(std::string("u_edges_enabled"), static_cast<int>(edgesEnabled));
+    shader->SetUniform(std::string("u_vignette_enabled"), static_cast<int>(vignetteEnabled));
 
     renderer.screenBuffer->Draw(enc, PrimitiveTopology::TriangleStrip);
 
@@ -2288,29 +2338,34 @@ void UIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder*
         if (allCommands.empty()) return;
 
         WGPUTextureView swapchainView = GfxFactory::GetCurrentSwapchainView();
-        if (!swapchainView) return; // surface not ready (device still initializing)
+        if (!swapchainView) return;// surface not ready (device still initializing)
 
         auto logicalSize = Window::Get()->GetLogicalSize();
-        glm::mat4 projection = glm::ortho(
-            0.0f, (float)logicalSize.width, (float)logicalSize.height, 0.0f, -1.0f, 1.0f);
+        glm::mat4 projection = glm::ortho(0.0f, (float)logicalSize.width, (float)logicalSize.height, 0.0f, -1.0f, 1.0f);
 
         // UIPass runs after PostProcessPass, which has already resolved
         // sceneRT to the swapchain — record onto the swapchain view directly
         // (Load, not Clear, so the resolved frame underneath is preserved).
         auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
         WGPURenderPassColorAttachment ca{};
-        ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED; // required for non-3D attachments
-        ca.view    = swapchainView;
-        ca.loadOp  = WGPULoadOp_Load;
+        ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;// required for non-3D attachments
+        ca.view = swapchainView;
+        ca.loadOp = WGPULoadOp_Load;
         ca.storeOp = WGPUStoreOp_Store;
         WGPURenderPassDescriptor rpDesc{};
         rpDesc.colorAttachmentCount = 1;
-        rpDesc.colorAttachments     = &ca;
+        rpDesc.colorAttachments = &ca;
         WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &rpDesc);
         gpuEnc->pass = pass;
 
-        gpuPass->Render(enc, projection, allCommands, /*depthTest=*/false, /*toSwapchain=*/true,
-                        renderer.sceneRT ? (uint32_t)renderer.sceneRT->GetNumSamples() : 1u);
+        gpuPass->Render(
+            enc,
+            projection,
+            allCommands,
+            /*depthTest=*/false,
+            /*toSwapchain=*/true,
+            renderer.sceneRT ? (uint32_t)renderer.sceneRT->GetNumSamples() : 1u
+        );
 
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
@@ -2329,13 +2384,13 @@ void UIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder*
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // UI geometry — never wireframe
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);// UI geometry — never wireframe
 #endif
 
     // RmlUi context dimensions are in logical pixels, so projection must match.
     auto logicalSize = Window::Get()->GetLogicalSize();
-    float width = static_cast<float>(logicalSize.width);
-    float height = static_cast<float>(logicalSize.height);
+    auto width = static_cast<float>(logicalSize.width);
+    auto height = static_cast<float>(logicalSize.height);
 
     glViewport(0, 0, Window::Get()->GetPhysicalSize().width, Window::Get()->GetPhysicalSize().height);
     glm::mat4 projection = glm::ortho(0.0f, width, height, 0.0f, -1.0f, 1.0f);
@@ -2379,9 +2434,9 @@ void Renderer::readPixelsAsync(PixelReadbackCallback callback) {
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevReadFBO);
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, tmpFBO);
-    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                           GL_TEXTURE_2D,
-                           static_cast<GLuint>(src->GetTextureID()), 0);
+    glFramebufferTexture2D(
+        GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, static_cast<GLuint>(src->GetTextureID()), 0
+    );
     glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, img.data.data());
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(prevReadFBO));
@@ -2394,7 +2449,8 @@ void Renderer::readPixelsAsync(PixelReadbackCallback callback) {
         std::memcpy(
             flipped.data() + static_cast<size_t>(row) * rowBytes,
             img.data.data() + static_cast<size_t>(h - 1 - row) * rowBytes,
-            rowBytes);
+            rowBytes
+        );
     }
     img.data = std::move(flipped);
 
@@ -2407,9 +2463,9 @@ void Renderer::schedulePixelReadback() {
     RenderTarget* src = msaaResolveRT ? msaaResolveRT.get() : sceneRT.get();
     if (!src) return;
 
-    const uint32_t w = static_cast<uint32_t>(src->GetWidth());
-    const uint32_t h = static_cast<uint32_t>(src->GetHeight());
-    const size_t   bufSize = static_cast<size_t>(w) * h * 4;
+    const auto w = static_cast<uint32_t>(src->GetWidth());
+    const auto h = static_cast<uint32_t>(src->GetHeight());
+    const size_t bufSize = static_cast<size_t>(w) * h * 4;
 
     // Lazy-init or re-init when resolution changes.
     if (m_readbackFBO == 0 || w != m_readbackPBOWidth || h != m_readbackPBOHeight) {
@@ -2419,14 +2475,13 @@ void Renderer::schedulePixelReadback() {
         glGenBuffers(READBACK_PBO_COUNT, m_readbackPBOs);
         for (int i = 0; i < READBACK_PBO_COUNT; ++i) {
             glBindBuffer(GL_PIXEL_PACK_BUFFER, m_readbackPBOs[i]);
-            glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(bufSize),
-                         nullptr, GL_STREAM_READ);
+            glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(bufSize), nullptr, GL_STREAM_READ);
         }
         glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
-        m_readbackPBOWidth  = w;
+        m_readbackPBOWidth = w;
         m_readbackPBOHeight = h;
-        m_readbackFrameIdx  = 0;
+        m_readbackFrameIdx = 0;
     }
 
     const int writeIdx = static_cast<int>(m_readbackFrameIdx % READBACK_PBO_COUNT);
@@ -2435,14 +2490,13 @@ void Renderer::schedulePixelReadback() {
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevReadFBO);
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, m_readbackFBO);
-    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                           GL_TEXTURE_2D,
-                           static_cast<GLuint>(src->GetTextureID()), 0);
+    glFramebufferTexture2D(
+        GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, static_cast<GLuint>(src->GetTextureID()), 0
+    );
 
     // nullptr offset = write into the bound PBO; returns immediately (async DMA).
     glBindBuffer(GL_PIXEL_PACK_BUFFER, m_readbackPBOs[writeIdx]);
-    glReadPixels(0, 0, static_cast<GLsizei>(w), static_cast<GLsizei>(h),
-                 GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glReadPixels(0, 0, static_cast<GLsizei>(w), static_cast<GLsizei>(h), GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(prevReadFBO));
@@ -2452,12 +2506,11 @@ void Renderer::schedulePixelReadback() {
 
 std::optional<GpuImageData> Renderer::collectPixelReadback() {
     // Pipeline needs READBACK_PBO_COUNT frames to prime before any data is ready.
-    if (m_readbackFBO == 0 || m_readbackFrameIdx < static_cast<uint32_t>(READBACK_PBO_COUNT))
-        return std::nullopt;
+    if (m_readbackFBO == 0 || m_readbackFrameIdx < static_cast<uint32_t>(READBACK_PBO_COUNT)) return std::nullopt;
 
-    const uint32_t w       = m_readbackPBOWidth;
-    const uint32_t h       = m_readbackPBOHeight;
-    const size_t   bufSize = static_cast<size_t>(w) * h * 4;
+    const uint32_t w = m_readbackPBOWidth;
+    const uint32_t h = m_readbackPBOHeight;
+    const size_t bufSize = static_cast<size_t>(w) * h * 4;
 
     // After schedulePixelReadback() incremented m_readbackFrameIdx, the oldest
     // in-flight PBO is at index m_readbackFrameIdx % READBACK_PBO_COUNT.
@@ -2466,16 +2519,16 @@ std::optional<GpuImageData> Renderer::collectPixelReadback() {
 
     glBindBuffer(GL_PIXEL_PACK_BUFFER, m_readbackPBOs[readIdx]);
     const auto* gpuPtr = static_cast<const uint8_t*>(
-        glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0,
-                         static_cast<GLsizeiptr>(bufSize), GL_MAP_READ_BIT));
+        glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, static_cast<GLsizeiptr>(bufSize), GL_MAP_READ_BIT)
+    );
 
     std::optional<GpuImageData> result;
     if (gpuPtr) {
         GpuImageData img;
-        img.width        = w;
-        img.height       = h;
+        img.width = w;
+        img.height = h;
         img.channelCount = 4;
-        img.bottomUp     = true; // raw GL data; caller uses negative sws_scale stride
+        img.bottomUp = true;// raw GL data; caller uses negative sws_scale stride
         img.data.assign(gpuPtr, gpuPtr + bufSize);
         result = std::move(img);
     }
@@ -2492,9 +2545,10 @@ void Renderer::destroyReadbackPBOs() {
     }
     if (m_readbackPBOs[0]) {
         glDeleteBuffers(READBACK_PBO_COUNT, m_readbackPBOs);
-        for (auto& pbo : m_readbackPBOs) pbo = 0;
+        for (auto& pbo : m_readbackPBOs)
+            pbo = 0;
     }
-    m_readbackFrameIdx  = 0;
-    m_readbackPBOWidth  = 0;
+    m_readbackFrameIdx = 0;
+    m_readbackPBOWidth = 0;
     m_readbackPBOHeight = 0;
 }

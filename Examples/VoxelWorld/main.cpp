@@ -7,20 +7,18 @@ class VoxelWorldApp : public Application {
     using Application::Application;
 
     void OnInit() override {
-        ComponentFactory::Register("FlyCameraComponent",
-          [](GameObject* o, Deserializer& d) -> Component* {
-              float moveSpeed = 20.0f, lookSpeed = 1.5f;
-              d.Read("moveSpeed", moveSpeed);
-              d.Read("lookSpeed", lookSpeed);
-              return new FlyCameraComponent(o, moveSpeed, lookSpeed);
-          });
-        ComponentFactory::Register("VoxelWorld",
-          [](GameObject* o, Deserializer& d) -> Component* {
-              int seed = 42;
-              d.Read("seed", seed);
-              return new VoxelWorldComponent(o, seed);
-          });
-        GoScene("main", [this]{ OnLoad(); });
+        ComponentFactory::Register("FlyCameraComponent", [](GameObject* o, Deserializer& d) -> Component* {
+            float moveSpeed = 20.0f, lookSpeed = 1.5f;
+            d.Read("moveSpeed", moveSpeed);
+            d.Read("lookSpeed", lookSpeed);
+            return new FlyCameraComponent(o, moveSpeed, lookSpeed);
+        });
+        ComponentFactory::Register("VoxelWorld", [](GameObject* o, Deserializer& d) -> Component* {
+            int seed = 42;
+            d.Read("seed", seed);
+            return new VoxelWorldComponent(o, seed);
+        });
+        GoScene("main", [this] { OnLoad(); });
     }
 
     void OnLoad() override {
@@ -35,8 +33,8 @@ class VoxelWorldApp : public Application {
 
         Renderer* renderer = GraphicsSubsystem::Get()->renderer.get();
         if (auto* bloom = renderer->GetPass<BloomPass>()) {
-            bloom->enabled       = true;
-            bloom->threshold     = 0.6f;
+            bloom->enabled = true;
+            bloom->threshold = 0.6f;
             bloom->bloomStrength = 0.06f;
         }
 
@@ -50,11 +48,8 @@ class VoxelWorldApp : public Application {
 
 #ifdef __EMSCRIPTEN__
 static const std::vector<std::string> kAssets = {
-    "assets/textures/default_diff.ktx2",
-    "assets/textures/default_norm.ktx2",
-    "assets/textures/default_ao.ktx2",
-    "assets/textures/default_rough.ktx2",
-    "assets/textures/default_metallic.ktx2",
+    "assets/textures/default_diff.ktx2",  "assets/textures/default_norm.ktx2",     "assets/textures/default_ao.ktx2",
+    "assets/textures/default_rough.ktx2", "assets/textures/default_metallic.ktx2",
 };
 
 static void StartGame();
@@ -65,18 +60,22 @@ int main(int argc, char* argv[]) {
 }
 
 static void StartGame() {
-    static VoxelWorldApp game({
-        .useDefaultTextures = true,
-        .useDefaultShaders  = true,
-    });
+    static VoxelWorldApp game(
+        {
+            .useDefaultTextures = true,
+            .useDefaultShaders = true,
+        }
+    );
     game.Run();
 }
 #else
 int main(int argc, char* argv[]) {
-    VoxelWorldApp game({
-        .useDefaultTextures = true,
-        .useDefaultShaders  = true,
-    });
+    VoxelWorldApp game(
+        {
+            .useDefaultTextures = true,
+            .useDefaultShaders = true,
+        }
+    );
     game.Run();
     return 0;
 }

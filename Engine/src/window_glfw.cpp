@@ -11,99 +11,187 @@
 
 static int convertToGlfwKey(Key key) {
     switch (key) {
-    case Key::UP: return GLFW_KEY_UP;
-    case Key::RIGHT: return GLFW_KEY_RIGHT;
-    case Key::LEFT: return GLFW_KEY_LEFT;
-    case Key::DOWN: return GLFW_KEY_DOWN;
-    case Key::Num1: return GLFW_KEY_1;
-    case Key::Num2: return GLFW_KEY_2;
-    case Key::Num3: return GLFW_KEY_3;
-    case Key::Num4: return GLFW_KEY_4;
-    case Key::Num5: return GLFW_KEY_5;
-    case Key::Num6: return GLFW_KEY_6;
-    case Key::Num7: return GLFW_KEY_7;
-    case Key::Num8: return GLFW_KEY_8;
-    case Key::Num9: return GLFW_KEY_9;
-    case Key::Num0: return GLFW_KEY_0;
-    case Key::Q: return GLFW_KEY_Q;
-    case Key::W: return GLFW_KEY_W;
-    case Key::E: return GLFW_KEY_E;
-    case Key::R: return GLFW_KEY_R;
-    case Key::T: return GLFW_KEY_T;
-    case Key::Y: return GLFW_KEY_Y;
-    case Key::U: return GLFW_KEY_U;
-    case Key::I: return GLFW_KEY_I;
-    case Key::O: return GLFW_KEY_O;
-    case Key::P: return GLFW_KEY_P;
-    case Key::A: return GLFW_KEY_A;
-    case Key::S: return GLFW_KEY_S;
-    case Key::D: return GLFW_KEY_D;
-    case Key::F: return GLFW_KEY_F;
-    case Key::G: return GLFW_KEY_G;
-    case Key::H: return GLFW_KEY_H;
-    case Key::J: return GLFW_KEY_J;
-    case Key::K: return GLFW_KEY_K;
-    case Key::L: return GLFW_KEY_L;
-    case Key::Z: return GLFW_KEY_Z;
-    case Key::X: return GLFW_KEY_X;
-    case Key::C: return GLFW_KEY_C;
-    case Key::V: return GLFW_KEY_V;
-    case Key::B: return GLFW_KEY_B;
-    case Key::N: return GLFW_KEY_N;
-    case Key::M: return GLFW_KEY_M;
-    case Key::ESCAPE: return GLFW_KEY_ESCAPE;
-    case Key::ENTER: return GLFW_KEY_ENTER;
-    case Key::SPACE: return GLFW_KEY_SPACE;
-    default: return GLFW_KEY_UNKNOWN;
+    case Key::UP:
+        return GLFW_KEY_UP;
+    case Key::RIGHT:
+        return GLFW_KEY_RIGHT;
+    case Key::LEFT:
+        return GLFW_KEY_LEFT;
+    case Key::DOWN:
+        return GLFW_KEY_DOWN;
+    case Key::Num1:
+        return GLFW_KEY_1;
+    case Key::Num2:
+        return GLFW_KEY_2;
+    case Key::Num3:
+        return GLFW_KEY_3;
+    case Key::Num4:
+        return GLFW_KEY_4;
+    case Key::Num5:
+        return GLFW_KEY_5;
+    case Key::Num6:
+        return GLFW_KEY_6;
+    case Key::Num7:
+        return GLFW_KEY_7;
+    case Key::Num8:
+        return GLFW_KEY_8;
+    case Key::Num9:
+        return GLFW_KEY_9;
+    case Key::Num0:
+        return GLFW_KEY_0;
+    case Key::Q:
+        return GLFW_KEY_Q;
+    case Key::W:
+        return GLFW_KEY_W;
+    case Key::E:
+        return GLFW_KEY_E;
+    case Key::R:
+        return GLFW_KEY_R;
+    case Key::T:
+        return GLFW_KEY_T;
+    case Key::Y:
+        return GLFW_KEY_Y;
+    case Key::U:
+        return GLFW_KEY_U;
+    case Key::I:
+        return GLFW_KEY_I;
+    case Key::O:
+        return GLFW_KEY_O;
+    case Key::P:
+        return GLFW_KEY_P;
+    case Key::A:
+        return GLFW_KEY_A;
+    case Key::S:
+        return GLFW_KEY_S;
+    case Key::D:
+        return GLFW_KEY_D;
+    case Key::F:
+        return GLFW_KEY_F;
+    case Key::G:
+        return GLFW_KEY_G;
+    case Key::H:
+        return GLFW_KEY_H;
+    case Key::J:
+        return GLFW_KEY_J;
+    case Key::K:
+        return GLFW_KEY_K;
+    case Key::L:
+        return GLFW_KEY_L;
+    case Key::Z:
+        return GLFW_KEY_Z;
+    case Key::X:
+        return GLFW_KEY_X;
+    case Key::C:
+        return GLFW_KEY_C;
+    case Key::V:
+        return GLFW_KEY_V;
+    case Key::B:
+        return GLFW_KEY_B;
+    case Key::N:
+        return GLFW_KEY_N;
+    case Key::M:
+        return GLFW_KEY_M;
+    case Key::ESCAPE:
+        return GLFW_KEY_ESCAPE;
+    case Key::ENTER:
+        return GLFW_KEY_ENTER;
+    case Key::SPACE:
+        return GLFW_KEY_SPACE;
+    default:
+        return GLFW_KEY_UNKNOWN;
     }
 }
 
 static Key convertFromGlfwKey(int key) {
     switch (key) {
-    case GLFW_KEY_UP: return Key::UP;
-    case GLFW_KEY_RIGHT: return Key::RIGHT;
-    case GLFW_KEY_LEFT: return Key::LEFT;
-    case GLFW_KEY_DOWN: return Key::DOWN;
-    case GLFW_KEY_Q: return Key::Q;
-    case GLFW_KEY_W: return Key::W;
-    case GLFW_KEY_E: return Key::E;
-    case GLFW_KEY_R: return Key::R;
-    case GLFW_KEY_T: return Key::T;
-    case GLFW_KEY_Y: return Key::Y;
-    case GLFW_KEY_U: return Key::U;
-    case GLFW_KEY_I: return Key::I;
-    case GLFW_KEY_O: return Key::O;
-    case GLFW_KEY_P: return Key::P;
-    case GLFW_KEY_A: return Key::A;
-    case GLFW_KEY_S: return Key::S;
-    case GLFW_KEY_D: return Key::D;
-    case GLFW_KEY_F: return Key::F;
-    case GLFW_KEY_G: return Key::G;
-    case GLFW_KEY_H: return Key::H;
-    case GLFW_KEY_J: return Key::J;
-    case GLFW_KEY_K: return Key::K;
-    case GLFW_KEY_L: return Key::L;
-    case GLFW_KEY_Z: return Key::Z;
-    case GLFW_KEY_X: return Key::X;
-    case GLFW_KEY_C: return Key::C;
-    case GLFW_KEY_V: return Key::V;
-    case GLFW_KEY_B: return Key::B;
-    case GLFW_KEY_N: return Key::N;
-    case GLFW_KEY_M: return Key::M;
-    case GLFW_KEY_ESCAPE: return Key::ESCAPE;
-    case GLFW_KEY_ENTER: return Key::ENTER;
-    case GLFW_KEY_SPACE: return Key::SPACE;
-    case GLFW_KEY_1: return Key::Num1;
-    case GLFW_KEY_2: return Key::Num2;
-    case GLFW_KEY_3: return Key::Num3;
-    case GLFW_KEY_4: return Key::Num4;
-    case GLFW_KEY_5: return Key::Num5;
-    case GLFW_KEY_6: return Key::Num6;
-    case GLFW_KEY_7: return Key::Num7;
-    case GLFW_KEY_8: return Key::Num8;
-    case GLFW_KEY_9: return Key::Num9;
-    case GLFW_KEY_0: return Key::Num0;
-    default: return Key::UNKNOWN;
+    case GLFW_KEY_UP:
+        return Key::UP;
+    case GLFW_KEY_RIGHT:
+        return Key::RIGHT;
+    case GLFW_KEY_LEFT:
+        return Key::LEFT;
+    case GLFW_KEY_DOWN:
+        return Key::DOWN;
+    case GLFW_KEY_Q:
+        return Key::Q;
+    case GLFW_KEY_W:
+        return Key::W;
+    case GLFW_KEY_E:
+        return Key::E;
+    case GLFW_KEY_R:
+        return Key::R;
+    case GLFW_KEY_T:
+        return Key::T;
+    case GLFW_KEY_Y:
+        return Key::Y;
+    case GLFW_KEY_U:
+        return Key::U;
+    case GLFW_KEY_I:
+        return Key::I;
+    case GLFW_KEY_O:
+        return Key::O;
+    case GLFW_KEY_P:
+        return Key::P;
+    case GLFW_KEY_A:
+        return Key::A;
+    case GLFW_KEY_S:
+        return Key::S;
+    case GLFW_KEY_D:
+        return Key::D;
+    case GLFW_KEY_F:
+        return Key::F;
+    case GLFW_KEY_G:
+        return Key::G;
+    case GLFW_KEY_H:
+        return Key::H;
+    case GLFW_KEY_J:
+        return Key::J;
+    case GLFW_KEY_K:
+        return Key::K;
+    case GLFW_KEY_L:
+        return Key::L;
+    case GLFW_KEY_Z:
+        return Key::Z;
+    case GLFW_KEY_X:
+        return Key::X;
+    case GLFW_KEY_C:
+        return Key::C;
+    case GLFW_KEY_V:
+        return Key::V;
+    case GLFW_KEY_B:
+        return Key::B;
+    case GLFW_KEY_N:
+        return Key::N;
+    case GLFW_KEY_M:
+        return Key::M;
+    case GLFW_KEY_ESCAPE:
+        return Key::ESCAPE;
+    case GLFW_KEY_ENTER:
+        return Key::ENTER;
+    case GLFW_KEY_SPACE:
+        return Key::SPACE;
+    case GLFW_KEY_1:
+        return Key::Num1;
+    case GLFW_KEY_2:
+        return Key::Num2;
+    case GLFW_KEY_3:
+        return Key::Num3;
+    case GLFW_KEY_4:
+        return Key::Num4;
+    case GLFW_KEY_5:
+        return Key::Num5;
+    case GLFW_KEY_6:
+        return Key::Num6;
+    case GLFW_KEY_7:
+        return Key::Num7;
+    case GLFW_KEY_8:
+        return Key::Num8;
+    case GLFW_KEY_9:
+        return Key::Num9;
+    case GLFW_KEY_0:
+        return Key::Num0;
+    default:
+        return Key::UNKNOWN;
     }
 }
 
@@ -151,14 +239,14 @@ Window::Window(WindowProps props) {
     glfwWindowHint(GLFW_FLOATING, props.floating ? GLFW_TRUE : GLFW_FALSE);
 
     if (props.fullscreen) {
-        this->_internal = glfwCreateWindow(props.width, props.height, props.title.c_str(), glfwGetPrimaryMonitor(), nullptr);
+        this->_internal =
+            glfwCreateWindow(props.width, props.height, props.title.c_str(), glfwGetPrimaryMonitor(), nullptr);
         _isFullscreen = true;
     } else {
         this->_internal = glfwCreateWindow(props.width, props.height, props.title.c_str(), nullptr, nullptr);
         _isFullscreen = false;
     }
-    if (this->_internal == nullptr)
-        throw std::runtime_error("Failed to create window!");
+    if (this->_internal == nullptr) throw std::runtime_error("Failed to create window!");
 
     GLFWwindow* window = static_cast<GLFWwindow*>(this->_internal);
     glfwSetWindowUserPointer(window, this);
@@ -185,8 +273,7 @@ void Window::Init() {
 
     // Setup input management
     // glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    if (glfwRawMouseMotionSupported())
-        glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+    if (glfwRawMouseMotionSupported()) glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
 
     glfwSetCursorPosCallback(window, [](GLFWwindow* win, double x, double y) {
         auto self = static_cast<Window*>(glfwGetWindowUserPointer(win));
@@ -251,9 +338,7 @@ void Window::Init() {
     AddMouseMoveCallback([](float x, float y) {
         // ENGINE_LOG("-- Mouse moved to ({},{})\n", x, y);
     });
-    AddViewportResizeCallback([](int width, int height) {
-        ENGINE_LOG("Viewport resized to {}X{}\n", width, height);
-    });
+    AddViewportResizeCallback([](int width, int height) { ENGINE_LOG("Viewport resized to {}X{}\n", width, height); });
     AddFramebufferResizeCallback([](int width, int height) {
         ENGINE_LOG("Framebuffer resized to {}X{}\n", width, height);
     });
@@ -269,9 +354,10 @@ bool Window::IsWebGPUAvailable() {
     static int cached = -1;
     if (cached == -1) {
         cached = EM_ASM_INT({
-            return (typeof navigator !== 'undefined' &&
-                    typeof navigator.gpu !== 'undefined' &&
-                    navigator.gpu !== null) ? 1 : 0;
+            return (typeof navigator != = 'undefined' && typeof navigator.gpu != = 'undefined' && navigator.gpu != =
+                        null)
+                       ? 1
+                       : 0;
         });
         if (cached) {
             EM_ASM({ console.log("[AtmosphericEngine] WebGPU detected: navigator.gpu is available."); });
@@ -293,7 +379,7 @@ GfxBackend Window::GetActiveBackend() {
 
 void Window::InitImGui() {
 #if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
-    if (_webGPUCanvas) return; // TODO: use imgui_impl_wgpu when WebGPU ImGui backend is ready
+    if (_webGPUCanvas) return;// TODO: use imgui_impl_wgpu when WebGPU ImGui backend is ready
 #endif
     IMGUI_CHECKVERSION();
 
@@ -334,8 +420,7 @@ void Window::DeinitImGui() {
     ImGui::DestroyContext();
 }
 
-void Window::MainLoop(std::function<void(float, float)> callback)
-{
+void Window::MainLoop(std::function<void(float, float)> callback) {
     struct LoopContext {
         std::function<void(float, float)> callback;
         float lastTime;
@@ -357,12 +442,7 @@ void Window::MainLoop(std::function<void(float, float)> callback)
         ctx.window->SwapBuffers();
     };
 
-    static LoopContext ctx = {
-        callback,
-        GetTime(),
-        0,
-        this
-    };
+    static LoopContext ctx = { callback, GetTime(), 0, this };
 #ifdef __EMSCRIPTEN__
     static LoopContext* ctxPtr = &ctx;
     auto em_callback = [](void* arg) {
@@ -439,7 +519,9 @@ void Window::SetTitle(const std::string& title) {
 }
 
 float Window::GetTime() {
-    return static_cast<float>(glfwGetTime()); // Note that glfwGetTime() only starts to calculate time after the window is created;
+    return static_cast<float>(
+        glfwGetTime()
+    );// Note that glfwGetTime() only starts to calculate time after the window is created;
 }
 
 void Window::SetTime(double time) {
@@ -464,7 +546,7 @@ glm::vec2 Window::GetDPI() {
     // so derive the scale from the framebuffer size divided by the logical window size.
     auto logical = GetLogicalSize();
     auto physical = GetPhysicalSize();
-    float scaleX = logical.width  > 0 ? float(physical.width)  / float(logical.width)  : 1.0f;
+    float scaleX = logical.width > 0 ? float(physical.width) / float(logical.width) : 1.0f;
     float scaleY = logical.height > 0 ? float(physical.height) / float(logical.height) : 1.0f;
     return glm::vec2(scaleX, scaleY);
 #else
@@ -474,8 +556,7 @@ glm::vec2 Window::GetDPI() {
 #endif
 }
 
-glm::vec2 Window::GetMousePosition()
-{
+glm::vec2 Window::GetMousePosition() {
     double x, y;
     glfwGetCursorPos(static_cast<GLFWwindow*>(_internal), &x, &y);
     glm::vec2 scale = GetDPI();
@@ -617,11 +698,16 @@ void Window::SwapBuffers() {
 
 void Window::SetMouseCursor(const std::string& cursorName) {
     int shape = GLFW_ARROW_CURSOR;
-    if (cursorName == "text")    shape = GLFW_IBEAM_CURSOR;
-    else if (cursorName == "cross")   shape = GLFW_CROSSHAIR_CURSOR;
-    else if (cursorName == "pointer") shape = GLFW_HAND_CURSOR;
-    else if (cursorName == "resize")  shape = GLFW_HRESIZE_CURSOR;
-    else if (cursorName == "move")    shape = GLFW_CROSSHAIR_CURSOR;
+    if (cursorName == "text")
+        shape = GLFW_IBEAM_CURSOR;
+    else if (cursorName == "cross")
+        shape = GLFW_CROSSHAIR_CURSOR;
+    else if (cursorName == "pointer")
+        shape = GLFW_HAND_CURSOR;
+    else if (cursorName == "resize")
+        shape = GLFW_HRESIZE_CURSOR;
+    else if (cursorName == "move")
+        shape = GLFW_CROSSHAIR_CURSOR;
 
     // Cache cursors to avoid re-creating them every frame
     static std::unordered_map<int, GLFWcursor*> cursorCache;

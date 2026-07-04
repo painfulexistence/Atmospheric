@@ -21,10 +21,9 @@ static MaterialHandle GetVoxelMaterial() {
 }
 
 VoxelChunkComponent::VoxelChunkComponent(GameObject* owner, GraphicsSubsystem* gfx, glm::ivec3 chunkPos)
-    : _gfx(gfx), _chunkPos(chunkPos)
-{
+  : _gfx(gfx), _chunkPos(chunkPos) {
     gameObject = owner;
-    std::memset(_voxels,    0, sizeof(_voxels));
+    std::memset(_voxels, 0, sizeof(_voxels));
     std::memset(_neighbors, 0, sizeof(_neighbors));
 }
 
@@ -32,8 +31,10 @@ VoxelChunkComponent::~VoxelChunkComponent() {
     AssetManager::Get().UnregisterMesh(_meshHandle);
 }
 
-void VoxelChunkComponent::OnAttach() {}
-void VoxelChunkComponent::OnDetach() {}
+void VoxelChunkComponent::OnAttach() {
+}
+void VoxelChunkComponent::OnDetach() {
+}
 
 void VoxelChunkComponent::Relocate(glm::ivec3 newChunkPos) {
     std::memset(_neighbors, 0, sizeof(_neighbors));
@@ -80,14 +81,29 @@ uint8_t VoxelChunkComponent::GetVoxelWithNeighbors(int x, int y, int z) const {
     int dx = 0, dy = 0, dz = 0;
     int nx = x, ny = y, nz = z;
 
-    if      (x <    0) { nx = x + SIZE; dx = -1; }
-    else if (x >= SIZE) { nx = x - SIZE; dx =  1; }
+    if (x < 0) {
+        nx = x + SIZE;
+        dx = -1;
+    } else if (x >= SIZE) {
+        nx = x - SIZE;
+        dx = 1;
+    }
 
-    if      (y <    0) { ny = y + SIZE; dy = -1; }
-    else if (y >= SIZE) { ny = y - SIZE; dy =  1; }
+    if (y < 0) {
+        ny = y + SIZE;
+        dy = -1;
+    } else if (y >= SIZE) {
+        ny = y - SIZE;
+        dy = 1;
+    }
 
-    if      (z <    0) { nz = z + SIZE; dz = -1; }
-    else if (z >= SIZE) { nz = z - SIZE; dz =  1; }
+    if (z < 0) {
+        nz = z + SIZE;
+        dz = -1;
+    } else if (z >= SIZE) {
+        nz = z - SIZE;
+        dz = 1;
+    }
 
     if (dx == 0 && dy == 0 && dz == 0) return _voxels[x][y][z];
 
@@ -134,35 +150,37 @@ void VoxelChunkComponent::UploadMesh(const std::vector<VoxelVertex>& verts) {
     }
 
     glm::vec3 wp = GetWorldPos();
-    float s = static_cast<float>(SIZE);
-    std::array<glm::vec3, 8> bounds = {{
-        wp + glm::vec3(0, 0, 0), wp + glm::vec3(s, 0, 0),
-        wp + glm::vec3(0, s, 0), wp + glm::vec3(s, s, 0),
-        wp + glm::vec3(0, 0, s), wp + glm::vec3(s, 0, s),
-        wp + glm::vec3(0, s, s), wp + glm::vec3(s, s, s),
-    }};
+    auto s = static_cast<float>(SIZE);
+    std::array<glm::vec3, 8> bounds = { {
+        wp + glm::vec3(0, 0, 0),
+        wp + glm::vec3(s, 0, 0),
+        wp + glm::vec3(0, s, 0),
+        wp + glm::vec3(s, s, 0),
+        wp + glm::vec3(0, 0, s),
+        wp + glm::vec3(s, 0, s),
+        wp + glm::vec3(0, s, s),
+        wp + glm::vec3(s, s, s),
+    } };
     _mesh->SetBoundingBox(bounds);
 
     _dirty = false;
 }
 
-void VoxelChunkComponent::BuildGreedyLayer(VoxelMeshBuilder& builder,
-                                            int axis, int layer, int dir)
-{
-    int u_axis = (axis + 1) % 3;
-    int v_axis = (axis + 2) % 3;
+void VoxelChunkComponent::BuildGreedyLayer(VoxelMeshBuilder& builder, int axis, int layer, int dir) {
+    int uAxis = (axis + 1) % 3;
+    int vAxis = (axis + 2) % 3;
     uint8_t mask[SIZE][SIZE];
-    bool    done[SIZE][SIZE];
+    bool done[SIZE][SIZE];
     std::memset(mask, 0, sizeof(mask));
 
     for (int u = 0; u < SIZE; ++u) {
         for (int v = 0; v < SIZE; ++v) {
             glm::ivec3 posA(0), posB(0);
-            posA[axis]   = layer;
-            posA[u_axis] = u;
-            posA[v_axis] = v;
-            posB         = posA;
-            posB[axis]  += dir;
+            posA[axis] = layer;
+            posA[uAxis] = u;
+            posA[vAxis] = v;
+            posB = posA;
+            posB[axis] += dir;
 
             uint8_t va = GetVoxelWithNeighbors(posA.x, posA.y, posA.z);
             uint8_t vb = GetVoxelWithNeighbors(posB.x, posB.y, posB.z);
@@ -172,9 +190,12 @@ void VoxelChunkComponent::BuildGreedyLayer(VoxelMeshBuilder& builder,
     }
 
     FaceDir faceDir;
-    if (axis == 1)      faceDir = (dir > 0) ? FaceDir::TOP    : FaceDir::BOTTOM;
-    else if (axis == 0) faceDir = (dir > 0) ? FaceDir::RIGHT  : FaceDir::LEFT;
-    else                faceDir = (dir > 0) ? FaceDir::FRONT  : FaceDir::BACK;
+    if (axis == 1)
+        faceDir = (dir > 0) ? FaceDir::TOP : FaceDir::BOTTOM;
+    else if (axis == 0)
+        faceDir = (dir > 0) ? FaceDir::RIGHT : FaceDir::LEFT;
+    else
+        faceDir = (dir > 0) ? FaceDir::FRONT : FaceDir::BACK;
 
     std::memset(done, 0, sizeof(done));
 
@@ -193,7 +214,8 @@ void VoxelChunkComponent::BuildGreedyLayer(VoxelMeshBuilder& builder,
                 bool ok = true;
                 for (int k = 0; k < w; ++k) {
                     if (mask[u + k][v + h] != voxelId || done[u + k][v + h]) {
-                        ok = false; break;
+                        ok = false;
+                        break;
                     }
                 }
                 if (!ok) break;
@@ -205,11 +227,11 @@ void VoxelChunkComponent::BuildGreedyLayer(VoxelMeshBuilder& builder,
                     done[u + du][v + dv] = true;
 
             glm::ivec3 quadPos(0);
-            quadPos[axis]   = layer;
-            quadPos[u_axis] = u;
-            quadPos[v_axis] = v;
+            quadPos[axis] = layer;
+            quadPos[uAxis] = u;
+            quadPos[vAxis] = v;
 
-            builder.PushGreedyFace(quadPos, faceDir, voxelId, w, h, u_axis, v_axis);
+            builder.PushGreedyFace(quadPos, faceDir, voxelId, w, h, uAxis, vAxis);
         }
     }
 }

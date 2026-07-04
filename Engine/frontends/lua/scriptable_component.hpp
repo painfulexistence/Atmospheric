@@ -129,7 +129,7 @@ template<typename... Args> void ScriptableComponent::CallMethod(const std::strin
 
 template<typename... Args>
 void ScriptableComponent::CallMethodSafeWithArgs(
-  sol::protected_function& func, const std::string& methodName, Args&&... args
+    sol::protected_function& func, const std::string& methodName, Args&&... args
 ) {
     if (!func.valid()) return;
 

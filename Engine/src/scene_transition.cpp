@@ -1,44 +1,36 @@
 #include "scene_transition.hpp"
-#include "rmlui_manager.hpp" // pulls in <RmlUi/Core.h> (ElementDocument, Element)
+#include "rmlui_manager.hpp"// pulls in <RmlUi/Core.h> (ElementDocument, Element)
 
-void SceneTransition::Init()
-{
+void SceneTransition::Init() {
     _doc = RmlUiManager::Get()->LoadDocument("assets/ui/loading_screen.rml");
 }
 
-void SceneTransition::Begin()
-{
+void SceneTransition::Begin() {
     if (!_doc) return;
     _fadeOutTimer = 0.0f;
     _doc->Show();
     // The overlay defaults to opaque, so the first show (before the first scene
     // loads) covers the frame immediately — no scene/skybox flash. Clearing the
     // "hidden" class fades it back in on later transitions.
-    if (auto* body = _doc->GetElementById("loading-screen"))
-        body->SetClass("hidden", false);
+    if (auto* body = _doc->GetElementById("loading-screen")) body->SetClass("hidden", false);
 }
 
-void SceneTransition::End()
-{
+void SceneTransition::End() {
     if (!_doc) return;
-    if (auto* body = _doc->GetElementById("loading-screen"))
-        body->SetClass("hidden", true);
+    if (auto* body = _doc->GetElementById("loading-screen")) body->SetClass("hidden", true);
     // Keep the document shown until the CSS fade-out finishes, then hide it in
     // Update so it stops consuming input / draw time.
     _fadeOutTimer = kFadeDuration;
 }
 
-void SceneTransition::Update(float dt)
-{
+void SceneTransition::Update(float dt) {
     if (_fadeOutTimer > 0.0f) {
         _fadeOutTimer -= dt;
-        if (_fadeOutTimer <= 0.0f && _doc)
-            _doc->Hide();
+        if (_fadeOutTimer <= 0.0f && _doc) _doc->Hide();
     }
 }
 
-void SceneTransition::SetProgress(float fraction)
-{
+void SceneTransition::SetProgress(float fraction) {
     if (!_doc) return;
     if (auto* fill = _doc->GetElementById("loading-progress")) {
         fraction = fraction < 0.0f ? 0.0f : (fraction > 1.0f ? 1.0f : fraction);

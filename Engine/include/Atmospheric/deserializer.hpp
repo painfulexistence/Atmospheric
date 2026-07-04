@@ -1,11 +1,11 @@
 #pragma once
 #include <functional>
-#include <memory>
-#include <string>
-#include <vector>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
+#include <memory>
+#include <string>
+#include <vector>
 
 // ── Deserializer ──────────────────────────────────────────────────────────────
 //
@@ -50,19 +50,16 @@ public:
     virtual ~Deserializer() = default;
 
     // ── Scalar reads ─────────────────────────────────────────────────────────
-    virtual void Read(const char* name, float&       out, float       defaultVal = 0.0f)  = 0;
-    virtual void Read(const char* name, int&         out, int         defaultVal = 0)     = 0;
-    virtual void Read(const char* name, bool&        out, bool        defaultVal = false) = 0;
+    virtual void Read(const char* name, float& out, float defaultVal = 0.0f) = 0;
+    virtual void Read(const char* name, int& out, int defaultVal = 0) = 0;
+    virtual void Read(const char* name, bool& out, bool defaultVal = false) = 0;
     virtual void Read(const char* name, std::string& out, const std::string& defaultVal = "") = 0;
     virtual void Read(const char* name, std::vector<int>& out) = 0;
 
     // ── GLM reads ────────────────────────────────────────────────────────────
-    virtual void Read(const char* name, glm::vec2& out,
-                      const glm::vec2& defaultVal = glm::vec2(0.f)) = 0;
-    virtual void Read(const char* name, glm::vec3& out,
-                      const glm::vec3& defaultVal = glm::vec3(0.f)) = 0;
-    virtual void Read(const char* name, glm::vec4& out,
-                      const glm::vec4& defaultVal = glm::vec4(0.f)) = 0;
+    virtual void Read(const char* name, glm::vec2& out, const glm::vec2& defaultVal = glm::vec2(0.f)) = 0;
+    virtual void Read(const char* name, glm::vec3& out, const glm::vec3& defaultVal = glm::vec3(0.f)) = 0;
+    virtual void Read(const char* name, glm::vec4& out, const glm::vec4& defaultVal = glm::vec4(0.f)) = 0;
 
     // ── Structural reads ─────────────────────────────────────────────────────
     // Returns a Deserializer focused on the named sub-object.

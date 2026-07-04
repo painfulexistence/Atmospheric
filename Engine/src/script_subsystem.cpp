@@ -1,35 +1,31 @@
 #include "script_subsystem.hpp"
-#include "material.hpp"
-#include "light_component.hpp"
-#include "camera_component.hpp"
-#include "scene.hpp"
 #include "Atmospheric/file_system.hpp"
-#include "asset_manager.hpp"
-#include "game_object.hpp"
 #include "application.hpp"
+#include "asset_manager.hpp"
+#include "camera_component.hpp"
+#include "game_object.hpp"
+#include "light_component.hpp"
+#include "material.hpp"
+#include "scene.hpp"
 #include <string>
 
 ScriptSubsystem* ScriptSubsystem::_instance = nullptr;
 
-ScriptSubsystem::ScriptSubsystem()
-{
-    if (_instance != nullptr)
-        throw std::runtime_error("ScriptSubsystem is already initialized!");
+ScriptSubsystem::ScriptSubsystem() {
+    if (_instance != nullptr) throw std::runtime_error("ScriptSubsystem is already initialized!");
 
     _env = sol::state();
 
     _instance = this;
 }
 
-ScriptSubsystem::~ScriptSubsystem()
-{
+ScriptSubsystem::~ScriptSubsystem() {
     if (_instance == this) {
         _instance = nullptr;
     }
 }
 
-void ScriptSubsystem::Init(Application* app)
-{
+void ScriptSubsystem::Init(Application* app) {
     Subsystem::Init(app);
 
     _env.open_libraries();
@@ -40,8 +36,7 @@ void ScriptSubsystem::Init(Application* app)
     Run("init()");
 }
 
-void ScriptSubsystem::Process(float dt)
-{
+void ScriptSubsystem::Process(float dt) {
     sol::protected_function updateFunc = _env["update"];
     if (updateFunc.valid()) {
         auto result = updateFunc(dt);
@@ -52,13 +47,10 @@ void ScriptSubsystem::Process(float dt)
     }
 }
 
-void ScriptSubsystem::Bind(const std::string& func)
-{
-
+void ScriptSubsystem::Bind(const std::string& func) {
 }
 
-void ScriptSubsystem::Source(const std::string& filename)
-{
+void ScriptSubsystem::Source(const std::string& filename) {
     auto resolvedOpt = FileSystem::Get().ResolvePath(filename);
     if (!resolvedOpt) {
         fmt::print("Skip loading script file {} (not found)\n", filename);
@@ -73,8 +65,7 @@ void ScriptSubsystem::Source(const std::string& filename)
     }
 }
 
-void ScriptSubsystem::Run(const std::string& script)
-{
+void ScriptSubsystem::Run(const std::string& script) {
     sol::protected_function_result result = _env.script(script, sol::script_pass_on_error);
     if (!result.valid()) {
         sol::error err = result;
@@ -83,18 +74,15 @@ void ScriptSubsystem::Run(const std::string& script)
     }
 }
 
-void ScriptSubsystem::Print(const std::string& msg)
-{
+void ScriptSubsystem::Print(const std::string& msg) {
     Run(fmt::format("print('[ScriptSubsystem] {}')", msg));
 }
 
-sol::table ScriptSubsystem::GetData(const std::string& key)
-{
+sol::table ScriptSubsystem::GetData(const std::string& key) {
     return this->_env.globals()[key];
 }
 
-void ScriptSubsystem::LoadScene(int index)
-{
+void ScriptSubsystem::LoadScene(int index) {
     sol::table data = GetData("scenes");
     if (!data.valid()) return;
     sol::table sceneData = data[index + 1];
@@ -119,7 +107,9 @@ void ScriptSubsystem::LoadScene(int index)
             std::string shaderName = key.as<std::string>();
             sol::table shaderData = value;
             if (shaderData["tesc"].valid() && shaderData["tese"].valid()) {
-                shaders[shaderName] = { shaderData["vert"], shaderData["frag"], shaderData["tesc"], shaderData["tese"] };
+                shaders[shaderName] = {
+                    shaderData["vert"], shaderData["frag"], shaderData["tesc"], shaderData["tese"]
+                };
             } else {
                 shaders[shaderName] = { shaderData["vert"], shaderData["frag"] };
             }
@@ -136,22 +126,34 @@ void ScriptSubsystem::LoadScene(int index)
             int baseMapIdx = materialData.get_or("baseMapId", -1);
             int normalMapIdx = materialData.get_or("normalMapId", -1);
             int aoMapIdx = materialData.get_or("aoMapId", -1);
-            int roughnessMapIdx = materialData.get_or("roughnessMapId", static_cast<int>(materialData.get_or("roughtnessMapId", -1)));
+            int roughnessMapIdx =
+                materialData.get_or("roughnessMapId", static_cast<int>(materialData.get_or("roughtnessMapId", -1)));
             int metallicMapIdx = materialData.get_or("metallicMapId", -1);
             int heightMapIdx = materialData.get_or("heightMapId", -1);
 
-            materials.push_back({
-                .baseMap = (baseMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(baseMapIdx)) : TextureHandle(),
-                .normalMap = (normalMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(normalMapIdx)) : TextureHandle(),
-                .aoMap = (aoMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(aoMapIdx)) : TextureHandle(),
-                .roughnessMap = (roughnessMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(roughnessMapIdx)) : TextureHandle(),
-                .metallicMap = (metallicMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(metallicMapIdx)) : TextureHandle(),
-                .heightMap = (heightMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(heightMapIdx)) : TextureHandle(),
-                .diffuse = glm::vec3(materialData["diffuse"][1], materialData["diffuse"][2], materialData["diffuse"][3]),
-                .specular = glm::vec3(materialData["specular"][1], materialData["specular"][2], materialData["specular"][3]),
-                .ambient = glm::vec3(materialData["ambient"][1], materialData["ambient"][2], materialData["ambient"][3]),
-                .shininess = static_cast<float>(materialData.get_or("shininess", 0.25))
-            });
+            materials.push_back(
+                { .baseMap = (baseMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(baseMapIdx))
+                                                : TextureHandle(),
+                  .normalMap = (normalMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(normalMapIdx))
+                                                    : TextureHandle(),
+                  .aoMap =
+                      (aoMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(aoMapIdx)) : TextureHandle(),
+                  .roughnessMap = (roughnessMapIdx != -1)
+                                      ? TextureHandle(AssetManager::Get().GetTextureByID(roughnessMapIdx))
+                                      : TextureHandle(),
+                  .metallicMap = (metallicMapIdx != -1)
+                                     ? TextureHandle(AssetManager::Get().GetTextureByID(metallicMapIdx))
+                                     : TextureHandle(),
+                  .heightMap = (heightMapIdx != -1) ? TextureHandle(AssetManager::Get().GetTextureByID(heightMapIdx))
+                                                    : TextureHandle(),
+                  .diffuse =
+                      glm::vec3(materialData["diffuse"][1], materialData["diffuse"][2], materialData["diffuse"][3]),
+                  .specular =
+                      glm::vec3(materialData["specular"][1], materialData["specular"][2], materialData["specular"][3]),
+                  .ambient =
+                      glm::vec3(materialData["ambient"][1], materialData["ambient"][2], materialData["ambient"][3]),
+                  .shininess = static_cast<float>(materialData.get_or("shininess", 0.25)) }
+            );
         }
         AssetManager::Get().LoadMaterials(materials);
     }
@@ -184,10 +186,14 @@ void ScriptSubsystem::LoadScene(int index)
                     if (componentType == "camera") {
                         CameraProps cameraProps;
                         cameraProps.isOrthographic = false;
-                        cameraProps.perspective.fieldOfView = static_cast<float>(componentData.get_or("field_of_view", glm::radians(60.f)));
-                        cameraProps.perspective.aspectRatio = static_cast<float>(componentData.get_or("aspect_ratio", 4.f / 3.f));
-                        cameraProps.perspective.nearClip = static_cast<float>(componentData.get_or("near_clip_plane", 0.1f));
-                        cameraProps.perspective.farClip = static_cast<float>(componentData.get_or("far_clip_plane", 1000.0f));
+                        cameraProps.perspective.fieldOfView =
+                            static_cast<float>(componentData.get_or("field_of_view", glm::radians(60.f)));
+                        cameraProps.perspective.aspectRatio =
+                            static_cast<float>(componentData.get_or("aspect_ratio", 4.f / 3.f));
+                        cameraProps.perspective.nearClip =
+                            static_cast<float>(componentData.get_or("near_clip_plane", 0.1f));
+                        cameraProps.perspective.farClip =
+                            static_cast<float>(componentData.get_or("far_clip_plane", 1000.0f));
                         cameraProps.verticalAngle = static_cast<float>(componentData.get_or("vertical_angle", 0));
                         cameraProps.horizontalAngle = static_cast<float>(componentData.get_or("horizontal_angle", 0));
                         cameraProps.eyeOffset = glm::vec3(
@@ -201,22 +207,16 @@ void ScriptSubsystem::LoadScene(int index)
                         LightProps props{
                             .type = lightType,
                             .ambient = glm::vec3(
-                                componentData["ambient"][1],
-                                componentData["ambient"][2],
-                                componentData["ambient"][3]
+                                componentData["ambient"][1], componentData["ambient"][2], componentData["ambient"][3]
                             ),
                             .diffuse = glm::vec3(
-                                componentData["diffuse"][1],
-                                componentData["diffuse"][2],
-                                componentData["diffuse"][3]
+                                componentData["diffuse"][1], componentData["diffuse"][2], componentData["diffuse"][3]
                             ),
                             .specular = glm::vec3(
-                                componentData["specular"][1],
-                                componentData["specular"][2],
-                                componentData["specular"][3]
+                                componentData["specular"][1], componentData["specular"][2], componentData["specular"][3]
                             ),
                             .intensity = static_cast<float>(componentData.get_or("intensity", 1.0)),
-                            .castShadow = (bool)componentData.get_or("castShadow", 0)
+                            .castShadow = static_cast<bool>(componentData.get_or("castShadow", 0))
                         };
                         if (lightType == LightType::Point) {
                             props.attenuation = glm::vec3(
@@ -239,7 +239,6 @@ void ScriptSubsystem::LoadScene(int index)
     }
 }
 
-void ScriptSubsystem::GetData(const std::string& key, sol::table& data)
-{
+void ScriptSubsystem::GetData(const std::string& key, sol::table& data) {
     data = this->_env.globals()[key];
 }

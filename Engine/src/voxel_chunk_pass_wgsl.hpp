@@ -81,24 +81,22 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 // Same cube geometry as Renderer's GL-only skyboxVAO (renderer.cpp); duplicated
 // here since this pass owns its own WebGPU vertex buffer independent of the GL VAO.
 static const float SKYBOX_CUBE_VERTS[] = {
-    -1, -1, -1,  1, -1, -1,  1,  1, -1,  1,  1, -1, -1,  1, -1, -1, -1, -1,
-    -1, -1,  1,  1, -1,  1,  1,  1,  1,  1,  1,  1, -1,  1,  1, -1, -1,  1,
-    -1,  1,  1, -1,  1, -1, -1, -1, -1, -1, -1, -1, -1, -1,  1, -1,  1,  1,
-     1,  1,  1,  1,  1, -1,  1, -1, -1,  1, -1, -1,  1, -1,  1,  1,  1,  1,
-    -1, -1, -1, -1, -1,  1,  1, -1,  1,  1, -1,  1,  1, -1, -1, -1, -1, -1,
-    -1,  1, -1, -1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1, -1, -1,  1, -1,
+    -1, -1, -1, 1,  -1, -1, 1,  1,  -1, 1,  1,  -1, -1, 1,  -1, -1, -1, -1, -1, -1, 1,  1,  -1, 1,  1,  1,  1,
+    1,  1,  1,  -1, 1,  1,  -1, -1, 1,  -1, 1,  1,  -1, 1,  -1, -1, -1, -1, -1, -1, -1, -1, -1, 1,  -1, 1,  1,
+    1,  1,  1,  1,  1,  -1, 1,  -1, -1, 1,  -1, -1, 1,  -1, 1,  1,  1,  1,  -1, -1, -1, -1, -1, 1,  1,  -1, 1,
+    1,  -1, 1,  1,  -1, -1, -1, -1, -1, -1, 1,  -1, -1, 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  -1, -1, 1,  -1,
 };
 
 // Same unit-quad geometry as SunPass::Execute's GL-only static sunVBO.
 static const float SUN_QUAD_VERTS[] = {
-    -1, -1, 0,   1, -1, 0,   1, 1, 0,   -1, -1, 0,   1, 1, 0,   -1, 1, 0,
+    -1, -1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, 1, 1, 0, -1, 1, 0,
 };
 
 // ── VoxelChunkPass ────────────────────────────────────────────────────────────
 // WebGPU-spec-guaranteed-safe minUniformBufferOffsetAlignment.
-constexpr uint32_t VOXEL_DRAW_SLOT_STRIDE  = 256;
-constexpr uint64_t VOXEL_FRAME_UNIFORM_SIZE = 160; // viewProj(64) + 6 * vec4(16)
-constexpr uint64_t VOXEL_DRAW_UNIFORM_SIZE  = 64;  // model mat4x4
+constexpr uint32_t VOXEL_DRAW_SLOT_STRIDE = 256;
+constexpr uint64_t VOXEL_FRAME_UNIFORM_SIZE = 160;// viewProj(64) + 6 * vec4(16)
+constexpr uint64_t VOXEL_DRAW_UNIFORM_SIZE = 64;// model mat4x4
 
 // Mirrors default_assets/shaders/voxel.vert + voxel.frag. v_uv from the GL
 // vertex shader is dropped — voxel.frag never samples a texture, so it's
@@ -180,9 +178,10 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 )";
 
 // ── WaterPass ─────────────────────────────────────────────────────────────────
-constexpr uint32_t WATER_DRAW_SLOT_STRIDE   = 256;
-constexpr uint64_t WATER_FRAME_UNIFORM_SIZE = 128; // viewProj(64) + cameraPos(16) + lightDir(16) + lightColor(16) + time(16)
-constexpr uint64_t WATER_DRAW_UNIFORM_SIZE  = 96;  // model(64) + params0(16) + fogColor(16)
+constexpr uint32_t WATER_DRAW_SLOT_STRIDE = 256;
+constexpr uint64_t WATER_FRAME_UNIFORM_SIZE =
+    128;// viewProj(64) + cameraPos(16) + lightDir(16) + lightColor(16) + time(16)
+constexpr uint64_t WATER_DRAW_UNIFORM_SIZE = 96;// model(64) + params0(16) + fogColor(16)
 
 // Simplified port of default_assets/shaders/water.vert + water.frag: vertex
 // wave displacement plus fresnel/diffuse/specular shading and distance fog.
@@ -334,4 +333,4 @@ struct CompUniforms { bloomStrength: f32, _pad0: f32, _pad1: f32, _pad2: f32 };
 }
 )";
 
-#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+#endif// AE_USE_WEBGPU && __EMSCRIPTEN__

@@ -3,105 +3,193 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
-#include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_opengl3.h"
+#include "backends/imgui_impl_sdl2.h"
 #include "console_subsystem.hpp"
 
 static int convertToSDLKey(Key key) {
     switch (key) {
-    case Key::UP: return SDL_SCANCODE_UP;
-    case Key::RIGHT: return SDL_SCANCODE_RIGHT;
-    case Key::LEFT: return SDL_SCANCODE_LEFT;
-    case Key::DOWN: return SDL_SCANCODE_DOWN;
-    case Key::Num1: return SDL_SCANCODE_1;
-    case Key::Num2: return SDL_SCANCODE_2;
-    case Key::Num3: return SDL_SCANCODE_3;
-    case Key::Num4: return SDL_SCANCODE_4;
-    case Key::Num5: return SDL_SCANCODE_5;
-    case Key::Num6: return SDL_SCANCODE_6;
-    case Key::Num7: return SDL_SCANCODE_7;
-    case Key::Num8: return SDL_SCANCODE_8;
-    case Key::Num9: return SDL_SCANCODE_9;
-    case Key::Num0: return SDL_SCANCODE_0;
-    case Key::Q: return SDL_SCANCODE_Q;
-    case Key::W: return SDL_SCANCODE_W;
-    case Key::E: return SDL_SCANCODE_E;
-    case Key::R: return SDL_SCANCODE_R;
-    case Key::T: return SDL_SCANCODE_T;
-    case Key::Y: return SDL_SCANCODE_Y;
-    case Key::U: return SDL_SCANCODE_U;
-    case Key::I: return SDL_SCANCODE_I;
-    case Key::O: return SDL_SCANCODE_O;
-    case Key::P: return SDL_SCANCODE_P;
-    case Key::A: return SDL_SCANCODE_A;
-    case Key::S: return SDL_SCANCODE_S;
-    case Key::D: return SDL_SCANCODE_D;
-    case Key::F: return SDL_SCANCODE_F;
-    case Key::G: return SDL_SCANCODE_G;
-    case Key::H: return SDL_SCANCODE_H;
-    case Key::J: return SDL_SCANCODE_J;
-    case Key::K: return SDL_SCANCODE_K;
-    case Key::L: return SDL_SCANCODE_L;
-    case Key::Z: return SDL_SCANCODE_Z;
-    case Key::X: return SDL_SCANCODE_X;
-    case Key::C: return SDL_SCANCODE_C;
-    case Key::V: return SDL_SCANCODE_V;
-    case Key::B: return SDL_SCANCODE_B;
-    case Key::N: return SDL_SCANCODE_N;
-    case Key::M: return SDL_SCANCODE_M;
-    case Key::ESCAPE: return SDL_SCANCODE_ESCAPE;
-    case Key::ENTER: return SDL_SCANCODE_RETURN;
-    case Key::SPACE: return SDL_SCANCODE_SPACE;
-    default: return SDL_SCANCODE_UNKNOWN;
+    case Key::UP:
+        return SDL_SCANCODE_UP;
+    case Key::RIGHT:
+        return SDL_SCANCODE_RIGHT;
+    case Key::LEFT:
+        return SDL_SCANCODE_LEFT;
+    case Key::DOWN:
+        return SDL_SCANCODE_DOWN;
+    case Key::Num1:
+        return SDL_SCANCODE_1;
+    case Key::Num2:
+        return SDL_SCANCODE_2;
+    case Key::Num3:
+        return SDL_SCANCODE_3;
+    case Key::Num4:
+        return SDL_SCANCODE_4;
+    case Key::Num5:
+        return SDL_SCANCODE_5;
+    case Key::Num6:
+        return SDL_SCANCODE_6;
+    case Key::Num7:
+        return SDL_SCANCODE_7;
+    case Key::Num8:
+        return SDL_SCANCODE_8;
+    case Key::Num9:
+        return SDL_SCANCODE_9;
+    case Key::Num0:
+        return SDL_SCANCODE_0;
+    case Key::Q:
+        return SDL_SCANCODE_Q;
+    case Key::W:
+        return SDL_SCANCODE_W;
+    case Key::E:
+        return SDL_SCANCODE_E;
+    case Key::R:
+        return SDL_SCANCODE_R;
+    case Key::T:
+        return SDL_SCANCODE_T;
+    case Key::Y:
+        return SDL_SCANCODE_Y;
+    case Key::U:
+        return SDL_SCANCODE_U;
+    case Key::I:
+        return SDL_SCANCODE_I;
+    case Key::O:
+        return SDL_SCANCODE_O;
+    case Key::P:
+        return SDL_SCANCODE_P;
+    case Key::A:
+        return SDL_SCANCODE_A;
+    case Key::S:
+        return SDL_SCANCODE_S;
+    case Key::D:
+        return SDL_SCANCODE_D;
+    case Key::F:
+        return SDL_SCANCODE_F;
+    case Key::G:
+        return SDL_SCANCODE_G;
+    case Key::H:
+        return SDL_SCANCODE_H;
+    case Key::J:
+        return SDL_SCANCODE_J;
+    case Key::K:
+        return SDL_SCANCODE_K;
+    case Key::L:
+        return SDL_SCANCODE_L;
+    case Key::Z:
+        return SDL_SCANCODE_Z;
+    case Key::X:
+        return SDL_SCANCODE_X;
+    case Key::C:
+        return SDL_SCANCODE_C;
+    case Key::V:
+        return SDL_SCANCODE_V;
+    case Key::B:
+        return SDL_SCANCODE_B;
+    case Key::N:
+        return SDL_SCANCODE_N;
+    case Key::M:
+        return SDL_SCANCODE_M;
+    case Key::ESCAPE:
+        return SDL_SCANCODE_ESCAPE;
+    case Key::ENTER:
+        return SDL_SCANCODE_RETURN;
+    case Key::SPACE:
+        return SDL_SCANCODE_SPACE;
+    default:
+        return SDL_SCANCODE_UNKNOWN;
     }
 }
 
 static Key convertFromSDLKey(int key) {
     switch (key) {
-    case SDL_SCANCODE_UP: return Key::UP;
-    case SDL_SCANCODE_RIGHT: return Key::RIGHT;
-    case SDL_SCANCODE_LEFT: return Key::LEFT;
-    case SDL_SCANCODE_DOWN: return Key::DOWN;
-    case SDL_SCANCODE_1: return Key::Num1;
-    case SDL_SCANCODE_2: return Key::Num2;
-    case SDL_SCANCODE_3: return Key::Num3;
-    case SDL_SCANCODE_4: return Key::Num4;
-    case SDL_SCANCODE_5: return Key::Num5;
-    case SDL_SCANCODE_6: return Key::Num6;
-    case SDL_SCANCODE_7: return Key::Num7;
-    case SDL_SCANCODE_8: return Key::Num8;
-    case SDL_SCANCODE_9: return Key::Num9;
-    case SDL_SCANCODE_0: return Key::Num0;
-    case SDL_SCANCODE_Q: return Key::Q;
-    case SDL_SCANCODE_W: return Key::W;
-    case SDL_SCANCODE_E: return Key::E;
-    case SDL_SCANCODE_R: return Key::R;
-    case SDL_SCANCODE_T: return Key::T;
-    case SDL_SCANCODE_Y: return Key::Y;
-    case SDL_SCANCODE_U: return Key::U;
-    case SDL_SCANCODE_I: return Key::I;
-    case SDL_SCANCODE_O: return Key::O;
-    case SDL_SCANCODE_P: return Key::P;
-    case SDL_SCANCODE_A: return Key::A;
-    case SDL_SCANCODE_S: return Key::S;
-    case SDL_SCANCODE_D: return Key::D;
-    case SDL_SCANCODE_F: return Key::F;
-    case SDL_SCANCODE_G: return Key::G;
-    case SDL_SCANCODE_H: return Key::H;
-    case SDL_SCANCODE_J: return Key::J;
-    case SDL_SCANCODE_K: return Key::K;
-    case SDL_SCANCODE_L: return Key::L;
-    case SDL_SCANCODE_Z: return Key::Z;
-    case SDL_SCANCODE_X: return Key::X;
-    case SDL_SCANCODE_C: return Key::C;
-    case SDL_SCANCODE_V: return Key::V;
-    case SDL_SCANCODE_B: return Key::B;
-    case SDL_SCANCODE_N: return Key::N;
-    case SDL_SCANCODE_M: return Key::M;
-    case SDL_SCANCODE_ESCAPE: return Key::ESCAPE;
-    case SDL_SCANCODE_RETURN: return Key::ENTER;
-    case SDL_SCANCODE_SPACE: return Key::SPACE;
-    default: return Key::UNKNOWN;
+    case SDL_SCANCODE_UP:
+        return Key::UP;
+    case SDL_SCANCODE_RIGHT:
+        return Key::RIGHT;
+    case SDL_SCANCODE_LEFT:
+        return Key::LEFT;
+    case SDL_SCANCODE_DOWN:
+        return Key::DOWN;
+    case SDL_SCANCODE_1:
+        return Key::Num1;
+    case SDL_SCANCODE_2:
+        return Key::Num2;
+    case SDL_SCANCODE_3:
+        return Key::Num3;
+    case SDL_SCANCODE_4:
+        return Key::Num4;
+    case SDL_SCANCODE_5:
+        return Key::Num5;
+    case SDL_SCANCODE_6:
+        return Key::Num6;
+    case SDL_SCANCODE_7:
+        return Key::Num7;
+    case SDL_SCANCODE_8:
+        return Key::Num8;
+    case SDL_SCANCODE_9:
+        return Key::Num9;
+    case SDL_SCANCODE_0:
+        return Key::Num0;
+    case SDL_SCANCODE_Q:
+        return Key::Q;
+    case SDL_SCANCODE_W:
+        return Key::W;
+    case SDL_SCANCODE_E:
+        return Key::E;
+    case SDL_SCANCODE_R:
+        return Key::R;
+    case SDL_SCANCODE_T:
+        return Key::T;
+    case SDL_SCANCODE_Y:
+        return Key::Y;
+    case SDL_SCANCODE_U:
+        return Key::U;
+    case SDL_SCANCODE_I:
+        return Key::I;
+    case SDL_SCANCODE_O:
+        return Key::O;
+    case SDL_SCANCODE_P:
+        return Key::P;
+    case SDL_SCANCODE_A:
+        return Key::A;
+    case SDL_SCANCODE_S:
+        return Key::S;
+    case SDL_SCANCODE_D:
+        return Key::D;
+    case SDL_SCANCODE_F:
+        return Key::F;
+    case SDL_SCANCODE_G:
+        return Key::G;
+    case SDL_SCANCODE_H:
+        return Key::H;
+    case SDL_SCANCODE_J:
+        return Key::J;
+    case SDL_SCANCODE_K:
+        return Key::K;
+    case SDL_SCANCODE_L:
+        return Key::L;
+    case SDL_SCANCODE_Z:
+        return Key::Z;
+    case SDL_SCANCODE_X:
+        return Key::X;
+    case SDL_SCANCODE_C:
+        return Key::C;
+    case SDL_SCANCODE_V:
+        return Key::V;
+    case SDL_SCANCODE_B:
+        return Key::B;
+    case SDL_SCANCODE_N:
+        return Key::N;
+    case SDL_SCANCODE_M:
+        return Key::M;
+    case SDL_SCANCODE_ESCAPE:
+        return Key::ESCAPE;
+    case SDL_SCANCODE_RETURN:
+        return Key::ENTER;
+    case SDL_SCANCODE_SPACE:
+        return Key::SPACE;
+    default:
+        return Key::UNKNOWN;
     }
 }
 
@@ -114,15 +202,15 @@ Window::Window(WindowProps props) {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         SDL_Log("SDL could not initialize! Error: %s\n", SDL_GetError());
     }
-// #ifdef __EMSCRIPTEN__
+    // #ifdef __EMSCRIPTEN__
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-// #else
+    // #else
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-// #endif
+    // #endif
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG | SDL_GL_CONTEXT_DEBUG_FLAG);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
@@ -130,8 +218,10 @@ Window::Window(WindowProps props) {
 
     _internal = SDL_CreateWindow(
         props.title.c_str(),
-        SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-        props.width, props.height,
+        SDL_WINDOWPOS_UNDEFINED,
+        SDL_WINDOWPOS_UNDEFINED,
+        props.width,
+        props.height,
         SDL_WINDOW_OPENGL | SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_ALLOW_HIGHDPI
     );
     if (!_internal) {
@@ -255,12 +345,7 @@ void Window::MainLoop(std::function<void(float, float)> callback) {
         SDL_GL_SwapWindow(static_cast<SDL_Window*>(ctx.window->_internal));
     };
 
-    LoopContext ctx = {
-        callback,
-        GetTime(),
-        0,
-        this
-    };
+    LoopContext ctx = { callback, GetTime(), 0, this };
 #ifdef __EMSCRIPTEN__
     static LoopContext* ctxPtr = &ctx;
     auto em_callback = [](void* arg) {
@@ -288,7 +373,6 @@ void Window::MainLoop(std::function<void(float, float)> callback) {
 }
 
 void Window::ToggleFullscreen() {
-
 }
 
 void Window::Close() {
@@ -312,7 +396,8 @@ void Window::SetTitle(const std::string& title) {
 }
 
 float Window::GetTime() {
-    return static_cast<float>(SDL_GetTicks()) * 0.001f; // Note that glfwGetTime() only starts to calculate time after the window is created;
+    return static_cast<float>(SDL_GetTicks())
+           * 0.001f;// Note that glfwGetTime() only starts to calculate time after the window is created;
 }
 
 void Window::SetTime(double time) {

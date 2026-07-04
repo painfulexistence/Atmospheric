@@ -25,53 +25,54 @@ namespace {
 // ── Platform shims (POSIX sockets vs. Winsock2) ───────────────────────────
 #ifndef __EMSCRIPTEN__
 #if defined(_WIN32)
-inline bool EnsureSocketLib() {
-    static bool ok = [] {
-        WSADATA wsa;
-        return WSAStartup(MAKEWORD(2, 2), &wsa) == 0;
-    }();
-    return ok;
-}
-inline void SetNonBlocking(SocketHandle s) {
-    u_long mode = 1;
-    ::ioctlsocket(s, FIONBIO, &mode);
-}
-inline void CloseSocket(SocketHandle s) {
-    ::closesocket(s);
-}
+    inline bool EnsureSocketLib() {
+        static bool ok = [] {
+            WSADATA wsa;
+            return WSAStartup(MAKEWORD(2, 2), &wsa) == 0;
+        }();
+        return ok;
+    }
+    inline void SetNonBlocking(SocketHandle s) {
+        u_long mode = 1;
+        ::ioctlsocket(s, FIONBIO, &mode);
+    }
+    inline void CloseSocket(SocketHandle s) {
+        ::closesocket(s);
+    }
 #else
-inline bool EnsureSocketLib() {
-    return true;
-}
-inline void SetNonBlocking(SocketHandle s) {
-    int flags = ::fcntl(s, F_GETFL, 0);
-    ::fcntl(s, F_SETFL, flags | O_NONBLOCK);
-}
-inline void CloseSocket(SocketHandle s) {
-    ::close(s);
-}
+    inline bool EnsureSocketLib() {
+        return true;
+    }
+    inline void SetNonBlocking(SocketHandle s) {
+        int flags = ::fcntl(s, F_GETFL, 0);
+        ::fcntl(s, F_SETFL, flags | O_NONBLOCK);
+    }
+    inline void CloseSocket(SocketHandle s) {
+        ::close(s);
+    }
 #endif
 #endif
 
-constexpr uint32_t MAGIC = 0x4e4c4b31;// "NLK1"
-constexpr uint8_t PKT_HELLO = 1;
-constexpr uint8_t PKT_WELCOME = 2;
-constexpr uint8_t PKT_INPUT = 3;
-constexpr uint8_t PKT_CHECK = 4;
-constexpr uint8_t PKT_PING = 5;
-constexpr uint8_t PKT_PONG = 6;
-constexpr int MAX_REDUNDANT_INPUTS = 32;
+    constexpr uint32_t magic = 0x4e4c4b31;// "NLK1"
+    constexpr uint8_t pktHello = 1;
+    constexpr uint8_t pktWelcome = 2;
+    constexpr uint8_t pktInput = 3;
+    constexpr uint8_t pktCheck = 4;
+    constexpr uint8_t pktPing = 5;
+    constexpr uint8_t pktPong = 6;
+    constexpr int maxRedundantInputs = 32;
 
-void PutU32(uint8_t* p, uint32_t v) {
-    p[0] = uint8_t(v);
-    p[1] = uint8_t(v >> 8);
-    p[2] = uint8_t(v >> 16);
-    p[3] = uint8_t(v >> 24);
-}
-uint32_t GetU32(const uint8_t* p) {
-    return uint32_t(p[0]) | uint32_t(p[1]) << 8 | uint32_t(p[2]) << 16 | uint32_t(p[3]) << 24;
-}
-}
+    void PutU32(uint8_t* p, uint32_t v) {
+        p[0] = static_cast<uint8_t>(v);
+        p[1] = static_cast<uint8_t>(v >> 8);
+        p[2] = static_cast<uint8_t>(v >> 16);
+        p[3] = static_cast<uint8_t>(v >> 24);
+    }
+    uint32_t GetU32(const uint8_t* p) {
+        return static_cast<uint32_t>(p[0]) | static_cast<uint32_t>(p[1]) << 8 | static_cast<uint32_t>(p[2]) << 16
+               | static_cast<uint32_t>(p[3]) << 24;
+    }
+}// namespace
 
 void LockstepNet::StartSolo(uint32_t s) {
     mode = Mode::Solo;
@@ -162,40 +163,41 @@ void LockstepNet::SendHello(uint32_t nowMs) {
     if (nowMs - lastHelloMs < 200) return;
     lastHelloMs = nowMs;
     uint8_t buf[5];
-    PutU32(buf, MAGIC);
-    buf[4] = PKT_HELLO;
+    PutU32(buf, magic);
+    buf[4] = pktHello;
     SendRaw(buf, 5);
 }
 
 void LockstepNet::SendWelcome() {
     uint8_t buf[10];
-    PutU32(buf, MAGIC);
-    buf[4] = PKT_WELCOME;
+    PutU32(buf, magic);
+    buf[4] = pktWelcome;
     PutU32(buf + 5, seed);
-    buf[9] = uint8_t(inputDelay);
+    buf[9] = static_cast<uint8_t>(inputDelay);
     SendRaw(buf, 10);
 }
 
 void LockstepNet::SendInputs() {
     if (!haveLocal || state != State::Running) return;
-    uint32_t first = (localTop >= uint32_t(MAX_REDUNDANT_INPUTS - 1)) ? localTop - (MAX_REDUNDANT_INPUTS - 1) : 0;
+    uint32_t first =
+        (localTop >= static_cast<uint32_t>(maxRedundantInputs - 1)) ? localTop - (maxRedundantInputs - 1) : 0;
     if (peerAckedTick + 1 > first) first = peerAckedTick + 1;
     if (first > localTop) return;
 
-    uint8_t buf[14 + MAX_REDUNDANT_INPUTS * 4];
-    PutU32(buf, MAGIC);
-    buf[4] = PKT_INPUT;
+    uint8_t buf[14 + maxRedundantInputs * 4];
+    PutU32(buf, magic);
+    buf[4] = pktInput;
     PutU32(buf + 5, remoteTop);// ack: highest remote tick we've seen
     PutU32(buf + 9, first);
     uint8_t count = 0;
     int off = 14;
-    for (uint32_t t = first; t <= localTop && count < MAX_REDUNDANT_INPUTS; t++) {
+    for (uint32_t t = first; t <= localTop && count < maxRedundantInputs; t++) {
         auto it = localInputs.find(t);
         InputFrame f = (it != localInputs.end()) ? it->second : InputFrame{};
         buf[off++] = f.buttons;
         buf[off++] = f.spell;
-        buf[off++] = uint8_t(uint16_t(f.aimQ));
-        buf[off++] = uint8_t(uint16_t(f.aimQ) >> 8);
+        buf[off++] = static_cast<uint8_t>(static_cast<uint16_t>(f.aimQ));
+        buf[off++] = static_cast<uint8_t>(static_cast<uint16_t>(f.aimQ) >> 8);
         count++;
     }
     buf[13] = count;
@@ -203,10 +205,10 @@ void LockstepNet::SendInputs() {
 }
 
 void LockstepNet::HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, uint16_t fromPort, uint32_t nowMs) {
-    if (len < 5 || GetU32(data) != MAGIC) return;
+    if (len < 5 || GetU32(data) != magic) return;
     uint8_t type = data[4];
 
-    if (mode == Mode::Host && !havePeer && type == PKT_HELLO) {
+    if (mode == Mode::Host && !havePeer && type == pktHello) {
         peerAddr = fromAddr;
         peerPort = fromPort;
         havePeer = true;
@@ -218,22 +220,22 @@ void LockstepNet::HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, 
     if (!havePeer || fromAddr != peerAddr || fromPort != peerPort) return;
 
     switch (type) {
-    case PKT_HELLO:
+    case pktHello:
         if (mode == Mode::Host) SendWelcome();// client missed our reply
         break;
-    case PKT_WELCOME:
+    case pktWelcome:
         if (mode == Mode::Client && state == State::Connecting) {
             seed = GetU32(data + 5);
-            inputDelay = int(data[9]);
+            inputDelay = static_cast<int>(data[9]);
             state = State::Running;
         }
         break;
-    case PKT_INPUT: {
+    case pktInput: {
         if (len < 14) break;
         uint32_t ack = GetU32(data + 5);
         uint32_t first = GetU32(data + 9);
         uint8_t count = data[13];
-        if (len < 14 + int(count) * 4) break;
+        if (len < 14 + static_cast<int>(count) * 4) break;
         if (haveLocal && ack > peerAckedTick && ack <= localTop) peerAckedTick = ack;
         for (uint8_t i = 0; i < count; i++) {
             const uint8_t* p = data + 14 + i * 4;
@@ -241,13 +243,13 @@ void LockstepNet::HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, 
             InputFrame f;
             f.buttons = p[0];
             f.spell = p[1];
-            f.aimQ = int16_t(uint16_t(p[2]) | (uint16_t(p[3]) << 8));
+            f.aimQ = static_cast<int16_t>(static_cast<uint16_t>(p[2]) | (static_cast<uint16_t>(p[3]) << 8));
             remoteInputs[t] = f;
             if (t > remoteTop) remoteTop = t;
         }
         break;
     }
-    case PKT_CHECK: {
+    case pktCheck: {
         if (len < 13) break;
         uint32_t t = GetU32(data + 5);
         uint32_t sum = GetU32(data + 9);
@@ -255,22 +257,23 @@ void LockstepNet::HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, 
         if (it != localChecks.end() && it->second != sum) desync = true;
         break;
     }
-    case PKT_PING: {
+    case pktPing: {
         if (len < 9) break;
         uint8_t buf[9];
-        PutU32(buf, MAGIC);
-        buf[4] = PKT_PONG;
+        PutU32(buf, magic);
+        buf[4] = pktPong;
         PutU32(buf + 5, GetU32(data + 5));
         SendRaw(buf, 9);
         break;
     }
-    case PKT_PONG: {
+    case pktPong: {
         if (len < 9) break;
         uint32_t sent = GetU32(data + 5);
-        rttMs = int(nowMs - sent);
+        rttMs = static_cast<int>(nowMs - sent);
         break;
     }
-    default: break;
+    default:
+        break;
     }
 }
 
@@ -282,7 +285,12 @@ void LockstepNet::Pump(uint32_t nowMs) {
         sockaddr_in from{};
         socklen_t fromLen = sizeof(from);
         int n = ::recvfrom(
-          sock, reinterpret_cast<char*>(buf), int(sizeof(buf)), 0, reinterpret_cast<sockaddr*>(&from), &fromLen
+            sock,
+            reinterpret_cast<char*>(buf),
+            static_cast<int>(sizeof(buf)),
+            0,
+            reinterpret_cast<sockaddr*>(&from),
+            &fromLen
         );
         if (n <= 0) break;
         HandlePacket(buf, n, from.sin_addr.s_addr, from.sin_port, nowMs);
@@ -296,8 +304,8 @@ void LockstepNet::Pump(uint32_t nowMs) {
         if (nowMs - lastPingMs > 1000) {
             lastPingMs = nowMs;
             uint8_t ping[9];
-            PutU32(ping, MAGIC);
-            ping[4] = PKT_PING;
+            PutU32(ping, magic);
+            ping[4] = pktPing;
             PutU32(ping + 5, nowMs);
             SendRaw(ping, 9);
         }
@@ -350,8 +358,8 @@ void LockstepNet::SubmitLocalInput(uint32_t tick, const InputFrame& f) {
 
 bool LockstepNet::HasInputs(uint32_t tick) const {
     if (mode == Mode::Solo) return true;
-    bool local = localInputs.count(tick) > 0 || tick < uint32_t(inputDelay);
-    bool remote = remoteInputs.count(tick) > 0 || tick < uint32_t(inputDelay);
+    bool local = localInputs.count(tick) > 0 || tick < static_cast<uint32_t>(inputDelay);
+    bool remote = remoteInputs.count(tick) > 0 || tick < static_cast<uint32_t>(inputDelay);
     return local && remote;
 }
 
@@ -366,8 +374,8 @@ void LockstepNet::ShareChecksum(uint32_t tick, uint32_t sum) {
     localChecks[tick] = sum;
     if (mode == Mode::Solo) return;
     uint8_t buf[13];
-    PutU32(buf, MAGIC);
-    buf[4] = PKT_CHECK;
+    PutU32(buf, magic);
+    buf[4] = pktCheck;
     PutU32(buf + 5, tick);
     PutU32(buf + 9, sum);
     SendRaw(buf, 13);

@@ -13,8 +13,7 @@
 //   path.AddPoint({0, 10, 0});
 //   glm::vec3 pos = path.Sample(scrollT);          // position
 //   glm::vec3 dir = glm::normalize(path.SampleTangent(scrollT));  // forward
-template<typename T>
-class Spline {
+template<typename T> class Spline {
 public:
     // When true, the spline loops back from the last point to the first.
     bool loop = false;
@@ -47,9 +46,7 @@ public:
         int seg = 0;
         float lt = 0.0f;
         _Segment(t, seg, lt);
-        return _CatmullRom(
-            _Point(seg - 1), _Point(seg),
-            _Point(seg + 1), _Point(seg + 2), lt);
+        return _CatmullRom(_Point(seg - 1), _Point(seg), _Point(seg + 1), _Point(seg + 2), lt);
     }
 
     // Returns the first derivative (tangent) at t in [0, 1].
@@ -59,9 +56,7 @@ public:
         int seg = 0;
         float lt = 0.0f;
         _Segment(t, seg, lt);
-        return _CatmullRomDerivative(
-            _Point(seg - 1), _Point(seg),
-            _Point(seg + 1), _Point(seg + 2), lt);
+        return _CatmullRomDerivative(_Point(seg - 1), _Point(seg), _Point(seg + 1), _Point(seg + 2), lt);
     }
 
 private:
@@ -79,29 +74,23 @@ private:
 
     T _Point(int i) const {
         int n = static_cast<int>(_points.size());
-        if (loop)
-            return _points[((i % n) + n) % n];
+        if (loop) return _points[((i % n) + n) % n];
         return _points[glm::clamp(i, 0, n - 1)];
     }
 
     static T _CatmullRom(const T& p0, const T& p1, const T& p2, const T& p3, float t) {
         float t2 = t * t;
         float t3 = t2 * t;
-        return 0.5f * (
-            p1 * 2.0f
-            + (p2 - p0) * t
-            + (p0 * 2.0f - p1 * 5.0f + p2 * 4.0f - p3) * t2
-            + (p1 * 3.0f - p0 - p2 * 3.0f + p3) * t3
-        );
+        return 0.5f
+               * (p1 * 2.0f + (p2 - p0) * t + (p0 * 2.0f - p1 * 5.0f + p2 * 4.0f - p3) * t2
+                  + (p1 * 3.0f - p0 - p2 * 3.0f + p3) * t3);
     }
 
     // Analytic derivative of _CatmullRom with respect to t.
     static T _CatmullRomDerivative(const T& p0, const T& p1, const T& p2, const T& p3, float t) {
         float t2 = t * t;
-        return 0.5f * (
-            (p2 - p0)
-            + (p0 * 4.0f - p1 * 10.0f + p2 * 8.0f - p3 * 2.0f) * t
-            + (p0 * (-3.0f) + p1 * 9.0f - p2 * 9.0f + p3 * 3.0f) * t2
-        );
+        return 0.5f
+               * ((p2 - p0) + (p0 * 4.0f - p1 * 10.0f + p2 * 8.0f - p3 * 2.0f) * t
+                  + (p0 * (-3.0f) + p1 * 9.0f - p2 * 9.0f + p3 * 3.0f) * t2);
     }
 };

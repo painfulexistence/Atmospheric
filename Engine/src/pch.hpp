@@ -1,27 +1,27 @@
 #pragma once
+#include <array>
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
 #include <cstdlib>
 #include <ctime>
-#include <cstdint>
-#include <string>
-#include <array>
-#include <vector>
+#include <functional>
 #include <list>
 #include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
 #include <queue>
 #include <stack>
-#include <memory>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
-#include <atomic>
-#include <functional>
-#include <optional>
-#include <utility>
 #include <stdexcept>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
 
 #ifdef TRACY_ENABLE
 #include <tracy/Tracy.hpp>
-#define TRACY_CALLSTACK 1 // Optional: Enable call stack capture for more detailed profiling
+#define TRACY_CALLSTACK 1// Optional: Enable call stack capture for more detailed profiling
 #else
 #define ZoneScoped
 #define ZoneScopedN(name)

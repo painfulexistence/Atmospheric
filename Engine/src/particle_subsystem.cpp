@@ -15,8 +15,8 @@
 
 namespace Atmospheric {
 
-    void ParticleSubsystem::Init(GraphicsSubsystem* in_graphics_server) {
-        this->graphics_server = in_graphics_server;
+    void ParticleSubsystem::Init(GraphicsSubsystem* inGraphicsServer) {
+        this->graphics_server = inGraphicsServer;
         if (this->graphics_server == nullptr) {
             throw std::runtime_error("Invalid graphics server provided to ParticleSubsystem.");
         }
@@ -49,20 +49,20 @@ namespace Atmospheric {
         AssetManager& assets = AssetManager::Get();
         try {
             // Simulation Shader
-            ShaderProgramProps sim_props;
-            sim_props.vert = "shaders/ParticleSim.vert";
-            sim_props.frag = "shaders/noop.frag";// A dummy fragment shader
-            sim_props.feedbackVaryings = { "out_position", "out_velocity", "out_color", "out_life",
-                                           "out_size",     "out_pad0",     "out_pad1" };
-            assets.CreateShader("particle_sim", sim_props);
+            ShaderProgramProps simProps;
+            simProps.vert = "shaders/ParticleSim.vert";
+            simProps.frag = "shaders/noop.frag";// A dummy fragment shader
+            simProps.feedbackVaryings = { "out_position", "out_velocity", "out_color", "out_life",
+                                          "out_size",     "out_pad0",     "out_pad1" };
+            assets.CreateShader("particle_sim", simProps);
             simulation_shader = assets.GetShaderHandle("particle_sim");
 
             // Drawing Shader
             // Assuming Particle.vert and Particle.frag are already loaded or can be loaded.
-            ShaderProgramProps draw_props;
-            draw_props.vert = "shaders/Particle.vert";
-            draw_props.frag = "shaders/Particle.frag";
-            assets.CreateShader("particle_draw", draw_props);
+            ShaderProgramProps drawProps;
+            drawProps.vert = "shaders/Particle.vert";
+            drawProps.frag = "shaders/Particle.frag";
+            assets.CreateShader("particle_draw", drawProps);
             drawing_shader = assets.GetShaderHandle("particle_draw");
 
         } catch (const std::exception& e) {
@@ -91,14 +91,16 @@ namespace Atmospheric {
         auto mesh = new Mesh(MeshType::PRIM);
         mesh->Initialize(vertices, indices);
         // Calculate bounds
-        mesh->SetBoundingBox({ { glm::vec3(0.5f, 0.5f, 0.0f),
-                                 glm::vec3(-0.5f, 0.5f, 0.0f),
-                                 glm::vec3(-0.5f, -0.5f, 0.0f),
-                                 glm::vec3(0.5f, -0.5f, 0.0f),
-                                 glm::vec3(0.5f, 0.5f, 0.0f),
-                                 glm::vec3(-0.5f, 0.5f, 0.0f),
-                                 glm::vec3(-0.5f, -0.5f, 0.0f),
-                                 glm::vec3(0.5f, -0.5f, 0.0f) } });
+        mesh->SetBoundingBox(
+            { { glm::vec3(0.5f, 0.5f, 0.0f),
+                glm::vec3(-0.5f, 0.5f, 0.0f),
+                glm::vec3(-0.5f, -0.5f, 0.0f),
+                glm::vec3(0.5f, -0.5f, 0.0f),
+                glm::vec3(0.5f, 0.5f, 0.0f),
+                glm::vec3(-0.5f, 0.5f, 0.0f),
+                glm::vec3(-0.5f, -0.5f, 0.0f),
+                glm::vec3(0.5f, -0.5f, 0.0f) } }
+        );
         return mesh;
     }
 
@@ -124,8 +126,8 @@ namespace Atmospheric {
 
         // 3. Populate with initial data
         RNG rng;
-        std::vector<Particle> initial_particles(emitter->GetMaxParticles());
-        for (auto& p : initial_particles) {
+        std::vector<Particle> initialParticles(emitter->GetMaxParticles());
+        for (auto& p : initialParticles) {
             float r = sqrt(rng.RandomFloat()) * 0.1f;
             float theta = rng.RandomFloat() * 2.0f * 3.14159f;
             p.position = glm::vec3(r * cos(theta), r * sin(theta), 0.0f);
@@ -139,7 +141,7 @@ namespace Atmospheric {
         for (int i = 0; i < 2; ++i) {
             glBindBuffer(GL_ARRAY_BUFFER, emitter->particle_vbos[i]);
             glBufferData(
-              GL_ARRAY_BUFFER, sizeof(Particle) * emitter->GetMaxParticles(), initial_particles.data(), GL_DYNAMIC_COPY
+                GL_ARRAY_BUFFER, sizeof(Particle) * emitter->GetMaxParticles(), initialParticles.data(), GL_DYNAMIC_COPY
             );
         }
 
@@ -148,15 +150,25 @@ namespace Atmospheric {
         glBindBuffer(GL_ARRAY_BUFFER, emitter->GetCurrentSourceVBO());// Bind one of the VBOs to set layout
 
         glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, position)));
+        glVertexAttribPointer(
+            0, 3, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, position))
+        );
         glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, velocity)));
+        glVertexAttribPointer(
+            1, 3, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, velocity))
+        );
         glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, color)));
+        glVertexAttribPointer(
+            2, 4, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, color))
+        );
         glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, life)));
+        glVertexAttribPointer(
+            3, 1, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, life))
+        );
         glEnableVertexAttribArray(4);
-        glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, size)));
+        glVertexAttribPointer(
+            4, 1, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, size))
+        );
 
         glBindVertexArray(0);
     }
@@ -230,19 +242,25 @@ namespace Atmospheric {
 
             // Re-set the vertex attrib pointers for the particle data, this time with divisors for instancing.
             glEnableVertexAttribArray(2);// instance position
-            glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, position)));
+            glVertexAttribPointer(
+                2, 3, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, position))
+            );
             glVertexAttribDivisor(2, 1);
 
             glEnableVertexAttribArray(3);// instance color
-            glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, color)));
+            glVertexAttribPointer(
+                3, 4, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, color))
+            );
             glVertexAttribDivisor(3, 1);
 
             glEnableVertexAttribArray(4);// instance size
-            glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, size)));
+            glVertexAttribPointer(
+                4, 1, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, size))
+            );
             glVertexAttribDivisor(4, 1);
 
             glDrawElementsInstanced(
-              GL_TRIANGLES, quadMeshPtr->triCount * 3, GL_UNSIGNED_SHORT, 0, emitter->GetMaxParticles()
+                GL_TRIANGLES, quadMeshPtr->triCount * 3, GL_UNSIGNED_SHORT, nullptr, emitter->GetMaxParticles()
             );
 
             // Reset divisors

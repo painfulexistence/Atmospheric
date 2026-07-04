@@ -4,9 +4,9 @@
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 
 // ── ShadowPass ───────────────────────────────────────────────────────────────
-constexpr uint32_t SHADOW_DRAW_SLOT_STRIDE   = 256;
-constexpr uint64_t SHADOW_FRAME_UNIFORM_SIZE = 64; // lightVP(64)
-constexpr uint64_t SHADOW_DRAW_UNIFORM_SIZE  = 64; // model(64)
+constexpr uint32_t SHADOW_DRAW_SLOT_STRIDE = 256;
+constexpr uint64_t SHADOW_FRAME_UNIFORM_SIZE = 64;// lightVP(64)
+constexpr uint64_t SHADOW_DRAW_UNIFORM_SIZE = 64;// model(64)
 
 // Depth-only shadow-map write for the main directional light. Vertex layout
 // matches the Standard 56-byte mesh format used by ForwardOpaquePass; only
@@ -25,9 +25,11 @@ fn vs(@location(0) aPos: vec3<f32>) -> @builtin(position) vec4<f32> {
 )";
 
 // ── ForwardOpaquePass ────────────────────────────────────────────────────────
-constexpr uint32_t FWD_DRAW_SLOT_STRIDE  = 256;
-constexpr uint64_t FWD_FRAME_UNIFORM_SIZE = 192; // viewProj(64) + lightVP(64) + cameraPos(16) + lightDir(16) + lightColor(16) + ambient(16)
-constexpr uint64_t FWD_DRAW_UNIFORM_SIZE  = 128; // model(64) + diffuse(16) + specular(16) + materialAmbient(16) + shininess+pad(16)
+constexpr uint32_t FWD_DRAW_SLOT_STRIDE = 256;
+constexpr uint64_t FWD_FRAME_UNIFORM_SIZE =
+    192;// viewProj(64) + lightVP(64) + cameraPos(16) + lightDir(16) + lightColor(16) + ambient(16)
+constexpr uint64_t FWD_DRAW_UNIFORM_SIZE =
+    128;// model(64) + diffuse(16) + specular(16) + materialAmbient(16) + shininess+pad(16)
 
 // Simplified port of default_assets/shaders/color.vert + color.frag: a single
 // directional light and a base-color texture only (no normal/AO/roughness/
@@ -285,7 +287,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 )";
 
 // ── PostProcessPass ──────────────────────────────────────────────────────────
-constexpr uint64_t POST_UNIFORM_SIZE = 48; // exposure,caEn,caStr,time + crt,vhs,grading,posterize + sobel,edges,vignette,pad
+constexpr uint64_t POST_UNIFORM_SIZE =
+    48;// exposure,caEn,caStr,time + crt,vhs,grading,posterize + sobel,edges,vignette,pad
 
 // Fullscreen-triangle vertex shader + the full set of post effects ported from
 // default_assets/shaders/: hdr.frag (default tonemap + chromatic aberration),
@@ -468,4 +471,4 @@ fn sepia(c: vec3<f32>) -> vec3<f32> {
 }
 )";
 
-#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+#endif// AE_USE_WEBGPU && __EMSCRIPTEN__

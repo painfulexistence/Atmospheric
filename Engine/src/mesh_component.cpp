@@ -2,9 +2,9 @@
 #include "application.hpp"
 #include "asset_manager.hpp"
 #include "game_object.hpp"
+#include "imgui.h"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "imgui.h"
 
 MeshComponent::MeshComponent(GameObject* gameObject, MeshHandle mesh) {
     this->_mesh = mesh;
@@ -66,9 +66,9 @@ void MeshComponent::DrawImGui() {
     if (ImGui::SliderInt("Metallic map ID", &metallicMap, -1, textureCount - 1)) mat->metallicMap = metallicMap;
     int heightMap = mat->heightMap;
     if (ImGui::SliderInt("Height map ID", &heightMap, -1, textureCount - 1)) mat->heightMap = heightMap;
-    ImGui::ColorEdit3("Diffuse",  &mat->diffuse.r);
+    ImGui::ColorEdit3("Diffuse", &mat->diffuse.r);
     ImGui::ColorEdit3("Specular", &mat->specular.r);
-    ImGui::ColorEdit3("Ambient",  &mat->ambient.r);
+    ImGui::ColorEdit3("Ambient", &mat->ambient.r);
     ImGui::DragFloat("Shininess", &mat->shininess, 0.0f, 1.0f);
     ImGui::Checkbox("Cull face enabled", &mat->cullFaceEnabled);
 }

@@ -1,10 +1,10 @@
 #include "voxel_world.hpp"
-#include "job_system.hpp"
 #include "application.hpp"
 #include "asset_manager.hpp"
+#include "frustum.hpp"
 #include "game_object.hpp"
 #include "graphics_subsystem.hpp"
-#include "frustum.hpp"
+#include "job_system.hpp"
 #include "light_component.hpp"
 #include "sun_component.hpp"
 
@@ -22,25 +22,25 @@ static int WorldToChunkCoord(float w) {
 // ── public ───────────────────────────────────────────────────────────────────
 
 void VoxelWorld::Init(Application* app, int seed, GameObject* root) {
-    _app  = app;
-    _gfx  = GraphicsSubsystem::Get();
+    _app = app;
+    _gfx = GraphicsSubsystem::Get();
     _seed = seed;
     _root = root;
 
     // Warm up chunk pool: pre-allocate the full view volume so initial load
     // doesn't hit any system allocator pressure.
-    const int totalSlots = (2*VIEW_X+1) * WORLD_Y * (2*VIEW_Z+1);
+    const int totalSlots = (2 * VIEW_X + 1) * WORLD_Y * (2 * VIEW_Z + 1);
     _pool.reserve(totalSlots);
 
     // Load initial view volume around the origin.
     for (int dx = -VIEW_X; dx <= VIEW_X; ++dx) {
         for (int cy = 0; cy < WORLD_Y; ++cy) {
             for (int dz = -VIEW_Z; dz <= VIEW_Z; ++dz) {
-                LoadChunk({dx, cy, dz});
+                LoadChunk({ dx, cy, dz });
             }
         }
     }
-    _lastCamChunk = {0, 0, 0};
+    _lastCamChunk = { 0, 0, 0 };
 
     LinkNeighbors();
     RebuildDirtyChunks();
@@ -49,21 +49,23 @@ void VoxelWorld::Init(Application* app, int seed, GameObject* root) {
     GameObject* sunGO = app->CreateGameObject(glm::vec3(0));
     sunGO->SetName("Sun");
     sunGO->parent = _root;
-    sunGO->AddComponent(new LightComponent(sunGO, LightProps{
-        .type      = LightType::Directional,
-        .ambient   = glm::vec3(1.0f),
-        .diffuse   = glm::vec3(1.0f),
-        .specular  = glm::vec3(1.0f),
-        .direction = glm::normalize(glm::vec3(0.0f, -1.0f, 0.5f)),
-        .intensity = 1.0f,
-        .castShadow = false,
-    }));
+    sunGO->AddComponent(new LightComponent(
+        sunGO,
+        LightProps{
+            .type = LightType::Directional,
+            .ambient = glm::vec3(1.0f),
+            .diffuse = glm::vec3(1.0f),
+            .specular = glm::vec3(1.0f),
+            .direction = glm::normalize(glm::vec3(0.0f, -1.0f, 0.5f)),
+            .intensity = 1.0f,
+            .castShadow = false,
+        }
+    ));
     sunGO->AddComponent(new SunComponent());
 }
 
 void VoxelWorld::Update(float /*dt*/, const glm::vec3& cameraPos) {
-    glm::ivec3 camChunk{WorldToChunkCoord(cameraPos.x), 0,
-                         WorldToChunkCoord(cameraPos.z)};
+    glm::ivec3 camChunk{ WorldToChunkCoord(cameraPos.x), 0, WorldToChunkCoord(cameraPos.z) };
 
     if (infiniteMode) {
         // Unload chunks that have drifted outside the view + margin.
@@ -73,12 +75,13 @@ void VoxelWorld::Update(float /*dt*/, const glm::vec3& cameraPos) {
             std::vector<glm::ivec3> toUnload;
             toUnload.reserve(64);
             for (auto& [pos, chunk] : _chunkMap) {
-                if (std::abs(pos.x - camChunk.x) > VIEW_X + UNLOAD_MARGIN ||
-                    std::abs(pos.z - camChunk.z) > VIEW_Z + UNLOAD_MARGIN) {
+                if (std::abs(pos.x - camChunk.x) > VIEW_X + UNLOAD_MARGIN
+                    || std::abs(pos.z - camChunk.z) > VIEW_Z + UNLOAD_MARGIN) {
                     toUnload.push_back(pos);
                 }
             }
-            for (auto& pos : toUnload) UnloadChunk(pos);
+            for (auto& pos : toUnload)
+                UnloadChunk(pos);
         }
 
         // Load up to LOAD_PER_FRAME new chunks per Update(), closest first.
@@ -86,7 +89,7 @@ void VoxelWorld::Update(float /*dt*/, const glm::vec3& cameraPos) {
         for (int dx = -VIEW_X; dx <= VIEW_X; ++dx) {
             for (int cy = 0; cy < WORLD_Y; ++cy) {
                 for (int dz = -VIEW_Z; dz <= VIEW_Z; ++dz) {
-                    glm::ivec3 pos{camChunk.x + dx, cy, camChunk.z + dz};
+                    glm::ivec3 pos{ camChunk.x + dx, cy, camChunk.z + dz };
                     if (_chunkMap.find(pos) == _chunkMap.end()) {
                         needed.push_back(pos);
                     }
@@ -114,18 +117,14 @@ void VoxelWorld::Update(float /*dt*/, const glm::vec3& cameraPos) {
     RebuildDirtyChunks();
 }
 
-void VoxelWorld::SubmitRenderCommands(Renderer* renderer,
-                                      const glm::mat4& viewProj,
-                                      const glm::vec3& cameraPos)
-{
+void VoxelWorld::SubmitRenderCommands(Renderer* renderer, const glm::mat4& viewProj, const glm::vec3& cameraPos) {
     Frustum frustum(viewProj);
 
     for (auto& [pos, chunk] : _chunkMap) {
         Mesh* mesh = chunk->GetMesh();
         if (!mesh || !mesh->UsesRenderMesh()) continue;
 
-        if (!frustum.IntersectsSphere(chunk->GetBoundingSphereCenter(),
-                                       VoxelChunkComponent::BSPHERE_RADIUS)) continue;
+        if (!frustum.IntersectsSphere(chunk->GetBoundingSphereCenter(), VoxelChunkComponent::BSPHERE_RADIUS)) continue;
 
         glm::vec3 wp = chunk->GetWorldPos();
         glm::mat4 model = glm::translate(glm::mat4(1.0f), wp);
@@ -160,7 +159,7 @@ void VoxelWorld::SetVoxel(int wx, int wy, int wz, uint8_t type) {
 // ── private ──────────────────────────────────────────────────────────────────
 
 VoxelChunkComponent* VoxelWorld::GetChunk(int cx, int cy, int cz) const {
-    auto it = _chunkMap.find({cx, cy, cz});
+    auto it = _chunkMap.find({ cx, cy, cz });
     return (it != _chunkMap.end()) ? it->second : nullptr;
 }
 
@@ -174,8 +173,7 @@ VoxelChunkComponent* VoxelWorld::AcquireSlot(glm::ivec3 pos) {
     // Pool is empty — allocate a new GameObject + component.
     glm::vec3 worldPos = glm::vec3(pos) * static_cast<float>(VoxelChunkComponent::SIZE);
     GameObject* go = _app->CreateGameObject(worldPos);
-    go->SetName("VoxelChunk_" + std::to_string(pos.x) + "_" +
-                std::to_string(pos.y) + "_" + std::to_string(pos.z));
+    go->SetName("VoxelChunk_" + std::to_string(pos.x) + "_" + std::to_string(pos.y) + "_" + std::to_string(pos.z));
     go->parent = _root;
     auto* comp = new VoxelChunkComponent(go, _gfx, pos);
     go->AddComponent(comp);
@@ -200,7 +198,7 @@ void VoxelWorld::UnloadChunk(glm::ivec3 pos) {
         for (int dy = -1; dy <= 1; ++dy) {
             for (int dz = -1; dz <= 1; ++dz) {
                 if (dx == 0 && dy == 0 && dz == 0) continue;
-                VoxelChunkComponent* nb = GetChunk(pos.x+dx, pos.y+dy, pos.z+dz);
+                VoxelChunkComponent* nb = GetChunk(pos.x + dx, pos.y + dy, pos.z + dz);
                 if (nb) nb->SetNeighbor(-dx, -dy, -dz, nullptr);
             }
         }
@@ -236,8 +234,8 @@ void VoxelWorld::GenerateChunkTerrain(VoxelChunkComponent* chunk) {
             float h = heightNoise.GetNoise(static_cast<float>(wx), static_cast<float>(wz));
             int height = std::clamp(static_cast<int>(h * 32.0f + 32.0f), 0, worldYVoxels - 1);
 
-            for (int wy = cp.y * VoxelChunkComponent::SIZE;
-                 wy < (cp.y + 1) * VoxelChunkComponent::SIZE && wy < height; ++wy) {
+            for (int wy = cp.y * VoxelChunkComponent::SIZE; wy < (cp.y + 1) * VoxelChunkComponent::SIZE && wy < height;
+                 ++wy) {
                 float cv = caveNoise.GetNoise(static_cast<float>(wx), static_cast<float>(wy), static_cast<float>(wz));
                 if (cv > 0.55f && wy > 4) continue;
                 int ly = wy - cp.y * VoxelChunkComponent::SIZE;
@@ -253,8 +251,7 @@ void VoxelWorld::LinkNeighbors() {
             for (int dy = -1; dy <= 1; ++dy) {
                 for (int dz = -1; dz <= 1; ++dz) {
                     if (dx == 0 && dy == 0 && dz == 0) continue;
-                    chunk->SetNeighbor(dx, dy, dz,
-                        GetChunk(pos.x+dx, pos.y+dy, pos.z+dz));
+                    chunk->SetNeighbor(dx, dy, dz, GetChunk(pos.x + dx, pos.y + dy, pos.z + dz));
                 }
             }
         }

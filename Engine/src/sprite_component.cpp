@@ -4,8 +4,8 @@
 #include "canvas_drawable.hpp"
 #include "game_object.hpp"
 #include "graphics_subsystem.hpp"
-#include "renderer.hpp"
 #include "imgui.h"
+#include "renderer.hpp"
 
 SpriteComponent::SpriteComponent(GameObject* gameObject, const SpriteProps& props) : CanvasDrawable(gameObject) {
     _size = props.size;
@@ -29,13 +29,12 @@ void SpriteComponent::DrawImGui() {
     glm::vec2 pivot = GetPivot();
     glm::vec4 color = GetColor();
     int textureVal = GetTexture();
-    if (ImGui::DragFloat2("Size",  &size.x,  0.001f, 9999.999f)) SetSize(size);
-    if (ImGui::DragFloat2("Pivot", &pivot.x, 0.0f,   1.0f))      SetPivot(pivot);
-    if (ImGui::ColorEdit4("Color", &color.r))                     SetColor(color);
+    if (ImGui::DragFloat2("Size", &size.x, 0.001f, 9999.999f)) SetSize(size);
+    if (ImGui::DragFloat2("Pivot", &pivot.x, 0.0f, 1.0f)) SetPivot(pivot);
+    if (ImGui::ColorEdit4("Color", &color.r)) SetColor(color);
     auto* graphics = GraphicsSubsystem::Get();
     int minTex = 0, maxTex = static_cast<int>(graphics->canvasTextures.size() - 1);
-    if (ImGui::SliderInt("Texture ID", &textureVal, minTex, maxTex))
-        SetTexture(textureVal);
+    if (ImGui::SliderInt("Texture ID", &textureVal, minTex, maxTex)) SetTexture(textureVal);
 }
 
 void SpriteComponent::OnAttach() {

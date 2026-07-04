@@ -9,10 +9,10 @@
 class HeightField {
 public:
     virtual ~HeightField() = default;
-    virtual int                       Width()           const = 0;
-    virtual int                       Depth()           const = 0;
-    virtual float                     Sample(int xi, int zi) const = 0;
-    virtual const std::vector<float>& Grid()            const = 0;
+    virtual int Width() const = 0;
+    virtual int Depth() const = 0;
+    virtual float Sample(int xi, int zi) const = 0;
+    virtual const std::vector<float>& Grid() const = 0;
 
     // Bilinear sample at normalized (u, v) in [0,1] — used to resample the
     // grid at a different resolution (e.g. a decimated physics collider).
@@ -28,26 +28,33 @@ public:
 class ImageHeightField : public HeightField {
 public:
     explicit ImageHeightField(const std::string& path);
-    int   Width()  const override { return _width; }
-    int   Depth()  const override { return _depth; }
+    int Width() const override {
+        return _width;
+    }
+    int Depth() const override {
+        return _depth;
+    }
     float Sample(int xi, int zi) const override;
-    const std::vector<float>& Grid() const override { return _grid; }
+    const std::vector<float>& Grid() const override {
+        return _grid;
+    }
+
 private:
     void LoadRaw16(const std::vector<unsigned char>& bytes, const std::string& path);
     void LoadRaw32(const std::vector<unsigned char>& bytes, const std::string& path);
     void LoadStb(const std::vector<unsigned char>& bytes, const std::string& path);
 
-    int               _width = 0, _depth = 0;
+    int _width = 0, _depth = 0;
     std::vector<float> _grid;
 };
 
 struct NoiseHeightFieldParams {
-    int   resolution = 128;
-    int   seed       = 42;
-    float frequency  = 0.0035f;
-    int   octaves    = 8;
+    int resolution = 128;
+    int seed = 42;
+    float frequency = 0.0035f;
+    int octaves = 8;
     float lacunarity = 2.0f;
-    float gain       = 0.5f;
+    float gain = 0.5f;
 
     bool operator==(const NoiseHeightFieldParams&) const = default;
 };
@@ -56,16 +63,25 @@ struct NoiseHeightFieldParams {
 class NoiseHeightField : public HeightField {
 public:
     explicit NoiseHeightField(const NoiseHeightFieldParams& params = {});
-    int   Width()  const override { return _params.resolution; }
-    int   Depth()  const override { return _params.resolution; }
+    int Width() const override {
+        return _params.resolution;
+    }
+    int Depth() const override {
+        return _params.resolution;
+    }
     float Sample(int xi, int zi) const override;
-    const std::vector<float>& Grid() const override { return _grid; }
+    const std::vector<float>& Grid() const override {
+        return _grid;
+    }
 
     // Mutable so the editor (TerrainMeshComponent::DrawImGui) can tweak
     // seed/frequency/etc. in place; call Regenerate() to rebuild the grid.
-    NoiseHeightFieldParams& Params() { return _params; }
+    NoiseHeightFieldParams& Params() {
+        return _params;
+    }
     void Regenerate();
+
 private:
     NoiseHeightFieldParams _params;
-    std::vector<float>     _grid;
+    std::vector<float> _grid;
 };

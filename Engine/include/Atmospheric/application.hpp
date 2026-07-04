@@ -7,8 +7,8 @@
 #include "imgui.h"
 #include "input_subsystem.hpp"
 #include "layer.hpp"
-#include "physics_subsystem_3d.hpp"
 #include "physics_subsystem_2d.hpp"
+#include "physics_subsystem_3d.hpp"
 #include "scene.hpp"
 #include "scene_transition.hpp"
 
@@ -50,7 +50,7 @@ struct AppConfig {
     float fixedTimeStep = FIXED_TIME_STEP;
     bool useDefaultTextures = false;
     bool useDefaultShaders = true;
-    std::string preset = "3D"; // "2D" | "3D"
+    std::string preset = "3D";// "2D" | "3D"
 };
 
 // Drives an automated "warm up → capture → quit" sequence so every example can
@@ -63,10 +63,10 @@ struct AppConfig {
 struct AutoCaptureConfig {
     enum class Mode { Video, Screenshot };
 
-    bool        enabled    = false;
-    Mode        mode       = Mode::Video;
-    float       warmup     = 3.0f;
-    float       duration   = 10.0f;
+    bool enabled = false;
+    Mode mode = Mode::Video;
+    float warmup = 3.0f;
+    float duration = 10.0f;
     std::string outputPath = "output/capture.mp4";
 };
 
@@ -75,7 +75,9 @@ using EntityID = uint64_t;
 class Application {
 public:
     static Application* Get();
-    const AppConfig& GetConfig() const { return _config; }
+    const AppConfig& GetConfig() const {
+        return _config;
+    }
 
     explicit Application(AppConfig config = {});
     virtual ~Application();
@@ -162,7 +164,7 @@ public:
     const std::string& GetEditorSceneError() const;
 
     GameObject* CreateGameObject(
-      glm::vec3 position = glm::vec3(0.0f), glm::vec3 rotation = glm::vec3(0.0f), glm::vec3 scale = glm::vec3(1.0f)
+        glm::vec3 position = glm::vec3(0.0f), glm::vec3 rotation = glm::vec3(0.0f), glm::vec3 scale = glm::vec3(1.0f)
     );
 
     GameObject* CreateGameObject(glm::vec2 position, float rotation = 0.0f);
@@ -257,7 +259,8 @@ private:
 #endif
 
     void Update(const FrameData& frame);
-    void Render(const FrameData& frame
+    void Render(
+        const FrameData& frame
     );// TODO: Properly separate rendering and drawing logic if the backend supports command buffering
     void SyncTransformWithPhysics();
 

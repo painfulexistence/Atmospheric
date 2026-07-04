@@ -1,11 +1,11 @@
 #include "rmlui_manager.hpp"
+#include "file_system.hpp"
 #include "rmlui_renderer.hpp"
 #include "rmlui_system.hpp"
-#include "file_system.hpp"
 #include <RmlUi/Core.h>
-#include <cstring>
 #include <RmlUi/Debugger.h>
 #include <cassert>
+#include <cstring>
 #include <spdlog/spdlog.h>
 #ifdef TRACY_ENABLE
 #include <tracy/Tracy.hpp>
@@ -19,7 +19,7 @@ public:
         auto bytes = std::make_unique<FileSystem::Bytes>(FileSystem::Get().ReadSync(path));
         if (bytes->empty()) return 0;
         // Encode position alongside the buffer: heap-allocate a small struct.
-        auto* state = new State{std::move(*bytes), 0};
+        auto* state = new State{ std::move(*bytes), 0 };
         return reinterpret_cast<Rml::FileHandle>(state);
     }
     void Close(Rml::FileHandle fh) override {
@@ -29,12 +29,17 @@ public:
         auto* s = reinterpret_cast<State*>(fh);
         size_t remaining = s->data.size() - s->pos;
         size_t n = std::min(size, remaining);
-        if (n) { std::memcpy(buffer, s->data.data() + s->pos, n); s->pos += n; }
+        if (n) {
+            std::memcpy(buffer, s->data.data() + s->pos, n);
+            s->pos += n;
+        }
         return n;
     }
     bool Seek(Rml::FileHandle fh, long offset, int origin) override {
         auto* s = reinterpret_cast<State*>(fh);
-        long base = (origin == SEEK_SET) ? 0 : (origin == SEEK_END) ? static_cast<long>(s->data.size()) : static_cast<long>(s->pos);
+        long base = (origin == SEEK_SET)   ? 0
+                    : (origin == SEEK_END) ? static_cast<long>(s->data.size())
+                                           : static_cast<long>(s->pos);
         long newPos = base + offset;
         if (newPos < 0 || newPos > static_cast<long>(s->data.size())) return false;
         s->pos = static_cast<size_t>(newPos);
@@ -46,11 +51,15 @@ public:
     size_t Length(Rml::FileHandle fh) override {
         return reinterpret_cast<State*>(fh)->data.size();
     }
+
 private:
-    struct State { FileSystem::Bytes data; size_t pos; };
+    struct State {
+        FileSystem::Bytes data;
+        size_t pos;
+    };
 };
 
-static AeRmlFileInterface s_rmlFileInterface;
+static AeRmlFileInterface sRmlFileInterface;
 
 RmlUiManager* RmlUiManager::s_instance = nullptr;
 
@@ -88,7 +97,7 @@ bool RmlUiManager::Initialize(int width, int height, Renderer* renderer) {
     m_renderer->Initialize();
 
     // Set interfaces
-    Rml::SetFileInterface(&s_rmlFileInterface);
+    Rml::SetFileInterface(&sRmlFileInterface);
     Rml::SetRenderInterface(m_renderer.get());
     Rml::SetSystemInterface(m_system.get());
 
@@ -101,8 +110,9 @@ bool RmlUiManager::Initialize(int width, int height, Renderer* renderer) {
     // Load fonts
     if (!Rml::LoadFontFace("assets/fonts/NotoSans-SemiBold.ttf")) {
         spdlog::warn(
-          "Failed to load default font, UI text may not render correctly. Consider using 'rmlui-debugger-font' in your "
-          "RCSS."
+            "Failed to load default font, UI text may not render correctly. Consider using 'rmlui-debugger-font' in "
+            "your "
+            "RCSS."
         );
     }
 
@@ -166,7 +176,8 @@ void RmlUiManager::OnResize(int width, int height) {
 
     if (m_context) {
         // TODO: width/height must be logical pixels (GetSize()), not framebuffer pixels (GetPhysicalSize()),
-        // to match RmlUi's CSS px unit expectations. Wire this to ViewportResizeCallback, not FramebufferResizeCallback.
+        // to match RmlUi's CSS px unit expectations. Wire this to ViewportResizeCallback, not
+        // FramebufferResizeCallback.
         m_context->SetDimensions(Rml::Vector2i(width, height));
     }
 }
@@ -216,15 +227,15 @@ void RmlUiManager::HideDocument(const std::string& id) {
 }
 
 // Input handling methods
-void RmlUiManager::ProcessKeyDown(Rml::Input::KeyIdentifier key, int key_modifier) {
+void RmlUiManager::ProcessKeyDown(Rml::Input::KeyIdentifier key, int keyModifier) {
     if (m_context) {
-        m_context->ProcessKeyDown(key, key_modifier);
+        m_context->ProcessKeyDown(key, keyModifier);
     }
 }
 
-void RmlUiManager::ProcessKeyUp(Rml::Input::KeyIdentifier key, int key_modifier) {
+void RmlUiManager::ProcessKeyUp(Rml::Input::KeyIdentifier key, int keyModifier) {
     if (m_context) {
-        m_context->ProcessKeyUp(key, key_modifier);
+        m_context->ProcessKeyUp(key, keyModifier);
     }
 }
 
@@ -234,27 +245,27 @@ void RmlUiManager::ProcessTextInput(Rml::Character character) {
     }
 }
 
-bool RmlUiManager::ProcessMouseMove(int x, int y, int key_modifier) {
+bool RmlUiManager::ProcessMouseMove(int x, int y, int keyModifier) {
     if (m_context) {
-        return m_context->ProcessMouseMove(x, y, key_modifier);
+        return m_context->ProcessMouseMove(x, y, keyModifier);
     }
-    return true;  // no context ⇒ nothing to interact with
+    return true;// no context ⇒ nothing to interact with
 }
 
-void RmlUiManager::ProcessMouseButtonDown(int button_index, int key_modifier) {
+void RmlUiManager::ProcessMouseButtonDown(int buttonIndex, int keyModifier) {
     if (m_context) {
-        m_context->ProcessMouseButtonDown(button_index, key_modifier);
-    }
-}
-
-void RmlUiManager::ProcessMouseButtonUp(int button_index, int key_modifier) {
-    if (m_context) {
-        m_context->ProcessMouseButtonUp(button_index, key_modifier);
+        m_context->ProcessMouseButtonDown(buttonIndex, keyModifier);
     }
 }
 
-void RmlUiManager::ProcessMouseWheel(float wheel_delta, int key_modifier) {
+void RmlUiManager::ProcessMouseButtonUp(int buttonIndex, int keyModifier) {
     if (m_context) {
-        m_context->ProcessMouseWheel(Rml::Vector2f(0, wheel_delta), key_modifier);
+        m_context->ProcessMouseButtonUp(buttonIndex, keyModifier);
+    }
+}
+
+void RmlUiManager::ProcessMouseWheel(float wheelDelta, int keyModifier) {
+    if (m_context) {
+        m_context->ProcessMouseWheel(Rml::Vector2f(0, wheelDelta), keyModifier);
     }
 }
