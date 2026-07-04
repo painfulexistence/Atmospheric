@@ -15,16 +15,32 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
 
+        /* Stack the game view above the touch control bar so the buttons sit
+           below the canvas instead of overlapping it. */
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #stage {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
+        }
+
         #canvas {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            max-width: 100vw;
-            max-height: 100vh;
+            max-width: 100%;
+            max-height: 100%;
             border: 0px none;
             background-color: #000000;
             display: block;
+            /* To scale up to fill the stage while keeping aspect ratio (contain), uncomment below: */
+            /* width: 100%; height: 100%; object-fit: contain; */
         }
 
         #canvas:focus { outline: none; }
@@ -203,9 +219,108 @@
             margin-top: 6px;
         }
 
+        /* ── On-screen touch controls (mobile-browser demo) ────────────────
+           Buttons synthesize the same keyboard events the game already reads,
+           so no engine-side input changes are needed. See the script below. */
+        #touch-controls {
+            flex: 0 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 16px;
+            padding: 10px calc(12px + env(safe-area-inset-right, 0px))
+                     calc(10px + env(safe-area-inset-bottom, 0px))
+                     calc(12px + env(safe-area-inset-left, 0px));
+            background: #0a0a0a;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #touch-controls button {
+            -webkit-tap-highlight-color: transparent;
+            touch-action: none;
+            padding: 0;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.85);
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        #touch-controls button.active {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: #fff;
+        }
+        .pad-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .pad-label {
+            font-size: 10px;
+            letter-spacing: 0.12em;
+            color: #6b7280;
+            text-transform: uppercase;
+            text-align: center;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+        .pad {
+            display: grid;
+            grid-template-columns: repeat(3, 52px);
+            grid-template-rows: repeat(3, 52px);
+            gap: 6px;
+        }
+        .pad button {
+            width: 52px;
+            height: 52px;
+            font-size: 18px;
+            border-radius: 10px;
+        }
+        .pad .up    { grid-column: 2; grid-row: 1; }
+        .pad .left  { grid-column: 1; grid-row: 2; }
+        .pad .right { grid-column: 3; grid-row: 2; }
+        .pad .down  { grid-column: 2; grid-row: 3; }
+        .actions {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+        }
+        .actions button {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            font-size: 20px;
+            font-weight: 700;
+        }
+        .actions .btn-a { margin-bottom: 26px; }
+
+        /* Narrow / portrait screens: shrink the pads and stack the action
+           buttons so all three clusters fit without overflowing off-screen. */
+        @media (max-width: 560px) {
+            #touch-controls {
+                gap: 8px;
+                padding-left: calc(6px + env(safe-area-inset-left, 0px));
+                padding-right: calc(6px + env(safe-area-inset-right, 0px));
+            }
+            .pad {
+                grid-template-columns: repeat(3, 44px);
+                grid-template-rows: repeat(3, 44px);
+                gap: 4px;
+            }
+            .pad button { width: 44px; height: 44px; font-size: 16px; }
+            .actions { flex-direction: column; gap: 8px; }
+            .actions button { width: 46px; height: 46px; font-size: 16px; }
+            .actions .btn-a { margin-bottom: 0; }
+        }
+
         #btn-fullscreen {
             position: fixed;
-            bottom: 12px;
+            top: 12px;
             right: 12px;
             z-index: 400;
             width: 34px;
@@ -230,10 +345,99 @@
 </head>
 <body>
 
-    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    <div id="stage">
+        <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+
+        <!-- Loading overlay (shown while WASM downloads) -->
+        <div id="loading-container">
+            <div class="spinner" id="loading-spinner"></div>
+            <div id="loading-title">Atmospheric Engine</div>
+            <div id="loading-status">Downloading...</div>
+        </div>
+
+        <!-- Lobby overlay (shown after WASM is ready) -->
+        <div id="lobby">
+            <h1>Multiplayer Sandbox</h1>
+            <h2>2-Player Falling Sand Arena</h2>
+
+            <!-- Main menu -->
+            <div id="panel-menu" class="lobby-panel active">
+                <button class="lobby-btn" onclick="lobby.doSolo()">Solo Sandbox</button>
+                <button class="lobby-btn primary" onclick="lobby.showHost()">Host Game</button>
+                <button class="lobby-btn" onclick="lobby.showJoin()">Join Game</button>
+                <div id="wasm-hint" class="wasm-loading-hint" style="display:none">Loading game engine...</div>
+            </div>
+
+            <!-- Host flow -->
+            <div id="panel-host" class="lobby-panel">
+                <p class="step-hint">Share this link with your friend, then paste their reply to connect.</p>
+
+                <div class="lobby-label">Invite link</div>
+                <textarea id="offer-code" class="lobby-code" readonly placeholder="Generating..."></textarea>
+                <div class="lobby-row">
+                    <button class="lobby-btn" onclick="lobby.copyCode('offer-code')">Copy Link</button>
+                </div>
+
+                <div class="lobby-label">Their answer code</div>
+                <textarea id="answer-input" class="lobby-code" placeholder="Paste here..."></textarea>
+                <div class="lobby-row">
+                    <button id="btn-connect" class="lobby-btn primary" onclick="lobby.submitAnswer()">Connect</button>
+                </div>
+
+                <span class="back-link" onclick="lobby.showMenu()">← Back</span>
+            </div>
+
+            <!-- Join flow -->
+            <div id="panel-join" class="lobby-panel">
+                <p class="step-hint" id="join-hint">Paste the host's invite link to generate your reply.</p>
+
+                <!-- Step 1: input offer (shown when joining manually, hidden when via URL) -->
+                <div id="join-step1" style="width:100%">
+                    <div class="lobby-label">Host's invite link or code</div>
+                    <textarea id="offer-input" class="lobby-code" placeholder="Paste link or code here..."></textarea>
+                    <div class="lobby-row">
+                        <button class="lobby-btn primary" onclick="lobby.submitOffer()">Generate Reply</button>
+                    </div>
+                </div>
+
+                <!-- Step 2: show answer code -->
+                <div id="join-step2" style="width:100%; display:none">
+                    <div class="lobby-label">Your reply — send this back to the host</div>
+                    <textarea id="answer-code" class="lobby-code" readonly placeholder="Generating..."></textarea>
+                    <div class="lobby-row">
+                        <button class="lobby-btn primary" onclick="lobby.copyCode('answer-code')">Copy Reply</button>
+                    </div>
+                    <p class="step-hint">Waiting for the host to paste your reply and connect...</p>
+                </div>
+
+                <span class="back-link" onclick="lobby.showMenu()">← Back</span>
+            </div>
+
+            <div id="lobby-status"></div>
+        </div>
+    </div>
+
+    <!-- On-screen controls: each button carries the DOM key it emits. -->
+    <div id="touch-controls">
+        <div class="pad-group">
+            <div class="pad-label">Move</div>
+            <div class="pad">
+                <button class="up" data-code="ArrowUp" data-key="ArrowUp" data-keycode="38">&uarr;</button>
+                <button class="left" data-code="ArrowLeft" data-key="ArrowLeft" data-keycode="37">&larr;</button>
+                <button class="down" data-code="ArrowDown" data-key="ArrowDown" data-keycode="40">&darr;</button>
+                <button class="right" data-code="ArrowRight" data-key="ArrowRight" data-keycode="39">&rarr;</button>
+            </div>
+        </div>
+        <div class="pad-group">
+            <div class="pad-label">Action</div>
+            <div class="actions">
+                <button class="btn-a" data-code="Space" data-key=" " data-keycode="32">A</button>
+                <button class="btn-b" data-code="Digit1" data-key="1" data-keycode="49">B</button>
+            </div>
+        </div>
+    </div>
 
     <button id="btn-fullscreen" title="Toggle fullscreen" onclick="toggleFullscreen()">
-        <!-- expand icon; swapped for collapse icon when fullscreen is active -->
         <svg id="fs-icon-expand" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
             <path d="M1 1h5v1.5H2.5V5H1V1zm9 0h5v4h-1.5V2.5H10V1zM1 10h1.5v2.5H5V14H1v-4zm9.5 2.5V10H11v4h4v-1.5h-2.5v-2z"/>
         </svg>
@@ -241,74 +445,6 @@
             <path d="M5 1v1.5H2.5V5H1V1h4zm6 0h4v4h-1.5V2.5H11V1zM1 11h1.5v2.5H5V15H1v-4zm9.5 2.5V11H11v4h4v-1.5h-2.5V13.5z"/>
         </svg>
     </button>
-
-    <!-- Loading overlay (shown while WASM downloads) -->
-    <div id="loading-container">
-        <div class="spinner" id="loading-spinner"></div>
-        <div id="loading-title">Atmospheric Engine</div>
-        <div id="loading-status">Downloading...</div>
-    </div>
-
-    <!-- Lobby overlay (shown after WASM is ready) -->
-    <div id="lobby">
-        <h1>Multiplayer Sandbox</h1>
-        <h2>2-Player Falling Sand Arena</h2>
-
-        <!-- Main menu -->
-        <div id="panel-menu" class="lobby-panel active">
-            <button class="lobby-btn" onclick="lobby.doSolo()">Solo Sandbox</button>
-            <button class="lobby-btn primary" onclick="lobby.showHost()">Host Game</button>
-            <button class="lobby-btn" onclick="lobby.showJoin()">Join Game</button>
-            <div id="wasm-hint" class="wasm-loading-hint" style="display:none">Loading game engine...</div>
-        </div>
-
-        <!-- Host flow -->
-        <div id="panel-host" class="lobby-panel">
-            <p class="step-hint">Share this link with your friend, then paste their reply to connect.</p>
-
-            <div class="lobby-label">Invite link</div>
-            <textarea id="offer-code" class="lobby-code" readonly placeholder="Generating..."></textarea>
-            <div class="lobby-row">
-                <button class="lobby-btn" onclick="lobby.copyCode('offer-code')">Copy Link</button>
-            </div>
-
-            <div class="lobby-label">Their answer code</div>
-            <textarea id="answer-input" class="lobby-code" placeholder="Paste here..."></textarea>
-            <div class="lobby-row">
-                <button id="btn-connect" class="lobby-btn primary" onclick="lobby.submitAnswer()">Connect</button>
-            </div>
-
-            <span class="back-link" onclick="lobby.showMenu()">← Back</span>
-        </div>
-
-        <!-- Join flow -->
-        <div id="panel-join" class="lobby-panel">
-            <p class="step-hint" id="join-hint">Paste the host's invite link to generate your reply.</p>
-
-            <!-- Step 1: input offer (shown when joining manually, hidden when via URL) -->
-            <div id="join-step1" style="width:100%">
-                <div class="lobby-label">Host's invite link or code</div>
-                <textarea id="offer-input" class="lobby-code" placeholder="Paste link or code here..."></textarea>
-                <div class="lobby-row">
-                    <button class="lobby-btn primary" onclick="lobby.submitOffer()">Generate Reply</button>
-                </div>
-            </div>
-
-            <!-- Step 2: show answer code -->
-            <div id="join-step2" style="width:100%; display:none">
-                <div class="lobby-label">Your reply — send this back to the host</div>
-                <textarea id="answer-code" class="lobby-code" readonly placeholder="Generating..."></textarea>
-                <div class="lobby-row">
-                    <button class="lobby-btn primary" onclick="lobby.copyCode('answer-code')">Copy Reply</button>
-                </div>
-                <p class="step-hint">Waiting for the host to paste your reply and connect...</p>
-            </div>
-
-            <span class="back-link" onclick="lobby.showMenu()">← Back</span>
-        </div>
-
-        <div id="lobby-status"></div>
-    </div>
 
     <script type="text/javascript">
 
@@ -695,6 +831,58 @@
     window.addEventListener('pagehide', cleanupWorkers);
     window.addEventListener('unload', cleanupWorkers);
 
+    // ── On-screen touch controls ──────────────────────────────────────────
+    // The engine polls keyboard state through GLFW (glfwGetKey), and GLFW's
+    // Emscripten port derives that state from DOM keydown/keyup events. So a
+    // button just needs to dispatch a synthetic keyboard event and the game
+    // reads it exactly like a real key press — no C++ / export changes.
+    (function () {
+        var canvas = document.getElementById('canvas');
+
+        function fireKey(type, btn) {
+            var keyCode = parseInt(btn.dataset.keycode, 10);
+            var ev = new KeyboardEvent(type, {
+                key: btn.dataset.key,
+                code: btn.dataset.code,
+                bubbles: true,
+                cancelable: true,
+                view: window
+            });
+            // Emscripten's GLFW port maps physical keys via event.keyCode, which
+            // is 0 on synthetic events unless forced. `which` mirrors it for
+            // legacy code paths.
+            Object.defineProperty(ev, 'keyCode', { get: function () { return keyCode; } });
+            Object.defineProperty(ev, 'which',   { get: function () { return keyCode; } });
+            var target = (window.Module && Module.canvas) ? Module.canvas : canvas;
+            target.dispatchEvent(ev);
+        }
+
+        var buttons = document.querySelectorAll('#touch-controls button[data-keycode]');
+        buttons.forEach(function (btn) {
+            var pressed = false;
+            function press(e) {
+                e.preventDefault();
+                if (pressed) return;
+                pressed = true;
+                btn.classList.add('active');
+                try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+                fireKey('keydown', btn);
+            }
+            function release(e) {
+                if (e) e.preventDefault();
+                if (!pressed) return;
+                pressed = false;
+                btn.classList.remove('active');
+                fireKey('keyup', btn);
+            }
+            btn.addEventListener('pointerdown', press);
+            btn.addEventListener('pointerup', release);
+            btn.addEventListener('pointercancel', release);
+            btn.addEventListener('pointerleave', release);
+            // Releasing focus (tab switch, alert) must not latch a key on.
+            window.addEventListener('blur', function () { release(); });
+        });
+    })();
     </script>
     {{{ SCRIPT }}}
 </body>
