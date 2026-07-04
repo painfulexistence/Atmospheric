@@ -243,6 +243,7 @@ FileSystem::Bytes FileSystem::ConsumeSync(const std::string& path) {
 #include <emscripten/fetch.h>
 #include <memory>
 
+// clang-format off
 // NOLINTBEGIN
 // ── MEMFS write helper ────────────────────────────────────────────────────────
 // Runs inside the WASM module's JS closure; HEAPU8, FS, UTF8ToString are
@@ -253,8 +254,8 @@ EM_JS(void, fs_js_write_memfs, (const char* path_ptr, const uint8_t* data_ptr, i
     var parts = path.split('/');
     var dir = '';
     for (var i = 0; i < parts.length - 1; ++i) {
-        dir += (i == = 0 && parts[i] == = '' ? '' : '/') + parts[i];
-        if (dir != = '') {
+        dir += (i === 0 && parts[i] === '' ? '' : '/') + parts[i];
+        if (dir !== '') {
             try {
                 FS.mkdir(dir);
             } catch (e) {
@@ -276,6 +277,7 @@ EM_JS(void, fs_js_unlink_memfs, (const char* path_ptr), {
     }
 });
 // NOLINTEND
+// clang-format on
 
 // Track every path the engine wrote into MEMFS so eviction can target just
 // those entries (vs. blowing away the entire MEMFS tree, which would also
