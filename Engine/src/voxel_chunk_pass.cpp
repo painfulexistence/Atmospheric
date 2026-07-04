@@ -636,7 +636,7 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
             const auto& cmd = sortable.cmd;
             Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
             if (!mesh || mesh->type != MeshType::PRIM) continue;
-            Material* mat = mesh->GetMaterial();
+            Material* mat = AssetManager::Get().ResolveMaterial(mesh->GetMaterial());
             if (!mat || mat->renderQueue != RenderQueue::Transparent) continue;
             if (!mesh->UsesRenderMesh()) continue;
             Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());

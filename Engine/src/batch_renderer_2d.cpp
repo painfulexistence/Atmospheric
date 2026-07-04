@@ -675,8 +675,8 @@ void BatchRenderer2D::DrawGeometry(
 std::vector<BatchDrawCommand> BatchRenderer2D::DrainToCommands() {
     std::vector<BatchDrawCommand> result;
 
-    uint32_t vertCount = (uint32_t)(m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase);
-    uint32_t idxCount  = (uint32_t)(m_Data->QuadIndexBufferPtr  - m_Data->QuadIndexBufferBase);
+    uint32_t vertCount = static_cast<uint32_t>(m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase.get());
+    uint32_t idxCount  = static_cast<uint32_t>(m_Data->QuadIndexBufferPtr  - m_Data->QuadIndexBufferBase.get());
 
     if (vertCount == 0 || idxCount == 0) {
         StartBatch();

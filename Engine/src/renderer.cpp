@@ -1187,7 +1187,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             if (!mesh->UsesRenderMesh()) continue;
             Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
             if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
-            draws.push_back({ buf, cmd.transform, mesh->GetMaterial(), mesh->type });
+            draws.push_back({ buf, cmd.transform, ResolveMaterialOrFallback(mesh->GetMaterial()), mesh->type });
         }
         if (draws.empty()) return;
 
