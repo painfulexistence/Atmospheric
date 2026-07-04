@@ -35,8 +35,8 @@ bool RmlUiSystem::LogMessage(Rml::Log::Type type, const Rml::String& message) {
     return true;
 }
 
-void RmlUiSystem::SetMouseCursor(const Rml::String& cursorName) {
-    Window::Get()->SetMouseCursor(cursorName);
+void RmlUiSystem::SetMouseCursor(const Rml::String& cursor_name) {
+    Window::Get()->SetMouseCursor(cursor_name);
 }
 
 void RmlUiSystem::SetClipboardText(const Rml::String& text) {
@@ -47,7 +47,7 @@ void RmlUiSystem::GetClipboardText(Rml::String& text) {
     text = Window::Get()->GetClipboardText();
 }
 
-void RmlUiSystem::ActivateKeyboard(Rml::Vector2f caretPosition, float lineHeight) {
+void RmlUiSystem::ActivateKeyboard(Rml::Vector2f caret_position, float line_height) {
     // On mobile platforms, this would show the virtual keyboard
     // For desktop, this is typically a no-op
 }
