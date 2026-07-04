@@ -23,11 +23,16 @@ SEARCH_DIRS = [
 ]
 
 
-def check_clang_version(script_dir):
+def check_clang_version(script_dir, tools=None):
     # Delegates to checkLLVMVersion.sh so the pinned version lives in one
     # place (the shell script) and can also be consumed by CI directly.
+    # `tools=None` (default) validates every tool the script knows about;
+    # pass a list to restrict to a subset (e.g. CI's format-only lint job).
     checker = os.path.join(script_dir, 'checkLLVMVersion.sh')
-    result = subprocess.run([checker], check=False)
+    cmd = [checker]
+    for t in (tools or []):
+        cmd.extend(['--tool', t])
+    result = subprocess.run(cmd, check=False)
     if result.returncode != 0:
         sys.exit(result.returncode)
 
@@ -132,7 +137,9 @@ def main():
     project_root = os.path.dirname(script_dir)
     os.chdir(project_root)
 
-    check_clang_version(script_dir)
+    # --check runs only clang-format; don't demand clang-tidy on CI runners
+    # that intentionally skip the tidy install.
+    check_clang_version(script_dir, tools=['clang-format'] if args.check else None)
 
     source_files = find_source_files(project_root)
     if not source_files:

@@ -14,7 +14,8 @@ set -euo pipefail
 
 REQUIRED_VERSION=21
 
-TOOLS=(clang-format clang-tidy)
+# Populated by --tool flags; empty means "check the full default set".
+TOOL_OVERRIDES=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -24,7 +25,7 @@ while [ $# -gt 0 ]; do
       ;;
     --tool)
       shift
-      TOOLS=("$1")
+      TOOL_OVERRIDES+=("$1")
       ;;
     *)
       echo "Unknown argument: $1" >&2
@@ -33,6 +34,12 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+if [ "${#TOOL_OVERRIDES[@]}" -gt 0 ]; then
+  TOOLS=("${TOOL_OVERRIDES[@]}")
+else
+  TOOLS=(clang-format clang-tidy)
+fi
 
 # Prefer versioned binaries (clang-format-21) so users can keep multiple
 # LLVM installs side-by-side.
