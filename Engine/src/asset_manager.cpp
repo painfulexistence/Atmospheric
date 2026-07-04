@@ -1,4 +1,5 @@
 #include "asset_manager.hpp"
+#include "log.hpp"
 #include "console_subsystem.hpp"
 #include "file_system.hpp"
 #include "gfx_factory.hpp"
@@ -431,7 +432,7 @@ ShaderProgram* AssetManager::CreateShader(const std::string& name, const ShaderP
     // Check if already exists
     auto it = _shaderCache.find(name);
     if (it != _shaderCache.end()) {
-        ENGINE_LOG("Shader '{}' already exists, returning existing shader", name);
+        Log::Info("Shader '{}' already exists, returning existing shader", name);
         return shaders[it->second].get();
     }
 
@@ -440,7 +441,7 @@ ShaderProgram* AssetManager::CreateShader(const std::string& name, const ShaderP
     shaders.push_back(std::move(shader));
     _shaderCache[name] = _nextShaderID++;
 
-    ENGINE_LOG("Shader '{}' loaded", name);
+    Log::Info("Shader '{}' loaded", name);
     return ptr;
 }
 
@@ -474,7 +475,7 @@ ShaderProgram* AssetManager::ResolveShader(ShaderHandle handle) const {
 
 void AssetManager::ReloadShaders() {
     // TODO: Implement shader hot reloading
-    ENGINE_LOG("Shader reloading not yet implemented");
+    Log::Info("Shader reloading not yet implemented");
 }
 
 // ============================================================================
@@ -491,7 +492,7 @@ Material* AssetManager::CreateMaterial(const std::string& name, const MaterialPr
     // Check if already exists
     auto it = _materialCache.find(name);
     if (it != _materialCache.end()) {
-        ENGINE_LOG("Material '{}' already exists, returning existing material", name);
+        Log::Info("Material '{}' already exists, returning existing material", name);
         return GetMaterialByID(it->second);
     }
 
@@ -1009,7 +1010,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
             uint32_t texID = GfxFactory::UploadCompressedTexture2D(
                 wgpuCompression, buf.data(), buf.size(), static_cast<int>(info0._width), static_cast<int>(info0._height)
             );
-            ENGINE_LOG(
+            Log::Info(
                 "Loaded KTX2 texture '{}' ({}×{}, WebGPU {}, no mips)", path, info0._width, info0._height, fmtName
             );
             if (out) *out = { texID, info0._width, info0._height, buf.size() };
@@ -1031,7 +1032,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
             throw std::runtime_error(fmt::format("KTX2 transcode_image_level failed (level 0): {}", path));
 
         uint32_t texID = GfxFactory::UploadTexture2D(buf.data(), static_cast<int>(info0._orig_width), static_cast<int>(info0._orig_height));
-        ENGINE_LOG(
+        Log::Info(
             "Loaded KTX2 texture '{}' ({}×{}, WebGPU RGBA32 fallback, no mips)",
             path,
             info0._orig_width,
@@ -1076,7 +1077,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(levels - 1));
     } else {
         // Single level in the KTX2 — warn the user and use bilinear.
-        ENGINE_LOG("KTX2 '{}' has no pre-generated mips; encoding with -mipmap is recommended", path);
+        Log::Info("KTX2 '{}' has no pre-generated mips; encoding with -mipmap is recommended", path);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     }
 
@@ -1106,7 +1107,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         );
     }
 
-    ENGINE_LOG(
+    Log::Info(
         "Loaded KTX2 texture '{}' ({}×{}, {} mips, {})", path, baseWidth, baseHeight, levels, hasAlpha ? "RGBA" : "RGB"
     );
 
@@ -1217,7 +1218,7 @@ MeshHandle AssetManager::CreateSphereMesh(const std::string& name, float radius,
 
 MeshHandle AssetManager::CreateCapsuleMesh(const std::string& name, float radius, float height) {
     // TODO: Implement capsule mesh generation
-    ENGINE_LOG("Capsule mesh '{}' created (generation not yet implemented)", name);
+    Log::Info("Capsule mesh '{}' created (generation not yet implemented)", name);
     auto* mesh = new Mesh();
     if (_materialCache.find("Default") != _materialCache.end()) {
         mesh->SetMaterial(GetMaterialHandle("Default"));
@@ -1508,7 +1509,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     mesh->Initialize(allVerts, allIndices);
     if (material) mesh->SetMaterial(GetMaterialHandle(material));
 
-    ENGINE_LOG("LoadGLTF '{}': {} verts, {} indices", path, allVerts.size(), allIndices.size());
+    Log::Info("LoadGLTF '{}': {} verts, {} indices", path, allVerts.size(), allIndices.size());
     return CreateMesh(path, mesh);
 }
 

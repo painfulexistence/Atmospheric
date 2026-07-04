@@ -1,4 +1,5 @@
 #include "application.hpp"
+#include "log.hpp"
 #include "scene_blueprint.hpp"
 #include "scene_loader.hpp"
 #include <algorithm>
@@ -289,7 +290,7 @@ void Application::ParseAutoCaptureEnv() {
 
     if (_autoCap.enabled) {
         _capState = CaptureState::Warmup;
-        ENGINE_LOG(
+        Log::Info(
             "Auto-capture enabled: mode={}, warmup={}s, duration={}s, output={}",
             _autoCap.mode == AutoCaptureConfig::Mode::Screenshot ? "screenshot" : "video",
             _autoCap.warmup,
@@ -534,7 +535,7 @@ void Application::RegisterComponents() {
 
 Application::~Application() {
     if (s_instance == this) s_instance = nullptr;
-    ENGINE_LOG("Exiting...");
+    Log::Info("Exiting...");
     _window->DeinitImGui();
 
     _entities.clear();
@@ -564,7 +565,7 @@ void Application::Run() {
     for (auto& subsystem : _subsystems) {
         subsystem->Init(this);
     }
-    ENGINE_LOG("Subsystems initialized.");
+    Log::Info("Subsystems initialized.");
 
     auto windowSize = _window->GetLogicalSize();
     RmlUiManager::Get()->Initialize(windowSize.width, windowSize.height, _graphics->renderer.get());
@@ -897,7 +898,7 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
     }
     if (!texturesToLoad.empty()) {
         AssetManager::Get().LoadTextures(texturesToLoad);
-        ENGINE_LOG("JSON Textures created.");
+        Log::Info("JSON Textures created.");
     }
 
     std::unordered_map<std::string, ShaderProgramProps> shadersToLoad;
@@ -908,7 +909,7 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
     if (!shadersToLoad.empty()) {
         if (_config.useDefaultShaders) AssetManager::Get().LoadDefaultShaders();
         AssetManager::Get().LoadShaders(shadersToLoad);
-        ENGINE_LOG("JSON Shaders created.");
+        Log::Info("JSON Shaders created.");
     }
 
     // Materials are created after textures so their map paths resolve to
@@ -928,14 +929,14 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
         if (!mb.heightMap.empty()) props.heightMap = TextureHandle(mb.heightMap);
         AssetManager::Get().CreateMaterial(mb.name, props);
     }
-    if (!bp.materials.empty()) ENGINE_LOG("JSON Materials created.");
+    if (!bp.materials.empty()) Log::Info("JSON Materials created.");
 
     // TODO: load meshes from bp.meshes
 }
 
 // Phase 2b: create GameObjects + Components from resolved blueprints.
 void Application::InstantiateScene(const SceneBlueprint& bp) {
-    ENGINE_LOG("Loading scene '{}' from JSON...", bp.name);
+    Log::Info("Loading scene '{}' from JSON...", bp.name);
 
     auto* container = CreateGameObject();
     container->SetName(bp.name);
@@ -944,7 +945,7 @@ void Application::InstantiateScene(const SceneBlueprint& bp) {
     for (const auto& eb : bp.entities)
         ParseEntity(this, eb.resolvedData, container);
 
-    if (!bp.entities.empty()) ENGINE_LOG("JSON Game objects created.");
+    if (!bp.entities.empty()) Log::Info("JSON Game objects created.");
 
     mainCamera = _graphics->GetMainCamera();
     mainLight = _graphics->GetMainLight();
@@ -1059,7 +1060,7 @@ void Application::GoScene(const std::string& sceneName, std::function<void()> on
 
             // The single place where scene assets are uploaded and entities are
             // instantiated.
-            ENGINE_LOG("GoScene: loading '{}'...", sceneName);
+            Log::Info("GoScene: loading '{}'...", sceneName);
             LoadSceneResources(bp);
             InstantiateScene(bp);
 
@@ -1216,7 +1217,7 @@ const std::string& Application::GetEditorSceneError() const {
 }
 
 void Application::Quit() {
-    ENGINE_LOG("Requested to quit.");
+    Log::Info("Requested to quit.");
     _window->Close();
 }
 
@@ -1261,7 +1262,7 @@ void Application::Update(const FrameData& props) {
     }
 
 #if SHOW_PROCESS_COST
-    ENGINE_LOG(fmt::format("Update costs {} ms", (GetWindowTime() - time) * 1000));
+    Log::Info("Update costs {} ms", (GetWindowTime() - time) * 1000);
 #endif
 
     for (const auto& layer : _layers) {
@@ -1298,7 +1299,7 @@ void Application::Render(const FrameData& props) {
     if (_recorder && _recorder->isRecording()) _recorder->captureFrame();
 
 #if SHOW_RENDER_AND_DRAW_COST
-    ENGINE_LOG(fmt::format("Render & draw cost {} ms", (GetWindowTime() - time) * 1000));
+    Log::Info("Render & draw cost {} ms", (GetWindowTime() - time) * 1000);
 #endif
 }
 
@@ -1394,7 +1395,7 @@ void Application::SaveScreenshot(const std::string& path) {
         );
         std::fflush(stdout);
         if (ok)
-            ENGINE_LOG("Screenshot saved: {} ({}x{})", path, img.width, img.height);
+            Log::Info("Screenshot saved: {} ({}x{})", path, img.width, img.height);
         else
             spdlog::error("[Screenshot] Failed to write {}", path);
     });

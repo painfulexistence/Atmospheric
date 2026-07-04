@@ -17,6 +17,7 @@
 // a captured 'this' pointer.
 
 #include "file_system.hpp"
+#include "log.hpp"
 #include "console_subsystem.hpp"
 
 #include <cstdio>
@@ -200,11 +201,11 @@ FileSystem::Bytes FileSystem::ReadSync(const std::string& path) {
         auto bytes = ReadFromDisk(normPath);
         if (!bytes.empty()) return bytes;
     }
-    ENGINE_LOG("[FileSystem] ReadSync: '{}' not in cache or MEMFS — call Prefetch first", normPath);
+    Log::Info("[FileSystem] ReadSync: '{}' not in cache or MEMFS — call Prefetch first", normPath);
     return {};
 #else
     auto bytes = ReadFromDisk(normPath);
-    if (bytes.empty()) ENGINE_LOG("[FileSystem] ReadSync: failed to read '{}'", normPath);
+    if (bytes.empty()) Log::Info("[FileSystem] ReadSync: failed to read '{}'", normPath);
     return bytes;
 #endif
 }
@@ -224,7 +225,7 @@ FileSystem::Bytes FileSystem::ConsumeSync(const std::string& path) {
     // Native: fall back to disk read on cache miss.
     return ReadFromDisk(normPath);
 #else
-    ENGINE_LOG("[FileSystem] ConsumeSync cache miss on web: '{}' — call Prefetch first", normPath);
+    Log::Info("[FileSystem] ConsumeSync cache miss on web: '{}' — call Prefetch first", normPath);
     return {};
 #endif
 }
@@ -399,9 +400,9 @@ namespace {
             if (ctx->writeToMemFS) {
                 fs_js_write_memfs(ctx->path.c_str(), bytes.data(), static_cast<int>(bytes.size()));
                 RegisterMemFSEntry(ctx->path);
-                ENGINE_LOG("[FileSystem] MEMFS + cache: '{}' ({} bytes)", ctx->path, f->numBytes);
+                Log::Info("[FileSystem] MEMFS + cache: '{}' ({} bytes)", ctx->path, f->numBytes);
             } else {
-                ENGINE_LOG("[FileSystem] Cached: '{}' ({} bytes)", ctx->path, f->numBytes);
+                Log::Info("[FileSystem] Cached: '{}' ({} bytes)", ctx->path, f->numBytes);
             }
             // Store in in-process cache
             {
@@ -427,7 +428,7 @@ namespace {
 
     void EM_OnError(emscripten_fetch_t* f) {
         auto* ctx = static_cast<FetchCtx*>(f->userData);
-        ENGINE_LOG("[FileSystem] HTTP {} — failed to fetch '{}'", f->status, f->url);
+        Log::Info("[FileSystem] HTTP {} — failed to fetch '{}'", f->status, f->url);
 
         auto queue = ctx->queue;
         auto batch = ctx->batch;
@@ -557,7 +558,7 @@ void FileSystem::ReadAsync(const std::string& path, ReadCallback cb) {
         std::lock_guard<std::mutex> lk(gCacheMutex);
         gCache[normPath] = bytes;
     } else {
-        ENGINE_LOG("[FileSystem] ReadAsync: failed to read '{}'", normPath);
+        Log::Info("[FileSystem] ReadAsync: failed to read '{}'", normPath);
     }
     cb(std::move(bytes), ok);
 }
@@ -579,7 +580,7 @@ void FileSystem::Prefetch(const std::vector<std::string>& paths, CompletionCallb
                 std::lock_guard<std::mutex> lk(gCacheMutex);
                 gCache[pathCopy] = std::move(bytes);
             } else {
-                ENGINE_LOG("[FileSystem] Prefetch: failed to read '{}'", pathCopy);
+                Log::Info("[FileSystem] Prefetch: failed to read '{}'", pathCopy);
             }
         });
     }

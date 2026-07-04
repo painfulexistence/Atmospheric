@@ -41,6 +41,3 @@ private:
 
     std::unordered_map<std::string, std::function<void(const std::vector<std::string>&)>> _commands;
 };
-
-#define LOG(msg, ...) ConsoleSubsystem::Get()->Info(fmt::format(msg, ##__VA_ARGS__))
-#define ENGINE_LOG(msg, ...) ConsoleSubsystem::Get()->Info("[Engine] " + fmt::format(msg, ##__VA_ARGS__))

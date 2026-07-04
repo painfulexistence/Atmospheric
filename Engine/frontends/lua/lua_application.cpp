@@ -1,4 +1,5 @@
 #include "lua_application.hpp"
+#include "log.hpp"
 #include "Atmospheric/gfx_factory.hpp"
 
 #include "Atmospheric/file_system.hpp"
@@ -95,7 +96,7 @@ void LuaApplication::InitializeLua() {
     }
     _lua["package"]["path"] = packagePath;
 
-    ENGINE_LOG("Lua environment initialized");
+    Log::Info("Lua environment initialized");
 }
 
 void LuaApplication::BindEngineAPIs() {
@@ -128,7 +129,7 @@ void LuaApplication::BindEngineAPIs() {
         return 0.016f;
     };
 
-    ENGINE_LOG("Engine APIs bound to Lua");
+    Log::Info("Engine APIs bound to Lua");
 }
 
 void LuaApplication::LoadUserScripts() {
@@ -160,7 +161,7 @@ void LuaApplication::LoadUserScripts() {
             if (!result.valid()) {
                 HandleError(result, "Loading " + targetPath);
             } else {
-                ENGINE_LOG("Loaded script: {}", targetPath);
+                Log::Info("Loaded script: {}", targetPath);
 
                 // Dynamically update package.path to prioritize the loaded script's directory
                 std::filesystem::path p(targetPath);
@@ -171,7 +172,7 @@ void LuaApplication::LoadUserScripts() {
                 std::string packagePath = _lua["package"]["path"];
                 packagePath = baseDir + "/?.lua;" + baseDir + "/?/init.lua;" + packagePath;
                 _lua["package"]["path"] = packagePath;
-                ENGINE_LOG("Updated Lua package.path to prioritize: {}", baseDir);
+                Log::Info("Updated Lua package.path to prioritize: {}", baseDir);
 
                 loaded = true;
                 break;
@@ -180,7 +181,7 @@ void LuaApplication::LoadUserScripts() {
     }
 
     if (!loaded) {
-        ENGINE_LOG("Warning: No main.lua found. Create one in assets/scripts/main.lua");
+        Log::Info("Warning: No main.lua found. Create one in assets/scripts/main.lua");
     }
 }
 
@@ -200,9 +201,9 @@ void LuaApplication::CacheCallbacks() {
     _luaKeypressed = tryCache("keypressed");
     _luaKeyreleased = tryCache("keyreleased");
 
-    if (_luaLoad.valid()) ENGINE_LOG("Found load() callback");
-    if (_luaUpdate.valid()) ENGINE_LOG("Found update() callback");
-    if (_luaDraw.valid()) ENGINE_LOG("Found draw() callback");
+    if (_luaLoad.valid()) Log::Info("Found load() callback");
+    if (_luaUpdate.valid()) Log::Info("Found update() callback");
+    if (_luaDraw.valid()) Log::Info("Found draw() callback");
 }
 
 void LuaApplication::HandleError(const sol::protected_function_result& result, const std::string& context) {
@@ -214,5 +215,5 @@ void LuaApplication::HandleError(const sol::protected_function_result& result, c
 
     // TODO: Show error overlay like Love2D's blue screen
     // For now, just log it
-    ENGINE_LOG("Lua error in {}: {}", context, errorMsg);
+    Log::Info("Lua error in {}: {}", context, errorMsg);
 }

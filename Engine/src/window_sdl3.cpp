@@ -1,4 +1,5 @@
 #include "window.hpp"
+#include "log.hpp"
 #include <SDL3/SDL.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -447,7 +448,7 @@ float Window::GetTime() {
 }
 
 void Window::SetTime(double time) {
-    ENGINE_LOG("SetTime is not implemented");
+    Log::Info("SetTime is not implemented");
 }
 
 void Window::SetClipboardText(const std::string& text) {
