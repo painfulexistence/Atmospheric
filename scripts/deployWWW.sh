@@ -15,11 +15,18 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # 如果沒有特別指定，就只會更新本地專案根目錄下的 www 資料夾
 DEPLOY_DEST="${ATMOSPHERIC_WWW_PATH}"
 
+# 額外傳遞給 buildWasm.sh 的建置旗標 (例如 --webgpu)
+BUILD_FLAGS=()
+
 # 解析參數
 for arg in "$@"; do
     case "$arg" in
         --path=*)
             DEPLOY_DEST="${arg#*=}"
+            ;;
+        --webgpu)
+            # 透傳給 buildWasm.sh：以 WebGPU (而非 WebGL2) 建置範例
+            BUILD_FLAGS+=("--webgpu")
             ;;
     esac
 done
@@ -52,8 +59,12 @@ fi
 
 # 3. 啟動 buildWasm release (使用 --no-server 略過伺服器啟動)
 echo -e ""
-echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建...${NC}"
-"${SCRIPT_DIR}/buildWasm.sh" release --no-server
+if [ ${#BUILD_FLAGS[@]} -gt 0 ]; then
+    echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建 (${BUILD_FLAGS[*]})...${NC}"
+else
+    echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建...${NC}"
+fi
+"${SCRIPT_DIR}/buildWasm.sh" release --no-server "${BUILD_FLAGS[@]}"
 
 # 4. 尋找每個範例產物並複製到 www/demo/ 下，重新命名為 index.html
 echo -e ""

@@ -48,6 +48,7 @@ class SpriteComponent;
 class CameraComponent;
 class LightComponent;
 class BatchRenderer2D;
+struct BatchDrawCommand;
 
 class GraphicsSubsystem : public Subsystem {
 private:
@@ -228,7 +229,10 @@ private:
 
 public:
     void RenderBufferedText(BatchRenderer2D* batch);
-    // WebGPU path: converts buffered text commands into BatchDrawCommands
-    // and submits them via SubmitCanvasCommand so CanvasPass can process them.
-    void FlushTextToQueue();
+    // WebGPU path: converts buffered text commands into BatchDrawCommands,
+    // appended to `out`. Consumed by UIPass (post-tonemap, straight to the
+    // swapchain) to match the GL path, where RenderBufferedText also runs in
+    // UIPass — routing text through CanvasPass/sceneRT would tonemap it
+    // (white → grey).
+    void FlushTextToCommands(std::vector<BatchDrawCommand>& out);
 };

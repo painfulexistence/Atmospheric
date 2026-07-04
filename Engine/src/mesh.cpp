@@ -1,6 +1,7 @@
 #include "mesh.hpp"
 #include "asset_manager.hpp"
 #include "config.hpp"
+#include "gfx_factory.hpp"
 #include "graphics_subsystem.hpp"
 
 void PrintVertex(const Vertex& v) {
@@ -24,6 +25,9 @@ void PrintVertex(const Vertex& v) {
 }
 
 Mesh::Mesh(MeshType type) : type(type) {
+    // No GL context exists under the WebGPU backend — geometry lives in the
+    // RenderMesh Buffer (GPUBuffer) instead; vao/vbo/ebo/ibo stay 0.
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
     glGenVertexArrays(1, &vao);
     glGenBuffers(1, &vbo);
     glGenBuffers(1, &ebo);
@@ -36,6 +40,7 @@ Mesh::~Mesh() {
         GraphicsSubsystem::Get()->FreeRenderMesh(_renderMeshHandle);
     }
 
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
     glDeleteBuffers(1, &vbo);
     glDeleteBuffers(1, &ebo);
     glDeleteBuffers(1, &ibo);
@@ -47,6 +52,22 @@ Mesh::~Mesh() {
 void Mesh::Initialize(const std::vector<Vertex>& verts) {
     vertCount = verts.size();
     triCount = 0;
+
+    // WebGPU: no GL context — vertex-only geometry goes through the abstract
+    // Buffer system, same as the indexed variant below. Terrain meshes take
+    // this path (ForwardOpaquePass draws them with the non-tessellated
+    // heightmap-displacement pipeline, mirroring terrain_simple.vert).
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        if (!_renderMeshHandle.IsValid()) {
+            _renderMeshHandle = GraphicsSubsystem::Get()->AllocateRenderMesh(VertexFormat::Standard, BufferUsage::Static);
+        }
+        Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle);
+        if (renderMesh) {
+            renderMesh->Upload(verts.data(), verts.size(), sizeof(Vertex));
+        }
+        this->initialized = true;
+        return;
+    }
 
     glBindVertexArray(vao);
 
@@ -71,6 +92,21 @@ void Mesh::Initialize(const std::vector<Vertex>& verts) {
 void Mesh::Initialize(const std::vector<Vertex>& verts, const std::vector<uint16_t>& tris) {
     vertCount = verts.size();
     triCount = tris.size() / 3;
+
+    // WebGPU: no GL context — geometry goes through the abstract Buffer
+    // system only (ForwardOpaquePass/WaterPass draw from the render mesh).
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        if (!_renderMeshHandle.IsValid()) {
+            _renderMeshHandle = GraphicsSubsystem::Get()->AllocateRenderMesh(VertexFormat::Standard, BufferUsage::Static);
+        }
+        Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle);
+        if (renderMesh) {
+            renderMesh->Upload(verts.data(), verts.size(), sizeof(Vertex), tris.data(), tris.size());
+        }
+        this->initialized = true;
+        return;
+    }
+
     // Buffer binding reference:
     // https://stackoverflow.com/questions/17332657/does-a-vao-remember-both-a-ebo-ibo-elements-or-indices-and-a-vbo
     glBindVertexArray(vao);
@@ -144,6 +180,13 @@ void Mesh::Update(const std::vector<VoxelVertex>& vertices) {
 template<typename VertexType> void Mesh::InitializeDynamic(GLenum primType) {
     _primitiveType = primType;
 
+    // GL-only dynamic path (debug lines, canvas geometry); the WebGPU
+    // consumers of these mesh types are guarded at the pass level.
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        initialized = true;
+        return;
+    }
+
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
@@ -189,6 +232,8 @@ template<typename VertexType> void Mesh::UpdateDynamic(const std::vector<VertexT
 
     vertCount = verts.size();
     triCount = (primType == GL_TRIANGLES) ? verts.size() / 3 : 0;
+
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(

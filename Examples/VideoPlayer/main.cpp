@@ -1,9 +1,5 @@
 #include "Atmospheric.hpp"
-#if defined(__EMSCRIPTEN__) || defined(ANDROID)
-#include <GLES3/gl3.h>
-#else
-#include <glad/glad.h>
-#endif
+#include "Atmospheric/gfx_factory.hpp"
 
 // Path or HTTP/HTTPS/RTSP URL passed in as the first CLI argument.
 // Example: ./VideoPlayer my_clip.mp4
@@ -16,10 +12,10 @@ class VideoPlayerDemo : public Application {
 
     VideoPlayer m_player;
 
-    GLuint   m_videoTex    = 0;
+    uint32_t m_videoTex    = 0;
     uint32_t m_texWidth    = 0;
     uint32_t m_texHeight   = 0;
-    bool     m_texReady    = false; // true once glTexImage2D has been called
+    bool     m_texReady    = false; // true once the first frame has been uploaded
 
     FontHandle m_fontID = 0;
 
@@ -31,18 +27,11 @@ class VideoPlayerDemo : public Application {
         m_fontID = GraphicsSubsystem::Get()->LoadFont(
             "assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
-        // Allocate a GL texture; upload a 1x1 black pixel so the state is
-        // well-defined before the first video frame arrives.
-        glGenTextures(1, &m_videoTex);
-        glBindTexture(GL_TEXTURE_2D, m_videoTex);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        // Allocate a texture via GfxFactory (works on both the GL and WebGPU
+        // backends); upload a 1x1 black pixel so the state is well-defined
+        // before the first video frame arrives.
         uint8_t black[4] = {0, 0, 0, 255};
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0,
-                     GL_RGBA, GL_UNSIGNED_BYTE, black);
-        glBindTexture(GL_TEXTURE_2D, 0);
+        m_videoTex = GfxFactory::UploadTexture2D(black, 1, 1);
 
         // Open video -- supports local paths AND HTTP / HTTPS / RTSP / HLS URLs.
         if (m_player.open(g_videoPath)) {
@@ -99,34 +88,18 @@ class VideoPlayerDemo : public Application {
                 m_player.play();
         }
 
-        // Upload the newest decoded frame to the GL texture when available.
+        // Upload the newest decoded frame via GfxFactory when available.
+        // UpdateTexture2D reallocates storage itself if the size changed, so
+        // no separate first-frame/resize branch is needed here.
         if (m_player.update(dt)) {
             const VideoPlayer::Frame* frame = m_player.getCurrentFrame();
             if (frame && !frame->pixels.empty()) {
-                glBindTexture(GL_TEXTURE_2D, m_videoTex);
-
-                if (!m_texReady ||
-                    frame->width  != m_texWidth ||
-                    frame->height != m_texHeight)
-                {
-                    // (Re)allocate texture storage for this frame size.
-                    m_texWidth  = frame->width;
-                    m_texHeight = frame->height;
-                    m_texReady  = true;
-                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8,
-                                 static_cast<GLsizei>(m_texWidth),
-                                 static_cast<GLsizei>(m_texHeight),
-                                 0, GL_RGBA, GL_UNSIGNED_BYTE,
-                                 frame->pixels.data());
-                } else {
-                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                                    static_cast<GLsizei>(m_texWidth),
-                                    static_cast<GLsizei>(m_texHeight),
-                                    GL_RGBA, GL_UNSIGNED_BYTE,
-                                    frame->pixels.data());
-                }
-
-                glBindTexture(GL_TEXTURE_2D, 0);
+                m_texWidth  = frame->width;
+                m_texHeight = frame->height;
+                m_texReady  = true;
+                GfxFactory::UpdateTexture2D(m_videoTex, frame->pixels.data(),
+                                            static_cast<int>(m_texWidth),
+                                            static_cast<int>(m_texHeight));
             }
         }
     }
@@ -135,7 +108,7 @@ public:
     ~VideoPlayerDemo() override {
         m_player.close();
         if (m_videoTex) {
-            glDeleteTextures(1, &m_videoTex);
+            GfxFactory::ReleaseTexture(m_videoTex);
             m_videoTex = 0;
         }
     }

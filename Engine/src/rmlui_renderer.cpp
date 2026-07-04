@@ -1,4 +1,5 @@
 #include "rmlui_renderer.hpp"
+#include "gfx_factory.hpp"
 #include "renderer.hpp"
 #include <RmlUi/Core.h>
 #include <spdlog/spdlog.h>
@@ -99,11 +100,18 @@ Rml::TextureHandle RmlUiRenderer::LoadTexture(Rml::Vector2i& texture_dimensions,
 }
 
 Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions) {
-    // We need to create an OpenGL texture and return its ID
-    // But we shouldn't call OpenGL directly here ideally?
-    // Well, creating resources is fine, drawing is the issue.
-    // Or we can ask Renderer to create it.
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        uint32_t texture_id = GfxFactory::UploadTexture2D(
+          reinterpret_cast<const uint8_t*>(source.data()), source_dimensions.x, source_dimensions.y
+        );
+        return (Rml::TextureHandle)texture_id;
+    }
+#endif
 
+    // OpenGL path: GfxFactory::UploadTexture2D's GL fallback uses GL_NEAREST,
+    // which would regress RmlUi's text/UI rendering quality — upload directly
+    // with GL_LINEAR filtering instead, as before.
     GLuint texture_id;
     glGenTextures(1, &texture_id);
     glBindTexture(GL_TEXTURE_2D, texture_id);
@@ -119,16 +127,11 @@ Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> sou
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    Rml::TextureHandle texture_handle = (Rml::TextureHandle)texture_id;
-    // We don't need to store it in m_textures if we just cast ID to handle
-    // But RmlUi expects us to manage handles.
-    // Let's just return the GL ID as handle for simplicity with BatchRenderer
-    return texture_handle;
+    return (Rml::TextureHandle)texture_id;
 }
 
 void RmlUiRenderer::ReleaseTexture(Rml::TextureHandle texture_handle) {
-    GLuint id = static_cast<GLuint>(texture_handle);
-    glDeleteTextures(1, &id);
+    GfxFactory::ReleaseTexture(static_cast<uint32_t>(texture_handle));
 }
 
 void RmlUiRenderer::SetTransform(const Rml::Matrix4f* transform) {
