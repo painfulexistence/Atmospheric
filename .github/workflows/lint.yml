@@ -23,14 +23,14 @@ jobs:
 
       - name: Install clang-format
         run: |
+          # Pinned version lives in scripts/checkClangVersion.sh — single
+          # source of truth shared with the local dev workflow.
+          CLANG_VERSION="$(scripts/checkClangVersion.sh --print-primary-version)"
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-          sudo add-apt-repository "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-18 main"
+          sudo add-apt-repository "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-${CLANG_VERSION} main"
           sudo apt-get update -qq
-          sudo apt-get install -y clang-format-21
-          sudo ln -sf /usr/bin/clang-format-21 /usr/bin/clang-format
+          sudo apt-get install -y "clang-format-${CLANG_VERSION}"
+          sudo ln -sf "/usr/bin/clang-format-${CLANG_VERSION}" /usr/bin/clang-format
 
-      # TEMPORARY: non-blocking until the pre-existing formatting drift is
-      # cleaned up in a dedicated bulk-reformat commit. Failures still show
-      # in the job log; remove continue-on-error to make this gate again.
       - name: Check formatting
         run: python3 scripts/run_code_check.py --check

@@ -23,6 +23,15 @@ SEARCH_DIRS = [
 ]
 
 
+def check_clang_version(script_dir):
+    # Delegates to checkClangVersion.sh so the pinned version lives in one
+    # place (the shell script) and can also be consumed by CI directly.
+    checker = os.path.join(script_dir, 'checkClangVersion.sh')
+    result = subprocess.run([checker], check=False)
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+
+
 def find_source_files(root_dir):
     # .mm/.m (Objective-C++/Objective-C) are excluded: .clang-format has no
     # Language: ObjectiveC mode, and these files follow Xcode conventions
@@ -122,6 +131,8 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
     os.chdir(project_root)
+
+    check_clang_version(script_dir)
 
     source_files = find_source_files(project_root)
     if not source_files:
