@@ -353,12 +353,16 @@ bool Window::IsWebGPUAvailable() {
     // Cache the result — navigator.gpu is immutable after page load.
     static int cached = -1;
     if (cached == -1) {
+        // clang-format off
+        // NOLINTBEGIN
         cached = EM_ASM_INT({
-            return (typeof navigator != = 'undefined' && typeof navigator.gpu != = 'undefined' && navigator.gpu != =
+            return (typeof navigator !== 'undefined' && typeof navigator.gpu !== 'undefined' && navigator.gpu !==
                         null)
                        ? 1
                        : 0;
         });
+        // NOLINTEND
+        // clang-format on
         if (cached) {
             EM_ASM({ console.log("[AtmosphericEngine] WebGPU detected: navigator.gpu is available."); });
         } else {

@@ -227,15 +227,15 @@ void RmlUiManager::HideDocument(const std::string& id) {
 }
 
 // Input handling methods
-void RmlUiManager::ProcessKeyDown(Rml::Input::KeyIdentifier key, int keyModifier) {
+void RmlUiManager::ProcessKeyDown(Rml::Input::KeyIdentifier key, int key_modifier) {
     if (m_context) {
-        m_context->ProcessKeyDown(key, keyModifier);
+        m_context->ProcessKeyDown(key, key_modifier);
     }
 }
 
-void RmlUiManager::ProcessKeyUp(Rml::Input::KeyIdentifier key, int keyModifier) {
+void RmlUiManager::ProcessKeyUp(Rml::Input::KeyIdentifier key, int key_modifier) {
     if (m_context) {
-        m_context->ProcessKeyUp(key, keyModifier);
+        m_context->ProcessKeyUp(key, key_modifier);
     }
 }
 
@@ -245,27 +245,27 @@ void RmlUiManager::ProcessTextInput(Rml::Character character) {
     }
 }
 
-bool RmlUiManager::ProcessMouseMove(int x, int y, int keyModifier) {
+bool RmlUiManager::ProcessMouseMove(int x, int y, int key_modifier) {
     if (m_context) {
-        return m_context->ProcessMouseMove(x, y, keyModifier);
+        return m_context->ProcessMouseMove(x, y, key_modifier);
     }
     return true;// no context ⇒ nothing to interact with
 }
 
-void RmlUiManager::ProcessMouseButtonDown(int buttonIndex, int keyModifier) {
+void RmlUiManager::ProcessMouseButtonDown(int button_index, int key_modifier) {
     if (m_context) {
-        m_context->ProcessMouseButtonDown(buttonIndex, keyModifier);
+        m_context->ProcessMouseButtonDown(button_index, key_modifier);
     }
 }
 
-void RmlUiManager::ProcessMouseButtonUp(int buttonIndex, int keyModifier) {
+void RmlUiManager::ProcessMouseButtonUp(int button_index, int key_modifier) {
     if (m_context) {
-        m_context->ProcessMouseButtonUp(buttonIndex, keyModifier);
+        m_context->ProcessMouseButtonUp(button_index, key_modifier);
     }
 }
 
-void RmlUiManager::ProcessMouseWheel(float wheelDelta, int keyModifier) {
+void RmlUiManager::ProcessMouseWheel(float wheel_delta, int key_modifier) {
     if (m_context) {
-        m_context->ProcessMouseWheel(Rml::Vector2f(0, wheelDelta), keyModifier);
+        m_context->ProcessMouseWheel(Rml::Vector2f(0, wheel_delta), key_modifier);
     }
 }
