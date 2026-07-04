@@ -64,4 +64,11 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${_atmoslua_preload}/fonts@assets/fonts"
         "SHELL:--preload-file ${_atmoslua_preload}/ui@assets/ui"
     )
+
+    # Custom centered template only for Release; keep the default Emscripten
+    # shell in Debug for easier console/stdout debugging (matches the examples).
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_link_options(AtmosLua PRIVATE
+            "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell.html")
+    endif()
 endif()
