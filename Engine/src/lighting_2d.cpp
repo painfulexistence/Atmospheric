@@ -27,14 +27,14 @@ void LightingSystem2D::Apply(GraphicsSubsystem* gfx, int screenW, int screenH) c
     // Draw rings from innermost (bright) to outermost (transparent) using a
     // quadratic falloff so the centre is clearly the brightest point.
     // 16 rings gives a smooth-enough gradient without being too costly.
-    static const int rings = 16;
+    static const int grings = 16;
 
     for (const auto& light : lights) {
         float clampedIntensity = std::min(light.intensity, 2.0f);
 
-        for (int k = 0; k < rings; k++) {
+        for (int k = 0; k < grings; k++) {
             // t = 0 → innermost ring, t = 1 → outermost ring
-            float t = static_cast<float>(k + 1) / rings;
+            float t = static_cast<float>(k + 1) / grings;
             float rad = light.radius * t;
             // Quadratic falloff: brightest at centre, fades quickly outward
             float alpha = clampedIntensity * (1.0f - t) * (1.0f - t) * 0.30f;

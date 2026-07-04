@@ -59,10 +59,10 @@ void ConsoleSubsystem::DrawImGui(float dt) {
         ImGui::Separator();
 
         // TODO: command palette
-        static char command[256] = "";
-        if (ImGui::InputText("Command", command, IM_ARRAYSIZE(command), ImGuiInputTextFlags_EnterReturnsTrue)) {
-            ExecuteCommand(command);
-            command[0] = '\0';
+        static char gcommand[256] = "";
+        if (ImGui::InputText("Command", gcommand, IM_ARRAYSIZE(gcommand), ImGuiInputTextFlags_EnterReturnsTrue)) {
+            ExecuteCommand(gcommand);
+            gcommand[0] = '\0';
         }
     }
 }

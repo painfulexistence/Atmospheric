@@ -230,9 +230,9 @@ class CardBattleGame : public Application {
     }
 
     static Key NumKey(int i) {
-        static const Key keys[9] = { Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5,
-                                     Key::Num6, Key::Num7, Key::Num8, Key::Num9 };
-        return (i >= 0 && i < 9) ? keys[i] : Key::UNKNOWN;
+        static const Key gkeys[9] = { Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5,
+                                      Key::Num6, Key::Num7, Key::Num8, Key::Num9 };
+        return (i >= 0 && i < 9) ? gkeys[i] : Key::UNKNOWN;
     }
 
     // ========================================================================

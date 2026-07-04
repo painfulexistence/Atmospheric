@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Wave data: 24 waves × 5 rows × 8 cols  (0=empty, 1-3=enemy type)
 // ─────────────────────────────────────────────────────────────────────────────
-static const int waves[24][5][8] = {
+static const int gwaves[24][5][8] = {
     { { 0, 1, 1, 0, 0, 0, 0, 0 },
       { 0, 0, 0, 0, 0, 0, 0, 0 },
       { 0, 0, 0, 0, 0, 0, 0, 0 },
@@ -153,7 +153,7 @@ class MidnightSkyraiders : public Application {
     SoundID _sfxExp = 0;
     SoundID _sfxOver = 0;
 
-    static constexpr float bgSpeed[3] = { 5.0f, 40.0f, 120.0f };
+    static constexpr float gbgSpeed[3] = { 5.0f, 40.0f, 120.0f };
 
     // Title
     GameObject* _titleObj = nullptr;
@@ -161,7 +161,7 @@ class MidnightSkyraiders : public Application {
     // Player — progression state lives in PlayerComponent (editor-inspectable)
     GameObject* _playerObj = nullptr;
     PlayerComponent* _player = nullptr;
-    static constexpr float plW = 32.0f, plH = 32.0f;
+    static constexpr float gplW = 32.0f, gplH = 32.0f;
 
     // World director — score / waves / system-fire throttle (editor-inspectable)
     GameObject* _worldObj = nullptr;
@@ -235,7 +235,7 @@ class MidnightSkyraiders : public Application {
         auto* background = CreateGameObject();
         background->SetName("Background");
         for (int i = 0; i < 3; i++) {
-            background->AddComponent<ParallaxLayerComponent>(_texBg[i], WORLD, bgSpeed[i], i);
+            background->AddComponent<ParallaxLayerComponent>(_texBg[i], WORLD, gbgSpeed[i], i);
         }
 
         // World director: a single "GameWorld" entity owns match-wide state.
@@ -329,7 +329,7 @@ class MidnightSkyraiders : public Application {
         _playerObj = CreateGameObject(glm::vec2(toEngX(-264.0f), toEngY(-16.0f)));
         _playerObj->SetName("Player");
         _playerObj->AddComponent<SpriteComponent>(SpriteProps{
-            .size = glm::vec2(plW, plH),
+            .size = glm::vec2(gplW, gplH),
             .pivot = glm::vec2(0.5f, 0.5f),
             .color = glm::vec4(1, 1, 1, 1),
             .texture = _texPlayer,
@@ -338,7 +338,7 @@ class MidnightSkyraiders : public Application {
             .zOrder = 5,
         });
         _player = static_cast<PlayerComponent*>(_playerObj->AddComponent<PlayerComponent>());
-        _playerObj->AddComponent<PlayerInputComponent>(_player, plW, plH, [this](float px, float py) {
+        _playerObj->AddComponent<PlayerInputComponent>(_player, gplW, gplH, [this](float px, float py) {
             SpawnPlayerBulletsDeferred(px, py);
         });
 
@@ -363,7 +363,7 @@ class MidnightSkyraiders : public Application {
     // Called from PlayerInputComponent::OnTick — must defer because we are
     // inside the entity tick loop and CreateGameObject would invalidate it.
     void SpawnPlayerBulletsDeferred(float px, float py) {
-        float bx = px + plW * 0.5f;
+        float bx = px + gplW * 0.5f;
         DeferSpawn([this, bx, py] { SpawnBullet(0, bx, py); });
         DeferSpawn([this, bx, py] { SpawnBullet(1, bx, py); });
         DeferSpawn([this, bx, py] { SpawnBullet(2, bx, py); });
@@ -431,7 +431,7 @@ class MidnightSkyraiders : public Application {
 
         for (int row = 0; row < 5; row++) {
             for (int col = 0; col < 8; col++) {
-                int cell = waves[idx][row][col];
+                int cell = gwaves[idx][row][col];
                 if (cell == 0) continue;
                 float ex = toEngX(col * 90.0f - 300.0f + ox) + WORLD;
                 float ey = toEngY(row * 90.0f - 300.0f + 100.0f + oy);

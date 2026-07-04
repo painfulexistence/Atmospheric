@@ -88,7 +88,7 @@ static std::vector<RenderBatch> BuildBatches(const std::vector<Renderer::Sortabl
     return batches;
 }
 
-static constexpr int maxCanvasTextures = 32;
+static constexpr int gmaxCanvasTextures = 32;
 
 // Strips the leading digit-length prefix (GCC mangled names) and
 // "class "/"struct " prefix (MSVC) from a typeid name string.
@@ -158,7 +158,7 @@ void Renderer::Init(int width, int height) {
     // Screen-space quad VAO for post-process passes (bloom, etc.)
     // GL-only: no GL context exists when running the WebGPU backend.
     if (GfxFactory::GetBackend() != GfxBackend::WebGPU) {
-        static const float quadVerts[] = {
+        static const float gquadVerts[] = {
             -1.f, -1.f, 0.f, 0.f, 1.f, -1.f, 1.f, 0.f, 1.f,  1.f, 1.f, 1.f,
             -1.f, -1.f, 0.f, 0.f, 1.f, 1.f,  1.f, 1.f, -1.f, 1.f, 0.f, 1.f,
         };
@@ -167,7 +167,7 @@ void Renderer::Init(int width, int height) {
         glGenBuffers(1, &vbo);
         glBindVertexArray(gl.screenQuadVAO);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(gquadVerts), gquadVerts, GL_STATIC_DRAW);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), nullptr);
         glEnableVertexAttribArray(1);
@@ -175,7 +175,7 @@ void Renderer::Init(int width, int height) {
         glBindVertexArray(0);
 
         // ── Skybox cube VAO ───────────────────────────────────────────
-        static const float cubeVerts[] = {
+        static const float gcubeVerts[] = {
             -1, -1, -1, 1,  -1, -1, 1,  1,  -1, 1,  1,  -1, -1, 1,  -1, -1, -1, -1, -1, -1, 1,  1,  -1, 1,  1,  1,  1,
             1,  1,  1,  -1, 1,  1,  -1, -1, 1,  -1, 1,  1,  -1, 1,  -1, -1, -1, -1, -1, -1, -1, -1, -1, 1,  -1, 1,  1,
             1,  1,  1,  1,  1,  -1, 1,  -1, -1, 1,  -1, -1, 1,  -1, 1,  1,  1,  1,  -1, -1, -1, -1, -1, 1,  1,  -1, 1,
@@ -185,7 +185,7 @@ void Renderer::Init(int width, int height) {
         glGenBuffers(1, &gl.skyboxVBO);
         glBindVertexArray(gl.skyboxVAO);
         glBindBuffer(GL_ARRAY_BUFFER, gl.skyboxVBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVerts), cubeVerts, GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(gcubeVerts), gcubeVerts, GL_STATIC_DRAW);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
         glBindVertexArray(0);
@@ -278,8 +278,8 @@ static Material* ResolveMaterialOrFallback(MaterialHandle handle) {
     if (Material* mat = AssetManager::Get().ResolveMaterial(handle)) {
         return mat;
     }
-    static Material fallback{ MaterialProps{} };
-    return &fallback;
+    static Material gfallback{ MaterialProps{} };
+    return &gfallback;
 }
 
 uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& cameraPos) {

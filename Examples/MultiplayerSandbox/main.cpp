@@ -28,7 +28,7 @@ namespace {
         uint32_t seed = 0;
         int delay = 3;
         uint32_t autotestTicks = 0;// run N ticks headless-style, print checksum, quit
-    } gCli;
+    } gcli;
 
     inline uint32_t Pack(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) {
         return static_cast<uint32_t>(r) | static_cast<uint32_t>(g) << 8 | static_cast<uint32_t>(b) << 16
@@ -132,7 +132,7 @@ class NoitaLikeGame : public Application {
         netObj->SetName("NetSession");
         netObj->AddComponent<LockstepNetComponent>();
         _netComp = netObj->GetComponent<LockstepNetComponent>();
-        _netComp->Start(gCli.mode, gCli.port, gCli.seed, gCli.delay, gCli.joinIp);
+        _netComp->Start(gcli.mode, gcli.port, gcli.seed, gcli.delay, gcli.joinIp);
 
         // Inspector: one entity per player slot.
         for (int i = 0; i < 2; i++) {
@@ -173,7 +173,7 @@ class NoitaLikeGame : public Application {
             glm::vec4(1.0f)
         );
 
-        static const glm::vec4 bodyColors[2] = {
+        static const glm::vec4 gbodyColors[2] = {
             { 0.25f, 0.9f, 1.0f, 1.0f },
             { 1.0f, 0.62f, 0.18f, 1.0f },
         };
@@ -183,7 +183,7 @@ class NoitaLikeGame : public Application {
             float px = p.x * sx, py = p.y * sy;
             float pw = static_cast<float>(Player::HW * 2 + 1) * sx;
             float ph = static_cast<float>(Player::HH * 2 + 1) * sy;
-            GraphicsSubsystem::Get()->DrawQuad(px, py, pw, ph, 0.0f, bodyColors[i]);
+            GraphicsSubsystem::Get()->DrawQuad(px, py, pw, ph, 0.0f, gbodyColors[i]);
             float frac = static_cast<float>(p.hp) / static_cast<float>(Player::MAX_HP);
             GraphicsSubsystem::Get()->DrawQuad(
                 px, py - ph * 0.5f - 8.0f, pw + 8.0f, 4.0f, 0.0f, { 0.1f, 0.1f, 0.1f, 0.8f }
@@ -264,8 +264,8 @@ class NoitaLikeGame : public Application {
             std::string s;
             if (net.state == LockstepNet::State::Connecting) {
                 s = (net.mode == LockstepNet::Mode::Host)
-                        ? fmt::format("waiting for player 2 on UDP :{} ...", gCli.port)
-                        : fmt::format("connecting to {}:{} ...", gCli.joinIp, gCli.port);
+                        ? fmt::format("waiting for player 2 on UDP :{} ...", gcli.port)
+                        : fmt::format("connecting to {}:{} ...", gcli.joinIp, gcli.port);
             } else if (net.state == LockstepNet::State::Failed) {
                 s = "network error: " + net.error;
             } else if (net.desync) {
@@ -314,9 +314,9 @@ class NoitaLikeGame : public Application {
 
         UpdateHud();
 
-        if (gCli.autotestTicks > 0 && _netComp->IsStarted()) {
+        if (gcli.autotestTicks > 0 && _netComp->IsStarted()) {
             const GameSim& sim = _netComp->GetSim();
-            if (sim.tick >= gCli.autotestTicks) {
+            if (sim.tick >= gcli.autotestTicks) {
                 ConsoleSubsystem::Get()->Info(
                     fmt::format(
                         "AUTOTEST tick={} checksum={:#010x} desync={}",
@@ -338,21 +338,21 @@ class NoitaLikeGame : public Application {
 };
 
 int main(int argc, char* argv[]) {
-    gCli.seed = static_cast<uint32_t>(std::time(nullptr));
+    gcli.seed = static_cast<uint32_t>(std::time(nullptr));
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--host") == 0) {
-            gCli.mode = LockstepNet::Mode::Host;
-            if (i + 1 < argc && argv[i + 1][0] != '-') gCli.port = static_cast<uint16_t>(std::atoi(argv[++i]));
+            gcli.mode = LockstepNet::Mode::Host;
+            if (i + 1 < argc && argv[i + 1][0] != '-') gcli.port = static_cast<uint16_t>(std::atoi(argv[++i]));
         } else if (std::strcmp(argv[i], "--join") == 0 && i + 1 < argc) {
-            gCli.mode = LockstepNet::Mode::Client;
-            gCli.joinIp = argv[++i];
-            if (i + 1 < argc && argv[i + 1][0] != '-') gCli.port = static_cast<uint16_t>(std::atoi(argv[++i]));
+            gcli.mode = LockstepNet::Mode::Client;
+            gcli.joinIp = argv[++i];
+            if (i + 1 < argc && argv[i + 1][0] != '-') gcli.port = static_cast<uint16_t>(std::atoi(argv[++i]));
         } else if (std::strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
-            gCli.seed = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
+            gcli.seed = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
         } else if (std::strcmp(argv[i], "--delay") == 0 && i + 1 < argc) {
-            gCli.delay = std::max(1, std::atoi(argv[++i]));
+            gcli.delay = std::max(1, std::atoi(argv[++i]));
         } else if (std::strcmp(argv[i], "--autotest") == 0 && i + 1 < argc) {
-            gCli.autotestTicks = static_cast<uint32_t>(std::atoi(argv[++i]));
+            gcli.autotestTicks = static_cast<uint32_t>(std::atoi(argv[++i]));
         }
     }
 

@@ -3,7 +3,7 @@
 #include "Atmospheric/renderer.hpp"
 
 // Keep track of current draw color
-static glm::vec4 sCurrentColor = glm::vec4(1.0f);
+static glm::vec4 gsCurrentColor = glm::vec4(1.0f);
 
 void BindGraphicsAPI(sol::state& lua, GraphicsSubsystem* graphics) {
     sol::table atmos = lua["atmos"];
@@ -33,33 +33,33 @@ void BindGraphicsAPI(sol::state& lua, GraphicsSubsystem* graphics) {
 
     // Set current draw color
     gfx["setColor"] = sol::overload(
-        [](float r, float g, float b) { sCurrentColor = glm::vec4(r, g, b, 1.0f); },
-        [](float r, float g, float b, float a) { sCurrentColor = glm::vec4(r, g, b, a); },
-        [](const glm::vec4& color) { sCurrentColor = color; }
+        [](float r, float g, float b) { gsCurrentColor = glm::vec4(r, g, b, 1.0f); },
+        [](float r, float g, float b, float a) { gsCurrentColor = glm::vec4(r, g, b, a); },
+        [](const glm::vec4& color) { gsCurrentColor = color; }
     );
 
-    gfx["getColor"] = []() -> glm::vec4 { return sCurrentColor; };
+    gfx["getColor"] = []() -> glm::vec4 { return gsCurrentColor; };
 
     // Draw line
     gfx["drawLine"] = [graphics](float x1, float y1, float x2, float y2) {
-        graphics->DrawLine(x1, y1, x2, y2, sCurrentColor);
+        graphics->DrawLine(x1, y1, x2, y2, gsCurrentColor);
     };
 
     // Draw circle (outline)
     gfx["drawCircle"] = [graphics](float x, float y, float radius) {
-        graphics->DrawCircle(x, y, radius, sCurrentColor);
+        graphics->DrawCircle(x, y, radius, gsCurrentColor);
     };
 
     gfx["drawRect"] = sol::overload(
-        [graphics](float x, float y, float w, float h) { graphics->DrawQuad(x, y, w, h, 0.0f, sCurrentColor); },
+        [graphics](float x, float y, float w, float h) { graphics->DrawQuad(x, y, w, h, 0.0f, gsCurrentColor); },
         [graphics](float x, float y, float w, float h, float rotation) {
-            graphics->DrawQuad(x, y, w, h, rotation, sCurrentColor);
+            graphics->DrawQuad(x, y, w, h, rotation, gsCurrentColor);
         }
     );
 
     // I should probably add drawRectangleOutline for outline?
     gfx["drawRectangle"] = [graphics](float x, float y, float w, float h) {
-        graphics->DrawRect(x, y, w, h, sCurrentColor);
+        graphics->DrawRect(x, y, w, h, gsCurrentColor);
     };
 
     // Draw textured sprite
@@ -68,15 +68,15 @@ void BindGraphicsAPI(sol::state& lua, GraphicsSubsystem* graphics) {
         // Draw with texture ID at position
         [graphics](uint32_t texID, float x, float y) {
             // Assume 64x64 default size. DrawTexturedQuad expects center position.
-            graphics->DrawTexturedQuad(x, y, 64.0f, 64.0f, 0.0f, texID, sCurrentColor);
+            graphics->DrawTexturedQuad(x, y, 64.0f, 64.0f, 0.0f, texID, gsCurrentColor);
         },
         // Draw with texture ID, position, and size
         [graphics](uint32_t texID, float x, float y, float w, float h) {
-            graphics->DrawTexturedQuad(x, y, w, h, 0.0f, texID, sCurrentColor);
+            graphics->DrawTexturedQuad(x, y, w, h, 0.0f, texID, gsCurrentColor);
         },
         // Draw with texture ID, position, size, and rotation
         [graphics](uint32_t texID, float x, float y, float w, float h, float rotation) {
-            graphics->DrawTexturedQuad(x, y, w, h, rotation, texID, sCurrentColor);
+            graphics->DrawTexturedQuad(x, y, w, h, rotation, texID, gsCurrentColor);
         }
     );
 
@@ -96,10 +96,10 @@ void BindGraphicsAPI(sol::state& lua, GraphicsSubsystem* graphics) {
     // drawText(font, text, x, y, scale)    -- scale relative to base size
     gfx["drawText"] = sol::overload(
         [graphics](FontHandle fontID, const std::string& text, float x, float y) {
-            graphics->DrawText(fontID, text, x, y, 1.0f, sCurrentColor);
+            graphics->DrawText(fontID, text, x, y, 1.0f, gsCurrentColor);
         },
         [graphics](FontHandle fontID, const std::string& text, float x, float y, float scale) {
-            graphics->DrawText(fontID, text, x, y, scale, sCurrentColor);
+            graphics->DrawText(fontID, text, x, y, scale, gsCurrentColor);
         }
     );
 

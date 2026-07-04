@@ -8,11 +8,11 @@
 #include <unordered_set>
 #include <vector>
 
-static constexpr float w = 800.0f;
-static constexpr float h = 600.0f;
-static constexpr float shootSpeed = 3000.0f;
-static constexpr int minSides = 3;// triangle
-static constexpr int maxSides = 9;
+static constexpr float gw = 800.0f;
+static constexpr float gh = 600.0f;
+static constexpr float gshootSpeed = 3000.0f;
+static constexpr int gminSides = 3;// triangle
+static constexpr int gmaxSides = 9;
 
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ static std::vector<glm::vec2> RegularPolygon(int n, float radius) {
 // ──────────────────────────────────────────────────────────────────────────────
 static glm::vec4 SideColor(int sides) {
     // Rainbow hue: 3=red(0°) → 10=violet(270°), evenly spaced
-    static const glm::vec4 palette[] = {
+    static const glm::vec4 gpalette[] = {
         { 1.00f, 0.20f, 0.20f, 1.0f },// 3 - red        0°
         { 1.00f, 0.55f, 0.10f, 1.0f },// 4 - orange     38°
         { 1.00f, 0.95f, 0.10f, 1.0f },// 5 - yellow     77°
@@ -42,8 +42,8 @@ static glm::vec4 SideColor(int sides) {
         { 0.10f, 0.65f, 1.00f, 1.0f },// 8 - sky blue   192°
         { 0.75f, 0.15f, 1.00f, 1.0f },// 9 - violet     270° (circle)
     };
-    int idx = std::clamp(sides - minSides, 0, static_cast<int>(std::size(palette)) - 1);
-    return palette[idx];
+    int idx = std::clamp(sides - gminSides, 0, static_cast<int>(std::size(gpalette)) - 1);
+    return gpalette[idx];
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -127,7 +127,7 @@ class PolyMerge : public Application {
             float startX = centre.x - (row - 1) * spacing * 0.5f;
             for (int c = 0; c < row; ++c) {
                 glm::vec2 p{ startX + c * spacing + xJitter(_rng), y + yJitter(_rng) };
-                int sides = minSides + sideDist(_rng);
+                int sides = gminSides + sideDist(_rng);
                 auto* go = SpawnShape(p, sides, true);
                 _shapes.push_back(go);
             }
@@ -137,10 +137,10 @@ class PolyMerge : public Application {
 
     // ── Create the next pending shape at the top centre ───────────────────
     void SpawnPending() {
-        std::uniform_int_distribution<int> sideDist(minSides, maxSides);
+        std::uniform_int_distribution<int> sideDist(gminSides, gmaxSides);
         int sides = sideDist(_rng);
 
-        _pendingShape = SpawnShape({ w * 0.5f, h - 40.0f }, sides, false);
+        _pendingShape = SpawnShape({ gw * 0.5f, gh - 40.0f }, sides, false);
         // Disable collision until launched
         auto* rb = _pendingShape->GetComponent<Rigidbody2DComponent>();
         if (rb) SetBodyCollision(rb->GetBodyId(), false);
@@ -167,10 +167,10 @@ class PolyMerge : public Application {
         auto* rb = _pendingShape->GetComponent<Rigidbody2DComponent>();
         if (!rb) return;
 
-        glm::vec2 origin{ w * 0.5f, h - 40.0f };
+        glm::vec2 origin{ gw * 0.5f, gh - 40.0f };
         // Horizontal-only aim: x from cursor direction, y fixed upward arc
         glm::vec2 dir = glm::normalize(mousePos - origin);
-        glm::vec2 vel = glm::vec2(dir.x * shootSpeed, 0.0f);
+        glm::vec2 vel = glm::vec2(dir.x * gshootSpeed, 0.0f);
 
         // Mark as launched, re-enable collision, switch to dynamic, enable CCD
         _pendingShape->GetComponent<MergeableComponent>()->launched = true;
@@ -247,7 +247,7 @@ class PolyMerge : public Application {
         centroid /= static_cast<float>(n);
 
         int newSides = sides + 1;
-        if (sides >= maxSides) {
+        if (sides >= gmaxSides) {
             _score *= 2;
             newSides = -1;
         } else {
@@ -324,7 +324,7 @@ class PolyMerge : public Application {
 
         // Ground
         {
-            auto* go = CreateGameObject({ w * 0.5f, 42.0f });
+            auto* go = CreateGameObject({ gw * 0.5f, 42.0f });
             ShapeRendererProps sp;
             sp.type = ShapeType2D::Box;
             sp.boxHalfSize = { 360.0f, 18.0f };
@@ -339,32 +339,32 @@ class PolyMerge : public Application {
         }
         // Left wall
         {
-            auto* go = CreateGameObject({ 38.0f, h * 0.5f });
+            auto* go = CreateGameObject({ 38.0f, gh * 0.5f });
             ShapeRendererProps sp;
             sp.type = ShapeType2D::Box;
-            sp.boxHalfSize = { 12.0f, h * 0.5f };
+            sp.boxHalfSize = { 12.0f, gh * 0.5f };
             sp.color = { 0.35f, 0.35f, 0.40f, 1.0f };
             sp.filled = true;
             go->AddComponent<ShapeRendererComponent>(sp);
             Rigidbody2DProps rb;
             rb.type = BodyType2D::Static;
             rb.shape.type = ShapeType2D::Box;
-            rb.shape.boxSize = { 24.0f, h };
+            rb.shape.boxSize = { 24.0f, gh };
             go->AddComponent<Rigidbody2DComponent>(rb);
         }
         // Right wall
         {
-            auto* go = CreateGameObject({ w - 38.0f, h * 0.5f });
+            auto* go = CreateGameObject({ gw - 38.0f, gh * 0.5f });
             ShapeRendererProps sp;
             sp.type = ShapeType2D::Box;
-            sp.boxHalfSize = { 12.0f, h * 0.5f };
+            sp.boxHalfSize = { 12.0f, gh * 0.5f };
             sp.color = { 0.35f, 0.35f, 0.40f, 1.0f };
             sp.filled = true;
             go->AddComponent<ShapeRendererComponent>(sp);
             Rigidbody2DProps rb;
             rb.type = BodyType2D::Static;
             rb.shape.type = ShapeType2D::Box;
-            rb.shape.boxSize = { 24.0f, h };
+            rb.shape.boxSize = { 24.0f, gh };
             go->AddComponent<Rigidbody2DComponent>(rb);
         }
 
@@ -394,7 +394,7 @@ class PolyMerge : public Application {
 
         auto dpi = Window::Get()->GetDPI();
         glm::vec2 mouse = InputSubsystem::Get()->GetMousePosition() / dpi;
-        mouse.y = h - mouse.y;
+        mouse.y = gh - mouse.y;
 
         // ── Firing ────────────────────────────────────────────────────────
         if (!_gameOver && !_launched && _pendingShape) {
@@ -405,7 +405,7 @@ class PolyMerge : public Application {
 
         // ── Draw dashed aim line ──────────────────────────────────────────
         if (!_launched && _pendingShape) {
-            glm::vec2 origin{ w * 0.5f, h - 40.0f };
+            glm::vec2 origin{ gw * 0.5f, gh - 40.0f };
             glm::vec4 lineColor{ 1.0f, 1.0f, 1.0f, 0.65f };
             DrawDashedLine(origin, mouse, 10.0f, 6.0f, lineColor);
         }
@@ -419,9 +419,9 @@ class PolyMerge : public Application {
         // ── HUD ───────────────────────────────────────────────────────────
         if (_fontID) {
             std::string scoreTxt = "Score: " + std::to_string(_score);
-            GraphicsSubsystem::Get()->DrawText(_fontID, scoreTxt, 12.0f, h - 36.0f, 1.0f, { 1, 1, 1, 1 });
+            GraphicsSubsystem::Get()->DrawText(_fontID, scoreTxt, 12.0f, gh - 36.0f, 1.0f, { 1, 1, 1, 1 });
             GraphicsSubsystem::Get()->DrawText(
-                _fontID, "SPACE / LMB = fire", 12.0f, h - 64.0f, 0.7f, { 0.8f, 0.8f, 0.8f, 0.8f }
+                _fontID, "SPACE / LMB = fire", 12.0f, gh - 64.0f, 0.7f, { 0.8f, 0.8f, 0.8f, 0.8f }
             );
 
             // Side legend (uncomment to show)
@@ -437,8 +437,8 @@ class PolyMerge : public Application {
 int main(int /*argc*/, char* /*argv*/[]) {
     PolyMerge game(
         { .windowTitle = "PolyMerge - Shape Merge Puzzle",
-          .windowWidth = static_cast<int>(w),
-          .windowHeight = static_cast<int>(h),
+          .windowWidth = static_cast<int>(gw),
+          .windowHeight = static_cast<int>(gh),
           .useDefaultTextures = true,
           .useDefaultShaders = true,
           .preset = "2D" }

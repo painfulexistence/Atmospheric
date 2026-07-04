@@ -3,8 +3,8 @@
 #include "game_object.hpp"
 #include "graphics_subsystem.hpp"
 
-static const float maxVAngle = PI / 2.0f - 0.01f;
-static const float minVAngle = -PI / 2.0f + 0.01f;
+static const float gmaxVAngle = PI / 2.0f - 0.01f;
+static const float gminVAngle = -PI / 2.0f + 0.01f;
 
 CameraComponent::CameraComponent(GameObject* gameObject, const CameraProps& props) {
     this->gameObject = gameObject;
@@ -113,7 +113,7 @@ void CameraComponent::Yaw(float angleOffset) {
 }
 
 void CameraComponent::Pitch(float angleOffset) {
-    _vhAngle.x = std::max(minVAngle, std::min(maxVAngle, _vhAngle.x + angleOffset));
+    _vhAngle.x = std::max(gminVAngle, std::min(gmaxVAngle, _vhAngle.x + angleOffset));
 }
 
 void CameraComponent::SetSize(float size) {

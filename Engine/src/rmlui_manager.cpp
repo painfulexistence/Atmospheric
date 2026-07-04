@@ -59,7 +59,7 @@ private:
     };
 };
 
-static AeRmlFileInterface sRmlFileInterface;
+static AeRmlFileInterface gsRmlFileInterface;
 
 RmlUiManager* RmlUiManager::s_instance = nullptr;
 
@@ -97,7 +97,7 @@ bool RmlUiManager::Initialize(int width, int height, Renderer* renderer) {
     m_renderer->Initialize();
 
     // Set interfaces
-    Rml::SetFileInterface(&sRmlFileInterface);
+    Rml::SetFileInterface(&gsRmlFileInterface);
     Rml::SetRenderInterface(m_renderer.get());
     Rml::SetSystemInterface(m_system.get());
 

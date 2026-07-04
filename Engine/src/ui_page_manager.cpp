@@ -104,8 +104,8 @@ void UIPageManager::PopPage() {
 }
 
 const UIPageID& UIPageManager::GetCurrentPage() const {
-    static const UIPageID empty;
-    if (_navigationStack.empty()) return empty;
+    static const UIPageID gempty;
+    if (_navigationStack.empty()) return gempty;
     return _navigationStack.back();
 }
 

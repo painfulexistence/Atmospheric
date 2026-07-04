@@ -3,8 +3,8 @@
 #include <spdlog/spdlog.h>
 
 std::unordered_map<std::string, ComponentFactory::CreatorFunc>& ComponentFactory::GetRegistry() {
-    static std::unordered_map<std::string, ComponentFactory::CreatorFunc> instance;
-    return instance;
+    static std::unordered_map<std::string, ComponentFactory::CreatorFunc> ginstance;
+    return ginstance;
 }
 
 Component* ComponentFactory::Create(const std::string& typeName, GameObject* owner, Deserializer& d) {

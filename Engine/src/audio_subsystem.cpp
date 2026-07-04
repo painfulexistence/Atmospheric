@@ -533,19 +533,19 @@ void AudioSubsystem::StopAll() {
 // callback API has no userdata parameter, so a file-scope static is the only
 // channel; attach/detach keep it symmetric with the processor registration,
 // and detach always runs before the recorder is destroyed (stopRecording).
-static VideoRecorder* sCaptureRecorder = nullptr;
+static VideoRecorder* gsCaptureRecorder = nullptr;
 static void AudioCaptureCallback(void* buffer, unsigned int frames) {
-    if (sCaptureRecorder) sCaptureRecorder->writeAudio(static_cast<const float*>(buffer), frames);
+    if (gsCaptureRecorder) gsCaptureRecorder->writeAudio(static_cast<const float*>(buffer), frames);
 }
 
 void AudioSubsystem::attachVideoRecorder(VideoRecorder* recorder) {
-    sCaptureRecorder = recorder;
+    gsCaptureRecorder = recorder;
     ::AttachAudioMixedProcessor(AudioCaptureCallback);
 }
 
 void AudioSubsystem::detachVideoRecorder() {
     ::DetachAudioMixedProcessor(AudioCaptureCallback);
-    sCaptureRecorder = nullptr;
+    gsCaptureRecorder = nullptr;
 }
 
 AudioSubsystem::AudioSubsystem(void) {
