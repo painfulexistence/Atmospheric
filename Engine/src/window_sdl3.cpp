@@ -493,13 +493,13 @@ void Window::SetMouseCursor(const std::string& cursorName) {
     // But since we are creating standard system cursors, maybe we should cache them.
 
     // Let's just implement a simple cache in the function for now to avoid leaking.
-    static std::unordered_map<std::string, SDL_Cursor*> cursorCache;
-    if (cursorCache.find(cursorName) == cursorCache.end()) {
-        cursorCache[cursorName] = cursor;
+    static std::unordered_map<std::string, SDL_Cursor*> gcursorCache;
+    if (gcursorCache.find(cursorName) == gcursorCache.end()) {
+        gcursorCache[cursorName] = cursor;
     } else {
         // If we already had it, we just created a duplicate, so destroy the new one and use cached
         SDL_DestroyCursor(cursor);
-        cursor = cursorCache[cursorName];
+        cursor = gcursorCache[cursorName];
         SDL_SetCursor(cursor);
     }
 }

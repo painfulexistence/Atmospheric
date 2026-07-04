@@ -23,6 +23,20 @@ SEARCH_DIRS = [
 ]
 
 
+def check_clang_version(script_dir, tools=None):
+    # Delegates to checkLLVMVersion.sh so the pinned version lives in one
+    # place (the shell script) and can also be consumed by CI directly.
+    # `tools=None` (default) validates every tool the script knows about;
+    # pass a list to restrict to a subset (e.g. CI's format-only lint job).
+    checker = os.path.join(script_dir, 'checkLLVMVersion.sh')
+    cmd = [checker]
+    for t in (tools or []):
+        cmd.extend(['--tool', t])
+    result = subprocess.run(cmd, check=False)
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+
+
 def find_source_files(root_dir):
     # .mm/.m (Objective-C++/Objective-C) are excluded: .clang-format has no
     # Language: ObjectiveC mode, and these files follow Xcode conventions
@@ -122,6 +136,10 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(script_dir)
     os.chdir(project_root)
+
+    # --check runs only clang-format; don't demand clang-tidy on CI runners
+    # that intentionally skip the tidy install.
+    check_clang_version(script_dir, tools=['clang-format'] if args.check else None)
 
     source_files = find_source_files(project_root)
     if not source_files:

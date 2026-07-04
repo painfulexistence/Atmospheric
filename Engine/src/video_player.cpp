@@ -357,10 +357,10 @@ bool VideoPlayer::update(double deltaTime) {
     if (m_ffmpeg && m_ffmpeg->audioReady) {
         if (IsAudioStreamProcessed(m_ffmpeg->audioStream)) {
             std::lock_guard<std::mutex> al(m_ffmpeg->audioMutex);
-            static constexpr int chunkFrames = 4096;
+            static constexpr int gchunkFrames = 4096;
             int ch = m_ffmpeg->audioChannels;
             int available = static_cast<int>(m_ffmpeg->audioPCM.size()) / ch;
-            int toSend = std::min(available, chunkFrames);
+            int toSend = std::min(available, gchunkFrames);
             if (toSend > 0) {
                 std::vector<int16_t> buf(static_cast<size_t>(toSend) * ch, 0);
                 for (int i = 0; i < toSend * ch; ++i) {
@@ -416,8 +416,8 @@ void VideoPlayer::decodeThreadFunc() {
 
         std::lock_guard<std::mutex> al(ff.audioMutex);
         // Cap at ~5 seconds of audio to prevent unbounded growth.
-        static constexpr size_t maxPcm = 48000 * 2 * 5;
-        if (ff.audioPCM.size() + pcm.size() <= maxPcm) {
+        static constexpr size_t gmaxPcm = 48000 * 2 * 5;
+        if (ff.audioPCM.size() + pcm.size() <= gmaxPcm) {
             ff.audioPCM.insert(ff.audioPCM.end(), pcm.begin(), pcm.end());
         }
     };
@@ -514,14 +514,14 @@ bool VideoPlayer::initDecoder(const std::string& path) {
     // ── Hardware acceleration probe ──────────────────────────────────────────────────
     // Try each HW type in priority order; first success wins.
     // Falls through to pure software if nothing works.
-    static constexpr AVHWDeviceType kHwPriority[] = {
+    static constexpr AVHWDeviceType gkHwPriority[] = {
         AV_HWDEVICE_TYPE_VIDEOTOOLBOX,// macOS
         AV_HWDEVICE_TYPE_CUDA,// NVIDIA
         AV_HWDEVICE_TYPE_VAAPI,// Linux / Intel
         AV_HWDEVICE_TYPE_D3D11VA,// Windows
         AV_HWDEVICE_TYPE_NONE,
     };
-    for (const AVHWDeviceType hwType : kHwPriority) {
+    for (const AVHWDeviceType hwType : gkHwPriority) {
         if (hwType == AV_HWDEVICE_TYPE_NONE) {
             break;
         }

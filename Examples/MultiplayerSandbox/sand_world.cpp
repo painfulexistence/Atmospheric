@@ -3,7 +3,7 @@
 #include <cmath>
 
 namespace {
-    constexpr int kDispersion[] = {
+    constexpr int gkDispersion[] = {
         0,// Empty
         0,// Stone
         0,// Dirt
@@ -122,12 +122,12 @@ void SandWorld::Generate(uint32_t seed) {
     }
 
     // Liquid pools
-    static const Mat kPoolMats[] = { Mat::Water, Mat::Water, Mat::Water, Mat::Oil, Mat::Oil, Mat::Acid, Mat::Lava };
+    static const Mat gkPoolMats[] = { Mat::Water, Mat::Water, Mat::Water, Mat::Oil, Mat::Oil, Mat::Acid, Mat::Lava };
     for (int i = 0; i < 10; i++) {
         int cx = 20 + static_cast<int>(Rand() % (W - 40));
         int cy = surf[cx] + 15 + static_cast<int>(Rand() % std::max(1, H - surf[cx] - 25));
         int r = 5 + static_cast<int>(Rand() % 8);
-        Mat liquid = kPoolMats[Rand() % 7];
+        Mat liquid = gkPoolMats[Rand() % 7];
         for (int y = cy - r; y <= cy + r; y++) {
             for (int x = cx - r; x <= cx + r; x++) {
                 if (!InBounds(x, y)) continue;
@@ -266,18 +266,18 @@ void SandWorld::UpdateLiquid(int x, int y, uint8_t parity) {
 
     if (m == Mat::Lava) {
         // Lava interacts with neighbors before (slow) movement
-        static const int nx[] = { 0, 0, -1, 1 };
-        static const int ny[] = { -1, 1, 0, 0 };
+        static const int gnx[] = { 0, 0, -1, 1 };
+        static const int gny[] = { -1, 1, 0, 0 };
         for (int n = 0; n < 4; n++) {
-            Mat nm = GetMat(x + nx[n], y + ny[n]);
+            Mat nm = GetMat(x + gnx[n], y + gny[n]);
             if (nm == Mat::Water) {
-                SetCell(x + nx[n], y + ny[n], Mat::Steam);
+                SetCell(x + gnx[n], y + gny[n], Mat::Steam);
                 SetCell(x, y, Mat::Stone);
                 C(x, y).stamp = parity;
                 return;
             }
             if ((nm == Mat::Wood || nm == Mat::Oil) && (Rand() & 7) == 0) {
-                SetCell(x + nx[n], y + ny[n], Mat::Fire);
+                SetCell(x + gnx[n], y + gny[n], Mat::Fire);
             }
         }
         // Lava is viscous: only moves on some ticks
@@ -285,12 +285,12 @@ void SandWorld::UpdateLiquid(int x, int y, uint8_t parity) {
     }
 
     if (m == Mat::Acid) {
-        static const int nx[] = { 0, 0, -1, 1 };
-        static const int ny[] = { -1, 1, 0, 0 };
+        static const int gnx[] = { 0, 0, -1, 1 };
+        static const int gny[] = { -1, 1, 0, 0 };
         for (int n = 0; n < 4; n++) {
-            Mat nm = GetMat(x + nx[n], y + ny[n]);
+            Mat nm = GetMat(x + gnx[n], y + gny[n]);
             if ((nm == Mat::Dirt || nm == Mat::Sand || nm == Mat::Wood) && (Rand() & 15) == 0) {
-                SetCell(x + nx[n], y + ny[n], Mat::Empty);
+                SetCell(x + gnx[n], y + gny[n], Mat::Empty);
                 if ((Rand() & 3) == 0) {
                     C(x, y) = Cell{};// acid is consumed
                     return;
@@ -300,11 +300,11 @@ void SandWorld::UpdateLiquid(int x, int y, uint8_t parity) {
     }
 
     if (m == Mat::Water) {
-        static const int nx[] = { 0, 0, -1, 1 };
-        static const int ny[] = { -1, 1, 0, 0 };
+        static const int gnx[] = { 0, 0, -1, 1 };
+        static const int gny[] = { -1, 1, 0, 0 };
         for (int n = 0; n < 4; n++) {
-            if (GetMat(x + nx[n], y + ny[n]) == Mat::Fire) {
-                SetCell(x + nx[n], y + ny[n], Mat::Steam);
+            if (GetMat(x + gnx[n], y + gny[n]) == Mat::Fire) {
+                SetCell(x + gnx[n], y + gny[n], Mat::Steam);
             }
         }
     }
@@ -315,7 +315,7 @@ void SandWorld::UpdateLiquid(int x, int y, uint8_t parity) {
     if (TryDisplace(x, y, x - d, y + 1, parity)) return;
 
     // Horizontal dispersion: move toward the farthest reachable empty cell
-    int disp = kDispersion[static_cast<size_t>(m)];
+    int disp = gkDispersion[static_cast<size_t>(m)];
     int moved = 0;
     for (int k = 1; k <= disp; k++) {
         Mat ahead = GetMat(x + d * k, y);
@@ -340,16 +340,16 @@ void SandWorld::UpdateFire(int x, int y, uint8_t parity) {
     c.life--;
     c.stamp = parity;
 
-    static const int nx[] = { 0, 0, -1, 1, -1, 1, -1, 1 };
-    static const int ny[] = { -1, 1, 0, 0, -1, -1, 1, 1 };
+    static const int gnx[] = { 0, 0, -1, 1, -1, 1, -1, 1 };
+    static const int gny[] = { -1, 1, 0, 0, -1, -1, 1, 1 };
     for (int n = 0; n < 8; n++) {
-        Mat nm = GetMat(x + nx[n], y + ny[n]);
+        Mat nm = GetMat(x + gnx[n], y + gny[n]);
         if (nm == Mat::Water) {
             SetCell(x, y, Mat::Steam);
             return;
         }
-        if (nm == Mat::Wood && (Rand() & 31) == 0) SetCell(x + nx[n], y + ny[n], Mat::Fire);
-        if (nm == Mat::Oil && (Rand() & 3) == 0) SetCell(x + nx[n], y + ny[n], Mat::Fire);
+        if (nm == Mat::Wood && (Rand() & 31) == 0) SetCell(x + gnx[n], y + gny[n], Mat::Fire);
+        if (nm == Mat::Oil && (Rand() & 3) == 0) SetCell(x + gnx[n], y + gny[n], Mat::Fire);
     }
 
     if (GetMat(x, y - 1) == Mat::Empty && (Rand() & 15) == 0) {

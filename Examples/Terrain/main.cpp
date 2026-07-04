@@ -35,8 +35,8 @@ class TerrainDemo : public Application {
     bool _showProcedural = true;
     int _paletteIndex = 0;// 0-5; 0 = default warm pink/gold
 
-    static constexpr int paletteCount = 6;
-    static constexpr std::array<const char*, paletteCount> paletteNames = {
+    static constexpr int gpaletteCount = 6;
+    static constexpr std::array<const char*, gpaletteCount> gpaletteNames = {
         "1 - Warm Pink/Gold", "2 - Cool Blue/Purple", "3 - Earthy Green",
         "4 - Forest",         "5 - Soft Cool",        "6 - Vivid Mint/Coral"
     };
@@ -70,7 +70,7 @@ class TerrainDemo : public Application {
     }
 
     void ApplyPalette(int index) {
-        _paletteIndex = ((index % paletteCount) + paletteCount) % paletteCount;
+        _paletteIndex = ((index % gpaletteCount) + gpaletteCount) % gpaletteCount;
         for (auto* go : { _proceduralTerrain, _heightmapTerrain }) {
             if (!go) continue;
             if (auto* tm = go->GetComponent<TerrainMeshComponent>())
@@ -81,7 +81,7 @@ class TerrainDemo : public Application {
             _selPalette->SetSelection(_paletteIndex);
             _syncing = false;
         }
-        ConsoleSubsystem::Get()->Info(std::string("Terrain palette ") + paletteNames[_paletteIndex]);
+        ConsoleSubsystem::Get()->Info(std::string("Terrain palette ") + gpaletteNames[_paletteIndex]);
     }
 
     GameObject* CreateTerrain(const std::string& name, const std::shared_ptr<HeightField>& hf) {

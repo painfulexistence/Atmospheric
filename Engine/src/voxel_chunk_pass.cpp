@@ -224,19 +224,19 @@ void SunPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder
 
     // Simple quad: two triangles from the skybox cube's first face vertices
     // Use a minimal inline quad VAO via screenQuadVAO trick — draw a unit quad
-    static GLuint sunVAO = 0, sunVBO = 0;
-    if (sunVAO == 0) {
+    static GLuint gsunVao = 0, gsunVbo = 0;
+    if (gsunVao == 0) {
         float q[] = { -1, -1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, 1, 1, 0, -1, 1, 0 };
-        glGenVertexArrays(1, &sunVAO);
-        glGenBuffers(1, &sunVBO);
-        glBindVertexArray(sunVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, sunVBO);
+        glGenVertexArrays(1, &gsunVao);
+        glGenBuffers(1, &gsunVbo);
+        glBindVertexArray(gsunVao);
+        glBindBuffer(GL_ARRAY_BUFFER, gsunVbo);
         glBufferData(GL_ARRAY_BUFFER, sizeof(q), q, GL_STATIC_DRAW);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
         glBindVertexArray(0);
     }
-    glBindVertexArray(sunVAO);
+    glBindVertexArray(gsunVao);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
 

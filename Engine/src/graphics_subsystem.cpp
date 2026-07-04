@@ -182,8 +182,8 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
     }
 
     if (totalCount > 0) {
-        static int frameCounter = 0;
-        if (frameCounter++ % 60 == 0) {
+        static int gframeCounter = 0;
+        if (gframeCounter++ % 60 == 0) {
             ConsoleSubsystem::Get()->Info(fmt::format("Culling: total {} culled {}", totalCount, culledCount));
         }
     }

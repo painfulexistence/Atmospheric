@@ -10,10 +10,10 @@
 #include <unordered_map>
 
 struct BatchRenderer2D::Renderer2DData {
-    static const uint32_t maxQuads = 20000;
-    static const uint32_t maxVertices = maxQuads * 4;
-    static const uint32_t maxIndices = maxQuads * 6;
-    static const uint32_t maxTextureSlots = 16;// Reduced to 16 to fit common OpenGL limits on macOS
+    static const uint32_t gmaxQuads = 20000;
+    static const uint32_t gmaxVertices = gmaxQuads * 4;
+    static const uint32_t gmaxIndices = gmaxQuads * 6;
+    static const uint32_t gmaxTextureSlots = 16;// Reduced to 16 to fit common OpenGL limits on macOS
 
     GLuint quadVao = 0;
     GLuint quadVbo = 0;
@@ -30,7 +30,7 @@ struct BatchRenderer2D::Renderer2DData {
     std::unique_ptr<uint32_t[]> quadIndexBufferBase;
     uint32_t* quadIndexBufferPtr = nullptr;
 
-    std::array<uint32_t, maxTextureSlots> textureSlots;
+    std::array<uint32_t, gmaxTextureSlots> textureSlots;
     uint32_t textureSlotIndex = 1;// 0 = white texture
 
     glm::vec4 quadVertexPositions[4];
@@ -56,8 +56,8 @@ void BatchRenderer2D::Init() {
     // CPU-side staging is needed by both backends: under WebGPU the batcher
     // runs in CPU-only mode (StartBatch/DrawGeometry/DrainToCommands feed
     // GPUCanvasPass) and must not touch GL — no context exists.
-    m_Data->quadVertexBufferBase = std::make_unique<BatchVertex[]>(m_Data->maxVertices);
-    m_Data->quadIndexBufferBase = std::make_unique<uint32_t[]>(m_Data->maxIndices);
+    m_Data->quadVertexBufferBase = std::make_unique<BatchVertex[]>(m_Data->gmaxVertices);
+    m_Data->quadIndexBufferBase = std::make_unique<uint32_t[]>(m_Data->gmaxIndices);
 
     m_Data->quadVertexPositions[0] = { -0.5f, -0.5f, 0.0f, 1.0f };
     m_Data->quadVertexPositions[1] = { 0.5f, -0.5f, 0.0f, 1.0f };
@@ -81,7 +81,7 @@ void BatchRenderer2D::Init() {
 
     glGenBuffers(1, &m_Data->quadVbo);
     glBindBuffer(GL_ARRAY_BUFFER, m_Data->quadVbo);
-    glBufferData(GL_ARRAY_BUFFER, m_Data->maxVertices * sizeof(BatchVertex), nullptr, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, m_Data->gmaxVertices * sizeof(BatchVertex), nullptr, GL_DYNAMIC_DRAW);
 
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(BatchVertex), (const void*)offsetof(BatchVertex, position));
@@ -100,7 +100,7 @@ void BatchRenderer2D::Init() {
 
     glGenBuffers(1, &m_Data->quadIbo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_Data->quadIbo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_Data->maxIndices * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_Data->gmaxIndices * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
 
     // Create 1x1 white texture
     glGenTextures(1, &m_Data->whiteTexture);
@@ -325,7 +325,7 @@ void BatchRenderer2D::DrawQuad(const glm::mat4& transform, uint32_t textureID, c
 void BatchRenderer2D::DrawQuad(
     const glm::mat4& transform, uint32_t textureID, const glm::vec2* texCoords, const glm::vec4& color, int entityID
 ) {
-    if (m_Data->quadIndexCount >= Renderer2DData::maxIndices) NextBatch();
+    if (m_Data->quadIndexCount >= Renderer2DData::gmaxIndices) NextBatch();
 
     if (textureID == static_cast<uint32_t>(-1) || textureID == 0) textureID = m_Data->whiteTexture;
 
@@ -339,7 +339,7 @@ void BatchRenderer2D::DrawQuad(
         }
 
         if (textureIndex == 0.0f) {
-            if (m_Data->textureSlotIndex >= Renderer2DData::maxTextureSlots) NextBatch();
+            if (m_Data->textureSlotIndex >= Renderer2DData::gmaxTextureSlots) NextBatch();
 
             textureIndex = static_cast<float>(m_Data->textureSlotIndex);
             m_Data->textureSlots[m_Data->textureSlotIndex] = textureID;
@@ -396,7 +396,7 @@ void BatchRenderer2D::DrawLine(const glm::vec3& p0, const glm::vec3& p1, const g
     glm::vec3 v2 = p1 + perpendicular * halfThickness;
     glm::vec3 v3 = p0 + perpendicular * halfThickness;
 
-    if (m_Data->quadIndexCount >= Renderer2DData::maxIndices) NextBatch();
+    if (m_Data->quadIndexCount >= Renderer2DData::gmaxIndices) NextBatch();
 
     glm::vec2 defaultUV(0.5f, 0.5f);// Center of white texture
 
@@ -508,7 +508,7 @@ void BatchRenderer2D::DrawTriangleFilled(
 ) {
     // For triangles, we need to use 2 triangles forming a degenerate quad
     // We'll use the same vertex layout but with careful positioning
-    if (m_Data->quadIndexCount >= Renderer2DData::maxIndices) NextBatch();
+    if (m_Data->quadIndexCount >= Renderer2DData::gmaxIndices) NextBatch();
 
     glm::vec2 defaultUV(0.5f, 0.5f);
 
@@ -625,9 +625,9 @@ void BatchRenderer2D::DrawGeometry(
     if (vertices.empty() || indices.empty()) return;
 
     // Check if we have enough space
-    if (m_Data->quadIndexCount + indices.size() >= Renderer2DData::maxIndices
+    if (m_Data->quadIndexCount + indices.size() >= Renderer2DData::gmaxIndices
         || (m_Data->quadVertexBufferPtr - m_Data->quadVertexBufferBase.get()) + vertices.size()
-               >= Renderer2DData::maxVertices) {
+               >= Renderer2DData::gmaxVertices) {
         NextBatch();
     }
 
@@ -644,7 +644,7 @@ void BatchRenderer2D::DrawGeometry(
         }
 
         if (textureIndex == 0.0f) {
-            if (m_Data->textureSlotIndex >= Renderer2DData::maxTextureSlots) NextBatch();
+            if (m_Data->textureSlotIndex >= Renderer2DData::gmaxTextureSlots) NextBatch();
 
             textureIndex = static_cast<float>(m_Data->textureSlotIndex);
             m_Data->textureSlots[m_Data->textureSlotIndex] = textureID;

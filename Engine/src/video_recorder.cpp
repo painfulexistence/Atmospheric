@@ -222,7 +222,7 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
     }
 
     // Probe order: HW encoders first (lowest CPU overhead), then SW fallbacks.
-    static constexpr const char* kEncoderCandidates[] = {
+    static constexpr const char* gkEncoderCandidates[] = {
         "h264_videotoolbox",// macOS VideoToolbox (always available on Mac)
         "h264_nvenc",// NVIDIA GPU
         "libsvtav1",// SW AV1, fastest
@@ -239,11 +239,11 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
         if (codec) usedEncoder = m_config.encoder;
     }
     if (!codec) {
-        for (int i = 0; kEncoderCandidates[i]; ++i) {
-            if (m_config.encoder == kEncoderCandidates[i]) continue;
-            codec = avcodec_find_encoder_by_name(kEncoderCandidates[i]);
+        for (int i = 0; gkEncoderCandidates[i]; ++i) {
+            if (m_config.encoder == gkEncoderCandidates[i]) continue;
+            codec = avcodec_find_encoder_by_name(gkEncoderCandidates[i]);
             if (codec) {
-                usedEncoder = kEncoderCandidates[i];
+                usedEncoder = gkEncoderCandidates[i];
                 fmt::print("[VideoRecorder] Encoder '{}' not found, using '{}'\n", m_config.encoder, usedEncoder);
                 break;
             }

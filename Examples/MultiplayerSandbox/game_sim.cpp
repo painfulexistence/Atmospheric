@@ -9,13 +9,13 @@ const SpellDef kSpells[static_cast<int>(SpellType::Count)] = {
 
 namespace {
     constexpr float gravity = 0.07f;
-    constexpr float maxFall = 2.0f;
-    constexpr float walkAccel = 0.18f;
-    constexpr float walkMax = 0.9f;
-    constexpr float jumpVel = -1.7f;
-    constexpr float leviThrust = 0.16f;
-    constexpr float leviMaxRise = -1.2f;
-    constexpr uint32_t respawnTicks = 180;
+    constexpr float gmaxFall = 2.0f;
+    constexpr float gwalkAccel = 0.18f;
+    constexpr float gwalkMax = 0.9f;
+    constexpr float gjumpVel = -1.7f;
+    constexpr float gleviThrust = 0.16f;
+    constexpr float gleviMaxRise = -1.2f;
+    constexpr uint32_t grespawnTicks = 180;
 }// namespace
 
 void GameSim::Init(uint32_t seed) {
@@ -78,10 +78,10 @@ void GameSim::StepPlayer(int idx, const InputFrame& in) {
     bool inLiquid = SandWorld::IsLiquid(world.GetMat(static_cast<int>(p.x), static_cast<int>(p.y)));
 
     // Horizontal movement
-    if (in.buttons & BTN_LEFT) p.vx -= walkAccel;
-    if (in.buttons & BTN_RIGHT) p.vx += walkAccel;
+    if (in.buttons & BTN_LEFT) p.vx -= gwalkAccel;
+    if (in.buttons & BTN_RIGHT) p.vx += gwalkAccel;
     if (!(in.buttons & (BTN_LEFT | BTN_RIGHT))) p.vx *= p.grounded ? 0.72f : 0.92f;
-    p.vx = std::clamp(p.vx, -walkMax, walkMax);
+    p.vx = std::clamp(p.vx, -gwalkMax, gwalkMax);
 
     // Vertical: gravity / jump / levitation / swimming
     if (inLiquid) {
@@ -92,16 +92,16 @@ void GameSim::StepPlayer(int idx, const InputFrame& in) {
         p.vy += gravity;
         if ((in.buttons & BTN_JUMP)) {
             if (p.grounded) {
-                p.vy = jumpVel;
+                p.vy = gjumpVel;
                 p.grounded = false;
             } else if (p.levitation > 0) {
-                p.vy -= leviThrust;
+                p.vy -= gleviThrust;
                 p.levitation--;
-                if (p.vy < leviMaxRise) p.vy = leviMaxRise;
+                if (p.vy < gleviMaxRise) p.vy = gleviMaxRise;
             }
         }
     }
-    p.vy = std::min(p.vy, maxFall);
+    p.vy = std::min(p.vy, gmaxFall);
 
     // Axis-separated movement in sub-cell steps to avoid tunneling
     float remX = p.vx;
@@ -185,7 +185,7 @@ void GameSim::DamagePlayer(int idx, int dmg, int from, float kx, float ky) {
         p.hp = 0;
         p.alive = false;
         p.deaths++;
-        p.respawnAt = tick + respawnTicks;
+        p.respawnAt = tick + grespawnTicks;
         if (p.lastDamageFrom >= 0 && p.lastDamageFrom != idx) {
             players[p.lastDamageFrom].kills++;
         }

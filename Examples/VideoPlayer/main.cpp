@@ -5,7 +5,7 @@
 // Example: ./VideoPlayer my_clip.mp4
 // Example: ./VideoPlayer https://example.com/stream.m3u8
 // Default: Sprite Fright (CC-BY, Blender Studio) — auto-downloaded at build time.
-static std::string gVideoPath = "assets/video/sprite_fright.webm";
+static std::string gvideoPath = "assets/video/sprite_fright.webm";
 
 class VideoPlayerDemo : public Application {
     using Application::Application;
@@ -33,16 +33,16 @@ class VideoPlayerDemo : public Application {
         _m_videoTex = GfxFactory::UploadTexture2D(black, 1, 1);
 
         // Open video -- supports local paths AND HTTP / HTTPS / RTSP / HLS URLs.
-        if (_m_player.open(gVideoPath)) {
+        if (_m_player.open(gvideoPath)) {
             _m_player.play();
-            ConsoleSubsystem::Get()->Info(fmt::format("Playing '{}' ({:.1f} s)", gVideoPath, _m_player.getDuration()));
+            ConsoleSubsystem::Get()->Info(fmt::format("Playing '{}' ({:.1f} s)", gvideoPath, _m_player.getDuration()));
         } else {
             ConsoleSubsystem::Get()->Warn(
                 fmt::format(
                     "Could not open '{}'. "
                     "Make sure the engine was built with FFmpeg support "
                     "and that the path / URL is valid.",
-                    gVideoPath
+                    gvideoPath
                 )
             );
         }
@@ -117,7 +117,7 @@ public:
 
 // Native entry point -- no Emscripten support (FFmpeg is unavailable on WASM).
 int main(int argc, char* argv[]) {
-    if (argc > 1) gVideoPath = argv[1];
+    if (argc > 1) gvideoPath = argv[1];
 
     VideoPlayerDemo game(
         {
