@@ -6,9 +6,9 @@
 # produce diff churn and reproducibility issues.
 #
 # Usage:
-#   ./scripts/checkClangVersion.sh                          # check both tools
-#   ./scripts/checkClangVersion.sh --tool clang-format      # check one tool
-#   ./scripts/checkClangVersion.sh --print-primary-version  # emit version only
+#   ./scripts/checkLLVMVersion.sh                          # check both tools
+#   ./scripts/checkLLVMVersion.sh --tool clang-format      # check one tool
+#   ./scripts/checkLLVMVersion.sh --print-primary-version  # emit version only
 
 set -euo pipefail
 

@@ -24,9 +24,9 @@ SEARCH_DIRS = [
 
 
 def check_clang_version(script_dir):
-    # Delegates to checkClangVersion.sh so the pinned version lives in one
+    # Delegates to checkLLVMVersion.sh so the pinned version lives in one
     # place (the shell script) and can also be consumed by CI directly.
-    checker = os.path.join(script_dir, 'checkClangVersion.sh')
+    checker = os.path.join(script_dir, 'checkLLVMVersion.sh')
     result = subprocess.run([checker], check=False)
     if result.returncode != 0:
         sys.exit(result.returncode)
