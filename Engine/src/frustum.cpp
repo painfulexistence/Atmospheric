@@ -32,9 +32,10 @@ Frustum::Frustum(const glm::mat4& viewingMatrix) {
 
 bool Frustum::Intersects(glm::vec3 point) const {
     // NOTES: a * x + b * y + c * z + d > 0 if (x, y, z) is in the "inside" halfsapce
-    if (_near.Halfspace(point) < 0 || _far.Halfspace(point) < 0) return false;
-    if (_bottom.Halfspace(point) < 0 || _top.Halfspace(point) < 0) return false;
-    if (_left.Halfspace(point) < 0 || _right.Halfspace(point) < 0) return false;
+    using HS = Plane::Halfspace;
+    if (_near.ClassifyPoint(point) == HS::NEGATIVE || _far.ClassifyPoint(point) == HS::NEGATIVE) return false;
+    if (_bottom.ClassifyPoint(point) == HS::NEGATIVE || _top.ClassifyPoint(point) == HS::NEGATIVE) return false;
+    if (_left.ClassifyPoint(point) == HS::NEGATIVE || _right.ClassifyPoint(point) == HS::NEGATIVE) return false;
 
     return true;
 }

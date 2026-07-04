@@ -2,7 +2,7 @@
 #include "globals.hpp"
 
 struct Plane {
-    enum Halfspace { NEGATIVE = -1, ZERO = 0, POSITIVE = 1 };
+    enum class Halfspace { NEGATIVE = -1, ZERO = 0, POSITIVE = 1 };
 
     float a, b, c, d;
 
@@ -11,10 +11,12 @@ struct Plane {
         return naiveDist / glm::length(glm::vec3(a, b, c));
     };
 
-    Halfspace Halfspace(glm::vec3 p) const {
+    // Renamed from Halfspace() — a method sharing its enum's name is a lookup
+    // hazard, and enum class Halfspace forbids the old `< 0` comparison anyway.
+    Halfspace ClassifyPoint(glm::vec3 p) const {
         float naiveDist = a * p.x + b * p.y + c * p.z + d;
-        if (naiveDist == 0) return ZERO;
-        return naiveDist > 0 ? POSITIVE : NEGATIVE;
+        if (naiveDist == 0) return Halfspace::ZERO;
+        return naiveDist > 0 ? Halfspace::POSITIVE : Halfspace::NEGATIVE;
     };
 };
 
