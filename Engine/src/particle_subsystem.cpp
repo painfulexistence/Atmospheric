@@ -1,8 +1,8 @@
-#include "particle_server.hpp"
+#include "particle_subsystem.hpp"
 
 #include "asset_manager.hpp"
-#include "console.hpp"
-#include "graphics_server.hpp"
+#include "console_subsystem.hpp"
+#include "graphics_subsystem.hpp"
 #include "particle_emitter.hpp"
 #include "renderer.hpp"
 #include "rng.hpp"
@@ -14,37 +14,37 @@
 
 namespace Atmospheric {
 
-    void ParticleServer::Init(GraphicsServer* in_graphics_server) {
+    void ParticleSubsystem::Init(GraphicsSubsystem* in_graphics_server) {
         this->graphics_server = in_graphics_server;
         if (this->graphics_server == nullptr) {
-            throw std::runtime_error("Invalid graphics server provided to ParticleServer.");
+            throw std::runtime_error("Invalid graphics server provided to ParticleSubsystem.");
         }
-        this->renderer = this->graphics_server->renderer;
+        this->renderer = this->graphics_server->renderer.get();
         if (this->renderer == nullptr) {
-            throw std::runtime_error("Renderer is not initialized in GraphicsServer.");
+            throw std::runtime_error("Renderer is not initialized in GraphicsSubsystem.");
         }
 
         CreateSharedResources();
         CreatePipelines();
-        Console::Get()->Info("Particle Server Initialized");
+        ConsoleSubsystem::Get()->Info("Particle Subsystem Initialized");
     }
 
-    void ParticleServer::Shutdown() {
+    void ParticleSubsystem::Shutdown() {
         // Shaders and meshes are managed by AssetManager, no need to delete here.
         // Emitter components are responsible for releasing their own resources via OnDetach.
         graphics_server = nullptr;
         renderer = nullptr;
     }
 
-    void ParticleServer::Register(ParticleEmitterComponent* emitter) {
+    void ParticleSubsystem::Register(ParticleEmitterComponent* emitter) {
         emitters.push_back(emitter);
     }
 
-    void ParticleServer::Unregister(ParticleEmitterComponent* emitter) {
+    void ParticleSubsystem::Unregister(ParticleEmitterComponent* emitter) {
         emitters.erase(std::remove(emitters.begin(), emitters.end(), emitter), emitters.end());
     }
 
-    void ParticleServer::CreatePipelines() {
+    void ParticleSubsystem::CreatePipelines() {
         AssetManager& assets = AssetManager::Get();
         try {
             // Simulation Shader
@@ -54,7 +54,7 @@ namespace Atmospheric {
             sim_props.feedbackVaryings = { "out_position", "out_velocity", "out_color", "out_life",
                                            "out_size",     "out_pad0",     "out_pad1" };
             assets.CreateShader("particle_sim", sim_props);
-            simulation_shader = assets.GetShader("particle_sim");
+            simulation_shader = assets.GetShaderHandle("particle_sim");
 
             // Drawing Shader
             // Assuming Particle.vert and Particle.frag are already loaded or can be loaded.
@@ -62,10 +62,10 @@ namespace Atmospheric {
             draw_props.vert = "shaders/Particle.vert";
             draw_props.frag = "shaders/Particle.frag";
             assets.CreateShader("particle_draw", draw_props);
-            drawing_shader = assets.GetShader("particle_draw");
+            drawing_shader = assets.GetShaderHandle("particle_draw");
 
         } catch (const std::exception& e) {
-            Console::Get()->Error(fmt::format("Failed to create particle shaders: {}", e.what()));
+            ConsoleSubsystem::Get()->Error(fmt::format("Failed to create particle shaders: {}", e.what()));
             throw;
         }
     }
@@ -101,7 +101,7 @@ namespace Atmospheric {
         return mesh;
     }
 
-    void ParticleServer::CreateSharedResources() {
+    void ParticleSubsystem::CreateSharedResources() {
         // The quad mesh for drawing particles
         auto& am = AssetManager::Get();
         quad_mesh = am.GetMesh("quad");
@@ -111,7 +111,7 @@ namespace Atmospheric {
         }
     }
 
-    void ParticleServer::CreateEmitterResources(ParticleEmitterComponent* emitter) {
+    void ParticleSubsystem::CreateEmitterResources(ParticleEmitterComponent* emitter) {
         // 1. Create VAO for simulation pass
         glGenVertexArrays(1, &emitter->vao);
 
@@ -144,20 +144,20 @@ namespace Atmospheric {
         glBindBuffer(GL_ARRAY_BUFFER, emitter->GetCurrentSourceVBO());// Bind one of the VBOs to set layout
 
         glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Particle), (void*)offsetof(Particle, position));
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, position)));
         glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Particle), (void*)offsetof(Particle, velocity));
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, velocity)));
         glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(Particle), (void*)offsetof(Particle, color));
+        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, color)));
         glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(Particle), (void*)offsetof(Particle, life));
+        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, life)));
         glEnableVertexAttribArray(4);
-        glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(Particle), (void*)offsetof(Particle, size));
+        glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, size)));
 
         glBindVertexArray(0);
     }
 
-    void ParticleServer::ReleaseEmitterResources(ParticleEmitterComponent* emitter) {
+    void ParticleSubsystem::ReleaseEmitterResources(ParticleEmitterComponent* emitter) {
         if (emitter->vao != 0) {
             glDeleteVertexArrays(1, &emitter->vao);
         }
@@ -171,17 +171,18 @@ namespace Atmospheric {
         float deltaTime;
     };
 
-    void ParticleServer::Simulate(float deltaTime) {
-        if (emitters.empty() || !simulation_shader) return;
+    void ParticleSubsystem::Simulate(float deltaTime) {
+        ShaderProgram* simShader = AssetManager::Get().ResolveShader(simulation_shader);
+        if (emitters.empty() || !simShader) return;
 
-        simulation_shader->Activate();
+        simShader->Activate();
         renderer->BeginTransformFeedbackPass();
 
         for (auto* emitter : emitters) {
             SimUniforms uniforms = { .attractorPos = emitter->attractor, .deltaTime = deltaTime };
             // A bit of a hack to set uniforms without a proper UBO system
-            simulation_shader->SetUniform("attractorPos", uniforms.attractorPos);
-            simulation_shader->SetUniform("deltaTime", uniforms.deltaTime);
+            simShader->SetUniform("attractorPos", uniforms.attractorPos);
+            simShader->SetUniform("deltaTime", uniforms.deltaTime);
 
             glBindVertexArray(emitter->GetVAO());
             glBindBuffer(GL_ARRAY_BUFFER, emitter->GetCurrentSourceVBO());
@@ -192,15 +193,16 @@ namespace Atmospheric {
 
         renderer->EndTransformFeedbackPass();
         glBindVertexArray(0);
-        simulation_shader->Deactivate();
+        simShader->Deactivate();
     }
 
-    void ParticleServer::Draw(const CameraInfo& camInfo) {
-        if (emitters.empty() || !drawing_shader) return;
+    void ParticleSubsystem::Draw(const CameraInfo& camInfo) {
+        ShaderProgram* drawShader = AssetManager::Get().ResolveShader(drawing_shader);
+        if (emitters.empty() || !drawShader) return;
 
-        drawing_shader->Activate();
-        drawing_shader->SetUniform("cam_pos", camInfo.position);
-        drawing_shader->SetUniform("ProjectionView", camInfo.projection * camInfo.view);
+        drawShader->Activate();
+        drawShader->SetUniform("cam_pos", camInfo.position);
+        drawShader->SetUniform("ProjectionView", camInfo.projection * camInfo.view);
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE);// Additive blending
@@ -221,15 +223,15 @@ namespace Atmospheric {
 
             // Re-set the vertex attrib pointers for the particle data, this time with divisors for instancing.
             glEnableVertexAttribArray(2);// instance position
-            glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Particle), (void*)offsetof(Particle, position));
+            glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, position)));
             glVertexAttribDivisor(2, 1);
 
             glEnableVertexAttribArray(3);// instance color
-            glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Particle), (void*)offsetof(Particle, color));
+            glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, color)));
             glVertexAttribDivisor(3, 1);
 
             glEnableVertexAttribArray(4);// instance size
-            glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(Particle), (void*)offsetof(Particle, size));
+            glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(Particle), reinterpret_cast<void*>(offsetof(Particle, size)));
             glVertexAttribDivisor(4, 1);
 
             glDrawElementsInstanced(
@@ -247,6 +249,6 @@ namespace Atmospheric {
         glBindVertexArray(0);
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
-        drawing_shader->Deactivate();
+        drawShader->Deactivate();
     }
 }// namespace Atmospheric

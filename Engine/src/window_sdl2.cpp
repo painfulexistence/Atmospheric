@@ -5,7 +5,7 @@
 #endif
 #include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_opengl3.h"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 
 static int convertToSDLKey(Key key) {
     switch (key) {
@@ -150,13 +150,16 @@ Window::~Window() {
     SDL_GL_DeleteContext(SDL_GL_GetCurrentContext());
     SDL_DestroyWindow(static_cast<SDL_Window*>(_internal));
     SDL_Quit();
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
 void Window::Init() {
 }
 
 void* Window::GetProcAddress() {
-    return (void*)SDL_GL_GetProcAddress;
+    return reinterpret_cast<void*>(SDL_GL_GetProcAddress);
 }
 
 void Window::InitImGui() {
@@ -309,7 +312,7 @@ void Window::SetTitle(const std::string& title) {
 }
 
 float Window::GetTime() {
-    return (float)SDL_GetTicks() * 0.001f; // Note that glfwGetTime() only starts to calculate time after the window is created;
+    return static_cast<float>(SDL_GetTicks()) * 0.001f; // Note that glfwGetTime() only starts to calculate time after the window is created;
 }
 
 void Window::SetTime(double time) {

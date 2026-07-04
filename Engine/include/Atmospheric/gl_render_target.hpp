@@ -40,10 +40,10 @@ public:
 
     // 2D projection helpers
     glm::mat4 GetProjectionMatrix() const {
-        return glm::ortho(0.0f, (float)_width, (float)_height, 0.0f, -1.0f, 1.0f);
+        return glm::ortho(0.0f, static_cast<float>(_width), static_cast<float>(_height), 0.0f, -1.0f, 1.0f);
     }
     glm::mat4 GetProjectionMatrixFlipped() const {
-        return glm::ortho(0.0f, (float)_width, 0.0f, (float)_height, -1.0f, 1.0f);
+        return glm::ortho(0.0f, static_cast<float>(_width), 0.0f, static_cast<float>(_height), -1.0f, 1.0f);
     }
 
 private:

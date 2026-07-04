@@ -1,6 +1,6 @@
 #include "gl_buffer.hpp"
 #include "vertex.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 
 static GLenum ToGLTopology(PrimitiveTopology topology) {
     switch (topology) {
@@ -79,11 +79,11 @@ void GLBuffer::Initialize(VertexFormat format, BufferUsage usage) {
 void GLBuffer::SetupVertexAttributes() {
     switch (_format) {
         case VertexFormat::Standard:
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(float)));
-            glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(5 * sizeof(float)));
-            glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(8 * sizeof(float)));
-            glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(11 * sizeof(float)));
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(3 * sizeof(float)));
+            glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(5 * sizeof(float)));
+            glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(8 * sizeof(float)));
+            glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(11 * sizeof(float)));
             glEnableVertexAttribArray(0);
             glEnableVertexAttribArray(1);
             glEnableVertexAttribArray(2);
@@ -92,17 +92,17 @@ void GLBuffer::SetupVertexAttributes() {
             break;
 
         case VertexFormat::Debug:
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), (void*)0);
-            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), (void*)(3 * sizeof(float)));
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), nullptr);
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), reinterpret_cast<void*>(3 * sizeof(float)));
             glEnableVertexAttribArray(0);
             glEnableVertexAttribArray(1);
             break;
 
         case VertexFormat::Canvas:
-            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)0);
-            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)(2 * sizeof(float)));
-            glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)(4 * sizeof(float)));
-            glVertexAttribIPointer(3, 1, GL_INT,  sizeof(CanvasVertex), (void*)(8 * sizeof(float)));
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), nullptr);
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(2 * sizeof(float)));
+            glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(4 * sizeof(float)));
+            glVertexAttribIPointer(3, 1, GL_INT,  sizeof(CanvasVertex), reinterpret_cast<void*>(8 * sizeof(float)));
             glEnableVertexAttribArray(0);
             glEnableVertexAttribArray(1);
             glEnableVertexAttribArray(2);
@@ -110,16 +110,16 @@ void GLBuffer::SetupVertexAttributes() {
             break;
 
         case VertexFormat::Screen:
-            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(ScreenVertex), (void*)0);
-            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(ScreenVertex), (void*)offsetof(ScreenVertex, texCoord));
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(ScreenVertex), nullptr);
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(ScreenVertex), reinterpret_cast<void*>(offsetof(ScreenVertex, texCoord)));
             glEnableVertexAttribArray(0);
             glEnableVertexAttribArray(1);
             break;
 
         case VertexFormat::Voxel:
-            glVertexAttribIPointer(0, 3, GL_UNSIGNED_BYTE, sizeof(VoxelVertex), (void*)0);
-            glVertexAttribIPointer(1, 1, GL_UNSIGNED_BYTE, sizeof(VoxelVertex), (void*)(3 * sizeof(uint8_t)));
-            glVertexAttribIPointer(2, 1, GL_UNSIGNED_BYTE, sizeof(VoxelVertex), (void*)(4 * sizeof(uint8_t)));
+            glVertexAttribIPointer(0, 3, GL_UNSIGNED_BYTE, sizeof(VoxelVertex), nullptr);
+            glVertexAttribIPointer(1, 1, GL_UNSIGNED_BYTE, sizeof(VoxelVertex), reinterpret_cast<void*>(3 * sizeof(uint8_t)));
+            glVertexAttribIPointer(2, 1, GL_UNSIGNED_BYTE, sizeof(VoxelVertex), reinterpret_cast<void*>(4 * sizeof(uint8_t)));
             glEnableVertexAttribArray(0);
             glEnableVertexAttribArray(1);
             glEnableVertexAttribArray(2);

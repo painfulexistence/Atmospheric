@@ -17,7 +17,7 @@ WaterComponent::WaterComponent(GameObject* owner, const WaterProps& props)
     );
 
     _material = am.CreateWaterMaterial();
-    if (Mesh* meshPtr = am.GetMeshPtr(_mesh)) meshPtr->SetMaterial(_material);
+    if (Mesh* meshPtr = am.GetMeshPtr(_mesh)) meshPtr->SetMaterial(am.GetMaterialHandle(_material));
 
     owner->AddComponent<MeshComponent>(_mesh);
 }

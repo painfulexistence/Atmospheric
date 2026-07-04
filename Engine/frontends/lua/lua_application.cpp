@@ -6,11 +6,11 @@
 
 // Forward declarations for binding functions
 void BindCoreTypes(sol::state& lua);
-void BindInputAPI(sol::state& lua, Input* input);
+void BindInputAPI(sol::state& lua, InputSubsystem* input);
 void BindWorldAPI(sol::state& lua, LuaApplication* app);
-void BindGraphicsAPI(sol::state& lua, GraphicsServer* graphics);
+void BindGraphicsAPI(sol::state& lua, GraphicsSubsystem* graphics);
 void BindPhysicsAPI(sol::state& lua, LuaApplication* app);
-void BindAudioAPI(sol::state& lua, AudioManager* audio);
+void BindAudioAPI(sol::state& lua, AudioSubsystem* audio);
 
 LuaApplication::LuaApplication(AppConfig config) : Application(config) {
 }
@@ -85,10 +85,11 @@ void LuaApplication::InitializeLua() {
     packagePath += ";./assets/?.lua;./assets/?/init.lua";
     packagePath += ";./?.lua;./?/init.lua";
 
-    // Add resolved fallback paths next
-    std::string baseScripts = FileSystem::Get().ResolvePath("assets/scripts");
-    packagePath += ";" + baseScripts + "/?.lua";
-    packagePath += ";" + baseScripts + "/?/init.lua";
+    // Add resolved fallback paths next (only if the directory exists)
+    if (auto baseScripts = FileSystem::Get().ResolvePath("assets/scripts")) {
+        packagePath += ";" + *baseScripts + "/?.lua";
+        packagePath += ";" + *baseScripts + "/?/init.lua";
+    }
     _lua["package"]["path"] = packagePath;
 
     ENGINE_LOG("Lua environment initialized");
@@ -101,20 +102,20 @@ void LuaApplication::BindEngineAPIs() {
     // Bind core types (vec2, vec3, etc.)
     BindCoreTypes(_lua);
 
-    // Bind Input API
-    BindInputAPI(_lua, GetInput());
+    // Bind input API
+    BindInputAPI(_lua, InputSubsystem::Get());
 
     // Bind World/Scene API
     BindWorldAPI(_lua, this);
 
     // Bind Graphics API
-    BindGraphicsAPI(_lua, GetGraphicsServer());
+    BindGraphicsAPI(_lua, GraphicsSubsystem::Get());
 
     // Bind Physics API
     BindPhysicsAPI(_lua, this);
 
     // Bind Audio API
-    BindAudioAPI(_lua, GetAudioManager());
+    BindAudioAPI(_lua, AudioSubsystem::Get());
 
     // Bind application-level functions
     atmos["quit"] = [this]() { Quit(); };
@@ -145,9 +146,8 @@ void LuaApplication::LoadUserScripts() {
 #endif
         {
             // Fall back to resolved virtual paths (cache, MEMFS, or g_basePath on native)
-            std::string resolved = FileSystem::Get().ResolvePath(path);
-            if (FileSystem::Get().Exists(resolved)) {
-                targetPath = resolved;
+            if (auto resolved = FileSystem::Get().ResolvePath(path)) {
+                targetPath = *resolved;
                 exists = true;
             }
         }

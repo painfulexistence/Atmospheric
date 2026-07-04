@@ -18,12 +18,15 @@ std::string MeshComponent::GetName() const {
 }
 
 void MeshComponent::OnAttach() {
-    if (gameObject->GetApp()->GetGraphicsServer()) {
-        gameObject->GetApp()->GetGraphicsServer()->RegisterMesh(this);
+    if (GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->RegisterMesh(this);
     }
 }
 
 void MeshComponent::OnDetach() {
+    if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->UnregisterMesh(this);
+    }
 }
 
 MeshHandle MeshComponent::GetMesh() const {
@@ -35,21 +38,22 @@ void MeshComponent::SetMesh(MeshHandle mesh) {
 }
 
 Material* MeshComponent::GetMaterial() const {
-    if (_material) {
-        return _material;
+    auto& assets = AssetManager::Get();
+    if (Material* mat = assets.ResolveMaterial(_material)) {
+        return mat;
     }
-    Mesh* meshPtr = AssetManager::Get().GetMeshPtr(_mesh);
-    return meshPtr ? meshPtr->GetMaterial() : nullptr;
+    Mesh* meshPtr = assets.GetMeshPtr(_mesh);
+    return meshPtr ? assets.ResolveMaterial(meshPtr->GetMaterial()) : nullptr;
 }
 
-void MeshComponent::SetMaterial(Material* material) {
+void MeshComponent::SetMaterial(MaterialHandle material) {
     _material = material;
 }
 
 void MeshComponent::DrawImGui() {
     auto* mat = GetMaterial();
     auto& assetManager = AssetManager::Get();
-    int textureCount = (int)assetManager.GetTextures().size();
+    int textureCount = static_cast<int>(assetManager.GetTextures().size());
     int baseMap = mat->baseMap;
     if (ImGui::SliderInt("Base map ID", &baseMap, -1, textureCount - 1)) mat->baseMap = baseMap;
     int normalMap = mat->normalMap;

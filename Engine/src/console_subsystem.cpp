@@ -1,4 +1,4 @@
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #ifdef __EMSCRIPTEN__
 #include "emscripten.h"
 #else
@@ -6,19 +6,22 @@
 #include "spdlog/spdlog.h"
 #endif
 
-Console* Console::_instance = nullptr;
+ConsoleSubsystem* ConsoleSubsystem::_instance = nullptr;
 
-Console::Console() {
-    if (_instance != nullptr) throw std::runtime_error("Console is already initialized!");
+ConsoleSubsystem::ConsoleSubsystem() {
+    if (_instance != nullptr) throw std::runtime_error("ConsoleSubsystem is already initialized!");
 
     _instance = this;
 }
 
-Console::~Console() {
+ConsoleSubsystem::~ConsoleSubsystem() {
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
-void Console::Init(Application* app) {
-    Server::Init(app);
+void ConsoleSubsystem::Init(Application* app) {
+    Subsystem::Init(app);
 
 #ifndef __EMSCRIPTEN__
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
@@ -27,10 +30,10 @@ void Console::Init(Application* app) {
 #endif
 }
 
-void Console::Process(float dt) {
+void ConsoleSubsystem::Process(float dt) {
 }
 
-void Console::DrawImGui(float dt) {
+void ConsoleSubsystem::DrawImGui(float dt) {
     if (ImGui::CollapsingHeader("Console", ImGuiTreeNodeFlags_DefaultOpen)) {
 #ifndef __EMSCRIPTEN__
         ImGui::Text("Log Level:");
@@ -64,7 +67,7 @@ void Console::DrawImGui(float dt) {
     }
 }
 
-void Console::Info(const std::string& message) {
+void ConsoleSubsystem::Info(const std::string& message) {
 #if RUNTIME_LOG_ON
 #ifdef __EMSCRIPTEN__
     EM_ASM({
@@ -76,7 +79,7 @@ void Console::Info(const std::string& message) {
 #endif
 }
 
-void Console::Warn(const std::string& message) {
+void ConsoleSubsystem::Warn(const std::string& message) {
 #if RUNTIME_LOG_ON
 #ifdef __EMSCRIPTEN__
     EM_ASM({
@@ -88,7 +91,7 @@ void Console::Warn(const std::string& message) {
 #endif
 }
 
-void Console::Error(const std::string& message) {
+void ConsoleSubsystem::Error(const std::string& message) {
 #if RUNTIME_LOG_ON
 #ifdef __EMSCRIPTEN__
     EM_ASM({
@@ -100,15 +103,15 @@ void Console::Error(const std::string& message) {
 #endif
 }
 
-void Console::RegisterCommand(const std::string& cmd, std::function<void(const std::vector<std::string>&)> callback) {
+void ConsoleSubsystem::RegisterCommand(const std::string& cmd, std::function<void(const std::vector<std::string>&)> callback) {
     _commands[cmd] = callback;
 }
 
-void Console::ExecuteCommand(const std::string& cmd) {
+void ConsoleSubsystem::ExecuteCommand(const std::string& cmd) {
     auto it = _commands.find(cmd);
     if (it != _commands.end()) {
         it->second({});
     }
 
-    // Script::Get()->Run(cmd); // Script system refactored
+    // ScriptSubsystem::Get()->Run(cmd); // ScriptSubsystem system refactored
 }

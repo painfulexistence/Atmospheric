@@ -72,7 +72,7 @@ public:
     static std::vector<std::string> GetSupportedNodeTypes();
 
 private:
-    Application* _app;
+    Application* _app = nullptr;
 
     // Parse the binary and create node hierarchy
     GameObject* ParseNodeTree(

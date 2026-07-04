@@ -34,14 +34,14 @@ public:
 private:
     InputFrame Sample() {
         auto* app = gameObject->GetApp();
-        auto* inp = app->GetInput();
+        auto* inp = InputSubsystem::Get();
         InputFrame f;
         if (inp->IsKeyDown(Key::A) || inp->IsKeyDown(Key::LEFT))  f.buttons |= BTN_LEFT;
         if (inp->IsKeyDown(Key::D) || inp->IsKeyDown(Key::RIGHT)) f.buttons |= BTN_RIGHT;
         if (inp->IsKeyDown(Key::W) || inp->IsKeyDown(Key::SPACE) || inp->IsKeyDown(Key::UP))
             f.buttons |= BTN_JUMP;
         if (inp->IsKeyDown(Key::S) || inp->IsKeyDown(Key::DOWN))  f.buttons |= BTN_DOWN;
-        if (app->GetWindow()->GetMouseButtonState())               f.buttons |= BTN_FIRE;
+        if (Window::Get()->GetMouseButtonState())               f.buttons |= BTN_FIRE;
 
         static const Key spellKeys[] = {
             Key::Num1, Key::Num2, Key::Num3, Key::Num4,
@@ -81,7 +81,7 @@ public:
 
     void Start(LockstepNet::Mode mode, uint16_t port, uint32_t seed, int delay,
                const std::string& joinIp = "") {
-        auto* con = gameObject->GetApp()->GetConsole();
+        auto* con = ConsoleSubsystem::Get();
         switch (mode) {
         case LockstepNet::Mode::Host:
             _net.StartHost(port, seed, delay);
@@ -113,7 +113,7 @@ public:
         if (!_started && _net.state == LockstepNet::State::Running) {
             _sim.Init(_net.seed);
             _started = true;
-            gameObject->GetApp()->GetConsole()->Info(
+            ConsoleSubsystem::Get()->Info(
                 fmt::format("Game started, seed {}, local player {}", _net.seed, _net.localPlayer)
             );
         }

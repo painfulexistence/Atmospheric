@@ -56,7 +56,7 @@ public:
     const std::vector<std::string>& log() const { return _log; }
     int  selectedTarget() const { return _target; }
     int  encounterIndex() const { return _encounter; }
-    int  encounterCount() const { return (int)Encounters().size(); }
+    int  encounterCount() const { return static_cast<int>(Encounters().size()); }
     const std::vector<int>& rewardCards() const { return _reward; }
     float bannerTimer() const { return _bannerTimer; }
 
@@ -79,12 +79,12 @@ public:
 
     // ---- intents driven by input -------------------------------------------
     void SetTarget(int idx) {
-        if (idx >= 0 && idx < (int)_enemies.size() && _enemies[idx]->IsAlive())
+        if (idx >= 0 && idx < static_cast<int>(_enemies.size()) && _enemies[idx]->IsAlive())
             _target = idx;
     }
     void CycleTarget() {
-        for (int step = 1; step <= (int)_enemies.size(); ++step) {
-            int i = (_target + step) % (int)_enemies.size();
+        for (int step = 1; step <= static_cast<int>(_enemies.size()); ++step) {
+            int i = (_target + step) % static_cast<int>(_enemies.size());
             if (_enemies[i]->IsAlive()) { _target = i; break; }
         }
     }
@@ -92,7 +92,7 @@ public:
     // Returns true if the card was actually played.
     bool TryPlayCard(int handIdx, int targetIdx) {
         if (_phase != Phase::PlayerTurn) return false;
-        if (handIdx < 0 || handIdx >= (int)_deck->Hand().size()) return false;
+        if (handIdx < 0 || handIdx >= static_cast<int>(_deck->Hand().size())) return false;
 
         const CardDef& card = GetCard(_deck->Hand()[handIdx]);
         if (!_energy->CanAfford(card.cost)) {
@@ -139,7 +139,7 @@ public:
     // After Reward (or to skip it). choice < 0 skips taking a card.
     void TakeReward(int choice) {
         if (_phase != Phase::Reward) return;
-        if (choice >= 0 && choice < (int)_reward.size()) {
+        if (choice >= 0 && choice < static_cast<int>(_reward.size())) {
             _deck->AddCard(_reward[choice]);
             pushLog("Added " + GetCard(_reward[choice]).name + " to deck");
         }
@@ -183,7 +183,7 @@ private:
         _playerGO->AddComponent<HealthComponent>(Tuning::PLAYER_MAX_HP);
         _playerGO->AddComponent<StatusComponent>();
         _playerGO->AddComponent<EnergyComponent>();
-        _playerGO->AddComponent<DeckComponent>(StartingDeck(), (unsigned)_rng());
+        _playerGO->AddComponent<DeckComponent>(StartingDeck(), static_cast<unsigned>(_rng()));
         _playerGO->AddComponent<CombatantComponent>(std::string("Hero"), true);
 
         _player = _playerGO->GetComponent<CombatantComponent>();
@@ -203,7 +203,7 @@ private:
             go->SetName(def.name);
             go->AddComponent<HealthComponent>(def.maxHp);
             go->AddComponent<StatusComponent>();
-            go->AddComponent<EnemyBrainComponent>(&def, (unsigned)_rng());
+            go->AddComponent<EnemyBrainComponent>(&def, static_cast<unsigned>(_rng()));
             go->AddComponent<CombatantComponent>(def.name, false);
             _enemyGOs.push_back(go);
             _enemies.push_back(go->GetComponent<CombatantComponent>());
@@ -236,10 +236,10 @@ private:
     // ---- enemy turn --------------------------------------------------------
     void stepEnemyTurn() {
         // Find the next enemy that still needs to act.
-        while (_actIdx < (int)_enemies.size() && !_enemies[_actIdx]->IsAlive())
+        while (_actIdx < static_cast<int>(_enemies.size()) && !_enemies[_actIdx]->IsAlive())
             _actIdx++;
 
-        if (_actIdx >= (int)_enemies.size()) {
+        if (_actIdx >= static_cast<int>(_enemies.size())) {
             startPlayerTurn();   // all enemies have acted
             return;
         }
@@ -350,20 +350,20 @@ private:
         _reward.clear();
         std::vector<int> pool = RewardPool();
         std::shuffle(pool.begin(), pool.end(), _rng);
-        int n = std::min(Tuning::REWARD_CHOICES, (int)pool.size());
+        int n = std::min(Tuning::REWARD_CHOICES, static_cast<int>(pool.size()));
         for (int i = 0; i < n; ++i) _reward.push_back(pool[i]);
     }
 
     CombatantComponent* pickEnemy(int idx) {
-        if (idx >= 0 && idx < (int)_enemies.size() && _enemies[idx]->IsAlive())
+        if (idx >= 0 && idx < static_cast<int>(_enemies.size()) && _enemies[idx]->IsAlive())
             return _enemies[idx];
         for (auto* e : _enemies) if (e->IsAlive()) return e;
         return nullptr;
     }
 
     void ensureValidTarget() {
-        if (_target < (int)_enemies.size() && _enemies[_target]->IsAlive()) return;
-        for (int i = 0; i < (int)_enemies.size(); ++i)
+        if (_target < static_cast<int>(_enemies.size()) && _enemies[_target]->IsAlive()) return;
+        for (int i = 0; i < static_cast<int>(_enemies.size()); ++i)
             if (_enemies[i]->IsAlive()) { _target = i; return; }
     }
 

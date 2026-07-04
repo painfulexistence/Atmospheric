@@ -1,5 +1,5 @@
 #include "voxel_chunk.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include <algorithm>
 #include <cstring>
 
@@ -66,7 +66,7 @@ float VoxelChunk::GetBoundingSphereRadius() const {
     return BSPHERE_RADIUS;
 }
 
-void VoxelChunk::RebuildMesh(GraphicsServer* gfx) {
+void VoxelChunk::RebuildMesh(GraphicsSubsystem* gfx) {
     if (!_dirty) return;
 
     VoxelMeshBuilder builder;

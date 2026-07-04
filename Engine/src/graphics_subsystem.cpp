@@ -1,4 +1,4 @@
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include "Atmospheric/window.hpp"
 #include "application.hpp"
 #include "asset_manager.hpp"
@@ -25,23 +25,25 @@
 
 #include <cstddef>
 
-GraphicsServer* GraphicsServer::_instance = nullptr;
+GraphicsSubsystem* GraphicsSubsystem::_instance = nullptr;
 
-GraphicsServer::GraphicsServer() {
-    if (_instance != nullptr) throw std::runtime_error("GraphicsServer is already initialized!");
+GraphicsSubsystem::GraphicsSubsystem() {
+    if (_instance != nullptr) throw std::runtime_error("GraphicsSubsystem is already initialized!");
 
     _instance = this;
 }
 
-GraphicsServer::~GraphicsServer() {
+GraphicsSubsystem::~GraphicsSubsystem() {
     if (renderer) {
         renderer->Cleanup();
-        delete renderer;
+    }
+    if (_instance == this) {
+        _instance = nullptr;
     }
 }
 
-void GraphicsServer::Init(Application* app) {
-    Server::Init(app);
+void GraphicsSubsystem::Init(Application* app) {
+    Subsystem::Init(app);
 
     stbi_set_flip_vertically_on_load(true);
 
@@ -115,7 +117,7 @@ void GraphicsServer::Init(Application* app) {
     glEnable(GL_MULTISAMPLE);
 #endif
 
-    renderer = new Renderer();
+    renderer = std::make_unique<Renderer>();
     renderer->Init(width, height);
     window->AddFramebufferResizeCallback([this](int newWidth, int newHeight) {
         renderer->Resize(newWidth, newHeight);
@@ -127,17 +129,15 @@ void GraphicsServer::Init(Application* app) {
     canvasMesh = std::make_unique<Mesh>(MeshType::CANVAS);
     canvasMesh->updateFreq = UpdateFrequency::Dynamic;
 
-    try { debugShader = AssetManager::Get().GetShader("debug_line"); } catch (...) { debugShader = nullptr; }
-    try { canvasShader = AssetManager::Get().GetShader("canvas"); }     catch (...) { canvasShader = nullptr; }
 }
 
-void GraphicsServer::Process(float dt) {
+void GraphicsSubsystem::Process(float dt) {
     // No updates here since no gameplay logic is required
 }
 
 // NOTES: this only fills in command buffers, rendering should be done by the renderer
-void GraphicsServer::Render(CameraComponent* camera, float dt) {
-    ZoneScopedN("GraphicsServer::Render");
+void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
+    ZoneScopedN("GraphicsSubsystem::Render");
 
 #if defined(__EMSCRIPTEN__) && defined(AE_USE_WEBGPU)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
@@ -193,14 +193,14 @@ void GraphicsServer::Render(CameraComponent* camera, float dt) {
     if (totalCount > 0) {
         static int frameCounter = 0;
         if (frameCounter++ % 60 == 0) {
-            Console::Get()->Info(fmt::format("Culling: total {} culled {}", totalCount, culledCount));
+            ConsoleSubsystem::Get()->Info(fmt::format("Culling: total {} culled {}", totalCount, culledCount));
         }
     }
 
     // TODO: migrate canvas drawables to use commands
     // We are now using BatchRenderer2D inside CanvasPass::Execute,
     // but the data collection happens here or we pass the list to Renderer.
-    // Actually, GraphicsServer::Render calls renderer->RenderFrame(this, dt),
+    // Actually, GraphicsSubsystem::Render calls renderer->RenderFrame(this, dt),
     // and inside RenderFrame, it calls CanvasPass::Execute.
     // So we should keep the list of sprites here, but we don't need to push quads manually anymore.
     // The CanvasPass will iterate over canvasDrawables and call BatchRenderer2D::DrawQuad.
@@ -212,8 +212,8 @@ void GraphicsServer::Render(CameraComponent* camera, float dt) {
     renderer->RenderFrame(this, dt);
 }
 
-void GraphicsServer::DrawImGui(float dt) {
-    ZoneScopedN("GraphicsServer::DrawImGui");
+void GraphicsSubsystem::DrawImGui(float dt) {
+    ZoneScopedN("GraphicsSubsystem::DrawImGui");
     if (ImGui::CollapsingHeader("Graphics", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Text("Frame rate: %.3f ms/frame (%.1f FPS)", 1000.0f * dt, 1.0f / dt);
         ImGui::Text(
@@ -246,7 +246,7 @@ void GraphicsServer::DrawImGui(float dt) {
             ImGui::SameLine();
             ImGui::Checkbox("Vignette", &pp->vignetteEnabled);
         }
-        ImGui::Text("Opaque Queue Size: %d", (int)renderer->GetOpaqueQueue().size());
+        ImGui::Text("Opaque Queue Size: %d", static_cast<int>(renderer->GetOpaqueQueue().size()));
 
 #ifdef AE_GPU_TIMER_ENABLED
         ImGui::Separator();
@@ -322,15 +322,15 @@ void GraphicsServer::DrawImGui(float dt) {
             }
             ImGui::Separator();
             if (ImGui::TreeNode(fmt::format("Scene Color RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)(uint32_t)(renderer->sceneRT ? renderer->sceneRT->GetTextureID() : 0), ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)static_cast<uint32_t>(renderer->sceneRT ? renderer->sceneRT->GetTextureID() : 0), ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("Scene Depth RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)(uint32_t)(renderer->sceneRT ? renderer->sceneRT->GetDepthTextureID() : 0), ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)static_cast<uint32_t>(renderer->sceneRT ? renderer->sceneRT->GetDepthTextureID() : 0), ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("MSAA Resolve RT").c_str())) {
-                ImGui::Image((ImTextureID)(intptr_t)(uint32_t)(renderer->msaaResolveRT ? renderer->msaaResolveRT->GetTextureID() : 0), ImVec2(64, 64));
+                ImGui::Image((ImTextureID)(intptr_t)static_cast<uint32_t>(renderer->msaaResolveRT ? renderer->msaaResolveRT->GetTextureID() : 0), ImVec2(64, 64));
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode(fmt::format("GBuffer Position RT").c_str())) {
@@ -372,14 +372,15 @@ void GraphicsServer::DrawImGui(float dt) {
         }
         if (ImGui::TreeNode("Materials")) {
             auto& assetManager = AssetManager::Get();
-            for (auto m : assetManager.GetMaterials()) {
+            for (const auto& m : assetManager.GetMaterials()) {
+                if (!m) continue;// slot emptied by RemoveMaterial/UnloadSceneAssets
                 if (ImGui::TreeNode("Mat")) {
-                    ImGui::Text("Base Map ID: %d", (int)m->baseMap);
-                    ImGui::Text("Normal Map ID: %d", (int)m->normalMap);
-                    ImGui::Text("AO Map ID: %d", (int)m->aoMap);
-                    ImGui::Text("Roughness Map ID: %d", (int)m->roughnessMap);
-                    ImGui::Text("Metallic Map ID: %d", (int)m->metallicMap);
-                    ImGui::Text("Height Map ID: %d", (int)m->heightMap);
+                    ImGui::Text("Base Map ID: %d", static_cast<int>(m->baseMap));
+                    ImGui::Text("Normal Map ID: %d", static_cast<int>(m->normalMap));
+                    ImGui::Text("AO Map ID: %d", static_cast<int>(m->aoMap));
+                    ImGui::Text("Roughness Map ID: %d", static_cast<int>(m->roughnessMap));
+                    ImGui::Text("Metallic Map ID: %d", static_cast<int>(m->metallicMap));
+                    ImGui::Text("Height Map ID: %d", static_cast<int>(m->heightMap));
                     ImGui::Text("Ambient: %.3f, %.3f, %.3f", m->ambient.x, m->ambient.y, m->ambient.z);
                     ImGui::Text("Diffuse: %.3f, %.3f, %.3f", m->diffuse.x, m->diffuse.y, m->diffuse.z);
                     ImGui::Text("Specular: %.3f, %.3f, %.3f", m->specular.x, m->specular.y, m->specular.z);
@@ -392,7 +393,7 @@ void GraphicsServer::DrawImGui(float dt) {
     }
 }
 
-void GraphicsServer::Reset() {
+void GraphicsSubsystem::Reset() {
     defaultCamera = nullptr;
     defaultLight = nullptr;
     cameras.clear();
@@ -402,20 +403,20 @@ void GraphicsServer::Reset() {
     renderables.clear();
 }
 
-ShaderProgram* GraphicsServer::GetShader(const std::string& name) const {
+ShaderProgram* GraphicsSubsystem::GetShader(const std::string& name) const {
     return AssetManager::Get().GetShader(name);
 }
 
-ShaderProgram* GraphicsServer::GetShaderByID(uint32_t id) const {
+ShaderProgram* GraphicsSubsystem::GetShaderByID(uint32_t id) const {
     return AssetManager::Get().GetShaderByID(id);
 }
 
-MeshHandle GraphicsServer::GetMesh(const std::string& name) const {
+MeshHandle GraphicsSubsystem::GetMesh(const std::string& name) const {
     return AssetManager::Get().GetMesh(name);
 }
 
 
-void GraphicsServer::PushCanvasQuad(
+void GraphicsSubsystem::PushCanvasQuad(
   float x,
   float y,
   float w,
@@ -453,7 +454,7 @@ void GraphicsServer::PushCanvasQuad(
     canvasDrawList.push_back({ glm::vec2(tl), glm::vec2(uvMin.x, uvMax.y), color, texIndex, layer });
 }
 
-void GraphicsServer::PushCanvasQuadTiled(
+void GraphicsSubsystem::PushCanvasQuadTiled(
   float x,
   float y,
   float w,
@@ -473,22 +474,22 @@ void GraphicsServer::PushCanvasQuadTiled(
 }
 
 
-MeshComponent* GraphicsServer::RegisterMesh(MeshComponent* mesh) {
+MeshComponent* GraphicsSubsystem::RegisterMesh(MeshComponent* mesh) {
     renderables.push_back(mesh);
     return mesh;
 }
 
-CanvasDrawable* GraphicsServer::RegisterCanvasDrawable(CanvasDrawable* drawable) {
+CanvasDrawable* GraphicsSubsystem::RegisterCanvasDrawable(CanvasDrawable* drawable) {
     canvasDrawables.push_back(drawable);
     return drawable;
 }
 
-CameraComponent* GraphicsServer::RegisterCamera(CameraComponent* camera) {
+CameraComponent* GraphicsSubsystem::RegisterCamera(CameraComponent* camera) {
     cameras.push_back(camera);
     return camera;
 }
 
-LightComponent* GraphicsServer::RegisterLight(LightComponent* light) {
+LightComponent* GraphicsSubsystem::RegisterLight(LightComponent* light) {
     if (light->type == LightType::Point) {
         pointLights.push_back(light);
     } else if (light->type == LightType::Directional) {
@@ -497,19 +498,19 @@ LightComponent* GraphicsServer::RegisterLight(LightComponent* light) {
     return light;
 }
 
-SunComponent* GraphicsServer::RegisterSun(SunComponent* sun) {
+SunComponent* GraphicsSubsystem::RegisterSun(SunComponent* sun) {
     sunComponents.push_back(sun);
     return sun;
 }
 
-void GraphicsServer::UnregisterCamera(CameraComponent* camera) {
+void GraphicsSubsystem::UnregisterCamera(CameraComponent* camera) {
     auto it = std::find(cameras.begin(), cameras.end(), camera);
     if (it != cameras.end()) {
         cameras.erase(it);
     }
 }
 
-void GraphicsServer::UnregisterLight(LightComponent* light) {
+void GraphicsSubsystem::UnregisterLight(LightComponent* light) {
     if (light->type == LightType::Point) {
         auto it = std::find(pointLights.begin(), pointLights.end(), light);
         if (it != pointLights.end()) {
@@ -523,8 +524,22 @@ void GraphicsServer::UnregisterLight(LightComponent* light) {
     }
 }
 
+void GraphicsSubsystem::UnregisterMesh(MeshComponent* mesh) {
+    auto it = std::find(renderables.begin(), renderables.end(), mesh);
+    if (it != renderables.end()) {
+        renderables.erase(it);
+    }
+}
+
+void GraphicsSubsystem::UnregisterCanvasDrawable(CanvasDrawable* drawable) {
+    auto it = std::find(canvasDrawables.begin(), canvasDrawables.end(), drawable);
+    if (it != canvasDrawables.end()) {
+        canvasDrawables.erase(it);
+    }
+}
+
 // ===== Render Target Management Implementation =====
-std::shared_ptr<RenderTarget> GraphicsServer::CreateRenderTarget(int width, int height, bool withDepth) {
+std::shared_ptr<RenderTarget> GraphicsSubsystem::CreateRenderTarget(int width, int height, bool withDepth) {
     RenderTarget::Props p;
     p.width = width;
     p.height = height;
@@ -534,13 +549,13 @@ std::shared_ptr<RenderTarget> GraphicsServer::CreateRenderTarget(int width, int 
     return rt;
 }
 
-std::shared_ptr<RenderTarget> GraphicsServer::CreateRenderTarget(const RenderTarget::Props& props) {
+std::shared_ptr<RenderTarget> GraphicsSubsystem::CreateRenderTarget(const RenderTarget::Props& props) {
     auto rt = std::shared_ptr<RenderTarget>(GfxFactory::CreateRenderTarget(props).release());
     _renderTargets.push_back(rt);
     return rt;
 }
 
-void GraphicsServer::PushRenderTarget(RenderTarget* target) {
+void GraphicsSubsystem::PushRenderTarget(RenderTarget* target) {
     // Save current target to stack
     _renderTargetStack.push(_currentRenderTarget);
 
@@ -557,9 +572,9 @@ void GraphicsServer::PushRenderTarget(RenderTarget* target) {
     _currentRenderTarget = target;
 }
 
-void GraphicsServer::PopRenderTarget() {
+void GraphicsSubsystem::PopRenderTarget() {
     if (_renderTargetStack.empty()) {
-        Console::Get()->Warn("GraphicsServer::PopRenderTarget - Stack is empty!");
+        ConsoleSubsystem::Get()->Warn("GraphicsSubsystem::PopRenderTarget - Stack is empty!");
         return;
     }
 
@@ -579,7 +594,7 @@ void GraphicsServer::PopRenderTarget() {
     _currentRenderTarget = prevTarget;
 }
 
-void GraphicsServer::SetRenderTarget(RenderTarget* target) {
+void GraphicsSubsystem::SetRenderTarget(RenderTarget* target) {
     // End current target if switching
     if (_currentRenderTarget && _currentRenderTarget != target) {
         _currentRenderTarget->End();
@@ -598,11 +613,11 @@ void GraphicsServer::SetRenderTarget(RenderTarget* target) {
     _currentRenderTarget = target;
 }
 
-RenderTarget* GraphicsServer::GetCurrentRenderTarget() const {
+RenderTarget* GraphicsSubsystem::GetCurrentRenderTarget() const {
     return _currentRenderTarget;
 }
 
-RenderMeshHandle GraphicsServer::AllocateRenderMesh(VertexFormat format, BufferUsage usage) {
+RenderMeshHandle GraphicsSubsystem::AllocateRenderMesh(VertexFormat format, BufferUsage usage) {
     auto buf = GfxFactory::CreateBuffer();
     buf->Initialize(format, usage);
 
@@ -613,7 +628,7 @@ RenderMeshHandle GraphicsServer::AllocateRenderMesh(VertexFormat format, BufferU
     return handle;
 }
 
-void GraphicsServer::FreeRenderMesh(RenderMeshHandle handle) {
+void GraphicsSubsystem::FreeRenderMesh(RenderMeshHandle handle) {
     if (!handle.IsValid()) return;
 
     auto it = _renderMeshes.find(handle.id);
@@ -622,7 +637,7 @@ void GraphicsServer::FreeRenderMesh(RenderMeshHandle handle) {
     }
 }
 
-Buffer* GraphicsServer::GetRenderMesh(RenderMeshHandle handle) {
+Buffer* GraphicsSubsystem::GetRenderMesh(RenderMeshHandle handle) {
     if (!handle.IsValid()) return nullptr;
 
     auto it = _renderMeshes.find(handle.id);
@@ -669,11 +684,11 @@ static void CreateQuad(
     indices.push_back(startIndex + 0);
 }
 
-void GraphicsServer::DrawQuad(float x, float y, float w, float h, float rotation, const glm::vec4& color) {
+void GraphicsSubsystem::DrawQuad(float x, float y, float w, float h, float rotation, const glm::vec4& color) {
     DrawTexturedQuad(x, y, w, h, rotation, 0, color);
 }
 
-void GraphicsServer::DrawTexturedQuad(
+void GraphicsSubsystem::DrawTexturedQuad(
   float x, float y, float w, float h, float rotation, uint32_t textureID, const glm::vec4& color
 ) {
     BatchDrawCommand cmd;
@@ -688,7 +703,7 @@ void GraphicsServer::DrawTexturedQuad(
     renderer->SubmitCanvasCommand(cmd);
 }
 
-void GraphicsServer::DrawRect(float x, float y, float w, float h, const glm::vec4& color) {
+void GraphicsSubsystem::DrawRect(float x, float y, float w, float h, const glm::vec4& color) {
     // Draw 4 lines
     DrawLine(x, y, x + w, y, color);// Top
     DrawLine(x + w, y, x + w, y + h, color);// Right
@@ -696,7 +711,7 @@ void GraphicsServer::DrawRect(float x, float y, float w, float h, const glm::vec
     DrawLine(x, y + h, x, y, color);// Left
 }
 
-void GraphicsServer::DrawLine(float x1, float y1, float x2, float y2, const glm::vec4& color) {
+void GraphicsSubsystem::DrawLine(float x1, float y1, float x2, float y2, const glm::vec4& color) {
     // Draw as a thin quad
     glm::vec2 p0(x1, y1);
     glm::vec2 p1(x2, y2);
@@ -711,7 +726,7 @@ void GraphicsServer::DrawLine(float x1, float y1, float x2, float y2, const glm:
     DrawQuad(cx, cy, len, 1.0f, angle, color);
 }
 
-void GraphicsServer::DrawCircle(float x, float y, float radius, const glm::vec4& color) {
+void GraphicsSubsystem::DrawCircle(float x, float y, float radius, const glm::vec4& color) {
     const int segments = 32;
     float angleStep = 6.28318f / segments;
     for (int i = 0; i < segments; i++) {
@@ -729,34 +744,34 @@ void GraphicsServer::DrawCircle(float x, float y, float radius, const glm::vec4&
 
 // ===== Text Rendering Implementation =====
 
-FontHandle GraphicsServer::LoadFont(const std::string& path, float baseSize) {
+FontHandle GraphicsSubsystem::LoadFont(const std::string& path, float baseSize) {
     return _fontManager.LoadFont(path, baseSize);
 }
 
-void GraphicsServer::UnloadFont(FontHandle id) {
+void GraphicsSubsystem::UnloadFont(FontHandle id) {
     _fontManager.UnloadFont(id);
 }
 
-FontHandle GraphicsServer::GetOrCreateDefaultFont() {
+FontHandle GraphicsSubsystem::GetOrCreateDefaultFont() {
     if (_defaultFont == 0) {
         _defaultFont = LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 48.0f);
     }
     return _defaultFont;
 }
 
-float GraphicsServer::GetFontBaseSize(FontHandle fontID) {
+float GraphicsSubsystem::GetFontBaseSize(FontHandle fontID) {
     if (auto* font = _fontManager.GetFont(fontID))
         return font->fontSize;
     return 48.0f;
 }
 
-void GraphicsServer::DrawText(
+void GraphicsSubsystem::DrawText(
   FontHandle fontID, const std::string& text, float x, float y, float scale, const glm::vec4& color
 ) {
     _textCommands.push_back({ fontID, text, x, y, scale, color });
 }
 
-void GraphicsServer::RenderBufferedText(BatchRenderer2D* batch) {
+void GraphicsSubsystem::RenderBufferedText(BatchRenderer2D* batch) {
     if (_textCommands.empty()) return;
 
     for (const auto& cmd : _textCommands) {
@@ -800,7 +815,7 @@ void GraphicsServer::RenderBufferedText(BatchRenderer2D* batch) {
     _textCommands.clear();
 }
 
-void GraphicsServer::FlushTextToQueue() {
+void GraphicsSubsystem::FlushTextToQueue() {
     for (const auto& cmd : _textCommands) {
         Font* font = _fontManager.GetFont(cmd.fontID);
         if (!font) continue;
@@ -835,17 +850,17 @@ void GraphicsServer::FlushTextToQueue() {
     _textCommands.clear();
 }
 
-glm::vec2 GraphicsServer::MeasureText(FontHandle fontID, const std::string& text, float scale) {
+glm::vec2 GraphicsSubsystem::MeasureText(FontHandle fontID, const std::string& text, float scale) {
     return _fontManager.MeasureText(fontID, text, scale);
 }
 
-float GraphicsServer::GetFontLineHeight(FontHandle fontID, float scale) {
+float GraphicsSubsystem::GetFontLineHeight(FontHandle fontID, float scale) {
     Font* font = _fontManager.GetFont(fontID);
     return font ? font->lineHeight * scale : 0.0f;
 }
 
 // Draw text at 3D position
-void GraphicsServer::DrawText3D(
+void GraphicsSubsystem::DrawText3D(
   FontHandle fontID, const std::string& text, glm::vec3 position, float scale, const glm::vec4& color
 ) {
     auto* camera = GetMainCamera();

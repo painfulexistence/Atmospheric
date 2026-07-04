@@ -28,7 +28,7 @@ class VideoPlayerDemo : public Application {
     }
 
     void OnLoad() override {
-        m_fontID = GraphicsServer::Get()->LoadFont(
+        m_fontID = GraphicsSubsystem::Get()->LoadFont(
             "assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
         // Allocate a GL texture; upload a 1x1 black pixel so the state is
@@ -47,10 +47,10 @@ class VideoPlayerDemo : public Application {
         // Open video -- supports local paths AND HTTP / HTTPS / RTSP / HLS URLs.
         if (m_player.open(g_videoPath)) {
             m_player.play();
-            console.Info(fmt::format("Playing '{}' ({:.1f} s)",
+            ConsoleSubsystem::Get()->Info(fmt::format("Playing '{}' ({:.1f} s)",
                                      g_videoPath, m_player.getDuration()));
         } else {
-            console.Warn(fmt::format(
+            ConsoleSubsystem::Get()->Warn(fmt::format(
                 "Could not open '{}'. "
                 "Make sure the engine was built with FFmpeg support "
                 "and that the path / URL is valid.",
@@ -84,15 +84,15 @@ class VideoPlayerDemo : public Application {
             .layer   = CanvasLayer::LAYER_WORLD_2D,
         });
 
-        console.Info("Controls: SPACE = play/pause, ESC = quit");
+        ConsoleSubsystem::Get()->Info("Controls: SPACE = play/pause, ESC = quit");
     }
 
     void OnUpdate(float dt, float /*time*/) override {
-        if (input.IsKeyPressed(Key::ESCAPE)) {
+        if (InputSubsystem::Get()->IsKeyPressed(Key::ESCAPE)) {
             Quit();
         }
 
-        if (input.IsKeyPressed(Key::SPACE)) {
+        if (InputSubsystem::Get()->IsKeyPressed(Key::SPACE)) {
             if (m_player.isPlaying())
                 m_player.pause();
             else

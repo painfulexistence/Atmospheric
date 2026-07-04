@@ -2,7 +2,7 @@
 #include "application.hpp"
 #include "batch_renderer_2d.hpp"
 #include "game_object.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 
 ShapeRendererComponent::ShapeRendererComponent(GameObject* gameObject, const ShapeRendererProps& props)
   : CanvasDrawable(gameObject), _props(props) {
@@ -64,7 +64,7 @@ void ShapeRendererComponent::Draw(BatchRenderer2D* renderer) {
 }
 
 void ShapeRendererComponent::OnAttach() {
-    gameObject->GetApp()->GetGraphicsServer()->RegisterCanvasDrawable(this);
+    GraphicsSubsystem::Get()->RegisterCanvasDrawable(this);
 }
 
 void ShapeRendererComponent::OnDetach() {

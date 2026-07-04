@@ -2,7 +2,7 @@
 #include "canvas_drawable.hpp"
 #include "component.hpp"
 #include "globals.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include <glm/vec2.hpp>
 #include <glm/vec4.hpp>
 

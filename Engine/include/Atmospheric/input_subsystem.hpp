@@ -1,22 +1,22 @@
 #pragma once
 #include "globals.hpp"
-#include "server.hpp"
+#include "subsystem.hpp"
 #include "window.hpp"
 #include <deque>
 
-class Input : public Server
+class InputSubsystem : public Subsystem
 {
 private:
-    static Input* _instance;
+    static InputSubsystem* _instance;
 
 public:
-    static Input* Get()
+    static InputSubsystem* Get()
     {
         return _instance;
     }
 
-    Input();
-    ~Input();
+    InputSubsystem();
+    ~InputSubsystem();
 
     void Init(Application* app) override;
     void Process(float dt) override;

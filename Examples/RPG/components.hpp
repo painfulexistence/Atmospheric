@@ -20,7 +20,7 @@ public:
     std::string GetName() const override { return "PlayerMovementComponent"; }
 
     void OnTick(float dt) override {
-        auto* inp = gameObject->GetApp()->GetInput();
+        auto* inp = InputSubsystem::Get();
         float ax = 0, ay = 0;
         if (inp->IsKeyDown(Key::LEFT)  || inp->IsKeyDown(Key::A)) ax -= 1;
         if (inp->IsKeyDown(Key::RIGHT) || inp->IsKeyDown(Key::D)) ax += 1;
@@ -209,7 +209,7 @@ public:
     }
 
     void DrawImGui() override {
-        ImGui::Text("Phase: %d", (int)_battle.phase);
+        ImGui::Text("Phase: %d", static_cast<int>(_battle.phase));
         ImGui::Text("Level: %d  EXP: %d/%d  Gold: %d",
                     _battle.level, _battle.exp, _battle.expToNext, _battle.gold);
         ImGui::Text("Shake: %.2f (%.2fs)", _shakeMag, _shakeTimer);
@@ -223,7 +223,7 @@ private:
             while (_battle.exp >= _battle.expToNext) {
                 _battle.exp -= _battle.expToNext;
                 _battle.level++;
-                _battle.expToNext = (int)(_battle.expToNext * 1.5f);
+                _battle.expToNext = static_cast<int>(_battle.expToNext * 1.5f);
                 _player->stats.maxHp += 8; _player->stats.maxMp += 4;
                 _player->stats.atk   += 2; _player->stats.def   += 1;
                 _player->stats.spd   += 1;
@@ -232,7 +232,7 @@ private:
                 _battle.pushLog(fmt::format("Level up! Now LV{}!", _battle.level));
             }
             for (int idx : _battle.enemyIndices)
-                if (idx >= 0 && idx < (int)_enemies->size())
+                if (idx >= 0 && idx < static_cast<int>(_enemies->size()))
                     (*_enemies)[idx].alive = false;
         }
         *_mode = GameMode::BattleTransitionOut;
@@ -256,7 +256,7 @@ private:
     }
 
     void ExecutePlayerSkill(int idx) {
-        if (idx >= (int)_player->skills.size()) return;
+        if (idx >= static_cast<int>(_player->skills.size())) return;
         Skill& sk = _player->skills[idx];
         if (_player->stats.mp < sk.mpCost) {
             _battle.pushLog("Not enough MP!"); _battle.phase = BattlePhase::PlayerMenu; return;
@@ -269,7 +269,7 @@ private:
                 int v = sk.calc(_player->stats, es); es.takeDamage(v); total += v;
             }
             _battle.pushLog(fmt::format("{} hits all for ~{} dmg!", sk.name,
-                total/(int)_battle.enemyStats.size()));
+                total/static_cast<int>(_battle.enemyStats.size())));
         } else if (sk.target == SkillTarget::Self) {
             int v = sk.calc(_player->stats, _player->stats);
             _player->stats.heal(-v);
@@ -284,7 +284,7 @@ private:
     }
 
     void ExecutePlayerItem(int idx) {
-        if (idx >= (int)_player->items.size()) return;
+        if (idx >= static_cast<int>(_player->items.size())) return;
         Item& it = _player->items[idx];
         if (it.count <= 0) { _battle.pushLog("None left!"); return; }
         it.count--;
@@ -300,7 +300,7 @@ private:
 
     void ExecuteEnemyTurn() {
         int actorIdx = -1;
-        for (int i=0; i<(int)_battle.enemyStats.size(); i++)
+        for (int i=0; i<static_cast<int>(_battle.enemyStats.size()); i++)
             if (!_battle.enemyStats[i].isDead()) { actorIdx = i; break; }
         if (actorIdx < 0) return;
         const Enemy& worldE = (*_enemies)[_battle.enemyIndices[actorIdx]];
@@ -311,13 +311,13 @@ private:
     }
 
     void UpdateBattle(float dt) {
-        auto* inp = gameObject->GetApp()->GetInput();
+        auto* inp = InputSubsystem::Get();
         BattleState& b = _battle;
         if (_shakeTimer > 0) _shakeTimer -= dt; else _shakeMag = 0;
         b.tickLog(dt);
         switch (b.phase) {
         case BattlePhase::PlayerMenu: {
-            int count = (int)BattleMenuSel::COUNT;
+            int count = static_cast<int>(BattleMenuSel::COUNT);
             if (inp->IsKeyPressed(Key::UP)   || inp->IsKeyPressed(Key::W)) b.menuSel=(b.menuSel+count-1)%count;
             if (inp->IsKeyPressed(Key::DOWN) || inp->IsKeyPressed(Key::S)) b.menuSel=(b.menuSel+1)%count;
             if (inp->IsKeyPressed(Key::Z)    || inp->IsKeyPressed(Key::ENTER)) {
@@ -332,7 +332,7 @@ private:
             break;
         }
         case BattlePhase::PlayerSkillMenu: {
-            int count = (int)_player->skills.size();
+            int count = static_cast<int>(_player->skills.size());
             if (inp->IsKeyPressed(Key::UP)   || inp->IsKeyPressed(Key::W)) b.skillSel=(b.skillSel+count-1)%count;
             if (inp->IsKeyPressed(Key::DOWN) || inp->IsKeyPressed(Key::S)) b.skillSel=(b.skillSel+1)%count;
             if (inp->IsKeyPressed(Key::Z)    || inp->IsKeyPressed(Key::ENTER)) ExecutePlayerSkill(b.skillSel);
@@ -340,7 +340,7 @@ private:
             break;
         }
         case BattlePhase::PlayerItemMenu: {
-            int count = (int)_player->items.size();
+            int count = static_cast<int>(_player->items.size());
             if (inp->IsKeyPressed(Key::UP)   || inp->IsKeyPressed(Key::W)) b.itemSel=(b.itemSel+count-1)%count;
             if (inp->IsKeyPressed(Key::DOWN) || inp->IsKeyPressed(Key::S)) b.itemSel=(b.itemSel+1)%count;
             if (inp->IsKeyPressed(Key::Z)    || inp->IsKeyPressed(Key::ENTER)) ExecutePlayerItem(b.itemSel);
@@ -352,7 +352,7 @@ private:
             if (b.actionTimer <= 0) {
                 if (b.allEnemiesDead()) {
                     for (int idx : b.enemyIndices)
-                        if (idx<(int)_enemies->size()) {
+                        if (idx<static_cast<int>(_enemies->size())) {
                             b.expGained  += (*_enemies)[idx].def.expReward;
                             b.goldGained += (*_enemies)[idx].def.goldReward;
                         }
@@ -381,8 +381,8 @@ private:
     }
 
     void DrawBattle() {
-        auto* gfx = gameObject->GetApp()->GetGraphicsServer();
-        const float W = (float)_screenW, H = (float)_screenH;
+        auto* gfx = GraphicsSubsystem::Get();
+        const float W = static_cast<float>(_screenW), H = static_cast<float>(_screenH);
         gfx->DrawQuad(W*0.5f, H*0.5f, W, H, 0, glm::vec4(0.08f,0.06f,0.14f,1));
         for (int i=0; i<8; i++)
             gfx->DrawRect(0, i*H/8.0f, W, 1, glm::vec4(0.15f,0.12f,0.22f,0.5f));
@@ -394,7 +394,7 @@ private:
         }
 
         constexpr int CCOLS=4, CROWS=2;
-        for (int i=0; i<(int)_battle.enemyStats.size(); i++) {
+        for (int i=0; i<static_cast<int>(_battle.enemyStats.size()); i++) {
             const Stats& es = _battle.enemyStats[i];
             if (es.isDead()) continue;
             float ex = W*0.65f+i*100+shakeX, ey = H*0.35f+shakeY, sz = 72;
@@ -407,8 +407,8 @@ private:
         {
             auto [fc,fr] = _playerAnim->currentFrame();
             float px=W*0.25f, py=H*0.42f, sz=72;
-            glm::vec2 uv0{(float)fc/CCOLS,(float)fr/CROWS};
-            glm::vec2 uv1{(float)(fc+1)/CCOLS,(float)(fr+1)/CROWS};
+            glm::vec2 uv0{static_cast<float>(fc)/CCOLS,static_cast<float>(fr)/CROWS};
+            glm::vec2 uv1{static_cast<float>(fc+1)/CCOLS,static_cast<float>(fr+1)/CROWS};
             gfx->DrawSprite2D(px-sz*0.5f, py-sz*0.5f, sz, sz, _playerTex, uv0, uv1);
         }
         DrawBattleStats(gfx, W, H);
@@ -423,7 +423,7 @@ private:
         }
     }
 
-    void DrawBattleStats(GraphicsServer* gfx, float W, float H) {
+    void DrawBattleStats(GraphicsSubsystem* gfx, float W, float H) {
         const Stats& s = _player->stats;
         DrawPanel(gfx, 8, H-110, 200, 100);
         gfx->DrawText(_fontID, fmt::format("LV{}", _battle.level),       16, H-106, 0.55f, glm::vec4(1,0.9f,0.5f,1));
@@ -434,7 +434,7 @@ private:
         gfx->DrawText(_fontID, fmt::format("ATK:{} DEF:{}", s.atk, s.def), 16, H-36, 0.5f, glm::vec4(0.8f,0.8f,0.8f,0.9f));
     }
 
-    void DrawBattleMenu(GraphicsServer* gfx, float W, float H) {
+    void DrawBattleMenu(GraphicsSubsystem* gfx, float W, float H) {
         const BattleState& b = _battle;
         if (b.phase == BattlePhase::PlayerMenu) {
             DrawPanel(gfx, W-180, H-130, 170, 120);
@@ -446,9 +446,9 @@ private:
             }
             gfx->DrawText(_fontID, "Z:confirm", W-170, H-18, 0.45f, glm::vec4(0.5f,0.5f,0.6f,1));
         } else if (b.phase == BattlePhase::PlayerSkillMenu) {
-            DrawPanel(gfx, W-220, H-200, 210, (int)_player->skills.size()*30+40);
+            DrawPanel(gfx, W-220, H-200, 210, static_cast<int>(_player->skills.size())*30+40);
             gfx->DrawText(_fontID, "─ Skills ─", W-210, H-194, 0.55f, glm::vec4(0.7f,0.7f,1,1));
-            for (int i=0; i<(int)_player->skills.size(); i++) {
+            for (int i=0; i<static_cast<int>(_player->skills.size()); i++) {
                 bool sel = (b.skillSel==i);
                 const Skill& sk = _player->skills[i];
                 gfx->DrawText(_fontID, fmt::format("{}{} ({}MP)", sel?"▶":" ", sk.name, sk.mpCost),
@@ -456,9 +456,9 @@ private:
             }
             gfx->DrawText(_fontID, "X:back", W-210, H-16, 0.45f, glm::vec4(0.5f,0.5f,0.6f,1));
         } else if (b.phase == BattlePhase::PlayerItemMenu) {
-            DrawPanel(gfx, W-220, H-200, 210, (int)_player->items.size()*30+40);
+            DrawPanel(gfx, W-220, H-200, 210, static_cast<int>(_player->items.size())*30+40);
             gfx->DrawText(_fontID, "─ Items ─", W-210, H-194, 0.55f, glm::vec4(0.7f,1,0.7f,1));
-            for (int i=0; i<(int)_player->items.size(); i++) {
+            for (int i=0; i<static_cast<int>(_player->items.size()); i++) {
                 bool sel = (b.itemSel==i);
                 const Item& it = _player->items[i];
                 gfx->DrawText(_fontID, fmt::format("{}{} x{}", sel?"▶":" ", it.name, it.count),
@@ -469,9 +469,9 @@ private:
         }
     }
 
-    void DrawBattleLog(GraphicsServer* gfx, float W, float H) {
+    void DrawBattleLog(GraphicsSubsystem* gfx, float W, float H) {
         DrawPanel(gfx, 220, H-130, W-440, 120);
-        int shown = std::min((int)_battle.log.size(), 4);
+        int shown = std::min(static_cast<int>(_battle.log.size()), 4);
         for (int i=0; i<shown; i++) {
             const auto& entry = _battle.log[_battle.log.size()-shown+i];
             float alpha = std::min(1.0f, entry.ttl);
@@ -479,21 +479,21 @@ private:
         }
     }
 
-    void DrawPanel(GraphicsServer* gfx, float x, float y, float w, float h,
+    void DrawPanel(GraphicsSubsystem* gfx, float x, float y, float w, float h,
                    glm::vec4 bg = glm::vec4(0.05f,0.05f,0.12f,0.92f)) {
         gfx->DrawQuad(x+w*0.5f, y+h*0.5f, w, h, 0, bg);
         gfx->DrawRect(x, y, w, h, glm::vec4(0.35f,0.35f,0.55f,0.8f));
     }
-    void DrawHPBar(GraphicsServer* gfx, float x, float y, float w, float h,
+    void DrawHPBar(GraphicsSubsystem* gfx, float x, float y, float w, float h,
                    int hp, int maxHp, glm::vec4 color = glm::vec4(0.2f,0.85f,0.2f,1)) {
         gfx->DrawQuad(x+w*0.5f, y+h*0.5f, w, h, 0, glm::vec4(0.1f,0.1f,0.1f,0.85f));
-        float ratio = maxHp>0 ? (float)hp/maxHp : 0;
+        float ratio = maxHp>0 ? static_cast<float>(hp)/maxHp : 0;
         float fw = (w-2)*ratio;
         if (fw > 0) gfx->DrawQuad(x+1+fw*0.5f, y+1+(h-2)*0.5f, fw, h-2, 0, color);
     }
-    void DrawMPBar(GraphicsServer* gfx, float x, float y, float w, float h, int mp, int maxMp) {
+    void DrawMPBar(GraphicsSubsystem* gfx, float x, float y, float w, float h, int mp, int maxMp) {
         gfx->DrawQuad(x+w*0.5f, y+h*0.5f, w, h, 0, glm::vec4(0.1f,0.1f,0.1f,0.85f));
-        float ratio = maxMp>0 ? (float)mp/maxMp : 0;
+        float ratio = maxMp>0 ? static_cast<float>(mp)/maxMp : 0;
         float fw = (w-2)*ratio;
         if (fw > 0) gfx->DrawQuad(x+1+fw*0.5f, y+1+(h-2)*0.5f, fw, h-2, 0, glm::vec4(0.2f,0.4f,1,1));
     }

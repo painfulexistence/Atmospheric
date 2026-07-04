@@ -4,26 +4,26 @@
 #include <unordered_map>
 #include <functional>
 #include "config.hpp"
-#include "server.hpp"
+#include "subsystem.hpp"
 
 struct LogEntry {
     std::string message;
 };
 
 /// Logging and command palette system
-class Console : public Server
+class ConsoleSubsystem : public Subsystem
 {
 private:
-    static Console* _instance;
+    static ConsoleSubsystem* _instance;
 
 public:
-    static Console* Get()
+    static ConsoleSubsystem* Get()
     {
         return _instance;
     }
 
-    Console();
-    ~Console();
+    ConsoleSubsystem();
+    ~ConsoleSubsystem();
 
     void Init(Application* app) override;
     void Process(float dt) override;
@@ -44,5 +44,5 @@ private:
     std::unordered_map<std::string, std::function<void(const std::vector<std::string>&)>> _commands;
 };
 
-#define LOG(msg, ...) Console::Get()->Info(fmt::format(msg, ##__VA_ARGS__))
-#define ENGINE_LOG(msg, ...) Console::Get()->Info("[Engine] " + fmt::format(msg, ##__VA_ARGS__))
+#define LOG(msg, ...) ConsoleSubsystem::Get()->Info(fmt::format(msg, ##__VA_ARGS__))
+#define ENGINE_LOG(msg, ...) ConsoleSubsystem::Get()->Info("[Engine] " + fmt::format(msg, ##__VA_ARGS__))

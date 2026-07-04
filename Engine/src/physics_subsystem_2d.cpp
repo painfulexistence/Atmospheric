@@ -1,13 +1,13 @@
-#include "physics_server_2d.hpp"
+#include "physics_subsystem_2d.hpp"
 #include "batch_renderer_2d.hpp"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "game_object.hpp"
 #include "renderer.hpp"
 #include "rigidbody_2d_component.hpp"
 #include <algorithm>
 #include <imgui.h>
 
-Physics2DServer* Physics2DServer::_instance = nullptr;
+Physics2DSubsystem* Physics2DSubsystem::_instance = nullptr;
 
 // Helper to get user data from shape ID
 static Rigidbody2DComponent* GetBodyComponent(b2ShapeId shapeId) {
@@ -18,9 +18,9 @@ static Rigidbody2DComponent* GetBodyComponent(b2ShapeId shapeId) {
 
 // Raycast callback wrapper
 static float RayCastCallbackWrapper(b2ShapeId shapeId, b2Vec2 point, b2Vec2 normal, float fraction, void* context) {
-    auto* result = static_cast<Physics2DServer::RaycastResult*>(context);
+    auto* result = static_cast<Physics2DSubsystem::RaycastResult*>(context);
     result->hit = true;
-    result->point = Physics2DServer::MetersToPixels(glm::vec2(point.x, point.y));
+    result->point = Physics2DSubsystem::MetersToPixels(glm::vec2(point.x, point.y));
     result->normal = glm::vec2(normal.x, normal.y);
     result->fraction = fraction;
 
@@ -40,12 +40,12 @@ static bool OverlapCallbackWrapper(b2ShapeId shapeId, void* context) {
     return true;// Continue
 }
 
-Physics2DServer::Physics2DServer() {
+Physics2DSubsystem::Physics2DSubsystem() {
     _instance = this;
     _worldId = b2_nullWorldId;
 }
 
-Physics2DServer::~Physics2DServer() {
+Physics2DSubsystem::~Physics2DSubsystem() {
     if (b2World_IsValid(_worldId)) {
         b2DestroyWorld(_worldId);
     }
@@ -54,18 +54,18 @@ Physics2DServer::~Physics2DServer() {
     }
 }
 
-void Physics2DServer::Init(Application* app) {
-    Server::Init(app);
+void Physics2DSubsystem::Init(Application* app) {
+    Subsystem::Init(app);
 
     // Create Box2D world
     b2WorldDef worldDef = b2DefaultWorldDef();
     worldDef.gravity = { 0.0f, 9.8f };
     _worldId = b2CreateWorld(&worldDef);
 
-    Console::Get()->Info("Physics2DServer initialized with Box2D v3");
+    ConsoleSubsystem::Get()->Info("Physics2DSubsystem initialized with Box2D v3");
 }
 
-void Physics2DServer::Process(float dt) {
+void Physics2DSubsystem::Process(float dt) {
     if (!b2World_IsValid(_worldId)) return;
 
     _accumulator += dt;
@@ -109,9 +109,9 @@ void Physics2DServer::Process(float dt) {
     }
 }
 
-void Physics2DServer::DrawImGui(float dt) {
+void Physics2DSubsystem::DrawImGui(float dt) {
     if (ImGui::CollapsingHeader("Physics 2D")) {
-        ImGui::Text("Bodies: %d", (int)_rigidbodies.size());
+        ImGui::Text("Bodies: %d", static_cast<int>(_rigidbodies.size()));
         ImGui::Checkbox("Debug Draw", &_debugDrawEnabled);
 
         glm::vec2 gravity = GetGravity();
@@ -123,13 +123,13 @@ void Physics2DServer::DrawImGui(float dt) {
     }
 }
 
-void Physics2DServer::SetGravity(const glm::vec2& gravity) {
+void Physics2DSubsystem::SetGravity(const glm::vec2& gravity) {
     if (b2World_IsValid(_worldId)) {
         b2World_SetGravity(_worldId, { gravity.x, gravity.y });
     }
 }
 
-glm::vec2 Physics2DServer::GetGravity() const {
+glm::vec2 Physics2DSubsystem::GetGravity() const {
     if (b2World_IsValid(_worldId)) {
         b2Vec2 g = b2World_GetGravity(_worldId);
         return glm::vec2(g.x, g.y);
@@ -137,43 +137,43 @@ glm::vec2 Physics2DServer::GetGravity() const {
     return glm::vec2(0.0f);
 }
 
-b2BodyId Physics2DServer::CreateBody(const b2BodyDef* def) {
+b2BodyId Physics2DSubsystem::CreateBody(const b2BodyDef* def) {
     if (b2World_IsValid(_worldId)) {
         return b2CreateBody(_worldId, def);
     }
     return b2_nullBodyId;
 }
 
-void Physics2DServer::DestroyBody(b2BodyId bodyId) {
+void Physics2DSubsystem::DestroyBody(b2BodyId bodyId) {
     if (b2Body_IsValid(bodyId)) {
         b2DestroyBody(bodyId);
     }
 }
 
-Rigidbody2DComponent* Physics2DServer::RegisterRigidbody2D(Rigidbody2DComponent* rb) {
+Rigidbody2DComponent* Physics2DSubsystem::RegisterRigidbody2D(Rigidbody2DComponent* rb) {
     if (rb) {
         _rigidbodies.push_back(rb);
     }
     return rb;
 }
 
-void Physics2DServer::UnregisterRigidbody2D(Rigidbody2DComponent* rb) {
+void Physics2DSubsystem::UnregisterRigidbody2D(Rigidbody2DComponent* rb) {
     auto it = std::find(_rigidbodies.begin(), _rigidbodies.end(), rb);
     if (it != _rigidbodies.end()) {
         _rigidbodies.erase(it);
     }
 }
 
-void Physics2DServer::SetBeginContactCallback(CollisionCallback callback) {
+void Physics2DSubsystem::SetBeginContactCallback(CollisionCallback callback) {
     _onBeginContact = callback;
 }
 
-void Physics2DServer::SetEndContactCallback(CollisionCallback callback) {
+void Physics2DSubsystem::SetEndContactCallback(CollisionCallback callback) {
     _onEndContact = callback;
 }
 
-Physics2DServer::RaycastResult
-  Physics2DServer::Raycast(const glm::vec2& origin, const glm::vec2& direction, float maxDistance) {
+Physics2DSubsystem::RaycastResult
+  Physics2DSubsystem::Raycast(const glm::vec2& origin, const glm::vec2& direction, float maxDistance) {
     RaycastResult result;
     if (!b2World_IsValid(_worldId)) return result;
 
@@ -189,7 +189,7 @@ Physics2DServer::RaycastResult
 }
 
 std::vector<Rigidbody2DComponent*>
-  Physics2DServer::QueryAABB(const glm::vec2& lowerBound, const glm::vec2& upperBound) {
+  Physics2DSubsystem::QueryAABB(const glm::vec2& lowerBound, const glm::vec2& upperBound) {
     std::vector<Rigidbody2DComponent*> results;
     if (!b2World_IsValid(_worldId)) return results;
 

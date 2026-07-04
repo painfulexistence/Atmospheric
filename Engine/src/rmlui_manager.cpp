@@ -5,6 +5,7 @@
 #include <RmlUi/Core.h>
 #include <cstring>
 #include <RmlUi/Debugger.h>
+#include <cassert>
 #include <spdlog/spdlog.h>
 #ifdef TRACY_ENABLE
 #include <tracy/Tracy.hpp>
@@ -33,10 +34,10 @@ public:
     }
     bool Seek(Rml::FileHandle fh, long offset, int origin) override {
         auto* s = reinterpret_cast<State*>(fh);
-        long base = (origin == SEEK_SET) ? 0 : (origin == SEEK_END) ? (long)s->data.size() : (long)s->pos;
+        long base = (origin == SEEK_SET) ? 0 : (origin == SEEK_END) ? static_cast<long>(s->data.size()) : static_cast<long>(s->pos);
         long newPos = base + offset;
-        if (newPos < 0 || newPos > (long)s->data.size()) return false;
-        s->pos = (size_t)newPos;
+        if (newPos < 0 || newPos > static_cast<long>(s->data.size())) return false;
+        s->pos = static_cast<size_t>(newPos);
         return true;
     }
     size_t Tell(Rml::FileHandle fh) override {
@@ -54,13 +55,12 @@ static AeRmlFileInterface s_rmlFileInterface;
 RmlUiManager* RmlUiManager::s_instance = nullptr;
 
 RmlUiManager* RmlUiManager::Get() {
-    if (!s_instance) {
-        s_instance = new RmlUiManager();
-    }
+    assert(s_instance && "RmlUiManager is owned by Application — construct the Application first");
     return s_instance;
 }
 
 RmlUiManager::RmlUiManager() {
+    assert(!s_instance && "RmlUiManager is a single-instance service owned by Application");
     s_instance = this;
 }
 
@@ -188,7 +188,9 @@ Rml::ElementDocument* RmlUiManager::LoadDocument(const std::string& path) {
 }
 
 void RmlUiManager::UnloadDocument(Rml::ElementDocument* document) {
-    if (document) {
+    // After Shutdown() the context (and every document it owned) is already
+    // destroyed; closing a stale pointer then would be use-after-free.
+    if (m_context && document) {
         document->Close();
     }
 }

@@ -1,6 +1,6 @@
 #pragma once
 #include "globals.hpp"
-#include "server.hpp"
+#include "subsystem.hpp"
 
 class GameObject;
 
@@ -12,9 +12,9 @@ enum class PhysicsDebugMode {
 struct RaycastHit {
     glm::vec3 point;
     glm::vec3 normal;
-    GameObject* gameObject;
-    float hitDistance;
-    float hitFraction;
+    GameObject* gameObject = nullptr;
+    float hitDistance = 0.0f;
+    float hitFraction = 0.0f;
 };
 
 class btCollisionConfiguration;
@@ -30,19 +30,19 @@ class BulletTaskScheduler;
 
 using ColliderID = uint32_t;
 
-class PhysicsServer : public Server
+class Physics3DSubsystem : public Subsystem
 {
 private:
-    static PhysicsServer* _instance;
+    static Physics3DSubsystem* _instance;
 
 public:
-    static PhysicsServer* Get()
+    static Physics3DSubsystem* Get()
     {
         return _instance;
     }
 
-    PhysicsServer();
-    ~PhysicsServer();
+    Physics3DSubsystem();
+    ~Physics3DSubsystem();
 
     void Init(Application* app) override;
     void Process(float dt) override;
@@ -62,16 +62,19 @@ public:
     void EnableDebugUI(bool enable = true);
 
 private:
-    btCollisionConfiguration* _config;
-    btCollisionDispatcher* _dispatcher;
-    btBroadphaseInterface* _broadphase;
-    btConstraintSolver* _solver;
-    btDiscreteDynamicsWorld* _world;
-    PhysicsDebugDrawer* _debugDrawer;
+    // Members are destroyed in reverse declaration order, so _world (which
+    // references the four subsystems and the debug drawer) is declared last
+    // and dies first — same order the old manual destructor enforced by hand.
+    std::unique_ptr<btCollisionConfiguration> _config;
+    std::unique_ptr<btCollisionDispatcher> _dispatcher;
+    std::unique_ptr<btBroadphaseInterface> _broadphase;
+    std::unique_ptr<btConstraintSolver> _solver;
+    std::unique_ptr<PhysicsDebugDrawer> _debugDrawer;
+    std::unique_ptr<btDiscreteDynamicsWorld> _world;
     std::unique_ptr<BulletTaskScheduler> _taskScheduler;
-    std::unordered_map<ColliderID, btCollisionShape*> _colliders;
+    std::unordered_map<ColliderID, std::unique_ptr<btCollisionShape>> _colliders;
     std::vector<RigidbodyComponent*> _impostors;
-    float _timeAccum;
+    float _timeAccum = 0.0f;
 
     bool _debugUIEnabled = false;
     ColliderID _nextColliderID = 0;

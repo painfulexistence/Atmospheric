@@ -28,6 +28,7 @@
 #include "sprite_component.hpp"
 #include "text_2d_component.hpp"
 #include "text_3d_component.hpp"
+#include "ui_page_manager.hpp"
 #include "action_manager.hpp"
 #include "action.hpp"
 #include "file_system.hpp"
@@ -223,7 +224,7 @@ Application::Application(AppConfig config) : _config(config) {
     });
 #endif
 
-    _window = std::make_shared<Window>(WindowProps{
+    _window = std::make_unique<Window>(WindowProps{
       .title = config.windowTitle,
       .width = config.windowWidth,
       .height = config.windowHeight,
@@ -234,6 +235,21 @@ Application::Application(AppConfig config) : _config(config) {
     });// Multi-window not supported now
     _window->Init();
     _window->InitImGui();
+
+    // Construct subsystems in dependency order (matches member declaration
+    // order). Each registers itself as its type's Get() locator here; the real
+    // GL/device setup still happens in Init(this) from Run(), once the full
+    // engine is wired up.
+    _console = std::make_unique<ConsoleSubsystem>();
+    _input = std::make_unique<InputSubsystem>();
+    _audio = std::make_unique<AudioSubsystem>();
+    _graphics = std::make_unique<GraphicsSubsystem>();
+    _physics = std::make_unique<Physics3DSubsystem>();
+    _physics2D = std::make_unique<Physics2DSubsystem>();
+
+    _assetManager = std::make_unique<AssetManager>();
+    _rmlUi = std::make_unique<RmlUiManager>();
+    _uiPages = std::make_unique<UIPageManager>();
 
     PushLayer(new GameLayer(this));
 #ifndef NDEBUG
@@ -355,7 +371,7 @@ void Application::RegisterComponents() {
           std::string fontPath = "";
           d.Read("fontPath", fontPath, std::string(""));
           if (!fontPath.empty()) {
-              props.font = GraphicsServer::Get()->LoadFont(fontPath, props.fontSize);
+              props.font = GraphicsSubsystem::Get()->LoadFont(fontPath, props.fontSize);
           } else {
               int fontVal = 0;
               d.Read("font", fontVal, 0);
@@ -382,10 +398,6 @@ void Application::RegisterComponents() {
           return new Text2DComponent(o, props);
       });
 
-    ComponentFactory::Register("TextComponent",
-      [](GameObject* o, Deserializer& d) -> Component* {
-          return ComponentFactory::Create("Text2DComponent", o, d);
-      });
 
     // ── Text3DComponent ─────────────────────────────────────────────────────────
     ComponentFactory::Register("Text3DComponent",
@@ -399,7 +411,7 @@ void Application::RegisterComponents() {
           std::string fontPath = "";
           d.Read("fontPath", fontPath, std::string(""));
           if (!fontPath.empty()) {
-              props.font = GraphicsServer::Get()->LoadFont(fontPath, props.fontSize);
+              props.font = GraphicsSubsystem::Get()->LoadFont(fontPath, props.fontSize);
           } else {
               int fontVal = 0;
               d.Read("font", fontVal, 0);
@@ -528,13 +540,12 @@ Application::~Application() {
     ENGINE_LOG("Exiting...");
     _window->DeinitImGui();
 
-    for (const auto& go : _entities)
-        delete go;
+    _entities.clear();
 
-    for (auto* layer : _layers) {
+    for (const auto& layer : _layers) {
         layer->OnDetach();
-        delete layer;
     }
+    _layers.clear();
 }
 
 void Application::Run() {
@@ -542,20 +553,20 @@ void Application::Run() {
     TracyNoop;
     tracy::InitCallstack();
 #endif
-    console.Init(this);
-    input.Init(this);
-    audio.Init(this);
-    _recorder->setAudioManager(&audio);
-    graphics.Init(this);
-    physics.Init(this);// Note that physics debug drawer is dependent on graphics server
-    physics2D.Init(this);
+    _console->Init(this);
+    _input->Init(this);
+    _audio->Init(this);
+    _recorder->setAudioManager(_audio.get());
+    _graphics->Init(this);
+    _physics->Init(this);// Note that physics debug drawer is dependent on graphics server
+    _physics2D->Init(this);
     for (auto& subsystem : _subsystems) {
         subsystem->Init(this);
     }
     ENGINE_LOG("Subsystems initialized.");
 
     auto windowSize = _window->GetLogicalSize();
-    RmlUiManager::Get()->Initialize(windowSize.width, windowSize.height, graphics.renderer);
+    RmlUiManager::Get()->Initialize(windowSize.width, windowSize.height, _graphics->renderer.get());
 
     _transition.Init();
 
@@ -586,7 +597,7 @@ void Application::Run() {
 }
 
 void Application::PushLayer(Layer* layer) {
-    _layers.push_back(layer);
+    _layers.push_back(std::unique_ptr<Layer>(layer));
     layer->OnAttach();
 }
 
@@ -666,7 +677,7 @@ static EasingType ParseEasingType(const std::string& easingStr) {
     return EasingType::Linear;
 }
 
-static Action* ParseAction(const nlohmann::json& val) {
+static std::unique_ptr<Action> ParseAction(const nlohmann::json& val) {
     if (!val.is_object()) return nullptr;
 
     std::string type = val.value("type", "");
@@ -676,13 +687,13 @@ static Action* ParseAction(const nlohmann::json& val) {
 
     if (type == "MoveTo") {
         glm::vec3 pos = ParseVec3(val.value("position", nlohmann::json::array()), glm::vec3(0.0f));
-        auto* action = new MoveTo(duration, pos);
+        auto action = std::make_unique<MoveTo>(duration, pos);
         action->SetEasing(easing);
         return action;
     }
     else if (type == "MoveBy") {
         glm::vec3 delta = ParseVec3(val.value("deltaPosition", nlohmann::json::array()), glm::vec3(0.0f));
-        auto* action = new MoveBy(duration, delta);
+        auto action = std::make_unique<MoveBy>(duration, delta);
         action->SetEasing(easing);
         return action;
     }
@@ -693,7 +704,7 @@ static Action* ParseAction(const nlohmann::json& val) {
             rot.y = val["rotation"].size() >= 2 ? glm::radians(val["rotation"][1].get<float>()) : 0.0f;
             rot.z = val["rotation"].size() >= 3 ? glm::radians(val["rotation"][2].get<float>()) : 0.0f;
         }
-        auto* action = new RotateTo(duration, rot);
+        auto action = std::make_unique<RotateTo>(duration, rot);
         action->SetEasing(easing);
         return action;
     }
@@ -704,25 +715,25 @@ static Action* ParseAction(const nlohmann::json& val) {
             delta.y = val["deltaRotation"].size() >= 2 ? glm::radians(val["deltaRotation"][1].get<float>()) : 0.0f;
             delta.z = val["deltaRotation"].size() >= 3 ? glm::radians(val["deltaRotation"][2].get<float>()) : 0.0f;
         }
-        auto* action = new RotateBy(duration, delta);
+        auto action = std::make_unique<RotateBy>(duration, delta);
         action->SetEasing(easing);
         return action;
     }
     else if (type == "ScaleTo") {
         glm::vec3 scale = ParseVec3(val.value("scale", nlohmann::json::array()), glm::vec3(1.0f));
-        auto* action = new ScaleTo(duration, scale);
+        auto action = std::make_unique<ScaleTo>(duration, scale);
         action->SetEasing(easing);
         return action;
     }
     else if (type == "ColorTo") {
         glm::vec4 color = ParseVec4(val.value("color", nlohmann::json::array()), glm::vec4(1.0f));
-        auto* action = new ColorTo(duration, color);
+        auto action = std::make_unique<ColorTo>(duration, color);
         action->SetEasing(easing);
         return action;
     }
     else if (type == "FadeTo") {
         float alpha = val.value("alpha", 1.0f);
-        auto* action = new FadeTo(duration, alpha);
+        auto action = std::make_unique<FadeTo>(duration, alpha);
         action->SetEasing(easing);
         return action;
     }
@@ -730,33 +741,30 @@ static Action* ParseAction(const nlohmann::json& val) {
         std::vector<FiniteTimeAction*> seqActions;
         if (val.contains("actions") && val["actions"].is_array()) {
             for (const auto& actVal : val["actions"]) {
-                Action* parsed = ParseAction(actVal);
+                auto parsed = ParseAction(actVal);
                 if (parsed) {
-                    FiniteTimeAction* fta = dynamic_cast<FiniteTimeAction*>(parsed);
-                    if (fta) {
+                    if (auto* fta = dynamic_cast<FiniteTimeAction*>(parsed.get())) {
+                        parsed.release();// Sequence takes ownership below
                         seqActions.push_back(fta);
                     } else {
                         spdlog::warn("ParseAction: Sequence only supports FiniteTimeActions. Action ignored.");
-                        delete parsed;
                     }
                 }
             }
         }
         if (!seqActions.empty()) {
-            return new Sequence(seqActions);
+            return std::make_unique<Sequence>(seqActions);
         }
     }
     else if (type == "RepeatForever") {
         if (val.contains("action")) {
-            Action* parsed = ParseAction(val["action"]);
+            auto parsed = ParseAction(val["action"]);
             if (parsed) {
-                ActionInterval* interval = dynamic_cast<ActionInterval*>(parsed);
-                if (interval) {
-                    return new RepeatForever(interval);
-                } else {
-                    spdlog::warn("ParseAction: RepeatForever only supports ActionIntervals. Action ignored.");
-                    delete parsed;
+                if (auto* interval = dynamic_cast<ActionInterval*>(parsed.get())) {
+                    parsed.release();// RepeatForever takes ownership
+                    return std::make_unique<RepeatForever>(interval);
                 }
+                spdlog::warn("ParseAction: RepeatForever only supports ActionIntervals. Action ignored.");
             }
         }
     }
@@ -794,7 +802,7 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
                     auto* mgr = go->GetComponent<ActionManager>();
                     if (mgr && compVal.contains("actions") && compVal["actions"].is_array()) {
                         for (const auto& actionVal : compVal["actions"]) {
-                            if (Action* a = ParseAction(actionVal)) mgr->RunAction(a);
+                            if (auto a = ParseAction(actionVal)) mgr->RunAction(std::move(a));
                         }
                     }
                 }
@@ -821,7 +829,7 @@ static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::s
     try {
         j = nlohmann::json::parse(jsonContent);
     } catch (const std::exception& e) {
-        Console::Get()->Error(fmt::format("ParseSceneBlueprint: JSON parse error: {}", e.what()));
+        ConsoleSubsystem::Get()->Error(fmt::format("ParseSceneBlueprint: JSON parse error: {}", e.what()));
         if (error) *error = e.what();
         return bp; // bp.name is "" — caller checks this
     }
@@ -887,7 +895,7 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
     // independently of whether this scene declares any textures of its own —
     // materials and meshes rely on the defaults even in texture-less scenes
     // (e.g. HelloWorld's cube).  There is no startup load point for these, unlike
-    // default shaders (loaded once by GraphicsServer).
+    // default shaders (loaded once by GraphicsSubsystem).
     if (_config.useDefaultTextures)
         AssetManager::Get().LoadDefaultTextures();
 
@@ -950,8 +958,8 @@ void Application::InstantiateScene(const SceneBlueprint& bp) {
     if (!bp.entities.empty())
         ENGINE_LOG("JSON Game objects created.");
 
-    mainCamera = graphics.GetMainCamera();
-    mainLight = graphics.GetMainLight();
+    mainCamera = _graphics->GetMainCamera();
+    mainLight = _graphics->GetMainLight();
 }
 
 void Application::ShowLoadingScreen() {
@@ -1040,21 +1048,21 @@ void Application::GoScene(const std::string& sceneName, std::function<void()> on
     FileSystem::Get().Prefetch({ scenePath }, [this, sceneName, scenePath, finish]() {
         auto bytes = FileSystem::Get().ReadSync(scenePath);
         if (bytes.empty()) {
-            console.Error(fmt::format("GoScene: failed to read scene file '{}'", scenePath));
+            _console->Error(fmt::format("GoScene: failed to read scene file '{}'", scenePath));
             finish();
             return;
         }
 
         SceneBlueprint bp = ParseSceneBlueprint(std::string(bytes.begin(), bytes.end()));
         if (bp.name.empty()) {
-            console.Error(fmt::format("GoScene: scene blueprint parse failed '{}'", scenePath));
+            _console->Error(fmt::format("GoScene: scene blueprint parse failed '{}'", scenePath));
             finish();
             return;
         }
 
         // Stage 2: prefetch every asset the blueprint declares, then load.
         std::vector<std::string> assetPaths = CollectPrefetchPaths(bp, _config.useDefaultTextures);
-        console.Info(fmt::format("GoScene: prefetching {} asset(s) for '{}'", assetPaths.size(), sceneName));
+        _console->Info(fmt::format("GoScene: prefetching {} asset(s) for '{}'", assetPaths.size(), sceneName));
 
         FileSystem::Get().Prefetch(assetPaths, [this, sceneName, bp = std::move(bp), finish]() mutable {
             // Unload the current scene first. This runs under the loading overlay,
@@ -1086,31 +1094,24 @@ void Application::ReloadScene() {
 void Application::LoadEditorScene(const uint8_t* data, size_t len)
 {
     // Mirror GoScene's entity-clearing logic without requiring a scene file.
-    for (auto* e : _entities) {
-        if (e != _defaultGameObject) delete e;
-    }
-    _entities.clear();
-    _nextEntityID = 0;
-    if (_defaultGameObject) {
-        _entities.push_back(_defaultGameObject);
-        _nextEntityID = 1;
-    }
+    std::erase_if(_entities, [this](const std::unique_ptr<GameObject>& e) { return e.get() != _defaultGameObject; });
+    _nextEntityID = _defaultGameObject ? 1 : 0;
 
-    graphics.cameras.clear();
-    graphics.directionalLights.clear();
-    graphics.pointLights.clear();
+    _graphics->cameras.clear();
+    _graphics->directionalLights.clear();
+    _graphics->pointLights.clear();
 
-    audio.StopAll();
-    physics.Reset();
+    _audio->StopAll();
+    _physics->Reset();
 
     SceneLoader loader(this);
     auto result = loader.LoadFromBuffer(data, len);
     if (!result.success) {
         _editorSceneError = result.error;
-        console.Warn(fmt::format("[Editor] Scene load failed: {}", result.error));
+        _console->Warn(fmt::format("[Editor] Scene load failed: {}", result.error));
     } else {
         _editorSceneError.clear();
-        console.Info(fmt::format("[Editor] Scene loaded: {} node(s)", result.allNodes.size()));
+        _console->Info(fmt::format("[Editor] Scene loaded: {} node(s)", result.allNodes.size()));
     }
 
     _sceneReady = true;
@@ -1122,9 +1123,9 @@ void Application::UnloadScene(const std::string& name)
 
     // Find the scene container (direct child of __root__ with this name).
     GameObject* container = nullptr;
-    for (auto* e : _entities) {
-        if (e != _defaultGameObject && e->parent == _defaultGameObject && e->GetName() == name) {
-            container = e;
+    for (const auto& e : _entities) {
+        if (e.get() != _defaultGameObject && e->parent == _defaultGameObject && e->GetName() == name) {
+            container = e.get();
             break;
         }
     }
@@ -1136,24 +1137,23 @@ void Application::UnloadScene(const std::string& name)
     while (!stack.empty()) {
         auto* node = stack.back(); stack.pop_back();
         toRemove.insert(node);
-        for (auto* e : _entities) {
-            if (e->parent == node) stack.push_back(e);
+        for (const auto& e : _entities) {
+            if (e->parent == node) stack.push_back(e.get());
         }
     }
 
-    _entities.erase(
-        std::remove_if(_entities.begin(), _entities.end(),
-            [&toRemove](GameObject* e) { return toRemove.count(e) > 0; }),
-        _entities.end());
-    for (auto* e : toRemove) delete e;
+    // Erasing destroys the objects; each GameObject detaches its components
+    // (unregistering them from the graphics/physics servers) as it dies.
+    std::erase_if(_entities,
+                  [&toRemove](const std::unique_ptr<GameObject>& e) { return toRemove.contains(e.get()); });
 
     // Free GPU/CPU assets that were first loaded by this scene.
     // Must come after GameObjects are deleted so no component holds a dangling ref.
     AssetManager::Get().UnloadSceneAssets(name);
 
-    mainCamera = graphics.GetMainCamera();
-    mainLight = graphics.GetMainLight();
-    console.Info(fmt::format("[Scene] Unloaded scene '{}'.", name));
+    mainCamera = _graphics->GetMainCamera();
+    mainLight = _graphics->GetMainLight();
+    _console->Info(fmt::format("[Scene] Unloaded scene '{}'.", name));
 }
 
 void Application::ClearScenes()
@@ -1162,8 +1162,8 @@ void Application::ClearScenes()
     // Collect names of all direct children of __root__ first to avoid
     // iterator invalidation inside UnloadScene.
     std::vector<std::string> names;
-    for (auto* e : _entities) {
-        if (e != _defaultGameObject && e->parent == _defaultGameObject)
+    for (const auto& e : _entities) {
+        if (e.get() != _defaultGameObject && e->parent == _defaultGameObject)
             names.push_back(e->GetName());
     }
     for (const auto& n : names) UnloadScene(n);
@@ -1178,15 +1178,15 @@ void Application::UnloadCurrentScene()
     // the component-lifecycle TODO), so those lists would otherwise keep dangling
     // pointers to freed owners and re-draw the previous scene. Clear every
     // scene-populated list here, mirroring the camera/light reset.
-    graphics.cameras.clear();
-    graphics.directionalLights.clear();
-    graphics.pointLights.clear();
-    graphics.sunComponents.clear();
-    graphics.renderables.clear();      // MeshComponent
-    graphics.canvasDrawables.clear();  // SpriteComponent / Text2DComponent / ...
+    _graphics->cameras.clear();
+    _graphics->directionalLights.clear();
+    _graphics->pointLights.clear();
+    _graphics->sunComponents.clear();
+    _graphics->renderables.clear();      // MeshComponent
+    _graphics->canvasDrawables.clear();  // SpriteComponent / Text2DComponent / ...
 
-    audio.StopAll();
-    physics.Reset();
+    _audio->StopAll();
+    _physics->Reset();
     if (!_currentSceneName.empty())
         AssetManager::Get().ClearSceneAssets(); // free scene GPU assets
     _currentSceneName.clear();
@@ -1197,7 +1197,7 @@ void Application::AddScene(const std::string& json)
     SceneBlueprint bp = ParseSceneBlueprint(json, &_editorSceneError);
     if (bp.name.empty()) { // parse failed — _editorSceneError set by ParseSceneBlueprint
         _lastLoadedScene = "";
-        console.Warn(fmt::format("[Scene] AddScene JSON parse error: {}", _editorSceneError));
+        _console->Warn(fmt::format("[Scene] AddScene JSON parse error: {}", _editorSceneError));
         return;
     }
 
@@ -1209,11 +1209,11 @@ void Application::AddScene(const std::string& json)
         InstantiateScene(bp);
         _editorSceneError.clear();
         _lastLoadedScene = bp.name;
-        console.Info(fmt::format("[Scene] Added scene '{}'.", bp.name));
+        _console->Info(fmt::format("[Scene] Added scene '{}'.", bp.name));
     } catch (const std::exception& e) {
         _editorSceneError = e.what();
         _lastLoadedScene  = "";
-        console.Warn(fmt::format("[Scene] AddScene '{}' failed: {}", bp.name, e.what()));
+        _console->Warn(fmt::format("[Scene] AddScene '{}' failed: {}", bp.name, e.what()));
     }
 }
 
@@ -1221,8 +1221,8 @@ std::string Application::GetLoadedScenes() const
 {
     nlohmann::json arr = nlohmann::json::array();
     if (_defaultGameObject) {
-        for (auto* e : _entities) {
-            if (e != _defaultGameObject && e->parent == _defaultGameObject)
+        for (const auto& e : _entities) {
+            if (e.get() != _defaultGameObject && e->parent == _defaultGameObject)
                 arr.push_back(e->GetName());
         }
     }
@@ -1273,12 +1273,12 @@ void Application::Update(const FrameData& props) {
     OnUpdate(dt, GetWindowTime());
 
     // ecs.Process(dt); // Note that most of the entity manipulation logic should be put there
-    console.Process(dt);
-    input.Process(dt);
-    audio.Process(dt);
-    physics.Process(dt);// TODO: Update only every entity's physics transform
-    physics2D.Process(dt);
-    graphics.Process(dt);
+    _console->Process(dt);
+    _input->Process(dt);
+    _audio->Process(dt);
+    _physics->Process(dt);// TODO: Update only every entity's physics transform
+    _physics2D->Process(dt);
+    _graphics->Process(dt);
     for (auto& subsystem : _subsystems) {
         subsystem->Process(dt);
     }
@@ -1287,13 +1287,13 @@ void Application::Update(const FrameData& props) {
     ENGINE_LOG(fmt::format("Update costs {} ms", (GetWindowTime() - time) * 1000));
 #endif
 
-    for (auto layer : _layers) {
+    for (const auto& layer : _layers) {
         layer->OnUpdate(dt);
     }
 
     float time = GetWindowTime();
 
-    for (auto go : _entities) {
+    for (const auto& go : _entities) {
         auto impostor = go->GetComponent<RigidbodyComponent>();
         if (impostor == nullptr) continue;
         if (impostor->IsKinematic()) continue;
@@ -1308,7 +1308,7 @@ void Application::Render(const FrameData& props) {
     float dt = props.deltaTime;
     float time = GetWindowTime();
 
-    for (auto* layer : _layers) {
+    for (const auto& layer : _layers) {
         layer->OnRender(dt);
     }
 
@@ -1335,7 +1335,7 @@ void Application::UpdateAutoCapture() {
         _capPhaseStart = now;// lazy init: anchor to the first rendered frame
     float elapsed = now - _capPhaseStart;
 
-    Renderer* renderer = graphics.renderer;
+    Renderer* renderer = _graphics->renderer.get();
 
     auto ensureParentDir = [](const std::string& path) {
         std::error_code ec;
@@ -1404,9 +1404,9 @@ void Application::UpdateAutoCapture() {
 }
 
 void Application::SaveScreenshot(const std::string& path) {
-    if (!graphics.renderer)
+    if (!_graphics->renderer)
         return;
-    graphics.renderer->readPixelsAsync([&path](const GpuImageData& img) {
+    _graphics->renderer->readPixelsAsync([&path](const GpuImageData& img) {
         if (img.data.empty())
             return;
         bool ok = pngWrite(path, img.data.data(), img.width, img.height, img.channelCount);
@@ -1432,10 +1432,6 @@ uint64_t Application::GetClock() {
     return this->_clock;
 }
 
-std::shared_ptr<Window> Application::GetWindow() {
-    return this->_window;
-}
-
 float Application::GetWindowTime() {
     return this->_window->GetTime();
 }
@@ -1453,17 +1449,19 @@ void Application::SetWindowTitle(const std::string& title) {
 }
 
 GameObject* Application::CreateGameObject(glm::vec3 position, glm::vec3 rotation, glm::vec3 scale) {
-    auto e = new GameObject(this, position, rotation, scale);
+    auto owned = std::make_unique<GameObject>(this, position, rotation, scale);
+    auto* e = owned.get();
     e->SetName(fmt::format("entity #{}", _nextEntityID++));
-    _entities.push_back(e);
+    _entities.push_back(std::move(owned));
     return e;
 }
 
 GameObject* Application::CreateGameObject(glm::vec2 position, float angle) {
-    auto e =
-      new GameObject(this, glm::vec3(position.x, position.y, 0.0f), glm::vec3(0.0f, 0.0f, angle), glm::vec3(1.0f));
+    auto owned = std::make_unique<GameObject>(
+      this, glm::vec3(position.x, position.y, 0.0f), glm::vec3(0.0f, 0.0f, angle), glm::vec3(1.0f));
+    auto* e = owned.get();
     e->SetName(fmt::format("entity #{}", _nextEntityID++));
-    _entities.push_back(e);
+    _entities.push_back(std::move(owned));
     return e;
 }
 
@@ -1485,7 +1483,7 @@ void printMemoryStats() {
         return -1;
     });
     if (jsHeapBytes >= 0) {
-        jsHeapSizeMB = (double)jsHeapBytes / mb;
+        jsHeapSizeMB = static_cast<double>(jsHeapBytes) / mb;
     }
 
     printf("========== Memory Stats ==========\n");

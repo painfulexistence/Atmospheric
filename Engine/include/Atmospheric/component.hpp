@@ -35,7 +35,7 @@ struct RigidbodyComponent;
 
 struct Geometry;
 
-struct Script;
+struct ScriptSubsystem;
 
 // Note that the pointers are widely used here, because the byte size of the reference type is not fixed and can change
 // by implementations
@@ -46,12 +46,12 @@ struct TransformData {
 };
 
 struct RigidbodyComponentData {
-    bool isActive;
+    bool isActive = false;
     const RigidbodyComponent* current;
 };
 
 struct GeometryData {
-    bool isActive;
+    bool isActive = false;
     const Geometry* current;
 };
 

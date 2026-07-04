@@ -2,7 +2,7 @@
 #include "application.hpp"
 #include "component.hpp"
 #include "game_object.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include "imgui.h"
 #include "video_recorder.hpp"
 #include "window.hpp"
@@ -35,10 +35,10 @@ void EditorLayer::ToggleRecording() {
                       std::localtime(&t));
         VideoRecorder::Config cfg;
         cfg.outputPath      = name;
-        cfg.captureAudio    = (_app->GetAudioManager() != nullptr);
+        cfg.captureAudio    = (AudioSubsystem::Get() != nullptr);
         cfg.audioSampleRate = 44100;
         cfg.audioChannels   = 2;
-        recorder->startRecording(_app->GetGraphicsServer()->renderer, cfg);
+        recorder->startRecording(GraphicsSubsystem::Get()->renderer.get(), cfg);
     }
 }
 
@@ -84,7 +84,7 @@ void EditorLayer::DrawSystemInfo() {
         ImGui::Text("Vendor: %s", glGetString(GL_VENDOR));
         ImGui::Text("Renderer: %s", glGetString(GL_RENDERER));
 
-        auto window = _app->GetWindow();
+        auto window = Window::Get();
         auto [wx, wy] = window->GetLogicalSize();
         ImGui::Text("Window size: %dx%d", wx, wy);
         auto [fx, fy] = window->GetPhysicalSize();
@@ -127,14 +127,14 @@ void EditorLayer::DrawAppView() {
         ImGui::BeginChild("Scene", ImVec2(200, 400), true);
         const auto& entities = _app->GetEntities();
         int rootCount = 0;
-        for (auto* e : entities) if (!e->parent) ++rootCount;
-        ImGui::Text("Scene (%d / %d)", rootCount, (int)entities.size());
+        for (const auto& e : entities) if (!e->parent) ++rootCount;
+        ImGui::Text("Scene (%d / %d)", rootCount, static_cast<int>(entities.size()));
         if (ImGui::Button("Reload Scene")) {
             _app->ReloadScene();
         }
         ImGui::Separator();
-        for (auto* entity : entities) {
-            if (!entity->parent) DrawEntityNode(entity, entities);
+        for (const auto& entity : entities) {
+            if (!entity->parent) DrawEntityNode(entity.get(), entities);
         }
         ImGui::EndChild();
 
@@ -151,9 +151,9 @@ void EditorLayer::DrawAppView() {
     ImGui::End();
 }
 
-void EditorLayer::DrawEntityNode(GameObject* entity, const std::vector<GameObject*>& all) {
+void EditorLayer::DrawEntityNode(GameObject* entity, const std::vector<std::unique_ptr<GameObject>>& all) {
     bool hasChildren = false;
-    for (auto* e : all) {
+    for (const auto& e : all) {
         if (e->parent == entity) { hasChildren = true; break; }
     }
 
@@ -161,13 +161,13 @@ void EditorLayer::DrawEntityNode(GameObject* entity, const std::vector<GameObjec
     if (entity == _selectedEntity) flags |= ImGuiTreeNodeFlags_Selected;
     if (!hasChildren) flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 
-    bool open = ImGui::TreeNodeEx((void*)entity, flags, "%s", entity->GetName().c_str());
+    bool open = ImGui::TreeNodeEx(static_cast<void*>(entity), flags, "%s", entity->GetName().c_str());
     if (ImGui::IsItemClicked()) _selectedEntity = entity;
 
     if (hasChildren) {
         if (open) {
-            for (auto* e : all) {
-                if (e->parent == entity) DrawEntityNode(e, all);
+            for (const auto& e : all) {
+                if (e->parent == entity) DrawEntityNode(e.get(), all);
             }
             ImGui::TreePop();
         }
@@ -176,7 +176,7 @@ void EditorLayer::DrawEntityNode(GameObject* entity, const std::vector<GameObjec
 
 void EditorLayer::DrawEntityInspector(GameObject* entity) {
     ImGui::Text("Name: %s", entity->GetName().c_str());
-    for (auto* comp : entity->GetComponents()) {
+    for (const auto& comp : entity->GetComponents()) {
         if (ImGui::CollapsingHeader(comp->GetName().c_str()))
             comp->DrawImGui();
     }
@@ -186,14 +186,14 @@ void EditorLayer::DrawEngineView() {
     ImGui::Begin("Engine Subsystems");
     {
         float dt = 1.0f / ImGui::GetIO().Framerate;
-        _app->GetConsole()->DrawImGui(dt);
-        _app->GetInput()->DrawImGui(dt);
-        _app->GetGraphicsServer()->DrawImGui(dt);
-        _app->GetPhysicsServer()->DrawImGui(dt);
+        ConsoleSubsystem::Get()->DrawImGui(dt);
+        InputSubsystem::Get()->DrawImGui(dt);
+        GraphicsSubsystem::Get()->DrawImGui(dt);
+        Physics3DSubsystem::Get()->DrawImGui(dt);
 #ifndef __EMSCRIPTEN__
-        _app->GetAudioManager()->DrawImGui(dt);
+        AudioSubsystem::Get()->DrawImGui(dt);
         if (ImGui::CollapsingHeader("Recording (F2)")) {
-            _app->GetRecorder()->drawImGui(*_app->GetGraphicsServer()->renderer);
+            _app->GetRecorder()->drawImGui(*GraphicsSubsystem::Get()->renderer);
         }
 #endif
     }

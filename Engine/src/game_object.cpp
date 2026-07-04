@@ -1,8 +1,9 @@
 #include "game_object.hpp"
+#include <algorithm>
 #include "application.hpp"
 #include "component.hpp"
-#include "graphics_server.hpp"
-#include "physics_server.hpp"
+#include "graphics_subsystem.hpp"
+#include "physics_subsystem_3d.hpp"
 #include "rigidbody_component.hpp"
 #include "sprite_component.hpp"
 #include "transform_component.hpp"
@@ -13,22 +14,27 @@ GameObject::GameObject(Application* app, glm::vec3 position, glm::vec3 rotation,
 }
 
 GameObject::~GameObject() {
-    // Components are deleted by the component system
-    // _transform will be deleted when _components are cleaned up
+    // Detach in reverse attach order so components can still reach their
+    // server-side registries (graphics/physics) while unregistering; the
+    // unique_ptrs then destroy them when _components goes away.
+    for (auto it = _components.rbegin(); it != _components.rend(); ++it) {
+        (*it)->OnDetach();
+    }
 }
 
 void GameObject::AddComponent(Component* component) {
-    _components.push_back(component);
+    _components.push_back(std::unique_ptr<Component>(component));
     // _namedComponents.insert_or_assign(component->GetName(), component);
     component->gameObject = this;
     component->OnAttach();
 }
 
 void GameObject::RemoveComponent(Component* component) {
-    auto it = std::find(_components.begin(), _components.end(), component);
+    auto it = std::find_if(_components.begin(), _components.end(),
+                           [component](const std::unique_ptr<Component>& c) { return c.get() == component; });
     if (it != _components.end()) {
         component->OnDetach();
-        _components.erase(it);
+        _components.erase(it);// destroys the component
     }
     // _namedComponents.erase(component->GetName());
 }
@@ -44,7 +50,7 @@ void GameObject::RemoveComponent(Component* component) {
 
 void GameObject::Tick(float dt) {
     if (!isActive) return;
-    for (auto* component : _components) {
+    for (const auto& component : _components) {
         if (component->CanTick()) {
             component->OnTick(dt);
         }
@@ -53,7 +59,7 @@ void GameObject::Tick(float dt) {
 
 void GameObject::PhysicsTick(float dt) {
     if (!isActive) return;
-    for (auto* component : _components) {
+    for (const auto& component : _components) {
         if (component->CanPhysicsTick()) {
             component->OnPhysicsTick(dt);
         }
@@ -75,7 +81,7 @@ GameObject* GameObject::AddCamera(const CameraProps& props) {
 // Shortcut 1 for adding renderable component
 GameObject* GameObject::AddMesh(const std::string& meshName) {
     if (_app) {
-        auto graphics = _app->GetGraphicsServer();
+        auto graphics = GraphicsSubsystem::Get();
         if (graphics) {
             auto mesh = graphics->GetMesh(meshName);
             AddMesh(mesh);
@@ -130,7 +136,7 @@ glm::mat4 GameObject::GetLocalTransform() const {
     return _transform->GetLocalTransform();
 }
 
-void GameObject::SetLocalTransform(glm::mat4 xform) {
+void GameObject::SetLocalTransform(const glm::mat4& xform) {
     _transform->SetLocalTransform(xform);
 }
 
@@ -138,14 +144,14 @@ glm::mat4 GameObject::GetObjectTransform() const {
     return _transform->GetWorldTransform();
 }
 
-void GameObject::SetObjectTransform(glm::mat4 xform) {
+void GameObject::SetObjectTransform(const glm::mat4& xform) {
     _transform->SetWorldTransform(xform);
 
     RigidbodyComponent* rb = GetComponent<RigidbodyComponent>();
     if (rb) rb->SetWorldTransform(_transform->GetPosition(), _transform->GetRotation());
 }
 
-void GameObject::SyncObjectTransform(glm::mat4 xform) {
+void GameObject::SyncObjectTransform(const glm::mat4& xform) {
     _transform->SyncWorldTransform(xform);
 }
 

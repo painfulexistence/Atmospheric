@@ -27,7 +27,7 @@ struct GpuImageData {
 
 using PixelReadbackCallback = std::function<void(const GpuImageData&)>;
 
-class GraphicsServer;
+class GraphicsSubsystem;
 class ShaderProgram;
 class Renderer;
 
@@ -44,48 +44,48 @@ struct RenderCommand {
 class RenderPass {
 public:
     virtual ~RenderPass() = default;
-    virtual void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) = 0;
+    virtual void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) = 0;
 };
 
 class ShadowPass : public RenderPass {
 public:
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
 class ForwardOpaquePass : public RenderPass {
 public:
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
 class DeferredGeometryPass : public RenderPass {
 public:
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
 class DeferredLightingPass : public RenderPass {
 public:
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
 // For particles, world UI
 class TransparentPass : public RenderPass {
 public:
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
 class MSAAResolvePass : public RenderPass {
 public:
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
 class WorldCanvasPass : public RenderPass {
 public:
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
 class CanvasPass : public RenderPass {
 public:
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
 // Final composite blit: single post_composite shader pass. Every effect is an
@@ -93,7 +93,7 @@ public:
 // UV distortion -> CA fetch -> tonemap -> LDR stylize -> gamma encode.
 class PostProcessPass : public RenderPass {
 public:
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
     bool  tonemapEnabled = true;
     float exposure       = 0.5f;
@@ -113,19 +113,19 @@ public:
 // TODO: rename this
 class UIPass : public RenderPass {
 public:
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
 // Flat billboard quad at the light source position — reads SunComponent for visual params.
 class SunPass : public RenderPass {
 public:
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
 // Gradient sky rendered at depth=1 (behind everything).  Matches VX's Skybox.
 class SkyboxPass : public RenderPass {
 public:
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
     glm::vec3 skyColor     = glm::vec3(0.686f, 0.933f, 0.933f); // VX COLOR_MINT_GREEN
     glm::vec3 horizonColor = glm::vec3(1.000f, 0.980f, 0.804f); // VX COLOR_LEMON_CREAM
@@ -134,7 +134,7 @@ public:
 // Renders MeshType::VOXEL meshes from the opaque queue using the voxel shader.
 class VoxelChunkPass : public RenderPass {
 public:
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
     int paletteIndex = 4;  // 0-5; 4 = VX Palette 5 (soft cool blue-grey)
 };
@@ -142,7 +142,7 @@ public:
 // Renders MeshType::PRIM water meshes tagged via material renderQueue.
 class WaterPass : public RenderPass {
 public:
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
     float time = 0.0f;
 };
@@ -151,7 +151,7 @@ public:
 class BloomPass : public RenderPass {
 public:
     ~BloomPass() override;
-    void Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
     bool  enabled       = false;
     float threshold     = 1.0f;  // VX: brightness.frag hard cutoff
@@ -194,7 +194,7 @@ public:
     ~RenderGraph();
 
     void AddPass(std::unique_ptr<RenderPass> pass);
-    void Render(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc = nullptr);
+    void Render(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr);
 
     // Returns {passName, gpuMs} for every pass (one frame behind, stall-free).
     std::vector<std::pair<std::string, float>> GetTimings() const;
@@ -254,7 +254,7 @@ public:
     }
 
     void SubmitCommand(const RenderCommand& cmd);
-    void RenderFrame(GraphicsServer* ctx, float dt);
+    void RenderFrame(GraphicsSubsystem* ctx, float dt);
 
     void BeginTransformFeedbackPass();
     void BindTransformFeedbackBuffer(GLuint bufferId, GLuint index = 0);
@@ -315,15 +315,15 @@ public:
 
     // GL-specific: GBuffer
     struct GBuffer {
-        GLuint id;
-        GLuint positionRT;
-        GLuint normalRT;
-        GLuint albedoRT;
-        GLuint materialRT;
-        GLuint depthRT;
+        GLuint id = 0;
+        GLuint positionRT = 0;
+        GLuint normalRT = 0;
+        GLuint albedoRT = 0;
+        GLuint materialRT = 0;
+        GLuint depthRT = 0;
     } gBuffer;
 
-    GLuint shadowFBO;
+    GLuint shadowFBO = 0;
     GLuint canvasVAO, canvasVBO;  // GL-specific: legacy canvas geometry
 
     // Screen-quad VAO shared by post-process passes (bloom, composite, etc.)

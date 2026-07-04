@@ -1,7 +1,7 @@
 #include "sun_component.hpp"
 #include "application.hpp"
 #include "game_object.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include "imgui.h"
 #include <algorithm>
 
@@ -14,7 +14,7 @@ SunComponent::SunComponent(glm::vec3 billboardColor,
 {}
 
 void SunComponent::OnAttach() {
-    if (auto* gfx = gameObject->GetApp()->GetGraphicsServer()) {
+    if (auto* gfx = GraphicsSubsystem::Get()) {
         gfx->RegisterSun(this);
     }
 }
@@ -26,7 +26,7 @@ void SunComponent::DrawImGui() {
 }
 
 void SunComponent::OnDetach() {
-    if (auto* gfx = gameObject->GetApp()->GetGraphicsServer()) {
+    if (auto* gfx = GraphicsSubsystem::Get()) {
         auto& list = gfx->sunComponents;
         list.erase(std::remove(list.begin(), list.end(), this), list.end());
     }

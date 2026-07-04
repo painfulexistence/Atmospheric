@@ -7,7 +7,7 @@
 #include <memory>
 #include <glm/vec3.hpp>
 
-class GraphicsServer;
+class GraphicsSubsystem;
 
 class VoxelChunk {
 public:
@@ -26,7 +26,7 @@ public:
     void SetNeighbor(int dx, int dz, VoxelChunk* chunk);
 
     // Rebuild GPU mesh using greedy meshing.  Clears the dirty flag.
-    void RebuildMesh(GraphicsServer* gfx);
+    void RebuildMesh(GraphicsSubsystem* gfx);
 
     bool        IsDirty()   const { return _dirty; }
     void        MarkDirty()       { _dirty = true;  }

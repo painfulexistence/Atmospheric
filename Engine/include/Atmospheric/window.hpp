@@ -173,10 +173,10 @@ private:
     bool _isRunning = true;
     bool _isFullscreen = false;
     bool _webGPUCanvas = false; // true if canvas was left free for WebGPU (no GL context)
-    int _windowedX;
-    int _windowedY;
-    int _windowedWidth;
-    int _windowedHeight;
+    int _windowedX = 0;
+    int _windowedY = 0;
+    int _windowedWidth = 0;
+    int _windowedHeight = 0;
     float _scaleX = 1.0f;
     float _scaleY = 1.0f;
     WindowEventCallbackID _nextCallbackID = 0;

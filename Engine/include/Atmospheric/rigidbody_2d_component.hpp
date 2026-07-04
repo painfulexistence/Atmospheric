@@ -1,7 +1,7 @@
 #pragma once
 
 #include "component.hpp"
-#include "physics_server_2d.hpp"
+#include "physics_subsystem_2d.hpp"
 #include <box2d/box2d.h>
 #include <glm/vec2.hpp>
 #include <vector>

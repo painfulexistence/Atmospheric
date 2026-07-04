@@ -1,6 +1,6 @@
 #pragma once
 
-#include "server.hpp"
+#include "subsystem.hpp"
 #include <box2d/box2d.h>
 #include <functional>
 #include <glm/vec2.hpp>
@@ -12,18 +12,18 @@ class GameObject;
 // Collision callback types
 using CollisionCallback = std::function<void(Rigidbody2DComponent*, Rigidbody2DComponent*)>;
 
-// 2D Physics Server - manages Box2D world and all 2D physics bodies
-class Physics2DServer : public Server {
+// 2D Physics Subsystem - manages Box2D world and all 2D physics bodies
+class Physics2DSubsystem : public Subsystem {
 private:
-    static Physics2DServer* _instance;
+    static Physics2DSubsystem* _instance;
 
 public:
-    static Physics2DServer* Get() {
+    static Physics2DSubsystem* Get() {
         return _instance;
     }
 
-    Physics2DServer();
-    ~Physics2DServer();
+    Physics2DSubsystem();
+    ~Physics2DSubsystem();
 
     void Init(Application* app) override;
     void Process(float dt) override;

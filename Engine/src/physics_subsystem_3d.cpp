@@ -1,4 +1,5 @@
-#include "physics_server.hpp"
+#include "physics_subsystem_3d.hpp"
+#include <algorithm>
 #include "LinearMath/btThreads.h"
 #include "bullet_task_scheduler.hpp"
 #include "game_object.hpp"
@@ -29,30 +30,26 @@ public:
     }
 };
 
-PhysicsServer* PhysicsServer::_instance = nullptr;
+Physics3DSubsystem* Physics3DSubsystem::_instance = nullptr;
 
-PhysicsServer::PhysicsServer() {
+Physics3DSubsystem::Physics3DSubsystem() {
     if (_instance != nullptr) throw std::runtime_error("Physics server is already initialized!");
 
     _instance = this;
 }
 
-PhysicsServer::~PhysicsServer() {
-    // It's important to set the task scheduler to null before deleting the world
-    // and other resources, to prevent it from being used during destruction.
+Physics3DSubsystem::~Physics3DSubsystem() {
+    // It's important to set the task scheduler to null before the world and
+    // other resources are destroyed (which happens automatically, in reverse
+    // declaration order, right after this body runs).
     btSetTaskScheduler(nullptr);
-
-    delete _world;
-    delete _debugDrawer;
-
-    delete _solver;
-    delete _broadphase;
-    delete _dispatcher;
-    delete _config;
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
-void PhysicsServer::Init(Application* app) {
-    Server::Init(app);
+void Physics3DSubsystem::Init(Application* app) {
+    Subsystem::Init(app);
 
     // Create and set the custom task scheduler
     _taskScheduler = std::make_unique<BulletTaskScheduler>(*JobSystem::Get());
@@ -63,31 +60,31 @@ void PhysicsServer::Init(Application* app) {
         scheduler ? scheduler->getNumThreads() : 0);
     spdlog::info("[Physics] JobSystem threads: {}", JobSystem::Get()->GetThreadCount());
 
-    _config = new btDefaultCollisionConfiguration();
+    _config = std::make_unique<btDefaultCollisionConfiguration>();
     // Use multithreaded dispatcher if thread safe
 #ifdef BT_THREADSAFE
-    _dispatcher = new btCollisionDispatcherMt(_config, JobSystem::Get()->GetThreadCount());
+    _dispatcher = std::make_unique<btCollisionDispatcherMt>(_config.get(), JobSystem::Get()->GetThreadCount());
 #else
-    _dispatcher = new btCollisionDispatcher(_config);
+    _dispatcher = std::make_unique<btCollisionDispatcher>(_config.get());
 #endif
-    _broadphase = new btDbvtBroadphase();
+    _broadphase = std::make_unique<btDbvtBroadphase>();
 
     // Use parallel solver
-    _solver = new btSequentialImpulseConstraintSolverMt();
+    _solver = std::make_unique<btSequentialImpulseConstraintSolverMt>();
 
-    _world = new btDiscreteDynamicsWorld(_dispatcher, _broadphase, _solver, _config);
+    _world = std::make_unique<btDiscreteDynamicsWorld>(_dispatcher.get(), _broadphase.get(), _solver.get(), _config.get());
     SetGravity(glm::vec3(0, -GRAVITY, 0));
 
-    _debugDrawer = new PhysicsDebugDrawer();
-    _world->setDebugDrawer(_debugDrawer);
+    _debugDrawer = std::make_unique<PhysicsDebugDrawer>();
+    _world->setDebugDrawer(_debugDrawer.get());
     _debugDrawer->setDebugMode(1);
 
     _timeAccum = 0.0f;
 }
 
-void PhysicsServer::Process(float dt) {
+void Physics3DSubsystem::Process(float dt) {
 #ifdef TRACY_ENABLE
-    ZoneScopedN("PhysicsServer::Process");
+    ZoneScopedN("Physics3DSubsystem::Process");
 #endif
     _timeAccum += dt;
     while (_timeAccum >= FIXED_TIME_STEP) {
@@ -118,7 +115,7 @@ void PhysicsServer::Process(float dt) {
     }
 }
 
-void PhysicsServer::DrawImGui(float dt) {
+void Physics3DSubsystem::DrawImGui(float dt) {
     if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Text("Number of manifolds: %d", _dispatcher->getNumManifolds());
         if (ImGui::Button("Debug UI")) {
@@ -136,24 +133,27 @@ void PhysicsServer::DrawImGui(float dt) {
     }
 }
 
-void PhysicsServer::Reset() {
-    for (auto impostor : _impostors) {
-        _world->removeRigidBody(impostor->_rigidbody);
-        delete impostor;
+void Physics3DSubsystem::Reset() {
+    // Components are owned by their GameObjects (which unregister themselves
+    // via OnDetach on destruction); here we only detach whatever is left from
+    // the simulation, we never delete the components.
+    for (auto* impostor : _impostors) {
+        _world->removeRigidBody(impostor->_rigidbody.get());
     }
     _impostors.clear();
 }
 
-void PhysicsServer::AddRigidbody(RigidbodyComponent* impostor) {
-    _world->addRigidBody(impostor->_rigidbody);
+void Physics3DSubsystem::AddRigidbody(RigidbodyComponent* impostor) {
+    _world->addRigidBody(impostor->_rigidbody.get());
     _impostors.push_back(impostor);
 }
 
-void PhysicsServer::RemoveRigidbody(RigidbodyComponent* impostor) {
-    _world->removeRigidBody(impostor->_rigidbody);
+void Physics3DSubsystem::RemoveRigidbody(RigidbodyComponent* impostor) {
+    _world->removeRigidBody(impostor->_rigidbody.get());
+    _impostors.erase(std::remove(_impostors.begin(), _impostors.end(), impostor), _impostors.end());
 }
 
-ColliderID PhysicsServer::CreateCollider(const Shape& shape) {
+ColliderID Physics3DSubsystem::CreateCollider(const Shape& shape) {
     btCollisionShape* col = nullptr;
     switch (shape.type) {
     case ShapeType::Cube:
@@ -178,16 +178,15 @@ ColliderID PhysicsServer::CreateCollider(const Shape& shape) {
     default:
         throw std::runtime_error("Invalid shape type");
     }
-    _colliders[_nextColliderID] = col;
+    _colliders[_nextColliderID] = std::unique_ptr<btCollisionShape>(col);
     return _nextColliderID++;
 }
 
-void PhysicsServer::DestroyCollider(ColliderID col) {
-    delete _colliders[col];
+void Physics3DSubsystem::DestroyCollider(ColliderID col) {
     _colliders.erase(col);
 }
 
-bool PhysicsServer::Raycast(const glm::vec3& from, const glm::vec3& to, RaycastHit& hit) {
+bool Physics3DSubsystem::Raycast(const glm::vec3& from, const glm::vec3& to, RaycastHit& hit) {
     btVector3 rayFrom(from.x, from.y, from.z);
     btVector3 rayTo(to.x, to.y, to.z);
 
@@ -207,10 +206,10 @@ bool PhysicsServer::Raycast(const glm::vec3& from, const glm::vec3& to, RaycastH
     }
 }
 
-void PhysicsServer::SetGravity(const glm::vec3& acc) {
+void Physics3DSubsystem::SetGravity(const glm::vec3& acc) {
     _world->setGravity(btVector3(acc.x, acc.y, acc.z));
 }
 
-void PhysicsServer::EnableDebugUI(bool enable) {
+void Physics3DSubsystem::EnableDebugUI(bool enable) {
     _debugUIEnabled = enable;
 }

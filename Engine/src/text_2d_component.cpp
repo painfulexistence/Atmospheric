@@ -1,9 +1,9 @@
 #include "text_2d_component.hpp"
 #include "application.hpp"
 #include "batch_renderer_2d.hpp"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "game_object.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include "imgui.h"
 
 Text2DComponent::Text2DComponent(GameObject* gameObject, const Text2DProps& props) : CanvasDrawable(gameObject) {
@@ -37,8 +37,8 @@ void Text2DComponent::DrawImGui() {
 }
 
 void Text2DComponent::OnAttach() {
-    Console::Get()->Info(fmt::format("Text2DComponent: Attaching with text='{}'", _text));
-    auto* graphics = gameObject->GetApp()->GetGraphicsServer();
+    ConsoleSubsystem::Get()->Info(fmt::format("Text2DComponent: Attaching with text='{}'", _text));
+    auto* graphics = GraphicsSubsystem::Get();
     graphics->RegisterCanvasDrawable(this);
 
     // Resolve font fallback
@@ -48,14 +48,16 @@ void Text2DComponent::OnAttach() {
 }
 
 void Text2DComponent::OnDetach() {
-    // Unregister canvas drawable if needed
+    if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->UnregisterCanvasDrawable(this);
+    }
 }
 
 void Text2DComponent::Draw(BatchRenderer2D* renderer) {
     if (_text.empty()) return;
     if (!gameObject->isActive) return;
 
-    auto* graphics = GraphicsServer::Get();
+    auto* graphics = GraphicsSubsystem::Get();
     if (!graphics) return;
 
     FontHandle fontID = _font == 0 ? graphics->GetOrCreateDefaultFont() : _font;
