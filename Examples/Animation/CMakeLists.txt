@@ -1,4 +1,4 @@
-set(GAME_NAME CSBDemo)
+set(GAME_NAME Animation)
 set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 
 find_package(glm CONFIG REQUIRED)

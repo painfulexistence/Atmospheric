@@ -111,7 +111,6 @@ get_deploy_name() {
     local folder_name="$1"
     case "$folder_name" in
         "LuaScripting") echo "AtmosLua" ;;
-        "SceneLoader") echo "CSBDemo" ;;
         "Physics2D") echo "Physics2DDemo" ;;
         "MazeFPS") echo "Maze" ;;
         *) echo "$folder_name" ;;

@@ -1,6 +1,6 @@
 add_subdirectory(LuaScripting)
 add_subdirectory(HelloWorld)
-add_subdirectory(SceneLoader)
+add_subdirectory(Animation)
 add_subdirectory(Physics2D)
 add_subdirectory(MidnightSkyraiders)
 add_subdirectory(RPG)

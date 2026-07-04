@@ -97,7 +97,7 @@ else
     [[ "$CAPTURE_DIR" = /* ]] || CAPTURE_DIR="$REPO_ROOT/$CAPTURE_DIR"
 fi
 
-DEFAULT_EXAMPLES="HelloWorld SceneLoader Physics2D RPG CardBattle VoxelWorld Terrain MidnightSkyraiders MultiplayerSandbox VideoPlayer LuaScripting"
+DEFAULT_EXAMPLES="HelloWorld Animation Physics2D RPG CardBattle VoxelWorld Terrain MidnightSkyraiders MultiplayerSandbox VideoPlayer LuaScripting"
 EXAMPLES="${EXAMPLES_SUBSET:-$DEFAULT_EXAMPLES}"
 
 find_bin() {
