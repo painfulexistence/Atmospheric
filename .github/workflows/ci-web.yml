@@ -1,4 +1,4 @@
-name: Build (WebAssembly)
+name: CI (WebAssembly)
 
 # The build artifact (.html + .wasm + .js + .data) is uploaded so that
 # manual smoke-testing in a browser is possible without a local emsdk install.
