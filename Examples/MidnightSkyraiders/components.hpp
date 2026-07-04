@@ -95,11 +95,15 @@ public:
         }
         }
 
-        if (_bx > WORLD + 50.0f || _bx < -50.0f ||
-            _by < -50.0f        || _by > WORLD + 50.0f) {
-            gameObject->SetActive(false);
-            return;
-        }
+        // Cull a bullet only when it exits on the side it travels toward:
+        // player bullets (type >= 0) fly right, enemy bullets (type < 0) fly
+        // left. Enemy bullets are spawned off-screen to the right by enemies
+        // that have not yet scrolled into view, so culling them on the right
+        // edge (as a symmetric box did) deleted them before they ever
+        // appeared — which is why enemy fire looked absent.
+        const bool offscreen = (_type >= 0) ? (_bx > WORLD + 50.0f)
+                                            : (_bx < -50.0f);
+        if (offscreen) { gameObject->SetActive(false); return; }
         gameObject->SetPosition(glm::vec3(_bx, _by, 0.0f));
     }
 };

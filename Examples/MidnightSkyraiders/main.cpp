@@ -194,9 +194,18 @@ class MidnightSkyraiders : public Application {
     }
 
     void updateTitle(float /*dt*/) {
-        GraphicsSubsystem::Get()->DrawText(fontID,
+        auto* gs = GraphicsSubsystem::Get();
+        gs->DrawText(fontID,
             "Press SPACE or ENTER to start",
-            HALF - 140.0f, WORLD - 60.0f, 0.8f, glm::vec4(1,1,0,1));
+            HALF - 140.0f, WORLD - 96.0f, 0.8f, glm::vec4(1,1,0,1));
+
+        // Credits, mirrored from the original game's index.html.
+        gs->DrawText(fontID,
+            "Arts & Programming: DevLucidum",
+            HALF - 100.0f, WORLD - 52.0f, 0.55f, glm::vec4(1,1,1,1));
+        gs->DrawText(fontID,
+            "Music: \"Sky - Lines\" by Ansimuz",
+            HALF - 100.0f, WORLD - 30.0f, 0.55f, glm::vec4(1,1,1,1));
 
         if (InputSubsystem::Get()->IsKeyPressed(Key::SPACE) || InputSubsystem::Get()->IsKeyPressed(Key::ENTER)) {
             if (titleObj) { titleObj->SetActive(false); titleObj = nullptr; }
@@ -261,18 +270,25 @@ class MidnightSkyraiders : public Application {
         if (type ==  2) maxLife = 2.0f;
         if (type == -3) maxLife = 2.5f;
 
+        // Render each bullet at its texture's native size. bullet.png and
+        // enemy-bullet.png are 32x4 laser streaks; forcing everything to 8x8
+        // collapsed them into tiny squares, which is why the normal player
+        // shot and the enemy laser looked missing. Sizes mirror the source
+        // game's per-type sprites (32x4 lasers, 16x16 orbs, 8x8 orbit).
         TextureHandle tex = texBullet;
+        glm::vec2     sz(32.0f, 4.0f);
         switch (type) {
-        case  1: tex = texCircle;  break;
-        case  2: tex = texOrbit;   break;
-        case -1: tex = texECircle; break;
-        case -2: tex = texEBullet; break;
-        case -3: tex = texECircle; break;
+        case  0: tex = texBullet;  sz = glm::vec2(32.0f,  4.0f); break;
+        case  1: tex = texCircle;  sz = glm::vec2(16.0f, 16.0f); break;
+        case  2: tex = texOrbit;   sz = glm::vec2( 8.0f,  8.0f); break;
+        case -1: tex = texECircle; sz = glm::vec2(16.0f, 16.0f); break;
+        case -2: tex = texEBullet; sz = glm::vec2(32.0f,  4.0f); break;
+        case -3: tex = texECircle; sz = glm::vec2(16.0f, 16.0f); break;
         }
 
         auto* obj = CreateGameObject(glm::vec2(x, y));
         obj->AddComponent<SpriteComponent>(SpriteProps{
-            .size      = glm::vec2(8.0f, 8.0f),
+            .size      = sz,
             .pivot     = glm::vec2(0.5f, 0.5f),
             .color     = glm::vec4(1,1,1,1),
             .texture   = tex,
