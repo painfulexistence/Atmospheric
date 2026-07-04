@@ -548,6 +548,10 @@ Application::~Application() {
     _layers.clear();
 }
 
+void Application::DestroyEntities() {
+    _entities.clear();
+}
+
 void Application::Run() {
 #ifdef TRACY_ENABLE
     TracyNoop;

@@ -16,6 +16,9 @@ LuaApplication::LuaApplication(AppConfig config) : Application(config) {
 }
 
 LuaApplication::~LuaApplication() {
+    // Destroy all GameObjects/Components before the sol::state _lua is destroyed.
+    // This prevents ScriptableComponent's sol references from calling luaL_unref with a dangling lua_State* pointer.
+    DestroyEntities();
 }
 
 void LuaApplication::OnInit() {

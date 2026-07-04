@@ -81,6 +81,7 @@ public:
     virtual ~Application();
 
     void Run();
+    void DestroyEntities();
 
     virtual void OnInit() {
     }// Load resources
