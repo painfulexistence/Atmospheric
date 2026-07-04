@@ -19,6 +19,7 @@ BUILD_TYPE="Release"
 WEBGPU_SUPPORT="OFF"
 NO_SERVER="OFF"
 NO_EXAMPLES="OFF"
+CLEAN_BUILD="OFF"
 
 # 解析參數
 for arg in "$@"; do
@@ -37,6 +38,9 @@ for arg in "$@"; do
             ;;
         --no-examples)
             NO_EXAMPLES="ON"
+            ;;
+        --clean)
+            CLEAN_BUILD="ON"
             ;;
     esac
 done
@@ -89,6 +93,15 @@ echo -e "${BLUE}配置資訊:${NC}"
 echo -e "  - 專案根目錄: $(pwd)"
 echo -e "  - 建置目錄:   $BUILD_DIR"
 echo -e ""
+
+# 3.5 Clean build: 移除整個建置目錄，確保輸出可重現、不殘留已改名/移除範例的舊產物。
+# (vcpkg_installed 也會一併移除，但重新設定時會從 vcpkg 的 binary cache 快速還原，
+#  而非從原始碼重建依賴。)
+if [ "$CLEAN_BUILD" = "ON" ] && [ -d "$BUILD_DIR" ]; then
+    echo -e "${YELLOW}🧹 Clean build: 正在移除既有建置目錄 $BUILD_DIR ...${NC}"
+    rm -rf "$BUILD_DIR"
+    echo -e ""
+fi
 
 # 4. 執行 CMake 設定
 echo -e "${YELLOW}🛠️  正在為 Emscripten (WebAssembly) 設定 CMake 專案...${NC}"

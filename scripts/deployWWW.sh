@@ -57,14 +57,16 @@ else
     echo -e "${RED}⚠️ 警告: 找不到 ${PROJECT_ROOT}/docs 目錄${NC}"
 fi
 
-# 3. 啟動 buildWasm release (使用 --no-server 略過伺服器啟動)
+# 3. 啟動 buildWasm release (使用 --no-server 略過伺服器啟動)。
+#    部署一律用 --clean 重新建置，確保 www/ 只反映目前的原始碼，不會殘留
+#    已改名/移除範例的舊產物 (deploy 是逐一發佈 build 目錄下每個含 .html 的資料夾)。
 echo -e ""
 if [ ${#BUILD_FLAGS[@]} -gt 0 ]; then
-    echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建 (${BUILD_FLAGS[*]})...${NC}"
+    echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建 (clean, ${BUILD_FLAGS[*]})...${NC}"
 else
-    echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建...${NC}"
+    echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建 (clean)...${NC}"
 fi
-"${SCRIPT_DIR}/buildWasm.sh" release --no-server "${BUILD_FLAGS[@]}"
+"${SCRIPT_DIR}/buildWasm.sh" release --no-server --clean "${BUILD_FLAGS[@]}"
 
 # 4. 尋找每個範例產物並複製到 www/demo/ 下，重新命名為 index.html
 echo -e ""
