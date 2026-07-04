@@ -1205,7 +1205,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue q = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)renderer.sceneRT->GetNumSamples());
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, static_cast<uint32_t>(renderer.sceneRT->GetNumSamples()));
         }
 
         struct DrawItem {
@@ -1923,7 +1923,7 @@ void WorldCanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
         std::vector<CanvasDrawable*> worldDrawables;
         for (auto* drawable : ctx->canvasDrawables) {
             if (!drawable->gameObject->isActive) continue;
-            if ((int)drawable->GetLayer() < (int)CanvasLayer::LAYER_WORLD_2D) worldDrawables.push_back(drawable);
+            if (static_cast<int>(drawable->GetLayer()) < static_cast<int>(CanvasLayer::LAYER_WORLD_2D)) worldDrawables.push_back(drawable);
         }
         if (worldDrawables.empty()) return;
         if (!renderer.sceneRT) return;
@@ -1958,7 +1958,7 @@ void WorldCanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
             allCommands,
             /*depthTest=*/true,
             /*toSwapchain=*/false,
-            (uint32_t)renderer.sceneRT->GetNumSamples()
+            static_cast<uint32_t>(renderer.sceneRT->GetNumSamples())
         );
         renderer.sceneRT->End();
         return;
@@ -2055,7 +2055,7 @@ void CanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
         } else {
             auto [winW, winH] = Window::Get()->GetLogicalSize();
-            viewProj = glm::ortho(0.0f, (float)winW, (float)winH, 0.0f, -1.0f, 1.0f);
+            viewProj = glm::ortho(0.0f, static_cast<float>(winW), static_cast<float>(winH), 0.0f, -1.0f, 1.0f);
         }
 
         // Drain canvasDrawables through BatchRenderer2D's CPU path (no GL calls)
@@ -2087,7 +2087,7 @@ void CanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             allCommands,
             /*depthTest=*/false,
             /*toSwapchain=*/false,
-            (uint32_t)renderer.sceneRT->GetNumSamples()
+            static_cast<uint32_t>(renderer.sceneRT->GetNumSamples())
         );
         renderer.sceneRT->End();
         return;
@@ -2341,7 +2341,7 @@ void UIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder*
         if (!swapchainView) return;// surface not ready (device still initializing)
 
         auto logicalSize = Window::Get()->GetLogicalSize();
-        glm::mat4 projection = glm::ortho(0.0f, (float)logicalSize.width, (float)logicalSize.height, 0.0f, -1.0f, 1.0f);
+        glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(logicalSize.width), static_cast<float>(logicalSize.height), 0.0f, -1.0f, 1.0f);
 
         // UIPass runs after PostProcessPass, which has already resolved
         // sceneRT to the swapchain — record onto the swapchain view directly
@@ -2364,7 +2364,7 @@ void UIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder*
             allCommands,
             /*depthTest=*/false,
             /*toSwapchain=*/true,
-            renderer.sceneRT ? (uint32_t)renderer.sceneRT->GetNumSamples() : 1u
+            renderer.sceneRT ? static_cast<uint32_t>(renderer.sceneRT->GetNumSamples()) : 1u
         );
 
         wgpuRenderPassEncoderEnd(pass);

@@ -62,7 +62,7 @@ GpuPipeline GpuPipelineBuilder::build() {
             wgpuEntries.push_back(we);
         }
         WGPUBindGroupLayoutDescriptor bglDesc{};
-        bglDesc.entryCount = (uint32_t)wgpuEntries.size();
+        bglDesc.entryCount = static_cast<uint32_t>(wgpuEntries.size());
         bglDesc.entries = wgpuEntries.data();
         WGPUBindGroupLayout bgl = wgpuDeviceCreateBindGroupLayout(_device, &bglDesc);
         result.bgls.push_back(bgl);
@@ -71,7 +71,7 @@ GpuPipeline GpuPipelineBuilder::build() {
 
     // Build pipeline layout
     WGPUPipelineLayoutDescriptor plDesc{};
-    plDesc.bindGroupLayoutCount = (uint32_t)layouts.size();
+    plDesc.bindGroupLayoutCount = static_cast<uint32_t>(layouts.size());
     plDesc.bindGroupLayouts = layouts.empty() ? nullptr : layouts.data();
     WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(_device, &plDesc);
 
@@ -105,7 +105,7 @@ GpuPipeline GpuPipelineBuilder::build() {
         }
         vbl.arrayStride = _stride;
         vbl.stepMode = WGPUVertexStepMode_Vertex;
-        vbl.attributeCount = (uint32_t)wgpuAttrs.size();
+        vbl.attributeCount = static_cast<uint32_t>(wgpuAttrs.size());
         vbl.attributes = wgpuAttrs.data();
     }
 

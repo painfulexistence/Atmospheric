@@ -30,10 +30,10 @@ void GPURenderTarget::Create() {
         WGPUTextureDescriptor msaaDesc{};
         msaaDesc.usage = WGPUTextureUsage_RenderAttachment;
         msaaDesc.dimension = WGPUTextureDimension_2D;
-        msaaDesc.size = { (uint32_t)_width, (uint32_t)_height, 1 };
+        msaaDesc.size = { static_cast<uint32_t>(_width), static_cast<uint32_t>(_height), 1 };
         msaaDesc.format = colorFmt;
         msaaDesc.mipLevelCount = 1;
-        msaaDesc.sampleCount = (uint32_t)_samples;
+        msaaDesc.sampleCount = static_cast<uint32_t>(_samples);
         _msaaTexture = wgpuDeviceCreateTexture(_device, &msaaDesc);
     }
 
@@ -44,7 +44,7 @@ void GPURenderTarget::Create() {
         depthDesc.size = { static_cast<uint32_t>(_width), static_cast<uint32_t>(_height), 1 };
         depthDesc.format = WGPUTextureFormat_Depth32Float;
         depthDesc.mipLevelCount = 1;
-        depthDesc.sampleCount = (uint32_t)_samples;// must match the color attachment
+        depthDesc.sampleCount = static_cast<uint32_t>(_samples);// must match the color attachment
         _depthTexture = wgpuDeviceCreateTexture(_device, &depthDesc);
     }
 }

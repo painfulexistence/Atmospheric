@@ -142,7 +142,7 @@ public:
     WGPUBindGroup build() {
         WGPUBindGroupDescriptor d{};
         d.layout = _layout;
-        d.entryCount = (uint32_t)_entries.size();
+        d.entryCount = static_cast<uint32_t>(_entries.size());
         d.entries = _entries.data();
         WGPUBindGroup bg = wgpuDeviceCreateBindGroup(_device, &d);
         for (WGPUTextureView v : _transientViews)

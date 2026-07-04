@@ -685,8 +685,8 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
             const uint8_t* rgba = img->byteArray.data();
             std::vector<uint8_t> expanded;
             if (img->channelCount != 4) {
-                expanded.resize((size_t)img->width * img->height * 4);
-                for (size_t px = 0; px < (size_t)img->width * img->height; ++px) {
+                expanded.resize(static_cast<size_t>(img->width) * img->height * 4);
+                for (size_t px = 0; px < static_cast<size_t>(img->width) * img->height; ++px) {
                     uint8_t r = img->byteArray[px * img->channelCount + 0];
                     uint8_t g = (img->channelCount >= 3) ? img->byteArray[px * img->channelCount + 1] : r;
                     uint8_t b = (img->channelCount >= 3) ? img->byteArray[px * img->channelCount + 2] : r;
@@ -701,7 +701,7 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
             uint32_t texID = GfxFactory::UploadTexture2D(rgba, img->width, img->height);
             textures[oldCount + i] = texID;
             _textureCache[regularPaths[j]] = {
-                texID, (uint32_t)img->width, (uint32_t)img->height, (size_t)img->width * img->height * 4
+                texID, static_cast<uint32_t>(img->width), static_cast<uint32_t>(img->height), static_cast<size_t>(img->width) * img->height * 4
             };
         }
         return;
@@ -820,8 +820,8 @@ TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>&
         const uint8_t* rgba = image->byteArray.data();
         std::vector<uint8_t> expanded;
         if (image->channelCount != 4) {
-            expanded.resize((size_t)image->width * image->height * 4);
-            for (size_t px = 0; px < (size_t)image->width * image->height; ++px) {
+            expanded.resize(static_cast<size_t>(image->width) * image->height * 4);
+            for (size_t px = 0; px < static_cast<size_t>(image->width) * image->height; ++px) {
                 uint8_t r = image->byteArray[px * image->channelCount + 0];
                 uint8_t g = (image->channelCount >= 3) ? image->byteArray[px * image->channelCount + 1] : r;
                 uint8_t b = (image->channelCount >= 3) ? image->byteArray[px * image->channelCount + 2] : r;
@@ -834,9 +834,9 @@ TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>&
             rgba = expanded.data();
         }
         uint32_t texID = GfxFactory::UploadTexture2D(rgba, image->width, image->height);
-        size_t bytes = (size_t)image->width * image->height * 4;
+        size_t bytes = static_cast<size_t>(image->width) * image->height * 4;
         _textureCache["unnamed_" + std::to_string(_nextTextureID++)] = {
-            texID, (uint32_t)image->width, (uint32_t)image->height, bytes
+            texID, static_cast<uint32_t>(image->width), static_cast<uint32_t>(image->height), bytes
         };
         textures.push_back(texID);
         return TextureHandle(texID);
@@ -1002,12 +1002,12 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
             // Compressed transcode targets size the output buffer in blocks,
             // not pixels (unlike cTFRGBA32) — m_width/m_height are the
             // block-aligned physical dimensions, m_total_blocks the block count.
-            std::vector<uint8_t> buf((size_t)info0.m_total_blocks * 16);
+            std::vector<uint8_t> buf(static_cast<size_t>(info0.m_total_blocks) * 16);
             if (!ktx2Dec.transcode_image_level(0, 0, 0, buf.data(), info0.m_total_blocks, basisFmt))
                 throw std::runtime_error(fmt::format("KTX2 transcode_image_level failed (level 0): {}", path));
 
             uint32_t texID = GfxFactory::UploadCompressedTexture2D(
-                wgpuCompression, buf.data(), buf.size(), (int)info0.m_width, (int)info0.m_height
+                wgpuCompression, buf.data(), buf.size(), static_cast<int>(info0.m_width), static_cast<int>(info0.m_height)
             );
             ENGINE_LOG(
                 "Loaded KTX2 texture '{}' ({}×{}, WebGPU {}, no mips)", path, info0.m_width, info0.m_height, fmtName
@@ -1019,7 +1019,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         // No compressed-texture feature negotiated by the device (or running
         // on a backend without WGPUFeatureName_TextureCompression* support) —
         // fall back to uncompressed RGBA32.
-        std::vector<uint8_t> buf((size_t)info0.m_orig_width * info0.m_orig_height * 4);
+        std::vector<uint8_t> buf(static_cast<size_t>(info0.m_orig_width) * info0.m_orig_height * 4);
         if (!ktx2Dec.transcode_image_level(
                 0,
                 0,
@@ -1030,7 +1030,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
             ))
             throw std::runtime_error(fmt::format("KTX2 transcode_image_level failed (level 0): {}", path));
 
-        uint32_t texID = GfxFactory::UploadTexture2D(buf.data(), (int)info0.m_orig_width, (int)info0.m_orig_height);
+        uint32_t texID = GfxFactory::UploadTexture2D(buf.data(), static_cast<int>(info0.m_orig_width), static_cast<int>(info0.m_orig_height));
         ENGINE_LOG(
             "Loaded KTX2 texture '{}' ({}×{}, WebGPU RGBA32 fallback, no mips)",
             path,
@@ -1547,7 +1547,7 @@ TextureHandle AssetManager::CreateHeightmapTexture(
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         uint32_t texID = GfxFactory::UploadTextureR16F(grid.data(), width, height);
         textures.push_back(texID);
-        _textureCache[name] = { texID, (uint32_t)width, (uint32_t)height, (size_t)width * height * 2 };
+        _textureCache[name] = { texID, static_cast<uint32_t>(width), static_cast<uint32_t>(height), static_cast<size_t>(width) * height * 2 };
         return TextureHandle(texID);
     }
 #endif

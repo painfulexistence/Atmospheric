@@ -77,7 +77,7 @@ void SunPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue q = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)renderer.sceneRT->GetNumSamples());
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, static_cast<uint32_t>(renderer.sceneRT->GetNumSamples()));
         }
         if (!renderer.sceneRT) return;
 
@@ -295,7 +295,7 @@ void SkyboxPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue q = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)renderer.sceneRT->GetNumSamples());
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, static_cast<uint32_t>(renderer.sceneRT->GetNumSamples()));
         }
         if (!renderer.sceneRT) return;
 
@@ -444,7 +444,7 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue q = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)renderer.sceneRT->GetNumSamples());
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, static_cast<uint32_t>(renderer.sceneRT->GetNumSamples()));
         }
 
         struct DrawItem {
@@ -658,7 +658,7 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue q = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)renderer.sceneRT->GetNumSamples());
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, static_cast<uint32_t>(renderer.sceneRT->GetNumSamples()));
         }
 
         // Water params now live on WaterMaterial (mesh/material decoupling);
@@ -937,7 +937,7 @@ void BloomPass::_resizeGPU(int width, int height) {
         WGPUTextureDescriptor d{};
         d.usage = usage;
         d.dimension = WGPUTextureDimension_2D;
-        d.size = { (uint32_t)w, (uint32_t)h, 1 };
+        d.size = { static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
         d.format = WGPUTextureFormat_RGBA16Float;
         d.mipLevelCount = 1;
         d.sampleCount = 1;
@@ -956,8 +956,8 @@ void BloomPass::_resizeGPU(int width, int height) {
     struct BlurUniforms {
         float dx, dy, tx, ty;
     };
-    BlurUniforms hU{ 1.0f, 0.0f, 1.0f / (float)_gpuHalfW, 1.0f / (float)_gpuHalfH };
-    BlurUniforms vU{ 0.0f, 1.0f, 1.0f / (float)_gpuHalfW, 1.0f / (float)_gpuHalfH };
+    BlurUniforms hU{ 1.0f, 0.0f, 1.0f / static_cast<float>(_gpuHalfW), 1.0f / static_cast<float>(_gpuHalfH) };
+    BlurUniforms vU{ 0.0f, 1.0f, 1.0f / static_cast<float>(_gpuHalfW), 1.0f / static_cast<float>(_gpuHalfH) };
     wgpuQueueWriteBuffer(_gpuQueue, _blurHUniformBuf, 0, &hU, sizeof(hU));
     wgpuQueueWriteBuffer(_gpuQueue, _blurVUniformBuf, 0, &vU, sizeof(vU));
 
@@ -1063,7 +1063,7 @@ void BloomPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue q = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, (uint32_t)renderer.sceneRT->GetNumSamples());
+            _initGPU(dev, q, static_cast<uint32_t>(renderer.sceneRT->GetNumSamples()));
         }
 
         auto [w, h] = Window::Get()->GetPhysicalSize();
@@ -1084,7 +1084,7 @@ void BloomPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
         WGPUTexelCopyTextureInfo copyDst{};
         copyDst.texture = _snapshotTex;
         copyDst.aspect = WGPUTextureAspect_All;
-        WGPUExtent3D copyExtent{ (uint32_t)_gpuWidth, (uint32_t)_gpuHeight, 1 };
+        WGPUExtent3D copyExtent{ static_cast<uint32_t>(_gpuWidth), static_cast<uint32_t>(_gpuHeight), 1 };
         wgpuCommandEncoderCopyTextureToTexture(gpuEnc->encoder, &copySrc, &copyDst, &copyExtent);
 
         struct {
