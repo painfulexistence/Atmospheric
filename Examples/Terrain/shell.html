@@ -169,7 +169,7 @@
             font-size: 20px;
             font-weight: 700;
         }
-        .actions .btn-b { margin-bottom: 26px; }
+        .actions .btn-a { margin-bottom: 26px; }
 
         /* Narrow / portrait screens: shrink the pads and stack the action
            buttons so all three clusters fit without overflowing off-screen. */
@@ -187,7 +187,7 @@
             .pad button { width: 44px; height: 44px; font-size: 16px; }
             .actions { flex-direction: column; gap: 8px; }
             .actions button { width: 46px; height: 46px; font-size: 16px; }
-            .actions .btn-b { margin-bottom: 0; }
+            .actions .btn-a { margin-bottom: 0; }
         }
         #btn-fullscreen {
             position: fixed;
@@ -225,10 +225,10 @@
         <div class="pad-group">
             <div class="pad-label">Move</div>
             <div class="pad">
-                <button class="up"    data-code="KeyW" data-key="w" data-keycode="87">W</button>
-                <button class="left"  data-code="KeyA" data-key="a" data-keycode="65">A</button>
-                <button class="down"  data-code="KeyS" data-key="s" data-keycode="83">S</button>
-                <button class="right" data-code="KeyD" data-key="d" data-keycode="68">D</button>
+                <button class="up"    data-code="KeyW" data-key="w" data-keycode="87">&uarr;</button>
+                <button class="left"  data-code="KeyA" data-key="a" data-keycode="65">&larr;</button>
+                <button class="down"  data-code="KeyS" data-key="s" data-keycode="83">&darr;</button>
+                <button class="right" data-code="KeyD" data-key="d" data-keycode="68">&rarr;</button>
             </div>
         </div>
         <div class="pad-group">
@@ -243,8 +243,8 @@
         <div class="pad-group">
             <div class="pad-label">Action</div>
             <div class="actions">
-                <button class="btn-b" data-code="KeyZ"  data-key="z" data-keycode="90">B</button>
                 <button class="btn-a" data-code="Space" data-key=" " data-keycode="32">A</button>
+                <button class="btn-b" data-code="KeyZ"  data-key="z" data-keycode="90">B</button>
             </div>
         </div>
     </div>
