@@ -180,17 +180,17 @@ if [ "$RUN_SERVER" = "y" ] || [ "$RUN_SERVER" = "Y" ]; then
     echo -e "按下 ${RED}Ctrl+C${NC} 可以停止伺服器。"
     echo -e ""
 
-    # 如果是 Mac，自動在瀏覽器中開啟 HelloWorld 範例
+    # 如果是 Mac，自動在瀏覽器中開啟 3DBasics 範例
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        hw_dir="$BUILD_DIR/HelloWorld"
+        hw_dir="$BUILD_DIR/3DBasics"
         if [ -d "$hw_dir" ]; then
             html_file=$(find "$hw_dir" -maxdepth 1 -name "*.html" | head -n 1)
             if [ -n "$html_file" ]; then
                 html_name=$(basename "$html_file")
                 if [ "$html_name" = "index.html" ]; then
-                    sleep 1 && open "http://localhost:$PORT/HelloWorld/" &
+                    sleep 1 && open "http://localhost:$PORT/3DBasics/" &
                 else
-                    sleep 1 && open "http://localhost:$PORT/HelloWorld/$html_name" &
+                    sleep 1 && open "http://localhost:$PORT/3DBasics/$html_name" &
                 fi
             else
                 sleep 1 && open "http://localhost:$PORT/" &

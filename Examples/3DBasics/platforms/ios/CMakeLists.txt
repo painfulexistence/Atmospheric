@@ -2,7 +2,7 @@
 #
 #   cmake -G Xcode \
 #         -B build \
-#         -S Examples/HelloWorld/platforms/ios \
+#         -S Examples/3DBasics/platforms/ios \
 #         -DCMAKE_SYSTEM_NAME=iOS \
 #         -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 \
 #         -DVCPKG_TARGET_TRIPLET=arm64-ios
@@ -37,7 +37,7 @@ include(FetchContent)
 set(AE_ROOT_DIR "${ROOT_DIR}" CACHE PATH "AtmosphericEngine repo root" FORCE)
 
 add_subdirectory("${ROOT_DIR}/Engine" "${CMAKE_BINARY_DIR}/Engine")
-add_subdirectory("${ROOT_DIR}/Examples/HelloWorld" "${CMAKE_BINARY_DIR}/HelloWorld")
+add_subdirectory("${ROOT_DIR}/Examples/3DBasics" "${CMAKE_BINARY_DIR}/3DBasics")
 
 # ── Xcode / bundle settings ───────────────────────────────────────────────────
 set_target_properties(main PROPERTIES

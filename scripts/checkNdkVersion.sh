@@ -1,5 +1,5 @@
 #!/bin/bash
-# Check that the Android NDK version pinned in HelloWorld's build.gradle.kts
+# Check that the Android NDK version pinned in 3DBasics's build.gradle.kts
 # matches the version the vcpkg Android triplets are chainloaded against.
 #
 # triplets/*-android.cmake (the files vcpkg actually reads) are the single
@@ -40,7 +40,7 @@ if [ "${1:-}" = "--print-primary-version" ]; then
   exit 0
 fi
 
-GRADLE_FILE="$SCRIPT_DIR/../Examples/HelloWorld/platforms/android/app/build.gradle.kts"
+GRADLE_FILE="$SCRIPT_DIR/../Examples/3DBasics/platforms/android/app/build.gradle.kts"
 
 CURRENT_VERSION=$(grep -oE 'ndkVersion[[:space:]]*=[[:space:]]*"[0-9.]+"' "$GRADLE_FILE" | grep -oE '[0-9.]+')
 
@@ -55,5 +55,5 @@ if [ "$CURRENT_VERSION" = "$REQUIRED_VERSION" ]; then
 fi
 
 echo "Error: build.gradle.kts pins NDK $CURRENT_VERSION, but the vcpkg Android triplets require $REQUIRED_VERSION." >&2
-echo "  Update ndkVersion in Examples/HelloWorld/platforms/android/app/build.gradle.kts to $REQUIRED_VERSION." >&2
+echo "  Update ndkVersion in Examples/3DBasics/platforms/android/app/build.gradle.kts to $REQUIRED_VERSION." >&2
 exit 1
