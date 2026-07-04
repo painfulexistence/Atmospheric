@@ -98,8 +98,27 @@ echo -e ""
 # (vcpkg_installed 也會一併移除，但重新設定時會從 vcpkg 的 binary cache 快速還原，
 #  而非從原始碼重建依賴。)
 if [ "$CLEAN_BUILD" = "ON" ] && [ -d "$BUILD_DIR" ]; then
-    echo -e "${YELLOW}🧹 Clean build: 正在移除既有建置目錄 $BUILD_DIR ...${NC}"
-    rm -rf "$BUILD_DIR"
+    # 安全防護：只允許刪除位於 build-wasm/ 底下的建置目錄，避免誤刪其他路徑。
+    if [ -z "$BUILD_DIR" ] || [[ "$BUILD_DIR" != *"/build-wasm/"* ]]; then
+        echo -e "${RED}❌ 拒絕清理非預期的建置路徑: '$BUILD_DIR'${NC}"
+        exit 1
+    fi
+
+    DO_CLEAN="ON"
+    # 互動式終端機才詢問確認；非互動式 (CI/自動化) 直接執行，避免卡住流程。
+    if [ -t 0 ]; then
+        echo -e "${YELLOW}🧹 Clean build 將移除整個目錄：${NC}$BUILD_DIR"
+        read -p "確定要刪除嗎？(y/N): " CONFIRM
+        if [[ ! "$CONFIRM" =~ ^[yY]$ ]]; then
+            DO_CLEAN="OFF"
+            echo -e "${BLUE}已略過清理，改用 incremental build。${NC}"
+        fi
+    fi
+
+    if [ "$DO_CLEAN" = "ON" ]; then
+        echo -e "${YELLOW}🧹 正在移除既有建置目錄 $BUILD_DIR ...${NC}"
+        rm -rf "$BUILD_DIR"
+    fi
     echo -e ""
 fi
 
