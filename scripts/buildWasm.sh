@@ -94,11 +94,11 @@ echo -e "  - 專案根目錄: $(pwd)"
 echo -e "  - 建置目錄:   $BUILD_DIR"
 echo -e ""
 
-# 3.5 Clean build: 移除整個建置目錄，確保輸出可重現、不殘留已改名/移除範例的舊產物。
-# (vcpkg_installed 也會一併移除，但重新設定時會從 vcpkg 的 binary cache 快速還原，
-#  而非從原始碼重建依賴。)
+# 3.5 Clean build: 清除建置目錄底下 (vcpkg_installed 除外) 的所有產物，確保輸出可
+# 重現、不殘留已改名/移除範例的舊產物。保留 vcpkg_installed 可省下重裝/重編依賴的
+# 時間，只重編我們自己的 engine + examples。
 if [ "$CLEAN_BUILD" = "ON" ] && [ -d "$BUILD_DIR" ]; then
-    # 安全防護：只允許刪除位於 build-wasm/ 底下的建置目錄，避免誤刪其他路徑。
+    # 安全防護：只允許清理位於 build-wasm/ 底下的建置目錄，避免誤刪其他路徑。
     if [ -z "$BUILD_DIR" ] || [[ "$BUILD_DIR" != *"/build-wasm/"* ]]; then
         echo -e "${RED}❌ 拒絕清理非預期的建置路徑: '$BUILD_DIR'${NC}"
         exit 1
@@ -107,8 +107,8 @@ if [ "$CLEAN_BUILD" = "ON" ] && [ -d "$BUILD_DIR" ]; then
     DO_CLEAN="ON"
     # 互動式終端機才詢問確認；非互動式 (CI/自動化) 直接執行，避免卡住流程。
     if [ -t 0 ]; then
-        echo -e "${YELLOW}🧹 Clean build 將移除整個目錄：${NC}$BUILD_DIR"
-        read -p "確定要刪除嗎？(y/N): " CONFIRM
+        echo -e "${YELLOW}🧹 Clean build 將清除 (vcpkg_installed 除外)：${NC}$BUILD_DIR"
+        read -p "確定要清除嗎？(y/N): " CONFIRM
         if [[ ! "$CONFIRM" =~ ^[yY]$ ]]; then
             DO_CLEAN="OFF"
             echo -e "${BLUE}已略過清理，改用 incremental build。${NC}"
@@ -116,8 +116,10 @@ if [ "$CLEAN_BUILD" = "ON" ] && [ -d "$BUILD_DIR" ]; then
     fi
 
     if [ "$DO_CLEAN" = "ON" ]; then
-        echo -e "${YELLOW}🧹 正在移除既有建置目錄 $BUILD_DIR ...${NC}"
-        rm -rf "$BUILD_DIR"
+        echo -e "${YELLOW}🧹 正在清除建置產物 (保留 vcpkg_installed) ...${NC}"
+        # 只刪除 BUILD_DIR 的第一層項目 (vcpkg_installed 除外)：CMakeCache、
+        # CMakeFiles、ninja 檔、以及各範例輸出目錄 (含已改名的殘留)。
+        find "$BUILD_DIR" -mindepth 1 -maxdepth 1 -not -name vcpkg_installed -exec rm -rf {} +
     fi
     echo -e ""
 fi
