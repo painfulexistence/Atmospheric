@@ -211,7 +211,7 @@ void LuaApplication::HandleError(const sol::protected_function_result& result, c
     std::string errorMsg = err.what();
 
     // Print error with context
-    fmt::print(stderr, "[Lua Error] {}: {}\n", context, errorMsg);
+    Log::Error("[Lua Error] {}: {}", context, errorMsg);
 
     // TODO: Show error overlay like Love2D's blue screen
     // For now, just log it

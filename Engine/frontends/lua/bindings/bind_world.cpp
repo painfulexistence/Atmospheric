@@ -1,4 +1,5 @@
 #include "../lua_application.hpp"
+#include "log.hpp"
 #include "../scriptable_component.hpp"
 
 void BindWorldAPI(sol::state& lua, LuaApplication* app) {
@@ -274,7 +275,7 @@ void BindWorldAPI(sol::state& lua, LuaApplication* app) {
             lua["atmos"]["scene"]["loadTable"](sceneData);
         } else {
             sol::error err = result;
-            fmt::print(stderr, "[Lua Error] Failed to load scene {}: {}\n", name, err.what());
+            Log::Error("[Lua Error] Failed to load scene {}: {}", name, err.what());
         }
     };
 }

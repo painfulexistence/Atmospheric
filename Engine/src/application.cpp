@@ -1381,8 +1381,7 @@ void Application::SaveScreenshot(const std::string& path) {
         FrameStats st = AnalyzeFrame(img.data.data(), img.width, img.height, img.channelCount);
         // Machine-readable marker consumed by scripts/smokeTest.sh (grepped from
         // stdout). Flushed so it survives the imminent auto-quit.
-        fmt::print(
-            "[Smoke] result path={} size={}x{} meanRGB={:.1f},{:.1f},{:.1f} spread={} blank={} write={}\n",
+        Log::Info("[Smoke] result path={} size={}x{} meanRGB={:.1f},{:.1f},{:.1f} spread={} blank={} write={}",
             path,
             img.width,
             img.height,
@@ -1391,8 +1390,7 @@ void Application::SaveScreenshot(const std::string& path) {
             st.meanB,
             st.spread,
             st.blank ? 1 : 0,
-            ok ? 1 : 0
-        );
+            ok ? 1 : 0);
         std::fflush(stdout);
         if (ok)
             Log::Info("Screenshot saved: {} ({}x{})", path, img.width, img.height);

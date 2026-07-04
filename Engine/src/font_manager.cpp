@@ -1,5 +1,6 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
+#include "log.hpp"
 
 #include "Atmospheric/font_manager.hpp"
 #include "Atmospheric/gfx_factory.hpp"
@@ -23,7 +24,7 @@ FontManager::~FontManager() {
 FontHandle FontManager::LoadFont(const std::string& path, float baseSize, int firstChar, int numChars) {
     auto fontData = FileSystem::Get().ReadSync(path);
     if (fontData.empty()) {
-        fmt::print(stderr, "[FontManager] Failed to read font file: {}\n", path);
+        Log::Error("[FontManager] Failed to read font file: {}", path);
         return 0;
     }
 
@@ -38,13 +39,11 @@ FontHandle FontManager::LoadFont(const std::string& path, float baseSize, int fi
         return 0;
     }
 
-    fmt::print(
-        "[FontManager] Loaded font: {} (size: {}, texture: {}x{})\n",
+    Log::Info("[FontManager] Loaded font: {} (size: {}, texture: {}x{})",
         path,
         baseSize,
         font.textureWidth,
-        font.textureHeight
-    );
+        font.textureHeight);
 
     return id;
 }
@@ -102,7 +101,7 @@ bool FontManager::BakeFontAtlas(
     // Initialize stb_truetype
     stbtt_fontinfo fontInfo;
     if (!stbtt_InitFont(&fontInfo, fontData, 0)) {
-        fmt::print(stderr, "[FontManager] Failed to initialize font\n");
+        Log::Error("[FontManager] Failed to initialize font");
         return false;
     }
 
@@ -157,7 +156,7 @@ bool FontManager::BakeFontAtlas(
 
         // Check if atlas is full
         if (y + glyphHeight + padding > atlasSize) {
-            fmt::print(stderr, "[FontManager] Atlas too small for all glyphs\n");
+            Log::Error("[FontManager] Atlas too small for all glyphs");
             break;
         }
 

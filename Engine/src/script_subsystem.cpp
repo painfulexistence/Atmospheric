@@ -1,4 +1,5 @@
 #include "script_subsystem.hpp"
+#include "log.hpp"
 #include "Atmospheric/file_system.hpp"
 #include "application.hpp"
 #include "asset_manager.hpp"
@@ -42,7 +43,7 @@ void ScriptSubsystem::Process(float dt) {
         auto result = updateFunc(dt);
         if (!result.valid()) {
             sol::error err = result;
-            fmt::print(stderr, "[ScriptSubsystem] Error in Lua update callback: {}\n", err.what());
+            Log::Error("[ScriptSubsystem] Error in Lua update callback: {}", err.what());
         }
     }
 }
@@ -53,7 +54,7 @@ void ScriptSubsystem::Bind(const std::string& func) {
 void ScriptSubsystem::Source(const std::string& filename) {
     auto resolvedOpt = FileSystem::Get().ResolvePath(filename);
     if (!resolvedOpt) {
-        fmt::print("Skip loading script file {} (not found)\n", filename);
+        Log::Info("Skip loading script file {} (not found)", filename);
         return;
     }
     const std::string& resolvedPath = *resolvedOpt;
@@ -61,7 +62,7 @@ void ScriptSubsystem::Source(const std::string& filename) {
     if (!result.valid()) {
         sol::error err = result;
         std::string what = err.what();
-        fmt::print("Skip loading script file {} (resolved: {})\n", filename, resolvedPath);
+        Log::Info("Skip loading script file {} (resolved: {})", filename, resolvedPath);
     }
 }
 

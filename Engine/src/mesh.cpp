@@ -1,12 +1,12 @@
 #include "mesh.hpp"
+#include "log.hpp"
 #include "asset_manager.hpp"
 #include "config.hpp"
 #include "gfx_factory.hpp"
 #include "graphics_subsystem.hpp"
 
 void PrintVertex(const Vertex& v) {
-    fmt::print(
-        "P: ({},{},{}), UV: ({},{})\n, N: ({},{},{}), T: ({},{},{}), B: ({},{},{})\n",
+    Log::Info("P: ({},{},{}), UV: ({},{})\n, N: ({},{},{}), T: ({},{},{}), B: ({},{},{})",
         v.position.x,
         v.position.y,
         v.position.z,
@@ -20,8 +20,7 @@ void PrintVertex(const Vertex& v) {
         v.tangent.z,
         v.bitangent.x,
         v.bitangent.y,
-        v.bitangent.z
-    );
+        v.bitangent.z);
 }
 
 Mesh::Mesh(MeshType type) : type(type) {
