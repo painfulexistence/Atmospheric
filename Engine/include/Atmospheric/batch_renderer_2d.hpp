@@ -145,6 +145,11 @@ public:
     BatchStats GetStats();
     void ResetStats();
 
+    // Drain the current CPU vertex/index buffer into backend-agnostic BatchDrawCommands
+    // without executing any GL calls. Vertices are grouped by texture ID. Resets the buffer.
+    // Used by the WebGPU CanvasPass to collect drawable geometry without GL side-effects.
+    std::vector<BatchDrawCommand> DrainToCommands();
+
 private:
     // Called by RenderPasses only (friend classes)
     void BeginBatch(const glm::mat4& viewProj, BlendMode blendMode = BlendMode::Alpha);

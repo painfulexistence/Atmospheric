@@ -249,6 +249,7 @@ else()
         list(APPEND SOURCES src/gpu_buffer.cpp)
         list(APPEND SOURCES src/gpu_render_target.cpp)
         list(APPEND SOURCES src/gpu_canvas_pass.cpp)
+        list(APPEND SOURCES src/gpu_pipeline.cpp)
     endif()
 endif()
 # FileSystem: platform-agnostic async I/O with in-process cache.
@@ -430,9 +431,6 @@ if(EMSCRIPTEN)
     target_compile_options(AtmosphericEngine PUBLIC -pthread)
     if(AE_USE_WEBGPU)
         target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_WEBGPU)
-        # --use-port=emdawnwebgpu must appear in both compile and link flags:
-        #   compile: adds the webgpu/ include path so <webgpu/webgpu.h> resolves
-        #   link:    links the emdawnwebgpu JS/WASM glue
         target_compile_options(AtmosphericEngine PUBLIC --use-port=emdawnwebgpu)
         # The actual backend is chosen at runtime by GfxFactory::Init():
         #   - browser exposes navigator.gpu → attempts WebGPU

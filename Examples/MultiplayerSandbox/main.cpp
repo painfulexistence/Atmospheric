@@ -1,16 +1,12 @@
 #include "Atmospheric.hpp"
 #include "Atmospheric/rmlui_manager.hpp"
+#include "Atmospheric/gfx_factory.hpp"
 #include "game_sim.hpp"
 #include "net_lockstep.hpp"
 #include "components.hpp"
 
 #include <cstring>
 #include <ctime>
-#ifndef __EMSCRIPTEN__
-#include <glad/glad.h>
-#else
-#include <GLES3/gl3.h>
-#endif
 
 // ─────────────────────────────────────────────────────────────────────────────
 // NoitaLike: two-player networked falling-sand arena (deterministic lockstep).
@@ -76,7 +72,7 @@ class NoitaLikeGame : public Application {
     PlayerInputComponent* _inputComp = nullptr;
 
     // Rendering state.
-    GLuint gridTex = 0;
+    uint32_t gridTex = 0;
     std::vector<uint32_t> pixels;
     FontHandle fontID = 0;
 
@@ -103,14 +99,10 @@ class NoitaLikeGame : public Application {
         fontID = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
         pixels.assign(size_t(SandWorld::W) * SandWorld::H, 0);
-        glGenTextures(1, &gridTex);
-        glBindTexture(GL_TEXTURE_2D, gridTex);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, SandWorld::W, SandWorld::H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glBindTexture(GL_TEXTURE_2D, 0);
+        // Falling-sand grid: crisp per-cell pixels when scaled up → Nearest.
+        gridTex = GfxFactory::UploadTexture2D(
+            reinterpret_cast<const uint8_t*>(pixels.data()), SandWorld::W, SandWorld::H,
+            TextureFilter::Nearest);
 
         hud = RmlUiManager::Get()->LoadDocument("assets/ui/hud.rml");
         if (hud) {
@@ -157,10 +149,8 @@ class NoitaLikeGame : public Application {
 
         for (int i = 0; i < SandWorld::W * SandWorld::H; i++)
             pixels[size_t(i)] = CellColor(sim.world.cells[size_t(i)], sim.tick);
-        glBindTexture(GL_TEXTURE_2D, gridTex);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, SandWorld::W, SandWorld::H,
-                        GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-        glBindTexture(GL_TEXTURE_2D, 0);
+        GfxFactory::UpdateTexture2D(
+            gridTex, reinterpret_cast<const uint8_t*>(pixels.data()), SandWorld::W, SandWorld::H);
         GraphicsSubsystem::Get()->DrawTexturedQuad(ws.width * 0.5f, ws.height * 0.5f,
                                   float(ws.width), float(ws.height), 0.0f,
                                   gridTex, glm::vec4(1.0f));

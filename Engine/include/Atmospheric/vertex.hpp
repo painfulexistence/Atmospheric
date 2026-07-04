@@ -40,4 +40,7 @@ struct VoxelVertex {
     uint8_t x, y, z;// Local position within chunk (0-255)
     uint8_t voxel_id;// Voxel type
     uint8_t face_id;// Face direction (0-5: +Y, -Y, +X, -X, +Z, -Z)
+    // Trailing padding: WebGPU requires GPUVertexBufferLayout.arrayStride to be
+    // a multiple of 4 bytes, so the struct must round up from 5 to 8 bytes.
+    uint8_t _pad[3];
 };

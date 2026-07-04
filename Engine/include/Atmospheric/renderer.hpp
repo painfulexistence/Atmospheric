@@ -13,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -49,12 +50,80 @@ public:
 
 class ShadowPass : public RenderPass {
 public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~ShadowPass() override;
+#endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+private:
+    void _initGPU(WGPUDevice device, WGPUQueue queue);
+    void _ensureDrawCapacity(uint32_t drawCount);
+    WGPUDevice          _gpuDevice       = nullptr;
+    WGPUQueue           _gpuQueue        = nullptr;
+    WGPURenderPipeline  _pipeline        = nullptr;
+    WGPUBindGroupLayout _uniformBGL      = nullptr;
+    WGPUBindGroup       _uniformBG       = nullptr;
+    WGPUBuffer          _frameUniformBuf = nullptr; // light-space viewProj
+    WGPUBuffer          _drawUniformBuf  = nullptr; // per-draw model, dynamic offset
+    uint32_t            _drawSlotCapacity = 0;
+    // Directional shadow map. The view is published to Renderer each frame
+    // for ForwardOpaquePass to sample; this pass owns both handles.
+    WGPUTexture         _shadowTex  = nullptr;
+    WGPUTextureView     _shadowView = nullptr;
+#endif
 };
 
+// Renders MeshType::PRIM meshes from the opaque queue. Under WebGPU, TERRAIN
+// meshes are drawn too, via a non-tessellated heightmap-displacement pipeline
+// mirroring the GLES/WebGL2 fallback (terrain_simple.vert + terrain.frag);
+// VOXEL is handled by VoxelChunkPass.
 class ForwardOpaquePass : public RenderPass {
 public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~ForwardOpaquePass() override;
+#endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+private:
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
+    void _ensureDrawCapacity(uint32_t drawCount);
+    WGPUBindGroup _getOrCreateTexBG(uint32_t texID);
+
+    WGPUDevice          _gpuDevice       = nullptr;
+    WGPUQueue           _gpuQueue        = nullptr;
+    WGPURenderPipeline  _pipeline        = nullptr;
+    // Heightmap-displacement terrain (TERRAIN_WGSL); shares group 0/1 layouts
+    // with _pipeline so _uniformBG and the texture BG cache are reused.
+    WGPURenderPipeline  _terrainPipeline = nullptr;
+    WGPUBindGroupLayout _uniformBGL      = nullptr;
+    WGPUBindGroupLayout _texBGL          = nullptr;
+    WGPUBindGroup       _uniformBG       = nullptr;
+    // Frame-constant data (viewProj, camera, light) — one fixed-size binding.
+    WGPUBuffer          _frameUniformBuf = nullptr;
+    // Per-draw data (model, surface params) — dynamic-offset slot per mesh,
+    // mirrors VoxelChunkPass's pattern (see voxel_chunk_pass.cpp).
+    WGPUBuffer          _drawUniformBuf  = nullptr;
+    uint32_t            _drawSlotCapacity = 0;
+
+    // AssetManager::GetDefaultTextures() is GL-only; this pass owns its own
+    // fallback texture/sampler for meshes with no base map under WebGPU.
+    WGPUTexture _whiteTex = nullptr;
+    WGPUSampler _sampler  = nullptr;
+    // `tex` records the WGPUTexture each bind group was built from so the
+    // cache self-invalidates when GfxFactory::UpdateTexture2D recreates the
+    // texture under the same synthetic ID (see GPUCanvasPass::CachedTexBG).
+    struct CachedTexBG { WGPUBindGroup bg = nullptr; WGPUTexture tex = nullptr; };
+    std::unordered_map<uint32_t, CachedTexBG> _texBGCache;
+
+    // Shadow-map bind group (group 2): rebuilt only when the view published
+    // by ShadowPass on the Renderer changes.
+    WGPUBindGroupLayout _shadowBGL      = nullptr;
+    WGPUSampler         _shadowSampler  = nullptr;
+    WGPUBindGroup       _shadowBG       = nullptr;
+    WGPUTextureView     _shadowBGSource = nullptr;
+#endif
 };
 
 class DeferredGeometryPass : public RenderPass {
@@ -93,6 +162,9 @@ public:
 // UV distortion -> CA fetch -> tonemap -> LDR stylize -> gamma encode.
 class PostProcessPass : public RenderPass {
 public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~PostProcessPass() override;
+#endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
     bool  tonemapEnabled = true;
@@ -108,6 +180,23 @@ public:
     bool  sobelEnabled     = false;
     bool  edgesEnabled     = false;
     bool  vignetteEnabled  = false;
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+private:
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat swapchainFormat);
+    WGPUDevice          _gpuDevice   = nullptr;
+    WGPUQueue           _gpuQueue    = nullptr;
+    WGPURenderPipeline  _pipeline    = nullptr;
+    WGPUBindGroupLayout _uniformBGL  = nullptr;
+    WGPUBindGroupLayout _texBGL      = nullptr;
+    WGPUBindGroup       _uniformBG   = nullptr;
+    WGPUBuffer          _uniformBuf  = nullptr;
+    WGPUSampler         _sampler     = nullptr;
+    // Texture bind group is recreated whenever sceneRT's texture changes
+    // (e.g. on resize); cached here to avoid rebuilding it every frame.
+    WGPUBindGroup       _texBG       = nullptr;
+    WGPUTexture         _texBGSource = nullptr;
+#endif
 };
 
 // TODO: rename this
@@ -119,32 +208,106 @@ public:
 // Flat billboard quad at the light source position — reads SunComponent for visual params.
 class SunPass : public RenderPass {
 public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~SunPass() override;
+#endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+private:
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
+    WGPUDevice          _gpuDevice  = nullptr;
+    WGPUQueue           _gpuQueue   = nullptr;
+    WGPURenderPipeline  _pipeline   = nullptr;
+    WGPUBindGroupLayout _uniformBGL = nullptr;
+    WGPUBindGroup       _uniformBG  = nullptr;
+    WGPUBuffer          _uniformBuf = nullptr;
+    WGPUBuffer          _vertexBuf  = nullptr;
+#endif
 };
 
 // Gradient sky rendered at depth=1 (behind everything).  Matches VX's Skybox.
 class SkyboxPass : public RenderPass {
 public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~SkyboxPass() override;
+#endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
     glm::vec3 skyColor     = glm::vec3(0.686f, 0.933f, 0.933f); // VX COLOR_MINT_GREEN
     glm::vec3 horizonColor = glm::vec3(1.000f, 0.980f, 0.804f); // VX COLOR_LEMON_CREAM
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+private:
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
+    WGPUDevice          _gpuDevice  = nullptr;
+    WGPUQueue           _gpuQueue   = nullptr;
+    WGPURenderPipeline  _pipeline   = nullptr;
+    WGPUBindGroupLayout _uniformBGL = nullptr;
+    WGPUBindGroup       _uniformBG  = nullptr;
+    WGPUBuffer          _uniformBuf = nullptr;
+    WGPUBuffer          _vertexBuf  = nullptr;
+#endif
 };
 
 // Renders MeshType::VOXEL meshes from the opaque queue using the voxel shader.
 class VoxelChunkPass : public RenderPass {
 public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~VoxelChunkPass() override;
+#endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
     int paletteIndex = 4;  // 0-5; 4 = VX Palette 5 (soft cool blue-grey)
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+private:
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
+    // Grows _drawUniformBuf/_uniformBG to fit at least drawCount dynamic-offset slots.
+    void _ensureDrawCapacity(uint32_t drawCount);
+    WGPUDevice          _gpuDevice       = nullptr;
+    WGPUQueue           _gpuQueue        = nullptr;
+    WGPURenderPipeline  _pipeline        = nullptr;
+    WGPUBindGroupLayout _uniformBGL      = nullptr;
+    WGPUBindGroup       _uniformBG       = nullptr;
+    // Frame-constant data (viewProj, light, fog, camera) — one fixed-size binding.
+    WGPUBuffer          _frameUniformBuf = nullptr;
+    // Per-draw data (model, normalMat) — one slot per mesh, selected via dynamic offset.
+    // Sized lazily; all slots are written in a single call before any draw is
+    // recorded each frame, since wgpuQueueWriteBuffer ordering is relative to
+    // Queue::Submit, not to render-pass recording order.
+    WGPUBuffer          _drawUniformBuf  = nullptr;
+    uint32_t            _drawSlotCapacity = 0;
+#endif
 };
 
 // Renders MeshType::PRIM water meshes tagged via material renderQueue.
 class WaterPass : public RenderPass {
 public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~WaterPass() override;
+#endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
     float time = 0.0f;
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+private:
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
+    void _ensureDrawCapacity(uint32_t drawCount);
+
+    WGPUDevice          _gpuDevice       = nullptr;
+    WGPUQueue           _gpuQueue        = nullptr;
+    WGPURenderPipeline  _pipeline        = nullptr;
+    WGPUBindGroupLayout _uniformBGL      = nullptr;
+    WGPUBindGroup       _uniformBG       = nullptr;
+    // Frame-constant data (viewProj, camera, light, time) — one fixed-size binding.
+    WGPUBuffer          _frameUniformBuf = nullptr;
+    // Per-draw data (model, water shading params) — dynamic-offset slot per
+    // mesh, mirrors ForwardOpaquePass/VoxelChunkPass's pattern.
+    WGPUBuffer          _drawUniformBuf  = nullptr;
+    uint32_t            _drawSlotCapacity = 0;
+#endif
 };
 
 // Pyramid bloom: threshold → downsample → upsample → composite.
@@ -175,6 +338,51 @@ private:
 
     void InitMips(int w, int h);
     void DrawScreenQuad(GLuint screenVAO);
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    // Simplified WebGPU bloom: single half-res threshold + separable
+    // horizontal/vertical Gaussian blur (ping-ponging _brightA/_brightB) +
+    // additive composite — a deliberate simplification of GL's 5-level mip
+    // pyramid (see header comment). Avoids reading sceneRT's own texture
+    // while it's bound as the composite pass's render attachment by first
+    // copying it into _snapshotTex (requires CopySrc on sceneRT's texture,
+    // see gpu_render_target.cpp).
+    void _initGPU(WGPUDevice device, WGPUQueue queue, uint32_t sceneSampleCount);
+    void _resizeGPU(int width, int height);
+
+    WGPUDevice  _gpuDevice = nullptr;
+    WGPUQueue   _gpuQueue  = nullptr;
+    WGPUSampler _sampler   = nullptr;
+
+    WGPURenderPipeline _threshPipeline = nullptr;
+    WGPURenderPipeline _blurPipeline   = nullptr;
+    WGPURenderPipeline _compPipeline   = nullptr;
+
+    WGPUBindGroupLayout _threshBGL = nullptr;
+    WGPUBindGroupLayout _blurBGL   = nullptr;
+    WGPUBindGroupLayout _compBGL   = nullptr;
+
+    WGPUBuffer _threshUniformBuf = nullptr;
+    WGPUBuffer _blurHUniformBuf  = nullptr; // direction+texelSize, fixed per resize
+    WGPUBuffer _blurVUniformBuf  = nullptr;
+    WGPUBuffer _compUniformBuf   = nullptr;
+
+    // Half-resolution ping-pong textures for the blur chain.
+    WGPUTexture     _brightA = nullptr, _brightB = nullptr;
+    WGPUTextureView _brightAView = nullptr, _brightBView = nullptr;
+    // Full-resolution copy of sceneRT, refreshed each frame before composite.
+    WGPUTexture     _snapshotTex  = nullptr;
+    WGPUTextureView _snapshotView = nullptr;
+
+    WGPUBindGroup _threshBG = nullptr;
+    WGPUBindGroup _blurHBG  = nullptr; // reads _brightA, writes _brightB
+    WGPUBindGroup _blurVBG  = nullptr; // reads _brightB, writes _brightA
+    WGPUBindGroup _compBG   = nullptr; // reads _snapshotTex + _brightB(final)
+
+    int _gpuWidth = 0, _gpuHeight = 0, _gpuHalfW = 0, _gpuHalfH = 0;
+
+    void _destroyGPUTextures();
+#endif
 };
 
 class RenderGraph {
@@ -302,44 +510,39 @@ public:
     // Abstract render targets (backend-independent)
     std::unique_ptr<RenderTarget> sceneRT;
     std::unique_ptr<RenderTarget> msaaResolveRT;
-    GLuint finalFBO = 0;  // default framebuffer (always 0)
 
     // Abstract buffers (backend-independent)
     std::unique_ptr<Buffer> debugBuffer;
     std::unique_ptr<Buffer> screenBuffer;
 
-    // GL-specific: shadow maps
-    std::array<GLuint, MAX_UNI_LIGHTS>  uniShadowMaps;
-    std::array<GLuint, MAX_OMNI_LIGHTS> omniShadowMaps;
-    GLuint envMap, irradianceMap;
-
-    // GL-specific: GBuffer
-    struct GBuffer {
-        GLuint id = 0;
-        GLuint positionRT = 0;
-        GLuint normalRT = 0;
-        GLuint albedoRT = 0;
-        GLuint materialRT = 0;
-        GLuint depthRT = 0;
-    } gBuffer;
-
-    GLuint shadowFBO = 0;
-    GLuint canvasVAO, canvasVBO;  // GL-specific: legacy canvas geometry
-
-    // Screen-quad VAO shared by post-process passes (bloom, composite, etc.)
-    GLuint screenQuadVAO = 0;
-    GLuint skyboxVAO     = 0;
-    GLuint skyboxVBO     = 0;
+    // All OpenGL-specific state grouped here; WebGPU paths never touch these fields.
+    struct GL {
+        GLuint finalFBO = 0;
+        std::array<GLuint, MAX_UNI_LIGHTS>  uniShadowMaps = {};
+        std::array<GLuint, MAX_OMNI_LIGHTS> omniShadowMaps = {};
+        GLuint envMap = 0, irradianceMap = 0;
+        struct GBuffer {
+            GLuint id = 0;
+            GLuint positionRT = 0;
+            GLuint normalRT = 0;
+            GLuint albedoRT = 0;
+            GLuint materialRT = 0;
+            GLuint depthRT = 0;
+        } gBuffer;
+        GLuint shadowFBO = 0;
+        GLuint canvasVAO = 0, canvasVBO = 0;
+        GLuint screenQuadVAO = 0;
+        GLuint skyboxVAO = 0, skyboxVBO = 0;
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
+        GLuint glesResolvedDepthTex = 0;
+        GLuint glesResolvedDepthFBO = 0;
+        int    glesResolvedDepthWidth = 0;
+        int    glesResolvedDepthHeight = 0;
+#endif
+    } gl;
 
     // Per-frame time (seconds) forwarded from RenderFrame for animated passes.
     float frameTime = 0.0f;
-
-#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
-    GLuint glesResolvedDepthTex = 0;
-    GLuint glesResolvedDepthFBO = 0;
-    int    glesResolvedDepthWidth = 0;
-    int    glesResolvedDepthHeight = 0;
-#endif
 
     // Returns the resolved (non-MSAA) depth texture for screen-space effects.
     GLuint GetResolvedDepthTexture() const {
@@ -349,7 +552,7 @@ public:
         // But if sceneRT is multi-sampled (MSAA enabled), sceneRT has no depth texture (returns 0),
         // so we must read from the glesResolvedDepthTex where we resolved the depth.
         if (sceneRT && sceneRT->GetNumSamples() > 1) {
-            return glesResolvedDepthTex;
+            return gl.glesResolvedDepthTex;
         }
         if (!sceneRT) return 0;
         return static_cast<GLuint>(sceneRT->GetDepthTextureID());
@@ -415,5 +618,12 @@ public:
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     GPUCanvasPass* GetGPUCanvasPass() const { return m_GPUCanvasPass.get(); }
+
+    // Shadow-map handoff: written by ShadowPass each frame (non-owning view —
+    // ShadowPass owns the texture), consumed by ForwardOpaquePass. The light
+    // VP already includes the GL→WebGPU [-1,1]→[0,1] depth-range fixup, so
+    // consumers use it as-is for textureSampleCompare.
+    WGPUTextureView wgpuShadowMapView = nullptr;
+    glm::mat4       wgpuShadowLightVP = glm::mat4(1.0f);
 #endif
 };

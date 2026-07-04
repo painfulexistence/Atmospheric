@@ -64,7 +64,7 @@ public:
             MakeColorSheetPixels(TS, TC, TR, {
                 {80,120,60},{60,50,40},{100,100,110},{40,80,130},
                 {120,90,50},{80,80,80},{60,100,50},{180,160,120},
-            }).data(), TC*TS, TR*TS);
+            }).data(), TC*TS, TR*TS, TextureFilter::Nearest); // pixel-art tiles
 
         // Tilemap
         const std::vector<std::string> MAP = {

@@ -26,6 +26,24 @@ enum class GfxBackend {
     OpenGL,  // Fallback: OpenGL 4.1 (native) / WebGL 2.0 (Emscripten)
 };
 
+// Negotiated block-compressed texture support on the active WebGPU device.
+// Reflects the WGPUFeatureName_TextureCompression* features actually granted
+// by the adapter/device (queried via wgpuAdapterHasFeature), not just requested.
+enum class TextureCompressionFormat {
+    None,    // No compressed-texture feature negotiated; upload uncompressed RGBA32.
+    BC7,     // Desktop browsers (Chrome/Firefox on Windows/Mac/Linux)
+    ETC2,    // Mobile / some integrated GPUs
+    ASTC4x4, // Mobile (newer Android GPUs)
+};
+
+// Minification/magnification filter hint for a 2D texture.
+//   Linear:  smooth — fonts, photos, video (default; most 2D content)
+//   Nearest: crisp texels — pixel-art / grid content
+// On GL this is baked into the texture object (glTexParameteri). On WebGPU
+// the filter lives on the sampler, so GfxFactory records the hint per texture
+// and GPUCanvasPass selects a matching sampler (see GfxFactory::UploadTexture2D).
+enum class TextureFilter { Linear, Nearest };
+
 enum class KeyState { PRESSED, RELEASED, HELD, UNKNOWN };
 
 enum class Key {
