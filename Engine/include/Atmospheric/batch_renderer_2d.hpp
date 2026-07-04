@@ -23,7 +23,7 @@ struct BatchVertex {
     glm::vec3 position;
     glm::vec4 color;
     glm::vec2 uv;
-    float texIndex;
+    float texIndex = 0.0f;
     float entityID;// For picking or other identification
 };
 

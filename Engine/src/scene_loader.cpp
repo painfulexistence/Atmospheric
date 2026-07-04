@@ -42,9 +42,15 @@ SceneLoadResult SceneLoader::Load(const std::string& filename, const glm::vec3& 
 SceneLoadResult SceneLoader::Load(const std::string& filename, const SceneLoadConfig& config) {
     spdlog::info("SceneLoader: Loading CSB file '{}'...", filename);
 
-    const std::string path = FileSystem::Get().ResolvePath(filename);
-
     SceneLoadResult result;
+    auto resolvedOpt = FileSystem::Get().ResolvePath(filename);
+    if (!resolvedOpt) {
+        result.error = "File not found: " + filename;
+        spdlog::error("SceneLoader: {}", result.error);
+        return result;
+    }
+    const std::string path = *resolvedOpt;
+
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         result.error = "Failed to open file: " + path;
@@ -294,7 +300,7 @@ void SceneLoader::ParseAnimations(
             }
 
             if (!parsed) {
-                Console::Get()->Warn(fmt::format(
+                ConsoleSubsystem::Get()->Warn(fmt::format(
                   "SceneLoader: RotationSkew timeline found on '{}' but frames contain no IntFrame data.",
                   target->GetName()
                 ));
@@ -677,7 +683,7 @@ Text2DProps SceneLoader::CreateTextProps(
         if (textOptions->fontName()) {
             std::string fontPath = textOptions->fontName()->c_str();
             if (!fontPath.empty()) {
-                props.font = GraphicsServer::Get()->LoadFont(fontPath, props.fontSize);
+                props.font = GraphicsSubsystem::Get()->LoadFont(fontPath, props.fontSize);
             }
         }
 

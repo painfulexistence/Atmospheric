@@ -15,7 +15,7 @@ public:
     std::string GetName() const override { return "FlyCameraComponent"; }
     void OnAttach() override { _camera = gameObject->GetComponent<CameraComponent>(); }
     void OnTick(float dt) override {
-        auto* input = gameObject->GetApp()->GetInput();
+        auto* input = InputSubsystem::Get();
         if (!input) return;
         const float move = _moveSpeed * dt, look = _lookSpeed * dt;
         if (_camera) {
@@ -72,7 +72,7 @@ public:
         glm::mat4 viewProj = _camera->GetProjectionMatrix() * _camera->GetViewMatrix();
         _world.Update(dt, pos);
         _world.SubmitRenderCommands(
-            gameObject->GetApp()->GetGraphicsServer()->renderer, viewProj, pos
+            GraphicsSubsystem::Get()->renderer.get(), viewProj, pos
         );
 
         // Slide the water plane with the camera so it always covers the visible area.

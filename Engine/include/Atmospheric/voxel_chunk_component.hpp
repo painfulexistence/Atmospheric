@@ -8,13 +8,13 @@
 #include <memory>
 #include <glm/vec3.hpp>
 
-class GraphicsServer;
+class GraphicsSubsystem;
 
 class VoxelChunkComponent : public Component {
 public:
     static constexpr int SIZE = 32;
 
-    VoxelChunkComponent(GameObject* owner, GraphicsServer* gfx, glm::ivec3 chunkPos);
+    VoxelChunkComponent(GameObject* owner, GraphicsSubsystem* gfx, glm::ivec3 chunkPos);
     ~VoxelChunkComponent();
 
     std::string GetName() const override { return "VoxelChunk"; }
@@ -54,7 +54,7 @@ public:
         static_cast<float>(SIZE) * 0.5f * 1.7320508f;
 
 private:
-    GraphicsServer*      _gfx;
+    GraphicsSubsystem*      _gfx;
     glm::ivec3           _chunkPos;
     uint8_t              _voxels[SIZE][SIZE][SIZE];
     bool                 _dirty = true;

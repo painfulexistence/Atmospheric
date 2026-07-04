@@ -1,6 +1,6 @@
 #include "../lua_application.hpp"
 
-void BindInputAPI(sol::state& lua, Input* input)
+void BindInputAPI(sol::state& lua, InputSubsystem* input)
 {
     sol::table atmos = lua["atmos"];
     sol::table inp = atmos.create("input");

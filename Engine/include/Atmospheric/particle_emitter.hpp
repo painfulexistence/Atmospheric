@@ -18,7 +18,7 @@ namespace Atmospheric {
         float _pad0, _pad1;
     };
 
-    class ParticleServer;
+    class ParticleSubsystem;
 
     struct ParticleEmitterProps {
         // Add properties here
@@ -47,9 +47,9 @@ namespace Atmospheric {
         glm::vec3 attractor = glm::vec3(0.0f);
 
     private:
-        friend class ParticleServer;
+        friend class ParticleSubsystem;
 
-        ParticleServer& server;
+        ParticleSubsystem& server;
         uint32_t max_particles;
 
         // We manage raw GLuints here as they are specific to this system

@@ -24,7 +24,7 @@ void GPURenderTarget::Create() {
     // bound as both a render attachment and a sampled texture in the same pass.
     colorDesc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopySrc;
     colorDesc.dimension     = WGPUTextureDimension_2D;
-    colorDesc.size          = { (uint32_t)_width, (uint32_t)_height, 1 };
+    colorDesc.size          = { static_cast<uint32_t>(_width), static_cast<uint32_t>(_height), 1 };
     colorDesc.format        = colorFmt;
     colorDesc.mipLevelCount = 1;
     colorDesc.sampleCount   = 1; // single-sample; resolve target under MSAA
@@ -45,7 +45,7 @@ void GPURenderTarget::Create() {
         WGPUTextureDescriptor depthDesc{};
         depthDesc.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
         depthDesc.dimension     = WGPUTextureDimension_2D;
-        depthDesc.size          = { (uint32_t)_width, (uint32_t)_height, 1 };
+        depthDesc.size          = { static_cast<uint32_t>(_width), static_cast<uint32_t>(_height), 1 };
         depthDesc.format        = WGPUTextureFormat_Depth32Float;
         depthDesc.mipLevelCount = 1;
         depthDesc.sampleCount   = (uint32_t)_samples; // must match the color attachment

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -31,11 +32,11 @@ class Mesh {
 public:
     MeshType type;
     UpdateFrequency updateFreq = UpdateFrequency::Static;
-    size_t vertCount;
-    size_t triCount;
+    size_t vertCount = 0;
+    size_t triCount = 0;
     bool initialized = false;
-    GLuint vao;
-    GLuint ibo;
+    GLuint vao = 0;
+    GLuint ibo = 0;
 
     Mesh(MeshType type = MeshType::PRIM);
     ~Mesh();
@@ -72,20 +73,22 @@ public:
         _bounds = bounds;
     }
 
-    Material* GetMaterial() const {
+    MaterialHandle GetMaterial() const {
         return _material;
     }
 
-    void SetMaterial(Material* material) {
+    void SetMaterial(MaterialHandle material) {
         _material = material;
     };
 
-    btCollisionShape* GetShape() {
-        return _shape;
+    // Non-owning observer; the Mesh owns the shape.
+    btCollisionShape* GetShape() const {
+        return _shape.get();
     }
 
+    // Takes ownership of a heap-allocated shape (callers pass `new btXxxShape(...)`).
     void SetShape(btCollisionShape* shape) {
-        _shape = shape;
+        _shape.reset(shape);
     }
 
     void SetShapeLocalScaling(glm::vec3 localScaling);
@@ -97,8 +100,10 @@ private:
     GLenum _primitiveType = GL_TRIANGLES;
     std::array<glm::vec3, 8> _bounds;
 
-    Material* _material;
-    btCollisionShape* _shape;
+    // Stable reference into AssetManager's material table; never dangles
+    // (resolves to nullptr after the material is unloaded).
+    MaterialHandle _material;
+    std::unique_ptr<btCollisionShape> _shape;
 
     // New RenderMesh-based storage (used by Update methods)
     RenderMeshHandle _renderMeshHandle;

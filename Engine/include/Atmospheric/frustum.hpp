@@ -22,7 +22,7 @@ class Frustum {
     Plane _near, _far, _top, _bottom, _left, _right;
 
 public:
-    Frustum(glm::mat4 viewingMatrix);
+    Frustum(const glm::mat4& viewingMatrix);
 
     bool Intersects(glm::vec3) const;
 

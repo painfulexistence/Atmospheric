@@ -6,7 +6,7 @@
 #endif
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_opengl3.h"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "gfx_factory.hpp"
 
 static int convertToGlfwKey(Key key) {
@@ -151,10 +151,10 @@ Window::Window(WindowProps props) {
     glfwWindowHint(GLFW_FLOATING, props.floating ? GLFW_TRUE : GLFW_FALSE);
 
     if (props.fullscreen) {
-        this->_internal = glfwCreateWindow(props.width, props.height, props.title.c_str(), glfwGetPrimaryMonitor(), NULL);
+        this->_internal = glfwCreateWindow(props.width, props.height, props.title.c_str(), glfwGetPrimaryMonitor(), nullptr);
         _isFullscreen = true;
     } else {
-        this->_internal = glfwCreateWindow(props.width, props.height, props.title.c_str(), NULL, NULL);
+        this->_internal = glfwCreateWindow(props.width, props.height, props.title.c_str(), nullptr, nullptr);
         _isFullscreen = false;
     }
     if (this->_internal == nullptr)
@@ -173,6 +173,9 @@ Window::Window(WindowProps props) {
 Window::~Window() {
     glfwDestroyWindow(static_cast<GLFWwindow*>(_internal));
     glfwTerminate();
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
 void Window::Init() {
@@ -188,7 +191,7 @@ void Window::Init() {
     glfwSetCursorPosCallback(window, [](GLFWwindow* win, double x, double y) {
         auto self = static_cast<Window*>(glfwGetWindowUserPointer(win));
         for (auto [id, callback] : self->_mouseMoveCallbacks) {
-            callback((float)x, (float)y);
+            callback(static_cast<float>(x), static_cast<float>(y));
         }
     });
     glfwSetCursorEnterCallback(window, [](GLFWwindow* win, int entered) {
@@ -257,7 +260,7 @@ void Window::Init() {
 }
 
 void* Window::GetProcAddress() {
-    return (void*)glfwGetProcAddress;
+    return reinterpret_cast<void*>(glfwGetProcAddress);
 }
 
 bool Window::IsWebGPUAvailable() {
@@ -436,7 +439,7 @@ void Window::SetTitle(const std::string& title) {
 }
 
 float Window::GetTime() {
-    return (float)glfwGetTime(); // Note that glfwGetTime() only starts to calculate time after the window is created;
+    return static_cast<float>(glfwGetTime()); // Note that glfwGetTime() only starts to calculate time after the window is created;
 }
 
 void Window::SetTime(double time) {
@@ -476,7 +479,7 @@ glm::vec2 Window::GetMousePosition()
     double x, y;
     glfwGetCursorPos(static_cast<GLFWwindow*>(_internal), &x, &y);
     glm::vec2 scale = GetDPI();
-    return glm::vec2((float)x * scale.x, (float)y * scale.y);
+    return glm::vec2(static_cast<float>(x) * scale.x, static_cast<float>(y) * scale.y);
 }
 
 // TODO: implement mouse button state

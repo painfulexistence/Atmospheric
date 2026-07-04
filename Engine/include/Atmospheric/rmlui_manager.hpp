@@ -6,12 +6,18 @@
 class RmlUiRenderer;
 class RmlUiSystem;
 
+// Owned by Application (see Application's service members); Get() is a
+// non-owning locator into that instance. Declared after _window in
+// Application so ~RmlUiManager (which calls Shutdown) runs while the GL
+// context and the Renderer are still alive.
 class RmlUiManager {
 public:
     static RmlUiManager* Get();
 
     RmlUiManager();
     ~RmlUiManager();
+    RmlUiManager(const RmlUiManager&) = delete;
+    RmlUiManager& operator=(const RmlUiManager&) = delete;
 
     // Initialize RmlUi with window dimensions
     bool Initialize(int width, int height, class Renderer* renderer);
@@ -44,7 +50,7 @@ public:
         return m_context;
     }
 
-    // Input handling - to be called from the input system
+    // Input handling - to be called from the input subsystem
     void ProcessKeyDown(Rml::Input::KeyIdentifier key, int key_modifier);
     void ProcessKeyUp(Rml::Input::KeyIdentifier key, int key_modifier);
     void ProcessTextInput(Rml::Character character);

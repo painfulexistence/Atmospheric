@@ -11,7 +11,7 @@
 
 TerrainMeshComponent::TerrainMeshComponent(
     GameObject*                         owner,
-    GraphicsServer*                     /*graphics*/,
+    GraphicsSubsystem*                     /*graphics*/,
     const std::shared_ptr<HeightField>& heightField,
     const TerrainMeshProps&             props
 ) : _heightField(heightField) {
@@ -46,7 +46,7 @@ TerrainMeshComponent::TerrainMeshComponent(
     if (!props.normalMapPath.empty()) terrainMat->normalMap = loadTex(props.normalMapPath);
     if (!props.aoMapPath.empty())     terrainMat->aoMap     = loadTex(props.aoMapPath);
     if (!props.splatMapPath.empty())  terrainMat->splatMap  = loadTex(props.splatMapPath);
-    terrainMat->layerCount = std::min((int)props.layers.size(), TerrainMaterial::MAX_LAYERS);
+    terrainMat->layerCount = std::min(static_cast<int>(props.layers.size()), TerrainMaterial::MAX_LAYERS);
     for (int i = 0; i < terrainMat->layerCount; ++i) {
         terrainMat->layers[i].albedoMap = loadTex(props.layers[i].albedoPath);
         terrainMat->layers[i].normalMap = loadTex(props.layers[i].normalPath);
@@ -67,7 +67,7 @@ TerrainMeshComponent::TerrainMeshComponent(
     }
 
     _material = terrainMat;
-    if (meshPtr) meshPtr->SetMaterial(terrainMat);
+    if (meshPtr) meshPtr->SetMaterial(am.GetMaterialHandle(terrainMat));
     owner->AddComponent<MeshComponent>(_mesh);
 
     if (auto* noise = dynamic_cast<NoiseHeightField*>(_heightField.get()))

@@ -19,10 +19,15 @@ class GameObject;
 //     [](GameObject* o, Deserializer& d) -> Component* {
 //         glm::vec2 size(100.f);
 //         d.Read("size", size);
-//         auto* s = o->AddComponent<SpriteComponent>(SpriteProps{});
+//         auto* s = new SpriteComponent(o, SpriteProps{});
 //         s->SetSize(size);
 //         return s;
 //     });
+//
+// Creators must return a NEW, not-yet-attached component: Create() attaches
+// it exactly once and the GameObject takes ownership there.  Never call
+// owner->AddComponent or ComponentFactory::Create inside a creator — that
+// would attach (and own) the component twice.
 //
 // Instantiation from a scene loader:
 //
@@ -42,7 +47,7 @@ public:
     static Component* Create(const std::string& typeName, GameObject* owner, Deserializer& d);
 
     static bool Has(const std::string& typeName) {
-        return GetRegistry().count(typeName) > 0;
+        return GetRegistry().contains(typeName);
     }
 
 private:

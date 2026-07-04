@@ -52,13 +52,13 @@ class HelloWorld : public Application {
         // are still procedural: the font, the material, and the cube's runtime mesh.
 
         // Font is used by the cube's 3D label (the HUD loads its own via fontPath).
-        fontID = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
+        fontID = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 32.0f);
 
         // === Rotating, bobbing cube ===
         // The mesh is still procedural, but its material ("cubeMat") is now
         // declared in assets/scenes/main.json and looked up by name here.
         auto cubeMesh = AssetManager::Get().CreateCubeMesh("CubeMesh", 1.0f);
-        AssetManager::Get().GetMeshPtr(cubeMesh)->SetMaterial(AssetManager::Get().GetMaterial("cubeMat"));
+        AssetManager::Get().GetMeshPtr(cubeMesh)->SetMaterial(AssetManager::Get().GetMaterialHandle("cubeMat"));
 
         auto* cube = CreateGameObject(glm::vec3(0.0f, 5.0f, 0.0f));
         cube->AddComponent<MeshComponent>(cubeMesh);
@@ -73,18 +73,18 @@ class HelloWorld : public Application {
             .color    = glm::vec4(1.0f, 1.0f, 0.0f, 1.0f),
         });
 
-        console.Info(fmt::format("Game fully loaded in {:.1f} seconds", GetWindowTime()));
-        console.Info("Press R to reload shaders, ESC to quit");
-        console.Info("Scene (camera, 3D sprites, 2D sprites, HUD) loaded from assets/scenes/main.json");
+        ConsoleSubsystem::Get()->Info(fmt::format("Game fully loaded in {:.1f} seconds", GetWindowTime()));
+        ConsoleSubsystem::Get()->Info("Press R to reload shaders, ESC to quit");
+        ConsoleSubsystem::Get()->Info("Scene (camera, 3D sprites, 2D sprites, HUD) loaded from assets/scenes/main.json");
     }
 
     void OnUpdate(float dt, float time) override {
         // All per-object animation now lives in components; OnUpdate only deals
         // with global/application-level input.
-        if (input.IsKeyDown(Key::R)) {
+        if (InputSubsystem::Get()->IsKeyDown(Key::R)) {
             AssetManager::Get().ReloadShaders();
         }
-        if (input.IsKeyDown(Key::ESCAPE)) {
+        if (InputSubsystem::Get()->IsKeyDown(Key::ESCAPE)) {
             Quit();
         }
     }

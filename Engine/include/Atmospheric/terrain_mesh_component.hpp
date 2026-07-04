@@ -6,7 +6,8 @@
 #include <string>
 #include <vector>
 
-class GraphicsServer;
+class GraphicsSubsystem;
+class HeightField;
 class Material;
 class Mesh;
 class TerrainMaterial;
@@ -42,7 +43,7 @@ class TerrainMeshComponent : public Component {
 public:
     TerrainMeshComponent(
         GameObject*                         owner,
-        GraphicsServer*                     graphics,
+        GraphicsSubsystem*                     graphics,
         const std::shared_ptr<HeightField>& heightField,
         const TerrainMeshProps&             props
     );

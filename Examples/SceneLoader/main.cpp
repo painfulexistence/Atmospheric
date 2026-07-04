@@ -20,22 +20,22 @@ class CSBDemo : public Application {
         sceneLoader = new SceneLoader(this);
 
         // Set up orthographic camera for 2D view
-        mainCamera = graphics.GetMainCamera();
+        mainCamera = GraphicsSubsystem::Get()->GetMainCamera();
 
         loadedScene = sceneLoader->Load("assets/scenes/Canvas.csb", glm::vec3(0.0f), CanvasLayer::LAYER_WORLD);
         if (loadedScene.success) {
-            console.Info(fmt::format("CSB loaded successfully! {} nodes created", loadedScene.allNodes.size()));
+            ConsoleSubsystem::Get()->Info(fmt::format("CSB loaded successfully! {} nodes created", loadedScene.allNodes.size()));
         } else {
-            console.Warn(fmt::format("CSB load failed: {}", loadedScene.error));
-            console.Info("Creating layout test sprites...");
+            ConsoleSubsystem::Get()->Warn(fmt::format("CSB load failed: {}", loadedScene.error));
+            ConsoleSubsystem::Get()->Info("Creating layout test sprites...");
             CreateLayoutTestSprites();
         }
 
-        console.Info("=== CSB Demo Controls ===");
-        console.Info("1 - Toggle debug grid/coordinate system");
-        console.Info("2 - Toggle node info overlay");
-        console.Info("R - Reload scene");
-        console.Info("ESC - Quit");
+        ConsoleSubsystem::Get()->Info("=== CSB Demo Controls ===");
+        ConsoleSubsystem::Get()->Info("1 - Toggle debug grid/coordinate system");
+        ConsoleSubsystem::Get()->Info("2 - Toggle node info overlay");
+        ConsoleSubsystem::Get()->Info("R - Reload scene");
+        ConsoleSubsystem::Get()->Info("ESC - Quit");
     }
 
     void CreateLayoutTestSprites() {
@@ -179,28 +179,28 @@ class CSBDemo : public Application {
             testSprites.push_back(stacked);
         }
 
-        console.Info(fmt::format("Created {} layout test sprites", testSprites.size()));
+        ConsoleSubsystem::Get()->Info(fmt::format("Created {} layout test sprites", testSprites.size()));
     }
 
     void OnUpdate(float dt, float time) override {
         // Toggle debug grid
-        if (input.IsKeyPressed(Key::Num1)) {
+        if (InputSubsystem::Get()->IsKeyPressed(Key::Num1)) {
             showDebugGrid = !showDebugGrid;
-            console.Info(fmt::format("Debug grid: {}", showDebugGrid ? "ON" : "OFF"));
+            ConsoleSubsystem::Get()->Info(fmt::format("Debug grid: {}", showDebugGrid ? "ON" : "OFF"));
         }
 
         // Toggle node info
-        if (input.IsKeyPressed(Key::Num2)) {
+        if (InputSubsystem::Get()->IsKeyPressed(Key::Num2)) {
             showNodeInfo = !showNodeInfo;
-            console.Info(fmt::format("Node info: {}", showNodeInfo ? "ON" : "OFF"));
+            ConsoleSubsystem::Get()->Info(fmt::format("Node info: {}", showNodeInfo ? "ON" : "OFF"));
         }
 
         // Reload scene
-        if (input.IsKeyPressed(Key::R)) {
+        if (InputSubsystem::Get()->IsKeyPressed(Key::R)) {
             ReloadScene();
         }
 
-        if (input.IsKeyDown(Key::ESCAPE)) {
+        if (InputSubsystem::Get()->IsKeyDown(Key::ESCAPE)) {
             Quit();
         }
 

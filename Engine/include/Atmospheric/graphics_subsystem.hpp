@@ -9,7 +9,7 @@
 #include "render_target.hpp"
 #include "sun_component.hpp"
 #include "vertex.hpp"
-#include "server.hpp"
+#include "subsystem.hpp"
 #include "shader.hpp"
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
@@ -27,7 +27,7 @@ struct CanvasVertex {
     glm::vec2 position;
     glm::vec2 texCoord;
     glm::vec4 color;
-    int texIndex;
+    int texIndex = 0;
     CanvasLayer layer;
 };
 
@@ -50,12 +50,12 @@ class LightComponent;
 class BatchRenderer2D;
 struct BatchDrawCommand;
 
-class GraphicsServer : public Server {
+class GraphicsSubsystem : public Subsystem {
 private:
-    static GraphicsServer* _instance;
+    static GraphicsSubsystem* _instance;
 
 public:
-    static GraphicsServer* Get() {
+    static GraphicsSubsystem* Get() {
         return _instance;
     }
     std::vector<GLuint> canvasTextures;
@@ -73,11 +73,9 @@ public:
 
     std::unique_ptr<Mesh> debugLineMesh;
     std::unique_ptr<Mesh> canvasMesh;
-    ShaderProgram* debugShader  = nullptr;
-    ShaderProgram* canvasShader = nullptr;
 
-    GraphicsServer();
-    ~GraphicsServer();
+    GraphicsSubsystem();
+    ~GraphicsSubsystem();
 
     void Init(Application* app) override;
     void Process(float dt) override;
@@ -115,6 +113,8 @@ public:
 
     void UnregisterCamera(CameraComponent* camera);
     void UnregisterLight(LightComponent* light);
+    void UnregisterMesh(MeshComponent* mesh);
+    void UnregisterCanvasDrawable(CanvasDrawable* drawable);
 
     // ===== Render Target Management =====
 
@@ -180,7 +180,7 @@ public:
     glm::vec2 MeasureText(FontHandle fontID, const std::string& text, float scale = 1.0f);
     float GetFontLineHeight(FontHandle fontID, float scale = 1.0f);
 
-    Renderer* renderer = nullptr;
+    std::unique_ptr<Renderer> renderer;
 
 private:
     std::stack<RenderTarget*> _renderTargetStack;

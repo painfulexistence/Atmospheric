@@ -96,7 +96,7 @@ class NoitaLikeGame : public Application {
     }
 
     void OnLoad() override {
-        fontID = graphics.LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
+        fontID = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
         pixels.assign(size_t(SandWorld::W) * SandWorld::H, 0);
         // Falling-sand grid: crisp per-cell pixels when scaled up → Nearest.
@@ -142,8 +142,8 @@ class NoitaLikeGame : public Application {
 
     void RenderWorld() {
         const GameSim& sim = _netComp->GetSim();
-        auto ws  = GetWindow()->GetLogicalSize();
-        auto dpi = GetWindow()->GetDPI();
+        auto ws  = Window::Get()->GetLogicalSize();
+        auto dpi = Window::Get()->GetDPI();
         float sx = float(ws.width)  / float(SandWorld::W);
         float sy = float(ws.height) / float(SandWorld::H);
 
@@ -151,7 +151,7 @@ class NoitaLikeGame : public Application {
             pixels[size_t(i)] = CellColor(sim.world.cells[size_t(i)], sim.tick);
         GfxFactory::UpdateTexture2D(
             gridTex, reinterpret_cast<const uint8_t*>(pixels.data()), SandWorld::W, SandWorld::H);
-        graphics.DrawTexturedQuad(ws.width * 0.5f, ws.height * 0.5f,
+        GraphicsSubsystem::Get()->DrawTexturedQuad(ws.width * 0.5f, ws.height * 0.5f,
                                   float(ws.width), float(ws.height), 0.0f,
                                   gridTex, glm::vec4(1.0f));
 
@@ -165,11 +165,11 @@ class NoitaLikeGame : public Application {
             float px = p.x * sx, py = p.y * sy;
             float pw = float(Player::HW * 2 + 1) * sx;
             float ph = float(Player::HH * 2 + 1) * sy;
-            graphics.DrawQuad(px, py, pw, ph, 0.0f, bodyColors[i]);
+            GraphicsSubsystem::Get()->DrawQuad(px, py, pw, ph, 0.0f, bodyColors[i]);
             float frac = float(p.hp) / float(Player::MAX_HP);
-            graphics.DrawQuad(px, py - ph * 0.5f - 8.0f, pw + 8.0f, 4.0f, 0.0f,
+            GraphicsSubsystem::Get()->DrawQuad(px, py - ph * 0.5f - 8.0f, pw + 8.0f, 4.0f, 0.0f,
                               { 0.1f, 0.1f, 0.1f, 0.8f });
-            graphics.DrawQuad(px - (pw + 8.0f) * 0.5f * (1.0f - frac),
+            GraphicsSubsystem::Get()->DrawQuad(px - (pw + 8.0f) * 0.5f * (1.0f - frac),
                               py - ph * 0.5f - 8.0f, (pw + 8.0f) * frac, 4.0f, 0.0f,
                               { 1.0f - frac, frac, 0.15f, 0.9f });
         }
@@ -185,13 +185,13 @@ class NoitaLikeGame : public Application {
             case SpellType::AcidFlask: col = { 0.5f, 0.95f, 0.25f, 1.0f }; r = 4.0f; break;
             default:                   col = { 1.0f, 1.0f, 0.7f, 1.0f }; break;
             }
-            graphics.DrawCircle(pr.x * sx, pr.y * sy, r, col);
+            GraphicsSubsystem::Get()->DrawCircle(pr.x * sx, pr.y * sy, r, col);
         }
 
         //crosshair
-        glm::vec2 m = input.GetMousePosition() / dpi;
-        graphics.DrawLine(m.x - 7, m.y, m.x + 7, m.y, { 1, 1, 1, 0.8f });
-        graphics.DrawLine(m.x, m.y - 7, m.x, m.y + 7, { 1, 1, 1, 0.8f });
+        glm::vec2 m = InputSubsystem::Get()->GetMousePosition() / dpi;
+        GraphicsSubsystem::Get()->DrawLine(m.x - 7, m.y, m.x + 7, m.y, { 1, 1, 1, 0.8f });
+        GraphicsSubsystem::Get()->DrawLine(m.x, m.y - 7, m.x, m.y + 7, { 1, 1, 1, 0.8f });
     }
 
     void UpdateHud() {
@@ -249,11 +249,11 @@ class NoitaLikeGame : public Application {
             RenderWorld();
         } else {
             const LockstepNet& net = _netComp->GetNet();
-            auto ws = GetWindow()->GetLogicalSize();
-            graphics.DrawQuad(ws.width * 0.5f, ws.height * 0.5f,
+            auto ws = Window::Get()->GetLogicalSize();
+            GraphicsSubsystem::Get()->DrawQuad(ws.width * 0.5f, ws.height * 0.5f,
                               float(ws.width), float(ws.height), 0.0f,
                               { 0.09f, 0.08f, 0.13f, 1.0f });
-            graphics.DrawText(fontID,
+            GraphicsSubsystem::Get()->DrawText(fontID,
               net.state == LockstepNet::State::Failed
                 ? ("Error: " + net.error) : "Waiting for connection...",
               float(ws.width) * 0.5f - 150.0f, float(ws.height) * 0.5f,
@@ -265,14 +265,14 @@ class NoitaLikeGame : public Application {
         if (g_cli.autotestTicks > 0 && _netComp->IsStarted()) {
             const GameSim& sim = _netComp->GetSim();
             if (sim.tick >= g_cli.autotestTicks) {
-                console.Info(fmt::format("AUTOTEST tick={} checksum={:#010x} desync={}",
+                ConsoleSubsystem::Get()->Info(fmt::format("AUTOTEST tick={} checksum={:#010x} desync={}",
                   sim.tick, sim.Checksum(), _netComp->GetNet().desync));
                 _netComp->Shutdown();
                 Quit();
             }
         }
 
-        if (input.IsKeyDown(Key::ESCAPE)) {
+        if (InputSubsystem::Get()->IsKeyDown(Key::ESCAPE)) {
             _netComp->Shutdown();
             Quit();
         }

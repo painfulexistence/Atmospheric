@@ -182,7 +182,7 @@ bool VideoPlayer::open(const std::string& path) {
     close();
     std::string resolvedPath = path;
     if (path.find("://") == std::string::npos) {
-        resolvedPath = FileSystem::Get().ResolvePath(path);
+        resolvedPath = FileSystem::Get().ResolvePath(path).value_or(path);
     }
     js_video_open(reinterpret_cast<uintptr_t>(this), resolvedPath.c_str());
     m_currentTime     = 0.0;
@@ -199,7 +199,7 @@ bool VideoPlayer::open(const std::string& path) {
 
     std::string resolvedPath = path;
     if (path.find("://") == std::string::npos) {
-        resolvedPath = FileSystem::Get().ResolvePath(path);
+        resolvedPath = FileSystem::Get().ResolvePath(path).value_or(path);
     }
 
     m_ffmpeg = std::make_unique<FFmpegDecodeContext>();

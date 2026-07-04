@@ -206,9 +206,9 @@ struct SpriteAnimator {
         if (timer >= clip.frames[frameIdx].duration) {
             timer -= clip.frames[frameIdx].duration;
             frameIdx++;
-            if (frameIdx >= (int)clip.frames.size()) {
+            if (frameIdx >= static_cast<int>(clip.frames.size())) {
                 if (clip.loop) frameIdx = 0;
-                else { frameIdx = (int)clip.frames.size() - 1; playing = false; }
+                else { frameIdx = static_cast<int>(clip.frames.size()) - 1; playing = false; }
             }
         }
     }
@@ -308,15 +308,15 @@ inline std::vector<uint8_t> MakeColorSheetPixels(
     for (int r = 0; r < rows; r++) {
         for (int c = 0; c < cols; c++) {
             int idx = r * cols + c;
-            auto [cr, cg, cb] = (idx < (int)colors.size()) ? colors[idx]
+            auto [cr, cg, cb] = (idx < static_cast<int>(colors.size())) ? colors[idx]
                                 : std::array<uint8_t, 3>{128, 128, 128};
             for (int py = 0; py < tileSize; py++) {
                 for (int px_ = 0; px_ < tileSize; px_++) {
                     int i = ((r * tileSize + py) * W + c * tileSize + px_) * 4;
                     bool edge = px_ < 2 || py < 2 || px_ >= tileSize - 2 || py >= tileSize - 2;
-                    px[i  ] = (uint8_t)std::clamp((int)cr + (edge ? -30 : noise(rng)), 0, 255);
-                    px[i+1] = (uint8_t)std::clamp((int)cg + (edge ? -30 : noise(rng)), 0, 255);
-                    px[i+2] = (uint8_t)std::clamp((int)cb + (edge ? -30 : noise(rng)), 0, 255);
+                    px[i  ] = static_cast<uint8_t>(std::clamp(static_cast<int>(cr) + (edge ? -30 : noise(rng)), 0, 255));
+                    px[i+1] = static_cast<uint8_t>(std::clamp(static_cast<int>(cg) + (edge ? -30 : noise(rng)), 0, 255));
+                    px[i+2] = static_cast<uint8_t>(std::clamp(static_cast<int>(cb) + (edge ? -30 : noise(rng)), 0, 255));
                     px[i+3] = 255;
                 }
             }

@@ -98,7 +98,7 @@ class CardBattleGame : public Application {
               d.Read("enemyId", enemyId);
               d.Read("seed", seedVal);
               const auto& db = EnemyDB();
-              if (enemyId < 0 || enemyId >= (int)db.size()) {
+              if (enemyId < 0 || enemyId >= static_cast<int>(db.size())) {
                   enemyId = 0;
               }
               return new EnemyBrainComponent(o, &db[enemyId], static_cast<unsigned int>(seedVal));
@@ -111,9 +111,9 @@ class CardBattleGame : public Application {
     }
 
     void OnLoad() override {
-        _font = GraphicsServer::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
+        _font = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
-        for (auto* go : GetEntities()) {
+        for (const auto& go : GetEntities()) {
             if (go->GetName() == "BattleManager") {
                 _mgr = go->GetComponent<BattleManagerComponent>();
                 break;
@@ -126,7 +126,7 @@ class CardBattleGame : public Application {
         layoutFrame();
         handleInput();
         render();
-        if (input.IsKeyPressed(Key::ESCAPE)) Quit();
+        if (InputSubsystem::Get()->IsKeyPressed(Key::ESCAPE)) Quit();
     }
 
     // ========================================================================
@@ -136,7 +136,7 @@ class CardBattleGame : public Application {
         // Enemies along the top, centered.
         const auto& enemies = _mgr->enemies();
         const float EW = 140.0f, EH = 150.0f, gap = 48.0f;
-        int n = (int)enemies.size();
+        int n = static_cast<int>(enemies.size());
         float total = n * EW + (n - 1) * gap;
         float startX = (W - total) * 0.5f;
         for (int i = 0; i < n; ++i)
@@ -150,7 +150,7 @@ class CardBattleGame : public Application {
         _handRects.clear();
         const auto& hand = _mgr->deck()->Hand();
         const float CW = 116.0f, CH = 166.0f, cgap = 12.0f;
-        int hn = (int)hand.size();
+        int hn = static_cast<int>(hand.size());
         float htotal = hn * CW + std::max(0, hn - 1) * cgap;
         float hstart = (W - htotal) * 0.5f;
         float baseY = H - CH - 24.0f;
@@ -158,7 +158,7 @@ class CardBattleGame : public Application {
             _handRects.push_back({ hstart + i * (CW + cgap), baseY, CW, CH });
 
         // hovered card
-        vec2 m = input.GetMousePosition() / Window::Get()->GetDPI();
+        vec2 m = InputSubsystem::Get()->GetMousePosition() / Window::Get()->GetDPI();
         _hoverCard = -1;
         for (int i = hn - 1; i >= 0; --i)
             if (_handRects[i].Contains(m)) { _hoverCard = i; break; }
@@ -170,7 +170,7 @@ class CardBattleGame : public Application {
         _rewardRects.clear();
         if (_mgr->phase() == Phase::Reward) {
             const auto& rc = _mgr->rewardCards();
-            int rn = (int)rc.size();
+            int rn = static_cast<int>(rc.size());
             float rtotal = rn * CW + std::max(0, rn - 1) * 40.0f;
             float rstart = (W - rtotal) * 0.5f;
             for (int i = 0; i < rn; ++i)
@@ -182,7 +182,7 @@ class CardBattleGame : public Application {
     //  input  ->  intents on the battle manager
     // ========================================================================
     void handleInput() {
-        vec2 m = input.GetMousePosition() / Window::Get()->GetDPI();
+        vec2 m = InputSubsystem::Get()->GetMousePosition() / Window::Get()->GetDPI();
         bool down  = Window::Get()->GetMouseButtonState();
         bool click = down && !_prevMouseDown;
         _prevMouseDown = down;
@@ -190,19 +190,19 @@ class CardBattleGame : public Application {
         switch (_mgr->phase()) {
         case Phase::PlayerTurn: {
             // end turn
-            if (input.IsKeyPressed(Key::SPACE) || input.IsKeyPressed(Key::E) ||
-                input.IsKeyPressed(Key::ENTER) ||
+            if (InputSubsystem::Get()->IsKeyPressed(Key::SPACE) || InputSubsystem::Get()->IsKeyPressed(Key::E) ||
+                InputSubsystem::Get()->IsKeyPressed(Key::ENTER) ||
                 (click && _endTurnBtn.Contains(m))) {
                 _mgr->EndTurn();
                 break;
             }
             // cycle target
-            if (input.IsKeyPressed(Key::T)) _mgr->CycleTarget();
+            if (InputSubsystem::Get()->IsKeyPressed(Key::T)) _mgr->CycleTarget();
 
             // select target by clicking an enemy
             if (click) {
                 const auto& enemies = _mgr->enemies();
-                for (int i = 0; i < (int)enemies.size(); ++i)
+                for (int i = 0; i < static_cast<int>(enemies.size()); ++i)
                     if (enemies[i]->IsAlive() && enemies[i]->rect.Contains(m))
                         _mgr->SetTarget(i);
             }
@@ -213,25 +213,25 @@ class CardBattleGame : public Application {
 
             // play a card with number keys 1..9
             for (int i = 0; i < 9; ++i)
-                if (input.IsKeyPressed(numKey(i)))
+                if (InputSubsystem::Get()->IsKeyPressed(numKey(i)))
                     _mgr->TryPlayCard(i, _mgr->selectedTarget());
             break;
         }
         case Phase::Reward: {
-            for (int i = 0; i < (int)_rewardRects.size(); ++i) {
-                if (input.IsKeyPressed(numKey(i)) ||
+            for (int i = 0; i < static_cast<int>(_rewardRects.size()); ++i) {
+                if (InputSubsystem::Get()->IsKeyPressed(numKey(i)) ||
                     (click && _rewardRects[i].Contains(m))) {
                     _mgr->TakeReward(i);
                     return;
                 }
             }
-            if (input.IsKeyPressed(Key::SPACE) || input.IsKeyPressed(Key::Num0))
+            if (InputSubsystem::Get()->IsKeyPressed(Key::SPACE) || InputSubsystem::Get()->IsKeyPressed(Key::Num0))
                 _mgr->TakeReward(-1); // skip
             break;
         }
         case Phase::Won:
         case Phase::Defeat:
-            if (input.IsKeyPressed(Key::R)) _mgr->StartRun();
+            if (InputSubsystem::Get()->IsKeyPressed(Key::R)) _mgr->StartRun();
             break;
         case Phase::EnemyTurn:
         default:
@@ -250,7 +250,7 @@ class CardBattleGame : public Application {
     //  rendering
     // ========================================================================
     void render() {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         g->DrawQuad(W * 0.5f, H * 0.5f, W, H, 0, COL_BG);
 
         drawTopBar();
@@ -272,7 +272,7 @@ class CardBattleGame : public Application {
     }
 
     void drawTopBar() {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         std::string s = fmt::format("Encounter {} / {}",
                                     _mgr->encounterIndex() + 1, _mgr->encounterCount());
         g->DrawText(_font, s, 20, 18, 0.65f, COL_WHITE);
@@ -281,21 +281,21 @@ class CardBattleGame : public Application {
     }
 
     void drawPanel(Rect r, vec4 bg, vec4 border) {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         g->DrawQuad(r.x + r.w * 0.5f, r.y + r.h * 0.5f, r.w, r.h, 0, bg);
         g->DrawRect(r.x, r.y, r.w, r.h, border);
     }
 
     void drawBar(float x, float y, float w, float h, int cur, int max, vec4 fill) {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         g->DrawQuad(x + w * 0.5f, y + h * 0.5f, w, h, 0, COL_HP_BG);
-        float ratio = max > 0 ? std::clamp((float)cur / max, 0.0f, 1.0f) : 0.0f;
+        float ratio = max > 0 ? std::clamp(static_cast<float>(cur) / max, 0.0f, 1.0f) : 0.0f;
         float fw = (w - 2) * ratio;
         if (fw > 0) g->DrawQuad(x + 1 + fw * 0.5f, y + 1 + (h - 2) * 0.5f, fw, h - 2, 0, fill);
     }
 
     void drawTextCentered(const std::string& t, float cx, float y, float scale, vec4 col) {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         vec2 sz = g->MeasureText(_font, t, scale);
         g->DrawText(_font, t, cx - sz.x * 0.5f, y, scale, col);
     }
@@ -316,7 +316,7 @@ class CardBattleGame : public Application {
     }
 
     void drawCombatantCommon(CombatantComponent* c, Rect r, vec4 boxColor) {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         drawPanel(r, boxColor, COL_BORDER);
 
         // damage flash overlay
@@ -360,9 +360,9 @@ class CardBattleGame : public Application {
         // selection highlight
         const auto& enemies = _mgr->enemies();
         int sel = _mgr->selectedTarget();
-        bool selected = (sel >= 0 && sel < (int)enemies.size() && enemies[sel] == e);
+        bool selected = (sel >= 0 && sel < static_cast<int>(enemies.size()) && enemies[sel] == e);
         if (selected) {
-            auto* g = GraphicsServer::Get();
+            auto* g = GraphicsSubsystem::Get();
             g->DrawRect(r.x - 3, r.y - 3, r.w + 6, r.h + 6, COL_SELECT);
             g->DrawRect(r.x - 4, r.y - 4, r.w + 8, r.h + 8, COL_SELECT);
         }
@@ -386,14 +386,14 @@ class CardBattleGame : public Application {
     }
 
     void drawHand() {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         const auto& hand = _mgr->deck()->Hand();
         int energy = _mgr->energy()->Energy();
 
         if (_handRects.size() < hand.size()) {
             _handRects.clear();
             const float CW = 116.0f, CH = 166.0f, cgap = 12.0f;
-            int hn = (int)hand.size();
+            int hn = static_cast<int>(hand.size());
             float htotal = hn * CW + std::max(0, hn - 1) * cgap;
             float hstart = (W - htotal) * 0.5f;
             float baseY = H - CH - 24.0f;
@@ -401,7 +401,7 @@ class CardBattleGame : public Application {
                 _handRects.push_back({ hstart + i * (CW + cgap), baseY, CW, CH });
         }
 
-        for (int i = 0; i < (int)hand.size(); ++i) {
+        for (int i = 0; i < static_cast<int>(hand.size()); ++i) {
             const CardDef& card = GetCard(hand[i]);
             Rect r = _handRects[i];
             bool hovered = (i == _hoverCard);
@@ -437,7 +437,7 @@ class CardBattleGame : public Application {
 
     void drawWrapped(const std::string& text, float x, float y, float maxW,
                      float scale, vec4 col) {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         std::istringstream iss(text);
         std::string word, line;
         float lh = 16.0f;
@@ -457,7 +457,7 @@ class CardBattleGame : public Application {
     }
 
     void drawEnergyAndButtons() {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
 
         // energy orb
         g->DrawCircle(70, H - 90, 34, vec4(0.20f,0.35f,0.55f,1));
@@ -481,7 +481,7 @@ class CardBattleGame : public Application {
     }
 
     void drawLog() {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         const auto& log = _mgr->log();
         float y = 78;
         for (const auto& line : log) {
@@ -491,13 +491,13 @@ class CardBattleGame : public Application {
     }
 
     void drawBanner(const std::string& text, vec4 col) {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         g->DrawQuad(W * 0.5f, H * 0.42f, W, 70, 0, vec4(0,0,0,0.55f));
         drawTextCentered(text, W * 0.5f, H * 0.42f - 16, 1.1f, col);
     }
 
     void drawReward() {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         g->DrawQuad(W * 0.5f, H * 0.5f, W, H, 0, vec4(0,0,0,0.65f));
         drawTextCentered("Choose a card to add to your deck", W * 0.5f, 140, 0.8f, COL_SELECT);
 
@@ -506,14 +506,14 @@ class CardBattleGame : public Application {
         if (_rewardRects.size() < rc.size()) {
             _rewardRects.clear();
             const float CW = 116.0f, CH = 166.0f;
-            int rn = (int)rc.size();
+            int rn = static_cast<int>(rc.size());
             float rtotal = rn * CW + std::max(0, rn - 1) * 40.0f;
             float rstart = (W - rtotal) * 0.5f;
             for (int i = 0; i < rn; ++i)
                 _rewardRects.push_back({ rstart + i * (CW + 40.0f), H * 0.5f - CH * 0.5f, CW, CH });
         }
 
-        for (int i = 0; i < (int)rc.size(); ++i) {
+        for (int i = 0; i < static_cast<int>(rc.size()); ++i) {
             const CardDef& card = GetCard(rc[i]);
             Rect r = _rewardRects[i];
             vec4 base;
@@ -522,7 +522,7 @@ class CardBattleGame : public Application {
                 case CardKind::Skill:  base = vec4(0.22f,0.30f,0.45f,1); break;
                 case CardKind::Power:  base = vec4(0.45f,0.38f,0.18f,1); break;
             }
-            bool hov = r.Contains(input.GetMousePosition() / Window::Get()->GetDPI());
+            bool hov = r.Contains(InputSubsystem::Get()->GetMousePosition() / Window::Get()->GetDPI());
             drawPanel(r, base, hov ? COL_SELECT : COL_BORDER);
             g->DrawCircle(r.x + 16, r.y + 16, 14, vec4(0.15f,0.15f,0.25f,1));
             drawTextCentered(std::to_string(card.cost), r.x + 16, r.y + 6, 0.5f, COL_WHITE);
@@ -535,7 +535,7 @@ class CardBattleGame : public Application {
     }
 
     void drawEndScreen(const std::string& text, vec4 col) {
-        auto* g = GraphicsServer::Get();
+        auto* g = GraphicsSubsystem::Get();
         g->DrawQuad(W * 0.5f, H * 0.5f, W, H, 0, vec4(0,0,0,0.7f));
         drawTextCentered(text, W * 0.5f, H * 0.5f - 40, 1.6f, col);
         drawTextCentered("Press R to start a new run", W * 0.5f, H * 0.5f + 30, 0.6f, COL_WHITE);

@@ -1,5 +1,5 @@
 #pragma once
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "globals.hpp"
 #include <cstring>
 

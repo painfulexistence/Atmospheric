@@ -2,7 +2,7 @@
 #include "asset_manager.hpp"
 #include "camera_component.hpp"
 #include "gfx_factory.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include "light_component.hpp"
 #include "sun_component.hpp"
 #include "mesh.hpp"
@@ -68,7 +68,7 @@ void SunPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat col
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
-void SunPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void SunPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         if (!_pipeline) {
@@ -278,7 +278,7 @@ void SkyboxPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
-void SkyboxPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void SkyboxPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         if (!_pipeline) {
@@ -409,7 +409,7 @@ void VoxelChunkPass::_ensureDrawCapacity(uint32_t drawCount) {
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
-void VoxelChunkPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         const auto& gpuQueueCmds = renderer.GetOpaqueQueue();
@@ -607,7 +607,7 @@ void WaterPass::_ensureDrawCapacity(uint32_t drawCount) {
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
-void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         const auto& queue = renderer.GetTransparentQueue();
@@ -725,7 +725,7 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
     shader->SetUniform("u_time",         renderer.frameTime);
     shader->SetUniform("u_invProj",      glm::inverse(proj));
     shader->SetUniform("u_invView",      glm::inverse(view));
-    shader->SetUniform("u_screenSize",   glm::vec2((float)width, (float)height));
+    shader->SetUniform("u_screenSize",   glm::vec2(static_cast<float>(width), static_cast<float>(height)));
     shader->SetUniform("u_depthTexture", 1);
 
     glm::vec3 lightDir   = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);
@@ -754,10 +754,10 @@ void WaterPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder*
         Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
         if (!mesh) continue;
 
-        Material* mat = mesh->GetMaterial();
+        Material* mat = AssetManager::Get().ResolveMaterial(mesh->GetMaterial());
         if (!mat || mat->renderQueue != RenderQueue::Transparent) continue;
 
-        auto* wm = dynamic_cast<WaterMaterial*>(mesh->GetMaterial());
+        auto* wm = dynamic_cast<WaterMaterial*>(AssetManager::Get().ResolveMaterial(mesh->GetMaterial()));
         shader->SetUniform("u_waterLine",    wm ? wm->waterLine       : 32.0f);
         shader->SetUniform("u_waveStrength", wm ? wm->waveStrength    :  0.1f);
         shader->SetUniform("u_waveSpeed",    wm ? wm->waveSpeed       :  1.0f);
@@ -974,7 +974,7 @@ void BloomPass::InitMips(int w, int h) {
     _initialized = true;
 }
 
-void BloomPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void BloomPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         if (!enabled) return;

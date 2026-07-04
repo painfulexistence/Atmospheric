@@ -56,7 +56,7 @@ class TerrainDemo : public Application {
         if (_proceduralTerrain) _proceduralTerrain->SetActive(procedural);
         if (_heightmapTerrain)  _heightmapTerrain->SetActive(!procedural);
         if (_selMode) { _syncing = true; _selMode->SetSelection(procedural ? 0 : 1); _syncing = false; }
-        console.Info(procedural ? "Switched to procedural noise terrain"
+        ConsoleSubsystem::Get()->Info(procedural ? "Switched to procedural noise terrain"
                                 : "Switched to heightmap terrain");
     }
 
@@ -69,7 +69,7 @@ class TerrainDemo : public Application {
                     mat->paletteIndex = _paletteIndex;
         }
         if (_selPalette) { _syncing = true; _selPalette->SetSelection(_paletteIndex); _syncing = false; }
-        console.Info(std::string("Terrain palette ") + PALETTE_NAMES[_paletteIndex]);
+        ConsoleSubsystem::Get()->Info(std::string("Terrain palette ") + PALETTE_NAMES[_paletteIndex]);
     }
 
     GameObject* CreateTerrain(const std::string& name, const std::shared_ptr<HeightField>& hf) {
@@ -79,7 +79,7 @@ class TerrainDemo : public Application {
         auto* terrain = CreateGameObject(glm::vec3(0.0f, -10.0f, 0.0f));
         terrain->SetName(name);
         terrain->AddComponent<TerrainMeshComponent>(
-            GetGraphicsServer(), hf,
+            GraphicsSubsystem::Get(), hf,
             TerrainMeshProps{
                 .worldSize          = worldSize,
                 .resolution         = 256,
@@ -110,7 +110,7 @@ class TerrainDemo : public Application {
     void SetupHUD() {
         _hud = RmlUiManager::Get()->LoadDocument("assets/ui/terrain_hud.rml");
         if (!_hud) {
-            console.Warn("Terrain HUD failed to load; keyboard controls still work.");
+            ConsoleSubsystem::Get()->Warn("Terrain HUD failed to load; keyboard controls still work.");
             return;
         }
         _hud->Show();
@@ -165,7 +165,7 @@ class TerrainDemo : public Application {
         // auto hf = std::make_shared<ImageHeightField>("assets/textures/gaea_height.r16");
         // auto* terrain = CreateGameObject(glm::vec3(0.0f, -10.0f, 0.0f));
         // terrain->AddComponent<TerrainMeshComponent>(
-        //     GetGraphicsServer(), hf,
+        //     GraphicsSubsystem::Get(), hf,
         //     TerrainMeshProps{
         //         .worldSize     = 2048.0f,
         //         .resolution    = 256,
@@ -191,43 +191,43 @@ class TerrainDemo : public Application {
         ApplyProcedural(_showProcedural);
         ApplyPalette(_paletteIndex);
 
-        console.Info("Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, ESC quit.");
+        ConsoleSubsystem::Get()->Info("Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, ESC quit.");
     }
 
     void OnUpdate(float dt, float /*time*/) override {
-        _slow = input.IsKeyDown(Key::Z);
+        _slow = InputSubsystem::Get()->IsKeyDown(Key::Z);
 
-        if (input.IsKeyDown(Key::UP))    _cam->Pitch( CAMERA_ANGULAR_OFFSET);
-        if (input.IsKeyDown(Key::DOWN))  _cam->Pitch(-CAMERA_ANGULAR_OFFSET);
-        if (input.IsKeyDown(Key::RIGHT)) _cam->Yaw(   CAMERA_ANGULAR_OFFSET);
-        if (input.IsKeyDown(Key::LEFT))  _cam->Yaw(  -CAMERA_ANGULAR_OFFSET);
+        if (InputSubsystem::Get()->IsKeyDown(Key::UP))    _cam->Pitch( CAMERA_ANGULAR_OFFSET);
+        if (InputSubsystem::Get()->IsKeyDown(Key::DOWN))  _cam->Pitch(-CAMERA_ANGULAR_OFFSET);
+        if (InputSubsystem::Get()->IsKeyDown(Key::RIGHT)) _cam->Yaw(   CAMERA_ANGULAR_OFFSET);
+        if (InputSubsystem::Get()->IsKeyDown(Key::LEFT))  _cam->Yaw(  -CAMERA_ANGULAR_OFFSET);
 
         const float speed  = (_slow ? _slowSpeed : _moveSpeed) * dt;
         glm::vec3   pos    = _camGO->GetPosition();
         glm::vec3   fwd    = _cam->GetEyeDirection();
 
-        if (input.IsKeyDown(Key::W)) pos += fwd * speed;
-        if (input.IsKeyDown(Key::S)) pos -= fwd * speed;
-        if (input.IsKeyDown(Key::A)) pos -= glm::normalize(glm::cross(fwd, glm::vec3(0,1,0))) * speed;
-        if (input.IsKeyDown(Key::D)) pos += glm::normalize(glm::cross(fwd, glm::vec3(0,1,0))) * speed;
-        if (input.IsKeyDown(Key::R)) pos.y += speed;
-        if (input.IsKeyDown(Key::F)) pos.y -= speed;
+        if (InputSubsystem::Get()->IsKeyDown(Key::W)) pos += fwd * speed;
+        if (InputSubsystem::Get()->IsKeyDown(Key::S)) pos -= fwd * speed;
+        if (InputSubsystem::Get()->IsKeyDown(Key::A)) pos -= glm::normalize(glm::cross(fwd, glm::vec3(0,1,0))) * speed;
+        if (InputSubsystem::Get()->IsKeyDown(Key::D)) pos += glm::normalize(glm::cross(fwd, glm::vec3(0,1,0))) * speed;
+        if (InputSubsystem::Get()->IsKeyDown(Key::R)) pos.y += speed;
+        if (InputSubsystem::Get()->IsKeyDown(Key::F)) pos.y -= speed;
         _camGO->SetPosition(pos);
 
         // LMB switches terrain only when not clicking the HUD (the HUD handles
         // its own clicks via RmlUi event listeners).
-        bool worldClick = input.IsMouseButtonPressed() && !input.IsMouseOverUI();
-        if (input.IsKeyPressed(Key::SPACE) || worldClick) {
+        bool worldClick = InputSubsystem::Get()->IsMouseButtonPressed() && !InputSubsystem::Get()->IsMouseOverUI();
+        if (InputSubsystem::Get()->IsKeyPressed(Key::SPACE) || worldClick) {
             ApplyProcedural(!_showProcedural);
         }
-        if (input.IsKeyPressed(Key::P)) {
+        if (InputSubsystem::Get()->IsKeyPressed(Key::P)) {
             ApplyPalette(_paletteIndex + 1);
         }
-        if (input.IsKeyPressed(Key::I)) {
+        if (InputSubsystem::Get()->IsKeyPressed(Key::I)) {
             _wireframe = !_wireframe;
-            GetGraphicsServer()->renderer->EnableWireframe(_wireframe);
+            GraphicsSubsystem::Get()->renderer->EnableWireframe(_wireframe);
         }
-        if (input.IsKeyPressed(Key::ESCAPE)) Quit();
+        if (InputSubsystem::Get()->IsKeyPressed(Key::ESCAPE)) Quit();
     }
 };
 

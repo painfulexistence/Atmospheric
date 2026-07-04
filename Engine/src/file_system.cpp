@@ -17,10 +17,11 @@
 // a captured 'this' pointer.
 
 #include "file_system.hpp"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 
 #include <filesystem>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <cstdio>
@@ -48,18 +49,23 @@ static void WriteToMemFS(const std::string& path, const uint8_t* data, size_t le
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Singleton
+//
+// Meyers singleton (function-local static): unlike the engine's other
+// services, FileSystem must exist before Application — every example calls
+// FileSystem::Get().Prefetch(...) in main() and only constructs the app in
+// the completion callback — so it cannot be Application-owned. It holds no
+// GPU state, so its destruction after main() returns is safe.
 // ─────────────────────────────────────────────────────────────────────────────
-FileSystem* FileSystem::_instance = nullptr;
+FileSystem::FileSystem() {
+#ifndef __EMSCRIPTEN__
+    const char* sdlBase = SDL_GetBasePath();
+    if (sdlBase) g_basePath = sdlBase;
+#endif
+}
 
 FileSystem& FileSystem::Get() {
-    if (!_instance) {
-        _instance = new FileSystem();
-#ifndef __EMSCRIPTEN__
-        const char* sdlBase = SDL_GetBasePath();
-        if (sdlBase) g_basePath = sdlBase;
-#endif
-    }
-    return *_instance;
+    static FileSystem instance;
+    return instance;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,11 +128,13 @@ static void ClearMemFSEntries();
 bool FileSystem::IsCached(const std::string& path) const {
     std::string normPath = NormalizePath(path);
     std::lock_guard<std::mutex> lk(g_cacheMutex);
-    return g_cache.count(normPath) != 0;
+    return g_cache.contains(normPath);
 }
 
-std::string FileSystem::ResolvePath(const std::string& path) const {
-    return NormalizePath(path);
+std::optional<std::string> FileSystem::ResolvePath(const std::string& path) const {
+    std::string normPath = NormalizePath(path);
+    if (!Exists(normPath)) return std::nullopt;
+    return normPath;
 }
 
 void FileSystem::EvictCache(const std::string& path) {
@@ -297,8 +305,7 @@ static bool NeedsMemFS(const std::string& path) {
     };
     for (const char* ext : kTextExts) {
         size_t elen = strlen(ext);
-        if (path.size() >= elen &&
-            path.compare(path.size() - elen, elen, ext) == 0)
+        if (path.ends_with(ext))
             return true;
     }
     return false;
@@ -372,7 +379,7 @@ void EM_OnSuccess(emscripten_fetch_t* f) {
     if (!bytes.empty()) {
         // Optionally mirror to MEMFS for text-format assets
         if (ctx->writeToMemFS) {
-            fs_js_write_memfs(ctx->path.c_str(), bytes.data(), (int)bytes.size());
+            fs_js_write_memfs(ctx->path.c_str(), bytes.data(), static_cast<int>(bytes.size()));
             RegisterMemFSEntry(ctx->path);
             ENGINE_LOG("[FileSystem] MEMFS + cache: '{}' ({} bytes)", ctx->path, f->numBytes);
         } else {
@@ -461,7 +468,7 @@ void FileSystem::Prefetch(const std::vector<std::string>& paths,
         std::lock_guard<std::mutex> lk(g_cacheMutex);
         for (const auto& p : paths) {
             std::string normPath = NormalizePath(p);
-            if (g_cache.count(normPath)) continue;
+            if (g_cache.contains(normPath)) continue;
 
             // Try reading from MEMFS (populated via --preload-file)
             auto bytes = ReadFromDisk(normPath);

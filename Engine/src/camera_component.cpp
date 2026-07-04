@@ -1,7 +1,7 @@
 #include "camera_component.hpp"
 #include "game_object.hpp"
 #include "application.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 
 static const float maxVAngle = PI / 2.0f - 0.01f;
 static const float minVAngle = -PI / 2.0f + 0.01f;
@@ -47,14 +47,14 @@ void CameraComponent::DrawImGui() {
 }
 
 void CameraComponent::OnAttach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
-        gameObject->GetApp()->GetGraphicsServer()->RegisterCamera(this);
+    if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->RegisterCamera(this);
     }
 }
 
 void CameraComponent::OnDetach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
-        gameObject->GetApp()->GetGraphicsServer()->UnregisterCamera(this);
+    if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->UnregisterCamera(this);
     }
 }
 
@@ -94,14 +94,14 @@ glm::mat4 CameraComponent::GetProjectionMatrix() {
 glm::vec3 CameraComponent::GetMoveVector(Axis axis) {
     glm::vec3 dir = GetEyeDirection();
     switch (axis) {
-    case BACK:
-    case FRONT:
+    case Axis::BACK:
+    case Axis::FRONT:
         return glm::normalize(glm::vec3(dir.x, 0, dir.z));
-    case RIGHT:
-    case LEFT:
+    case Axis::RIGHT:
+    case Axis::LEFT:
         return glm::normalize(glm::cross(dir, glm::vec3(0, 1, 0)));
-    case UP:
-    case DOWN:
+    case Axis::UP:
+    case Axis::DOWN:
         return glm::vec3(0, 1, 0);
     default:
         throw std::runtime_error("Invalid camera move axis");

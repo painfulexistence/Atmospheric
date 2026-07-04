@@ -31,13 +31,13 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     for (uint32_t s = 0; s < UNIFORM_SLOT_COUNT; ++s) {
         {
             WGPUBufferDescriptor d{};
-            d.size  = (uint64_t)MAX_VERTS * FLOATS_PER_VERT * sizeof(float);
+            d.size  = static_cast<uint64_t>(MAX_VERTS) * FLOATS_PER_VERT * sizeof(float);
             d.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
             _vertexBufs[s] = wgpuDeviceCreateBuffer(device, &d);
         }
         {
             WGPUBufferDescriptor d{};
-            d.size  = (uint64_t)MAX_INDICES * sizeof(uint32_t);
+            d.size  = static_cast<uint64_t>(MAX_INDICES) * sizeof(uint32_t);
             d.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
             _indexBufs[s] = wgpuDeviceCreateBuffer(device, &d);
         }
@@ -145,8 +145,8 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
         .colorFormat(GfxFactory::GetSwapchainFormat()).blend()
         .build().pipeline;
 
-    _verts.reserve((size_t)MAX_VERTS * FLOATS_PER_VERT);
-    _indices.reserve((size_t)MAX_INDICES);
+    _verts.reserve(static_cast<size_t>(MAX_VERTS) * FLOATS_PER_VERT);
+    _indices.reserve(static_cast<size_t>(MAX_INDICES));
 }
 
 WGPUBindGroup GPUCanvasPass::_getOrCreateTexBG(uint32_t texID) {

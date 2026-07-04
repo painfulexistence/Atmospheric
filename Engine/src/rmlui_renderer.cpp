@@ -41,7 +41,7 @@ Rml::CompiledGeometryHandle
     }
 
     for (int i : indices) {
-        geom.indices.push_back((uint32_t)i);
+        geom.indices.push_back(static_cast<uint32_t>(i));
     }
 
     Rml::CompiledGeometryHandle handle = m_next_geometry_handle++;
@@ -66,7 +66,7 @@ void RmlUiRenderer::RenderGeometry(
         BatchDrawCommand cmd;
         cmd.vertices = geom.vertices;
         cmd.indices = geom.indices;
-        cmd.textureID = (uint32_t)texture;
+        cmd.textureID = static_cast<uint32_t>(texture);
         cmd.transform = transform;
         m_Renderer->SubmitUICommand(cmd);
     }
@@ -131,7 +131,7 @@ Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> sou
 }
 
 void RmlUiRenderer::ReleaseTexture(Rml::TextureHandle texture_handle) {
-    GfxFactory::ReleaseTexture((uint32_t)texture_handle);
+    GfxFactory::ReleaseTexture(static_cast<uint32_t>(texture_handle));
 }
 
 void RmlUiRenderer::SetTransform(const Rml::Matrix4f* transform) {

@@ -3,7 +3,7 @@
 #include "batch_renderer_2d.hpp"
 #include "camera_component.hpp"
 #include "game_object.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include <cmath>
 
 // ============================================================================
@@ -293,10 +293,13 @@ std::string Sprite3DComponent::GetName() const {
 }
 
 void Sprite3DComponent::OnAttach() {
-    gameObject->GetApp()->GetGraphicsServer()->RegisterCanvasDrawable(this);
+    GraphicsSubsystem::Get()->RegisterCanvasDrawable(this);
 }
 
 void Sprite3DComponent::OnDetach() {
+    if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->UnregisterCanvasDrawable(this);
+    }
 }
 
 Sprite3DComponent& Sprite3DComponent::SetSize(const glm::vec2& size) {
@@ -440,7 +443,7 @@ void Sprite3DComponent::Draw(BatchRenderer2D* renderer) {
     glm::vec3 pos = gameObject->GetPosition();
     glm::vec3 scale = gameObject->GetScale();
 
-    auto* graphics = gameObject->GetApp()->GetGraphicsServer();
+    auto* graphics = GraphicsSubsystem::Get();
     auto* camera = graphics->GetMainCamera();
 
     glm::mat4 transform;

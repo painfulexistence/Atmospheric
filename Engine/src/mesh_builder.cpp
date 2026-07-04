@@ -107,7 +107,7 @@ Mesh* MeshBuilder::CreatePlane(float width, float height) {
 }
 
 Mesh* MeshBuilder::CreateSphere(const float& radius, const int& division) {
-    float delta = (float)PI / (float)division;
+    float delta = static_cast<float>(PI) / static_cast<float>(division);
 
     std::vector<Vertex> verts;
     std::vector<uint16_t> tris;
@@ -135,7 +135,7 @@ Mesh* MeshBuilder::CreateSphere(const float& radius, const int& division) {
             verts[(v * (2 * division + 1) + h)].position = pos;
             verts[(v * (2 * division + 1) + h)].normal = norm;
             verts[(v * (2 * division + 1) + h)].uv =
-              glm::vec2((float)h / (float)(2 * division), 1.0f - (float)v / (float)division);
+              glm::vec2(static_cast<float>(h) / static_cast<float>(2 * division), 1.0f - static_cast<float>(v) / static_cast<float>(division));
         }
     }
     tris.resize((6 * division - 6) * (2 * division));
@@ -186,16 +186,16 @@ Mesh* MeshBuilder::CreateTerrain(const float& worldSize, const int& resolution) 
 
 #if defined(__EMSCRIPTEN__) || defined(ANDROID)
             glm::vec3 v0 = glm::vec3(-halfWorldSize + (col + 0) * patchSize, 0.f, -halfWorldSize + (row + 0) * patchSize);
-            glm::vec2 uv0 = glm::vec2((col + 0) / (float)resolution, (row + 0) / (float)resolution);
+            glm::vec2 uv0 = glm::vec2((col + 0) / static_cast<float>(resolution), (row + 0) / static_cast<float>(resolution));
 
             glm::vec3 v1 = glm::vec3(-halfWorldSize + (col + 0) * patchSize, 0.f, -halfWorldSize + (row + 1) * patchSize);
-            glm::vec2 uv1 = glm::vec2((col + 0) / (float)resolution, (row + 1) / (float)resolution);
+            glm::vec2 uv1 = glm::vec2((col + 0) / static_cast<float>(resolution), (row + 1) / static_cast<float>(resolution));
 
             glm::vec3 v2 = glm::vec3(-halfWorldSize + (col + 1) * patchSize, 0.f, -halfWorldSize + (row + 1) * patchSize);
-            glm::vec2 uv2 = glm::vec2((col + 1) / (float)resolution, (row + 1) / (float)resolution);
+            glm::vec2 uv2 = glm::vec2((col + 1) / static_cast<float>(resolution), (row + 1) / static_cast<float>(resolution));
 
             glm::vec3 v3 = glm::vec3(-halfWorldSize + (col + 1) * patchSize, 0.f, -halfWorldSize + (row + 0) * patchSize);
-            glm::vec2 uv3 = glm::vec2((col + 1) / (float)resolution, (row + 0) / (float)resolution);
+            glm::vec2 uv3 = glm::vec2((col + 1) / static_cast<float>(resolution), (row + 0) / static_cast<float>(resolution));
 
             // Triangle 1 (v0, v1, v2)
             verts[patchIndex * 6 + 0].position = v0;
@@ -219,19 +219,19 @@ Mesh* MeshBuilder::CreateTerrain(const float& worldSize, const int& resolution) 
 #else
             verts[patchIndex * 4 + 0].position =
               glm::vec3(-halfWorldSize + (col + 0) * patchSize, 0.f, -halfWorldSize + (row + 0) * patchSize);
-            verts[patchIndex * 4 + 0].uv = glm::vec2((col + 0) / (float)resolution, (row + 0) / (float)resolution);
+            verts[patchIndex * 4 + 0].uv = glm::vec2((col + 0) / static_cast<float>(resolution), (row + 0) / static_cast<float>(resolution));
 
             verts[patchIndex * 4 + 1].position =
               glm::vec3(-halfWorldSize + (col + 0) * patchSize, 0.f, -halfWorldSize + (row + 1) * patchSize);
-            verts[patchIndex * 4 + 1].uv = glm::vec2((col + 0) / (float)resolution, (row + 1) / (float)resolution);
+            verts[patchIndex * 4 + 1].uv = glm::vec2((col + 0) / static_cast<float>(resolution), (row + 1) / static_cast<float>(resolution));
 
             verts[patchIndex * 4 + 2].position =
               glm::vec3(-halfWorldSize + (col + 1) * patchSize, 0.f, -halfWorldSize + (row + 1) * patchSize);
-            verts[patchIndex * 4 + 2].uv = glm::vec2((col + 1) / (float)resolution, (row + 1) / (float)resolution);
+            verts[patchIndex * 4 + 2].uv = glm::vec2((col + 1) / static_cast<float>(resolution), (row + 1) / static_cast<float>(resolution));
 
             verts[patchIndex * 4 + 3].position =
               glm::vec3(-halfWorldSize + (col + 1) * patchSize, 0.f, -halfWorldSize + (row + 0) * patchSize);
-            verts[patchIndex * 4 + 3].uv = glm::vec2((col + 1) / (float)resolution, (row + 0) / (float)resolution);
+            verts[patchIndex * 4 + 3].uv = glm::vec2((col + 1) / static_cast<float>(resolution), (row + 0) / static_cast<float>(resolution));
 #endif
         }
     }
@@ -365,40 +365,40 @@ void VoxelMeshBuilder::PushFace(glm::ivec3 pos, FaceDir dir, uint8_t voxelId) {
     VoxelVertex v0, v1, v2, v3;
     switch (dir) {
     case FaceDir::TOP:
-        v0 = { x,               (uint8_t)(y+1), z,               voxelId, faceId };
-        v1 = { x,               (uint8_t)(y+1), (uint8_t)(z+1),  voxelId, faceId };
-        v2 = { (uint8_t)(x+1),  (uint8_t)(y+1), (uint8_t)(z+1),  voxelId, faceId };
-        v3 = { (uint8_t)(x+1),  (uint8_t)(y+1), z,               voxelId, faceId };
+        v0 = { x,               static_cast<uint8_t>(y+1), z,               voxelId, faceId };
+        v1 = { x,               static_cast<uint8_t>(y+1), static_cast<uint8_t>(z+1),  voxelId, faceId };
+        v2 = { static_cast<uint8_t>(x+1),  static_cast<uint8_t>(y+1), static_cast<uint8_t>(z+1),  voxelId, faceId };
+        v3 = { static_cast<uint8_t>(x+1),  static_cast<uint8_t>(y+1), z,               voxelId, faceId };
         break;
     case FaceDir::BOTTOM:
-        v0 = { (uint8_t)(x+1),  y,               z,               voxelId, faceId };
-        v1 = { (uint8_t)(x+1),  y,               (uint8_t)(z+1),  voxelId, faceId };
-        v2 = { x,               y,               (uint8_t)(z+1),  voxelId, faceId };
+        v0 = { static_cast<uint8_t>(x+1),  y,               z,               voxelId, faceId };
+        v1 = { static_cast<uint8_t>(x+1),  y,               static_cast<uint8_t>(z+1),  voxelId, faceId };
+        v2 = { x,               y,               static_cast<uint8_t>(z+1),  voxelId, faceId };
         v3 = { x,               y,               z,               voxelId, faceId };
         break;
     case FaceDir::RIGHT:
-        v0 = { (uint8_t)(x+1),  (uint8_t)(y+1), (uint8_t)(z+1),  voxelId, faceId };
-        v1 = { (uint8_t)(x+1),  y,               (uint8_t)(z+1),  voxelId, faceId };
-        v2 = { (uint8_t)(x+1),  y,               z,               voxelId, faceId };
-        v3 = { (uint8_t)(x+1),  (uint8_t)(y+1), z,               voxelId, faceId };
+        v0 = { static_cast<uint8_t>(x+1),  static_cast<uint8_t>(y+1), static_cast<uint8_t>(z+1),  voxelId, faceId };
+        v1 = { static_cast<uint8_t>(x+1),  y,               static_cast<uint8_t>(z+1),  voxelId, faceId };
+        v2 = { static_cast<uint8_t>(x+1),  y,               z,               voxelId, faceId };
+        v3 = { static_cast<uint8_t>(x+1),  static_cast<uint8_t>(y+1), z,               voxelId, faceId };
         break;
     case FaceDir::LEFT:
-        v0 = { x,               (uint8_t)(y+1), z,               voxelId, faceId };
+        v0 = { x,               static_cast<uint8_t>(y+1), z,               voxelId, faceId };
         v1 = { x,               y,               z,               voxelId, faceId };
-        v2 = { x,               y,               (uint8_t)(z+1),  voxelId, faceId };
-        v3 = { x,               (uint8_t)(y+1), (uint8_t)(z+1),  voxelId, faceId };
+        v2 = { x,               y,               static_cast<uint8_t>(z+1),  voxelId, faceId };
+        v3 = { x,               static_cast<uint8_t>(y+1), static_cast<uint8_t>(z+1),  voxelId, faceId };
         break;
     case FaceDir::FRONT:
-        v0 = { x,               (uint8_t)(y+1), (uint8_t)(z+1),  voxelId, faceId };
-        v1 = { x,               y,               (uint8_t)(z+1),  voxelId, faceId };
-        v2 = { (uint8_t)(x+1),  y,               (uint8_t)(z+1),  voxelId, faceId };
-        v3 = { (uint8_t)(x+1),  (uint8_t)(y+1), (uint8_t)(z+1),  voxelId, faceId };
+        v0 = { x,               static_cast<uint8_t>(y+1), static_cast<uint8_t>(z+1),  voxelId, faceId };
+        v1 = { x,               y,               static_cast<uint8_t>(z+1),  voxelId, faceId };
+        v2 = { static_cast<uint8_t>(x+1),  y,               static_cast<uint8_t>(z+1),  voxelId, faceId };
+        v3 = { static_cast<uint8_t>(x+1),  static_cast<uint8_t>(y+1), static_cast<uint8_t>(z+1),  voxelId, faceId };
         break;
     case FaceDir::BACK:
-        v0 = { (uint8_t)(x+1),  (uint8_t)(y+1), z,               voxelId, faceId };
-        v1 = { (uint8_t)(x+1),  y,               z,               voxelId, faceId };
+        v0 = { static_cast<uint8_t>(x+1),  static_cast<uint8_t>(y+1), z,               voxelId, faceId };
+        v1 = { static_cast<uint8_t>(x+1),  y,               z,               voxelId, faceId };
         v2 = { x,               y,               z,               voxelId, faceId };
-        v3 = { x,               (uint8_t)(y+1), z,               voxelId, faceId };
+        v3 = { x,               static_cast<uint8_t>(y+1), z,               voxelId, faceId };
         break;
     }
     _vertices.push_back(v0); _vertices.push_back(v1); _vertices.push_back(v2);
@@ -437,40 +437,40 @@ void VoxelMeshBuilder::PushGreedyFace(glm::ivec3 pos, FaceDir dir, uint8_t voxel
 
     switch (dir) {
     case FaceDir::TOP:    // +Y, face at y+1;  w in Z(u_axis=2), h in X(v_axis=0)
-        v0 = { x,               (uint8_t)(y+1), z,               voxelId, faceId };
-        v1 = { x,               (uint8_t)(y+1), (uint8_t)(z+w),  voxelId, faceId };
-        v2 = { (uint8_t)(x+h),  (uint8_t)(y+1), (uint8_t)(z+w),  voxelId, faceId };
-        v3 = { (uint8_t)(x+h),  (uint8_t)(y+1), z,               voxelId, faceId };
+        v0 = { x,               static_cast<uint8_t>(y+1), z,               voxelId, faceId };
+        v1 = { x,               static_cast<uint8_t>(y+1), static_cast<uint8_t>(z+w),  voxelId, faceId };
+        v2 = { static_cast<uint8_t>(x+h),  static_cast<uint8_t>(y+1), static_cast<uint8_t>(z+w),  voxelId, faceId };
+        v3 = { static_cast<uint8_t>(x+h),  static_cast<uint8_t>(y+1), z,               voxelId, faceId };
         break;
     case FaceDir::BOTTOM: // -Y, face at y;    w in Z, h in X
-        v0 = { (uint8_t)(x+h),  y,               z,               voxelId, faceId };
-        v1 = { (uint8_t)(x+h),  y,               (uint8_t)(z+w),  voxelId, faceId };
-        v2 = { x,               y,               (uint8_t)(z+w),  voxelId, faceId };
+        v0 = { static_cast<uint8_t>(x+h),  y,               z,               voxelId, faceId };
+        v1 = { static_cast<uint8_t>(x+h),  y,               static_cast<uint8_t>(z+w),  voxelId, faceId };
+        v2 = { x,               y,               static_cast<uint8_t>(z+w),  voxelId, faceId };
         v3 = { x,               y,               z,               voxelId, faceId };
         break;
     case FaceDir::RIGHT:  // +X, face at x+1;  w in Y(u_axis=1), h in Z(v_axis=2)
-        v0 = { (uint8_t)(x+1),  (uint8_t)(y+w), (uint8_t)(z+h),  voxelId, faceId };
-        v1 = { (uint8_t)(x+1),  y,               (uint8_t)(z+h),  voxelId, faceId };
-        v2 = { (uint8_t)(x+1),  y,               z,               voxelId, faceId };
-        v3 = { (uint8_t)(x+1),  (uint8_t)(y+w), z,               voxelId, faceId };
+        v0 = { static_cast<uint8_t>(x+1),  static_cast<uint8_t>(y+w), static_cast<uint8_t>(z+h),  voxelId, faceId };
+        v1 = { static_cast<uint8_t>(x+1),  y,               static_cast<uint8_t>(z+h),  voxelId, faceId };
+        v2 = { static_cast<uint8_t>(x+1),  y,               z,               voxelId, faceId };
+        v3 = { static_cast<uint8_t>(x+1),  static_cast<uint8_t>(y+w), z,               voxelId, faceId };
         break;
     case FaceDir::LEFT:   // -X, face at x;    w in Y, h in Z
-        v0 = { x,               (uint8_t)(y+w), z,               voxelId, faceId };
+        v0 = { x,               static_cast<uint8_t>(y+w), z,               voxelId, faceId };
         v1 = { x,               y,               z,               voxelId, faceId };
-        v2 = { x,               y,               (uint8_t)(z+h),  voxelId, faceId };
-        v3 = { x,               (uint8_t)(y+w), (uint8_t)(z+h),  voxelId, faceId };
+        v2 = { x,               y,               static_cast<uint8_t>(z+h),  voxelId, faceId };
+        v3 = { x,               static_cast<uint8_t>(y+w), static_cast<uint8_t>(z+h),  voxelId, faceId };
         break;
     case FaceDir::FRONT:  // +Z, face at z+1;  w in X(u_axis=0), h in Y(v_axis=1)
-        v0 = { x,               (uint8_t)(y+h), (uint8_t)(z+1),  voxelId, faceId };
-        v1 = { x,               y,               (uint8_t)(z+1),  voxelId, faceId };
-        v2 = { (uint8_t)(x+w),  y,               (uint8_t)(z+1),  voxelId, faceId };
-        v3 = { (uint8_t)(x+w),  (uint8_t)(y+h), (uint8_t)(z+1),  voxelId, faceId };
+        v0 = { x,               static_cast<uint8_t>(y+h), static_cast<uint8_t>(z+1),  voxelId, faceId };
+        v1 = { x,               y,               static_cast<uint8_t>(z+1),  voxelId, faceId };
+        v2 = { static_cast<uint8_t>(x+w),  y,               static_cast<uint8_t>(z+1),  voxelId, faceId };
+        v3 = { static_cast<uint8_t>(x+w),  static_cast<uint8_t>(y+h), static_cast<uint8_t>(z+1),  voxelId, faceId };
         break;
     case FaceDir::BACK:   // -Z, face at z;    w in X, h in Y
-        v0 = { (uint8_t)(x+w),  (uint8_t)(y+h), z,               voxelId, faceId };
-        v1 = { (uint8_t)(x+w),  y,               z,               voxelId, faceId };
+        v0 = { static_cast<uint8_t>(x+w),  static_cast<uint8_t>(y+h), z,               voxelId, faceId };
+        v1 = { static_cast<uint8_t>(x+w),  y,               z,               voxelId, faceId };
         v2 = { x,               y,               z,               voxelId, faceId };
-        v3 = { x,               (uint8_t)(y+h), z,               voxelId, faceId };
+        v3 = { x,               static_cast<uint8_t>(y+h), z,               voxelId, faceId };
         break;
     }
 

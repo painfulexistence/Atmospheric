@@ -5,7 +5,7 @@
 #endif
 #include "backends/imgui_impl_opengl3.h"
 #include "backends/imgui_impl_sdl3.h"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 
 // Define AE_GL_DEBUG_PROBES at build time to log any sticky GL errors at
 // frame-loop boundaries. Useful for chasing INVALID_OPERATION on GLES3 ports
@@ -13,7 +13,7 @@
 #ifdef AE_GL_DEBUG_PROBES
 #define AE_GL_PROBE(name) \
     do { GLenum _e; while ((_e = glGetError()) != GL_NO_ERROR) \
-        Console::Get()->Error(fmt::format("GL probe [{}]: 0x{:x}", name, _e)); } while (0)
+        ConsoleSubsystem::Get()->Error(fmt::format("GL probe [{}]: 0x{:x}", name, _e)); } while (0)
 #else
 #define AE_GL_PROBE(name) ((void)0)
 #endif
@@ -258,13 +258,16 @@ Window::~Window() {
     SDL_GL_DestroyContext(SDL_GL_GetCurrentContext());
     SDL_DestroyWindow(static_cast<SDL_Window*>(_internal));
     SDL_Quit();
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
 void Window::Init() {
 }
 
 void* Window::GetProcAddress() {
-    return (void*)SDL_GL_GetProcAddress;
+    return reinterpret_cast<void*>(SDL_GL_GetProcAddress);
 }
 
 void Window::InitImGui() {
@@ -439,7 +442,7 @@ void Window::SetTitle(const std::string& title) {
 }
 
 float Window::GetTime() {
-    return (float)SDL_GetTicks()
+    return static_cast<float>(SDL_GetTicks())
            * 0.001f;// Note that glfwGetTime() only starts to calculate time after the window is created;
 }
 

@@ -7,7 +7,7 @@
 #include <vector>
 
 class Application;
-class GraphicsServer;
+class GraphicsSubsystem;
 class GameObject;
 
 struct IVec3Hash {
@@ -57,7 +57,7 @@ private:
     ChunkMap                          _chunkMap;
     std::vector<VoxelChunkComponent*> _pool;      // recycled unloaded slots
     Application*                      _app       = nullptr;
-    GraphicsServer*                   _gfx       = nullptr;
+    GraphicsSubsystem*                   _gfx       = nullptr;
     int                               _seed      = 42;
     glm::ivec3                        _lastCamChunk{INT_MIN, 0, INT_MIN};
     GameObject*                       _root      = nullptr;

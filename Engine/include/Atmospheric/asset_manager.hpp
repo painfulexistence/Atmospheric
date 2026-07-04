@@ -37,12 +37,18 @@ struct Texture2D {
     size_t   bytes  = 0;
 };
 
+// Owned by Application (see Application's service members); Get() is a
+// non-owning locator into that instance. Construction order relative to the
+// Window matters: the destructor releases GL textures, so Application declares
+// its AssetManager member after _window (destroyed while the context lives).
 class AssetManager {
 public:
-    static AssetManager& Get();
+    AssetManager();
+    ~AssetManager();
+    AssetManager(const AssetManager&) = delete;
+    AssetManager& operator=(const AssetManager&) = delete;
 
-    void Init();
-    void Shutdown();
+    static AssetManager& Get();
 
     // ========== CPU Resource Management ==========
     std::shared_ptr<Image> LoadImage(const std::string& path);
@@ -53,11 +59,21 @@ public:
     TerrainMaterial* CreateTerrainMaterial();
     Material* GetMaterial(const std::string& name) const;
     Material* GetMaterialByID(uint32_t id) const;
+    // Handle-based access: handles are stable references that survive scene
+    // unloads (they resolve to nullptr instead of dangling).
+    [[nodiscard]] MaterialHandle GetMaterialHandle(const std::string& name) const;// INVALID if absent
+    [[nodiscard]] MaterialHandle GetMaterialHandle(const Material* material) const;// INVALID if absent
+    [[nodiscard]] Material* ResolveMaterial(MaterialHandle handle) const;// nullptr if invalid or unloaded
     void LoadMaterials(const std::vector<MaterialProps>& materialDefs);
 
     ShaderProgram* CreateShader(const std::string& name, const ShaderProgramProps& props);
     ShaderProgram* GetShader(const std::string& name) const;
     ShaderProgram* GetShaderByID(uint32_t id) const;
+    // Handle-based access for references held across frames: handles survive
+    // scene unloads (they resolve to nullptr instead of dangling). Transient
+    // per-pass lookups can keep using GetShader.
+    [[nodiscard]] ShaderHandle GetShaderHandle(const std::string& name) const;// INVALID if absent
+    [[nodiscard]] ShaderProgram* ResolveShader(ShaderHandle handle) const;// nullptr if invalid or unloaded
     void LoadDefaultShaders();
     void LoadShaders(const std::unordered_map<std::string, ShaderProgramProps>& shaderDefs);
     void ReloadShaders();
@@ -102,7 +118,7 @@ public:
     const std::vector<GLuint>& GetDefaultTextures() const {
         return defaultTextures;
     }
-    const std::vector<Material*>& GetMaterials() const {
+    const std::vector<std::unique_ptr<Material>>& GetMaterials() const {
         return materials;
     }
 
@@ -130,22 +146,19 @@ public:
     void ClearSceneAssets();  // Clears scene assets only, preserving defaults.
 
 private:
-    AssetManager() = default;
-    ~AssetManager();
-
     static AssetManager* instance;
 
     // Images
     std::unordered_map<std::string, std::shared_ptr<Image>> _imageCache;
 
     // Shaders
-    std::vector<ShaderProgram*> shaders;
+    std::vector<std::unique_ptr<ShaderProgram>> shaders;
     std::unordered_map<std::string, uint32_t> _shaderCache;
     uint32_t _nextShaderID = 0;
     uint32_t _defaultShaderCount = 0;
 
     // Materials
-    std::vector<Material*> materials;
+    std::vector<std::unique_ptr<Material>> materials;
     std::unordered_map<std::string, uint32_t> _materialCache;
     uint32_t _nextMaterialID = 0;
 

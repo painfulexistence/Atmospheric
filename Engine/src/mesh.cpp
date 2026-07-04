@@ -2,7 +2,7 @@
 #include "asset_manager.hpp"
 #include "config.hpp"
 #include "gfx_factory.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 
 void PrintVertex(const Vertex& v) {
     fmt::print(
@@ -24,7 +24,7 @@ void PrintVertex(const Vertex& v) {
     );
 }
 
-Mesh::Mesh(MeshType type) : type(type), _material(nullptr), _shape(nullptr) {
+Mesh::Mesh(MeshType type) : type(type) {
     // No GL context exists under the WebGPU backend — geometry lives in the
     // RenderMesh Buffer (GPUBuffer) instead; vao/vbo/ebo/ibo stay 0.
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
@@ -37,7 +37,7 @@ Mesh::Mesh(MeshType type) : type(type), _material(nullptr), _shape(nullptr) {
 Mesh::~Mesh() {
     // Free GLBuffer if using new system
     if (_renderMeshHandle.IsValid()) {
-        GraphicsServer::Get()->FreeRenderMesh(_renderMeshHandle);
+        GraphicsSubsystem::Get()->FreeRenderMesh(_renderMeshHandle);
     }
 
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
@@ -45,7 +45,7 @@ Mesh::~Mesh() {
     glDeleteBuffers(1, &ebo);
     glDeleteBuffers(1, &ibo);
     glDeleteVertexArrays(1, &vao);
-    // delete collisionShape; // FIXME: Should delete collisionShape somewhere else before the pointer is out of scope
+    // _shape (unique_ptr<btCollisionShape>) frees itself here.
 }
 
 // Terrain mesh initialization
@@ -59,9 +59,9 @@ void Mesh::Initialize(const std::vector<Vertex>& verts) {
     // heightmap-displacement pipeline, mirroring terrain_simple.vert).
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         if (!_renderMeshHandle.IsValid()) {
-            _renderMeshHandle = GraphicsServer::Get()->AllocateRenderMesh(VertexFormat::Standard, BufferUsage::Static);
+            _renderMeshHandle = GraphicsSubsystem::Get()->AllocateRenderMesh(VertexFormat::Standard, BufferUsage::Static);
         }
-        Buffer* renderMesh = GraphicsServer::Get()->GetRenderMesh(_renderMeshHandle);
+        Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle);
         if (renderMesh) {
             renderMesh->Upload(verts.data(), verts.size(), sizeof(Vertex));
         }
@@ -73,11 +73,11 @@ void Mesh::Initialize(const std::vector<Vertex>& verts) {
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(Vertex), verts.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(float)));
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(5 * sizeof(float)));
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(8 * sizeof(float)));
-    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(11 * sizeof(float)));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(3 * sizeof(float)));
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(5 * sizeof(float)));
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(8 * sizeof(float)));
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(11 * sizeof(float)));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
@@ -97,9 +97,9 @@ void Mesh::Initialize(const std::vector<Vertex>& verts, const std::vector<uint16
     // system only (ForwardOpaquePass/WaterPass draw from the render mesh).
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         if (!_renderMeshHandle.IsValid()) {
-            _renderMeshHandle = GraphicsServer::Get()->AllocateRenderMesh(VertexFormat::Standard, BufferUsage::Static);
+            _renderMeshHandle = GraphicsSubsystem::Get()->AllocateRenderMesh(VertexFormat::Standard, BufferUsage::Static);
         }
-        Buffer* renderMesh = GraphicsServer::Get()->GetRenderMesh(_renderMeshHandle);
+        Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle);
         if (renderMesh) {
             renderMesh->Upload(verts.data(), verts.size(), sizeof(Vertex), tris.data(), tris.size());
         }
@@ -113,11 +113,11 @@ void Mesh::Initialize(const std::vector<Vertex>& verts, const std::vector<uint16
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(Vertex), verts.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(float)));
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(5 * sizeof(float)));
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(8 * sizeof(float)));
-    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(11 * sizeof(float)));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(3 * sizeof(float)));
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(5 * sizeof(float)));
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(8 * sizeof(float)));
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(11 * sizeof(float)));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
@@ -127,10 +127,10 @@ void Mesh::Initialize(const std::vector<Vertex>& verts, const std::vector<uint16
     glBindBuffer(GL_ARRAY_BUFFER, ibo);
     InstanceData dummyData{ glm::mat4(1.0f) };
     glBufferData(GL_ARRAY_BUFFER, sizeof(InstanceData), &dummyData, GL_DYNAMIC_DRAW);
-    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), (void*)0);
-    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), (void*)(4 * sizeof(float)));
-    glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), (void*)(8 * sizeof(float)));
-    glVertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), (void*)(12 * sizeof(float)));
+    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), nullptr);
+    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), reinterpret_cast<void*>(4 * sizeof(float)));
+    glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), reinterpret_cast<void*>(8 * sizeof(float)));
+    glVertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), reinterpret_cast<void*>(12 * sizeof(float)));
     glEnableVertexAttribArray(5);
     glEnableVertexAttribArray(6);
     glEnableVertexAttribArray(7);
@@ -154,19 +154,19 @@ void Mesh::SetShapeLocalScaling(glm::vec3 localScaling) {
 }
 
 void Mesh::AddCapsuleShape(float radius, float height) {
-    _shape = new btCapsuleShape(radius, height);
+    _shape = std::make_unique<btCapsuleShape>(radius, height);
 }
 
 void Mesh::Update(const std::vector<VoxelVertex>& vertices) {
     // Allocate GLBuffer on first use
     if (!_renderMeshHandle.IsValid()) {
-        _renderMeshHandle = GraphicsServer::Get()->AllocateRenderMesh(
+        _renderMeshHandle = GraphicsSubsystem::Get()->AllocateRenderMesh(
           VertexFormat::Voxel, updateFreq == UpdateFrequency::Static ? BufferUsage::Static : BufferUsage::Dynamic
         );
     }
 
     // Get Buffer and upload data
-    Buffer* renderMesh = GraphicsServer::Get()->GetRenderMesh(_renderMeshHandle);
+    Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle);
     if (renderMesh) {
         renderMesh->Upload(vertices.data(), vertices.size(), sizeof(VoxelVertex));
         vertCount = vertices.size();
@@ -193,27 +193,27 @@ template<typename VertexType> void Mesh::InitializeDynamic(GLenum primType) {
     // Setup vertex attributes based on vertex type
     if constexpr (std::is_same_v<VertexType, DebugVertex>) {
         // DebugVertex: position (vec3) + color (vec3)
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), (void*)0);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), (void*)(3 * sizeof(float)));
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), nullptr);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), reinterpret_cast<void*>(3 * sizeof(float)));
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
     } else if constexpr (std::is_same_v<VertexType, CanvasVertex>) {
         // CanvasVertex: position (vec2) + texCoord (vec2) + color (vec4) + texIndex (int)
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)0);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)(2 * sizeof(float)));
-        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)(4 * sizeof(float)));
-        glVertexAttribIPointer(3, 1, GL_INT, sizeof(CanvasVertex), (void*)(8 * sizeof(float)));
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), nullptr);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(2 * sizeof(float)));
+        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(4 * sizeof(float)));
+        glVertexAttribIPointer(3, 1, GL_INT, sizeof(CanvasVertex), reinterpret_cast<void*>(8 * sizeof(float)));
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
         glEnableVertexAttribArray(2);
         glEnableVertexAttribArray(3);
     } else if constexpr (std::is_same_v<VertexType, Vertex>) {
         // Standard Vertex: full vertex attributes
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(float)));
-        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(5 * sizeof(float)));
-        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(8 * sizeof(float)));
-        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(11 * sizeof(float)));
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(3 * sizeof(float)));
+        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(5 * sizeof(float)));
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(8 * sizeof(float)));
+        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(11 * sizeof(float)));
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
         glEnableVertexAttribArray(2);

@@ -152,7 +152,7 @@ struct MeshHandle {
     operator bool() const noexcept { return IsValid(); }
 };
 
-enum Axis { UP, DOWN, BACK, FRONT, RIGHT, LEFT };
+enum class Axis { UP, DOWN, BACK, FRONT, RIGHT, LEFT };
 
 // Canvas layer constants for z-ordering
 // World 3D layers (< LAYER_WORLD_2D): rendered by WorldCanvasPass with depth testing
@@ -196,22 +196,22 @@ struct CubeShapeData {
 };
 
 struct SphereShapeData {
-    float radius;
+    float radius = 0.0f;
 };
 
 struct CapsuleShapeData {
-    float radius;
-    float height;
+    float radius = 0.0f;
+    float height = 0.0f;
 };
 
 struct CylinderShapeData {
-    float radius;
-    float height;
+    float radius = 0.0f;
+    float height = 0.0f;
 };
 
 struct ConeShapeData {
-    float radius;
-    float height;
+    float radius = 0.0f;
+    float height = 0.0f;
 };
 
 struct Shape {

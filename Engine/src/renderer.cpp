@@ -6,14 +6,14 @@
 #include "asset_manager.hpp"
 #include "batch_renderer_2d.hpp"
 #include "canvas_drawable.hpp"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "game_object.hpp"
 #include "gfx_factory.hpp"
 #include "gl_buffer.hpp"
 #include "gl_render_target.hpp"
-#include "graphics_server.hpp"
-#include "particle_server.hpp"
-#include "physics_server_2d.hpp"
+#include "graphics_subsystem.hpp"
+#include "particle_subsystem.hpp"
+#include "physics_subsystem_2d.hpp"
 #include "window.hpp"
 #include <algorithm>
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
@@ -110,7 +110,7 @@ void RenderGraph::AddPass(std::unique_ptr<RenderPass> pass) {
     _entries.push_back(std::move(e));
 }
 
-void RenderGraph::Render(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void RenderGraph::Render(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     for (auto& e : _entries) {
 #ifdef AE_GPU_TIMER_ENABLED
         if (gpuProfilingEnabled) e.timer.Begin();
@@ -166,9 +166,9 @@ void Renderer::Init(int width, int height) {
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
         glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), nullptr);
         glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), reinterpret_cast<void*>(2 * sizeof(float)));
         glBindVertexArray(0);
 
         // ── Skybox cube VAO ───────────────────────────────────────────
@@ -270,9 +270,20 @@ void Renderer::SortAndBucket(const glm::vec3& cameraPos) {
     _commandList.clear();
 }
 
+// Resolves a mesh's material handle; draws that lost their material (e.g.
+// after a scene unload) fall back to default-constructed material state
+// instead of dereferencing a dangling pointer.
+static Material* ResolveMaterialOrFallback(MaterialHandle handle) {
+    if (Material* mat = AssetManager::Get().ResolveMaterial(handle)) {
+        return mat;
+    }
+    static Material fallback{ MaterialProps{} };
+    return &fallback;
+}
+
 uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& cameraPos) {
     Mesh* meshPtr = AssetManager::Get().GetMeshPtr(cmd.mesh);
-    Material* mat = meshPtr ? meshPtr->GetMaterial() : nullptr;
+    Material* mat = meshPtr ? AssetManager::Get().ResolveMaterial(meshPtr->GetMaterial()) : nullptr;
     if (!mat) return 0;
 
     // Calculate depth (distance from camera)
@@ -282,17 +293,18 @@ uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& c
     // Get render queue
     int renderQueue = mat->GetFinalRenderQueue();
 
-    // Get material and mesh IDs for batching
-    uint32_t materialID = reinterpret_cast<uintptr_t>(mat) & 0xFFFF;
+    // Get material and mesh IDs for batching; handle IDs are stable across
+    // runs, unlike the pointer bits used before.
+    uint32_t materialID = meshPtr->GetMaterial().id & 0xFFFF;
     uint32_t meshID = cmd.mesh.id & 0xFFFF;
 
     // Generate 64-bit sort key
     // [16 bits: render queue] [16 bits: depth] [16 bits: material] [16 bits: mesh]
     uint64_t key = 0;
-    key |= (uint64_t)(renderQueue & 0xFFFF) << 48;
-    key |= (uint64_t)((uint16_t)(depth * 100.0f) & 0xFFFF) << 32;
-    key |= (uint64_t)(materialID & 0xFFFF) << 16;
-    key |= (uint64_t)(meshID & 0xFFFF);
+    key |= static_cast<uint64_t>(renderQueue & 0xFFFF) << 48;
+    key |= static_cast<uint64_t>(static_cast<uint16_t>(depth * 100.0f) & 0xFFFF) << 32;
+    key |= static_cast<uint64_t>(materialID & 0xFFFF) << 16;
+    key |= static_cast<uint64_t>(meshID & 0xFFFF);
 
     return key;
 }
@@ -316,7 +328,7 @@ void Renderer::SortTransparent() {
 void Renderer::BucketCommands(const glm::vec3& cameraPos) {
     for (const auto& cmd : _commandList) {
         Mesh* meshPtr = AssetManager::Get().GetMeshPtr(cmd.mesh);
-        Material* mat = meshPtr ? meshPtr->GetMaterial() : nullptr;
+        Material* mat = meshPtr ? AssetManager::Get().ResolveMaterial(meshPtr->GetMaterial()) : nullptr;
         if (!mat) continue;
 
         int queue = mat->GetFinalRenderQueue();
@@ -337,7 +349,7 @@ void Renderer::BucketCommands(const glm::vec3& cameraPos) {
 
 // ... SortOpaque, SortTransparent ...
 
-void Renderer::RenderFrame(GraphicsServer* ctx, float dt) {
+void Renderer::RenderFrame(GraphicsSubsystem* ctx, float dt) {
     ZoneScopedN("Renderer::RenderFrame");
     AE_GL_PROBE(*this, "RenderFrame: entry");
 #if defined(__APPLE__) && TARGET_OS_IOS
@@ -439,7 +451,7 @@ void Renderer::CheckErrors(const std::string& prefix) {
             error = "UNKNOWN";
             break;
         }
-        Console::Get()->Error(fmt::format("{}: {}\n", prefix, error));
+        ConsoleSubsystem::Get()->Error(fmt::format("{}: {}\n", prefix, error));
     }
 }
 
@@ -468,7 +480,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, SHADOW_W, SHADOW_H, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, SHADOW_W, SHADOW_H, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
         gl.uniShadowMaps[i] = map;
     }
     for (int i = 0; i < MAX_OMNI_LIGHTS; ++i) {
@@ -490,7 +502,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
               0,
               GL_DEPTH_COMPONENT,
               GL_FLOAT,
-              NULL
+              nullptr
             );
         }
         gl.omniShadowMaps[i] = map;
@@ -502,12 +514,12 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
     glDrawBuffers(1, drawBuffers);
 #else
     glBindFramebuffer(GL_FRAMEBUFFER, gl.shadowFBO);
-    for (int i = 0; i < (int)gl.uniShadowMaps.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(gl.uniShadowMaps.size()); ++i) {
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gl.uniShadowMaps[i], 0);
         glDrawBuffer(GL_NONE);
         glReadBuffer(GL_NONE);
     }
-    for (int i = 0; i < (int)gl.omniShadowMaps.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(gl.omniShadowMaps.size()); ++i) {
         glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, gl.omniShadowMaps[i], 0);
         glDrawBuffer(GL_NONE);
         glReadBuffer(GL_NONE);
@@ -545,7 +557,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
 
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
-            Console::Get()->Error("Renderer: WebGL resolved depth FBO incomplete!");
+            ConsoleSubsystem::Get()->Error("Renderer: WebGL resolved depth FBO incomplete!");
         }
         glBindFramebuffer(GL_FRAMEBUFFER, gl.finalFBO);
 
@@ -569,32 +581,32 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
     if (isGL) {
     glGenTextures(1, &gl.gBuffer.positionRT);
     glBindTexture(GL_TEXTURE_2D, gl.gBuffer.positionRT);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, props.width, props.height, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, props.width, props.height, 0, GL_RGBA, GL_FLOAT, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     glGenTextures(1, &gl.gBuffer.normalRT);
     glBindTexture(GL_TEXTURE_2D, gl.gBuffer.normalRT);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, props.width, props.height, 0, GL_RGBA, GL_FLOAT, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, props.width, props.height, 0, GL_RGBA, GL_FLOAT, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     glGenTextures(1, &gl.gBuffer.albedoRT);
     glBindTexture(GL_TEXTURE_2D, gl.gBuffer.albedoRT);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, props.width, props.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, props.width, props.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     glGenTextures(1, &gl.gBuffer.materialRT);
     glBindTexture(GL_TEXTURE_2D, gl.gBuffer.materialRT);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, props.width, props.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, props.width, props.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     glGenTextures(1, &gl.gBuffer.depthRT);
     glBindTexture(GL_TEXTURE_2D, gl.gBuffer.depthRT);
     glTexImage2D(
-      GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, props.width, props.height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL
+      GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, props.width, props.height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr
     );
 
     glGenFramebuffers(1, &gl.gBuffer.id);
@@ -648,10 +660,10 @@ void Renderer::CreateCanvasVAO() {
 
     glBindVertexArray(gl.canvasVAO);
     glBindBuffer(GL_ARRAY_BUFFER, gl.canvasVBO);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)offsetof(CanvasVertex, texCoord));
-    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)offsetof(CanvasVertex, color));
-    glVertexAttribIPointer(3, 1, GL_INT, sizeof(CanvasVertex), (void*)offsetof(CanvasVertex, texIndex));
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), nullptr);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(offsetof(CanvasVertex, texCoord)));
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(offsetof(CanvasVertex, color)));
+    glVertexAttribIPointer(3, 1, GL_INT, sizeof(CanvasVertex), reinterpret_cast<void*>(offsetof(CanvasVertex, texIndex)));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
@@ -746,7 +758,7 @@ void ShadowPass::_ensureDrawCapacity(uint32_t drawCount) {
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
-void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         WGPUDevice dev = GfxFactory::GetWebGPUDevice();
@@ -878,10 +890,12 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
         if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
+        Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
-        if (mesh->GetMaterial()->cullFaceEnabled)
+        if (material->cullFaceEnabled)
             glEnable(GL_CULL_FACE);
         else
             glDisable(GL_CULL_FACE);
@@ -894,7 +908,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
             for (const auto& inst : instances) {
                 depthShader->SetUniform(std::string("World"), inst.modelMatrix);
                 glDrawElements(
-                  GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
+                  GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
                 );
             }
 #else
@@ -904,7 +918,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
             // Instanced Draw
             glDrawElementsInstanced(
-              GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+              GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
             );
 #endif
         }
@@ -945,10 +959,12 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
                 if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
+                Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+
                 glEnable(GL_DEPTH_TEST);
                 glDepthFunc(GL_LESS);
 
-                if (mesh->GetMaterial()->cullFaceEnabled)
+                if (material->cullFaceEnabled)
                     glEnable(GL_CULL_FACE);
                 else
                     glDisable(GL_CULL_FACE);
@@ -961,7 +977,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
                     for (const auto& inst : instances) {
                         depthCubemapShader->SetUniform(std::string("World"), inst.modelMatrix);
                         glDrawElements(
-                          GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
+                          GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
                         );
                     }
 #else
@@ -973,7 +989,7 @@ void ShadowPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
 
                     // Instanced Draw
                     glDrawElementsInstanced(
-                      GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+                      GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
                     );
 #endif
                 }
@@ -1139,7 +1155,7 @@ WGPUBindGroup ForwardOpaquePass::_getOrCreateTexBG(uint32_t texID) {
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
-void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         const auto& gpuQueueCmds = renderer.GetOpaqueQueue();
@@ -1329,19 +1345,21 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
         if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
-        AE_GL_PROBE(renderer, fmt::format("Opaque pass: batch entry (type={})", (int)mesh->type));
+        Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+
+        AE_GL_PROBE(renderer, fmt::format("Opaque pass: batch entry (type={})", static_cast<int>(mesh->type)));
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
-        if (renderer.wireframeEnabled || mesh->GetMaterial()->polygonMode == PolygonMode::Line)
+        if (renderer.wireframeEnabled || material->polygonMode == PolygonMode::Line)
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         else
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 #endif
 
-        if (mesh->GetMaterial()->cullFaceEnabled)
+        if (material->cullFaceEnabled)
             glEnable(GL_CULL_FACE);
         else
             glDisable(GL_CULL_FACE);
@@ -1359,20 +1377,20 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             terrainShader->SetUniform(std::string("main_light.cast_shadow"), mainLight->castShadow ? 1 : 0);
             terrainShader->SetUniform(std::string("main_light.ProjectionView"), mainLight->GetProjectionViewMatrix(0));
 
-            terrainShader->SetUniform(std::string("surf_params.diffuse"), mesh->GetMaterial()->diffuse);
-            terrainShader->SetUniform(std::string("surf_params.specular"), mesh->GetMaterial()->specular);
-            terrainShader->SetUniform(std::string("surf_params.ambient"), mesh->GetMaterial()->ambient);
-            terrainShader->SetUniform(std::string("surf_params.shininess"), mesh->GetMaterial()->shininess);
+            terrainShader->SetUniform(std::string("surf_params.diffuse"), material->diffuse);
+            terrainShader->SetUniform(std::string("surf_params.specular"), material->specular);
+            terrainShader->SetUniform(std::string("surf_params.ambient"), material->ambient);
+            terrainShader->SetUniform(std::string("surf_params.shininess"), material->shininess);
 
-            auto* tm = dynamic_cast<TerrainMaterial*>(mesh->GetMaterial());
+            auto* tm = dynamic_cast<TerrainMaterial*>(material);
             terrainShader->SetUniform(std::string("tessellation_factor"), tm ? tm->tessellationFactor : 16.0f);
             terrainShader->SetUniform(std::string("height_scale"),         tm ? tm->heightScale        : 32.0f);
             terrainShader->SetUniform(std::string("world_size"),           tm ? tm->worldSize          : 1024.0f);
             terrainShader->SetUniform(std::string("palette_index"),        tm ? tm->paletteIndex       : 0);
             glActiveTexture(GL_TEXTURE7);
-            TextureHandle heightMap = mesh->GetMaterial()->heightMap;
-            if (heightMap.IsValid() && (uint32_t)heightMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)heightMap);
+            TextureHandle heightMap = material->heightMap;
+            if (heightMap.IsValid() && static_cast<uint32_t>(heightMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(heightMap));
             } else {
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
@@ -1384,13 +1402,13 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             // valid 2D texture bound (default textures as fallback) so WebGL
             // never sees a sampler pointing at an incompatible unit.
             {
-                Material* mat = mesh->GetMaterial();
+                Material* mat = material;// resolved once at the top of this batch loop
                 const auto& defaults = assetManager.GetDefaultTextures();
                 auto bindTex2D = [&](int unit, TextureHandle tex, int defaultIdx) {
                     glActiveTexture(GL_TEXTURE0 + unit);
-                    if (tex.IsValid() && (uint32_t)tex != 0)
-                        glBindTexture(GL_TEXTURE_2D, (uint32_t)tex);
-                    else if ((int)defaults.size() > defaultIdx)
+                    if (tex.IsValid() && static_cast<uint32_t>(tex) != 0)
+                        glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(tex));
+                    else if (defaults.size() > static_cast<size_t>(defaultIdx))
                         glBindTexture(GL_TEXTURE_2D, defaults[defaultIdx]);
                     else
                         glBindTexture(GL_TEXTURE_2D, 0);
@@ -1498,22 +1516,22 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
                     );
                 }
             }
-            colorShader->SetUniform(std::string("aux_light_count"), (int)ctx->pointLights.size());
+            colorShader->SetUniform(std::string("aux_light_count"), static_cast<int>(ctx->pointLights.size()));
             colorShader->SetUniform(std::string("shadow_map_unit"), (int)0);
-            colorShader->SetUniform(std::string("omni_shadow_map_unit"), (int)UNI_SHADOW_MAP_COUNT);
+            colorShader->SetUniform(std::string("omni_shadow_map_unit"), static_cast<int>(UNI_SHADOW_MAP_COUNT));
             colorShader->SetUniform(std::string("ProjectionView"), projectionView);
             // Surface parameters
-            colorShader->SetUniform(std::string("surf_params.diffuse"), mesh->GetMaterial()->diffuse);
-            colorShader->SetUniform(std::string("surf_params.specular"), mesh->GetMaterial()->specular);
-            colorShader->SetUniform(std::string("surf_params.ambient"), mesh->GetMaterial()->ambient);
-            colorShader->SetUniform(std::string("surf_params.shininess"), mesh->GetMaterial()->shininess);
+            colorShader->SetUniform(std::string("surf_params.diffuse"), material->diffuse);
+            colorShader->SetUniform(std::string("surf_params.specular"), material->specular);
+            colorShader->SetUniform(std::string("surf_params.ambient"), material->ambient);
+            colorShader->SetUniform(std::string("surf_params.shininess"), material->shininess);
 
             // Material textures - dynamically bound to Units 2-6
             // Base Map (Unit 2)
             glActiveTexture(GL_TEXTURE2);
-            TextureHandle baseMap = mesh->GetMaterial()->baseMap;
-            if (baseMap.IsValid() && (uint32_t)baseMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)baseMap);
+            TextureHandle baseMap = material->baseMap;
+            if (baseMap.IsValid() && static_cast<uint32_t>(baseMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(baseMap));
             } else if (assetManager.GetDefaultTextures().size() > 0) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[0]);
             } else {
@@ -1523,9 +1541,9 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
             // Normal Map (Unit 3)
             glActiveTexture(GL_TEXTURE3);
-            TextureHandle normalMap = mesh->GetMaterial()->normalMap;
-            if (normalMap.IsValid() && (uint32_t)normalMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)normalMap);
+            TextureHandle normalMap = material->normalMap;
+            if (normalMap.IsValid() && static_cast<uint32_t>(normalMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(normalMap));
             } else if (assetManager.GetDefaultTextures().size() > 1) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[1]);
             } else {
@@ -1535,9 +1553,9 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
             // AO Map (Unit 4)
             glActiveTexture(GL_TEXTURE4);
-            TextureHandle aoMap = mesh->GetMaterial()->aoMap;
-            if (aoMap.IsValid() && (uint32_t)aoMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)aoMap);
+            TextureHandle aoMap = material->aoMap;
+            if (aoMap.IsValid() && static_cast<uint32_t>(aoMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(aoMap));
             } else if (assetManager.GetDefaultTextures().size() > 2) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[2]);
             } else {
@@ -1547,9 +1565,9 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
             // Roughness Map (Unit 5)
             glActiveTexture(GL_TEXTURE5);
-            TextureHandle roughnessMap = mesh->GetMaterial()->roughnessMap;
-            if (roughnessMap.IsValid() && (uint32_t)roughnessMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)roughnessMap);
+            TextureHandle roughnessMap = material->roughnessMap;
+            if (roughnessMap.IsValid() && static_cast<uint32_t>(roughnessMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(roughnessMap));
             } else if (assetManager.GetDefaultTextures().size() > 3) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[3]);
             } else {
@@ -1559,9 +1577,9 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
 
             // Metallic Map (Unit 6)
             glActiveTexture(GL_TEXTURE6);
-            TextureHandle metallicMap = mesh->GetMaterial()->metallicMap;
-            if (metallicMap.IsValid() && (uint32_t)metallicMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)metallicMap);
+            TextureHandle metallicMap = material->metallicMap;
+            if (metallicMap.IsValid() && static_cast<uint32_t>(metallicMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(metallicMap));
             } else if (assetManager.GetDefaultTextures().size() > 4) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[4]);
             } else {
@@ -1578,7 +1596,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
             for (const auto& inst : instances) {
                 colorShader->SetUniform(std::string("World"), inst.modelMatrix);
                 glDrawElements(
-                  GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
+                  GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
                 );
                 AE_GL_PROBE(renderer, "Opaque pass: PRIM-GLES after glDrawElements");
             }
@@ -1590,7 +1608,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
                 );
                 AE_GL_PROBE(renderer, "Opaque pass: PRIM after upload instance VBO");
                 glDrawElementsInstanced(
-                  GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+                  GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
                 );
                 AE_GL_PROBE(renderer, "Opaque pass: PRIM after instanced draw");
             }
@@ -1620,7 +1638,7 @@ void ForwardOpaquePass::Execute(GraphicsServer* ctx, Renderer& renderer, Command
     renderer.CheckErrors("Opaque pass");
 }
 
-void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("DeferredGeometryPass");
     auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
@@ -1650,10 +1668,12 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
 
         if (!mesh || !mesh->initialized) throw std::runtime_error("Mesh uninitialized!");
 
+        Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
-        if (mesh->GetMaterial()->cullFaceEnabled)
+        if (material->cullFaceEnabled)
             glEnable(GL_CULL_FACE);
         else
             glDisable(GL_CULL_FACE);
@@ -1677,9 +1697,9 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
             // Material textures - dynamically bound to Units 2-6
             // Base Map (Unit 2)
             glActiveTexture(GL_TEXTURE2);
-            TextureHandle baseMap = mesh->GetMaterial()->baseMap;
-            if (baseMap.IsValid() && (uint32_t)baseMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)baseMap);
+            TextureHandle baseMap = material->baseMap;
+            if (baseMap.IsValid() && static_cast<uint32_t>(baseMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(baseMap));
             } else if (assetManager.GetDefaultTextures().size() > 0) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[0]);
             } else {
@@ -1689,9 +1709,9 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
 
             // Normal Map (Unit 3)
             glActiveTexture(GL_TEXTURE3);
-            TextureHandle normalMap = mesh->GetMaterial()->normalMap;
-            if (normalMap.IsValid() && (uint32_t)normalMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)normalMap);
+            TextureHandle normalMap = material->normalMap;
+            if (normalMap.IsValid() && static_cast<uint32_t>(normalMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(normalMap));
             } else if (assetManager.GetDefaultTextures().size() > 1) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[1]);
             } else {
@@ -1701,9 +1721,9 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
 
             // AO Map (Unit 4)
             glActiveTexture(GL_TEXTURE4);
-            TextureHandle aoMap = mesh->GetMaterial()->aoMap;
-            if (aoMap.IsValid() && (uint32_t)aoMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)aoMap);
+            TextureHandle aoMap = material->aoMap;
+            if (aoMap.IsValid() && static_cast<uint32_t>(aoMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(aoMap));
             } else if (assetManager.GetDefaultTextures().size() > 2) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[2]);
             } else {
@@ -1713,9 +1733,9 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
 
             // Roughness Map (Unit 5)
             glActiveTexture(GL_TEXTURE5);
-            TextureHandle roughnessMap = mesh->GetMaterial()->roughnessMap;
-            if (roughnessMap.IsValid() && (uint32_t)roughnessMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)roughnessMap);
+            TextureHandle roughnessMap = material->roughnessMap;
+            if (roughnessMap.IsValid() && static_cast<uint32_t>(roughnessMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(roughnessMap));
             } else if (assetManager.GetDefaultTextures().size() > 3) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[3]);
             } else {
@@ -1725,9 +1745,9 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
 
             // Metallic Map (Unit 6)
             glActiveTexture(GL_TEXTURE6);
-            TextureHandle metallicMap = mesh->GetMaterial()->metallicMap;
-            if (metallicMap.IsValid() && (uint32_t)metallicMap != 0) {
-                glBindTexture(GL_TEXTURE_2D, (uint32_t)metallicMap);
+            TextureHandle metallicMap = material->metallicMap;
+            if (metallicMap.IsValid() && static_cast<uint32_t>(metallicMap) != 0) {
+                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(metallicMap));
             } else if (assetManager.GetDefaultTextures().size() > 4) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[4]);
             } else {
@@ -1742,7 +1762,7 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
                   GL_ARRAY_BUFFER, instances.size() * sizeof(InstanceData), instances.data(), GL_DYNAMIC_DRAW
                 );
                 glDrawElementsInstanced(
-                  GetGLPrimitiveType(mesh->GetMaterial()->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
+                  GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0, instances.size()
                 );
             }
             glBindVertexArray(0);
@@ -1752,7 +1772,7 @@ void DeferredGeometryPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
     renderer.CheckErrors("Geometry pass");
 }
 
-void DeferredLightingPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void DeferredLightingPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("DeferredLightingPass");
     auto [width, height] = Window::Get()->GetPhysicalSize();
     glViewport(0, 0, width, height);
@@ -1798,14 +1818,14 @@ void DeferredLightingPass::Execute(GraphicsServer* ctx, Renderer& renderer, Comm
         lightingShader->SetUniform(prefix + ".attenuation", l->attenuation);
         lightingShader->SetUniform(prefix + ".intensity", l->intensity);
     }
-    lightingShader->SetUniform("pointLightCount", (int)ctx->pointLights.size());
+    lightingShader->SetUniform("pointLightCount", static_cast<int>(ctx->pointLights.size()));
 
     renderer.screenBuffer->Draw(enc, PrimitiveTopology::TriangleStrip);
 
     renderer.CheckErrors("Lighting pass");
 }
 
-void TransparentPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void TransparentPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
 #endif
@@ -1814,10 +1834,10 @@ void TransparentPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
     Atmospheric::CameraInfo camInfo = { .view = cam.GetViewMatrix(),
                                         .projection = cam.GetProjectionMatrix(),
                                         .position = cam.GetEyePosition() };
-    Atmospheric::ParticleServer::GetInstance().Draw(camInfo);// TODO: transparent pass
+    Atmospheric::ParticleSubsystem::GetInstance().Draw(camInfo);// TODO: transparent pass
 }
 
-void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void MSAAResolvePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
 #endif
@@ -1846,7 +1866,7 @@ void MSAAResolvePass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 }
 
 // WorldCanvasPass: World sprites with depth testing
-void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void WorldCanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         GPUCanvasPass* gpuPass = renderer.GetGPUCanvasPass();
@@ -1898,7 +1918,7 @@ void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
     std::vector<CanvasDrawable*> worldDrawables;
     for (auto* drawable : ctx->canvasDrawables) {
         if (!drawable->gameObject->isActive) continue;
-        if ((int)drawable->GetLayer() < (int)CanvasLayer::LAYER_WORLD_2D) {
+        if (static_cast<int>(drawable->GetLayer()) < static_cast<int>(CanvasLayer::LAYER_WORLD_2D)) {
             worldDrawables.push_back(drawable);
         }
     }
@@ -1951,7 +1971,7 @@ void WorldCanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 }
 
 // CanvasPass: Pure 2D sprites (no depth testing)
-void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void CanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     ZoneScopedN("CanvasPass");
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
@@ -2057,7 +2077,7 @@ void CanvasPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder
         // For now, if perspective, we might just use screen space or a default ortho.
         // Let's assume default ortho for safety if no 2D camera is set.
         auto [winW, winH] = Window::Get()->GetLogicalSize();
-        worldViewProj = glm::ortho(0.0f, (float)winW, (float)winH, 0.0f, -1.0f, 1.0f);
+        worldViewProj = glm::ortho(0.0f, static_cast<float>(winW), static_cast<float>(winH), 0.0f, -1.0f, 1.0f);
     }
 
     renderer.GetBatchRenderer()->BeginBatch(worldViewProj);
@@ -2119,7 +2139,7 @@ void PostProcessPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFo
 }
 #endif // AE_USE_WEBGPU && __EMSCRIPTEN__
 
-void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void PostProcessPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         if (!_pipeline) {
@@ -2211,18 +2231,18 @@ void PostProcessPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEn
 
     auto shader = ctx->GetShader("post_composite");
     shader->Activate();
-    shader->SetUniform(std::string("color_map_unit"),      (int)0);
+    shader->SetUniform(std::string("color_map_unit"),      0);
     shader->SetUniform(std::string("exposure"),            tonemapEnabled ? exposure : 1.0f);
     shader->SetUniform(std::string("u_time"),              renderer.frameTime);
-    shader->SetUniform(std::string("u_ca_enabled"),        (int)caEnabled);
+    shader->SetUniform(std::string("u_ca_enabled"),        static_cast<int>(caEnabled));
     shader->SetUniform(std::string("u_ca_strength"),       caStrength);
-    shader->SetUniform(std::string("u_crt_enabled"),       (int)crtEnabled);
-    shader->SetUniform(std::string("u_vhs_enabled"),       (int)vhsEnabled);
-    shader->SetUniform(std::string("u_grading_enabled"),   (int)gradingEnabled);
-    shader->SetUniform(std::string("u_posterize_enabled"), (int)posterizeEnabled);
-    shader->SetUniform(std::string("u_sobel_enabled"),     (int)sobelEnabled);
-    shader->SetUniform(std::string("u_edges_enabled"),     (int)edgesEnabled);
-    shader->SetUniform(std::string("u_vignette_enabled"),  (int)vignetteEnabled);
+    shader->SetUniform(std::string("u_crt_enabled"),       static_cast<int>(crtEnabled));
+    shader->SetUniform(std::string("u_vhs_enabled"),       static_cast<int>(vhsEnabled));
+    shader->SetUniform(std::string("u_grading_enabled"),   static_cast<int>(gradingEnabled));
+    shader->SetUniform(std::string("u_posterize_enabled"), static_cast<int>(posterizeEnabled));
+    shader->SetUniform(std::string("u_sobel_enabled"),     static_cast<int>(sobelEnabled));
+    shader->SetUniform(std::string("u_edges_enabled"),     static_cast<int>(edgesEnabled));
+    shader->SetUniform(std::string("u_vignette_enabled"),  static_cast<int>(vignetteEnabled));
 
     renderer.screenBuffer->Draw(enc, PrimitiveTopology::TriangleStrip);
 
@@ -2237,7 +2257,7 @@ void Renderer::SubmitCanvasCommand(const BatchDrawCommand& cmd) {
     _canvasQueue.push_back(cmd);
 }
 
-void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* enc) {
+void UIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         // Text2DComponent text is already drained into the canvas queue by
@@ -2314,8 +2334,8 @@ void UIPass::Execute(GraphicsServer* ctx, Renderer& renderer, CommandEncoder* en
 
     // RmlUi context dimensions are in logical pixels, so projection must match.
     auto logicalSize = Window::Get()->GetLogicalSize();
-    float width = (float)logicalSize.width;
-    float height = (float)logicalSize.height;
+    float width = static_cast<float>(logicalSize.width);
+    float height = static_cast<float>(logicalSize.height);
 
     glViewport(0, 0, Window::Get()->GetPhysicalSize().width, Window::Get()->GetPhysicalSize().height);
     glm::mat4 projection = glm::ortho(0.0f, width, height, 0.0f, -1.0f, 1.0f);

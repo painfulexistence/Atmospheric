@@ -15,5 +15,5 @@ public:
     void OnRender(float dt) override;
 
 private:
-    Application* _app;
+    Application* _app = nullptr;
 };

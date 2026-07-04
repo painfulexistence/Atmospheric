@@ -1,8 +1,9 @@
 #include "asset_manager.hpp"
 #include <algorithm>
+#include <cassert>
 #include <unordered_set>
 #include <nlohmann/json.hpp>
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "file_system.hpp"
 #include "gfx_factory.hpp"
 #include "job_system.hpp"
@@ -110,31 +111,21 @@ GLenum BasisToGLFormat(basist::transcoder_texture_format fmt) {
 
 AssetManager* AssetManager::instance = nullptr;
 
-AssetManager& AssetManager::Get() {
-    if (!instance) {
-        instance = new AssetManager();
-    }
-    return *instance;
+AssetManager::AssetManager() {
+    assert(!instance && "AssetManager is a single-instance service owned by Application");
+    instance = this;
 }
 
 AssetManager::~AssetManager() {
     Clear();
-}
-
-void AssetManager::Init() {
-#ifdef AE_USE_BASIS_UNIVERSAL
-    if (!_basisuInitialized) {
-        basist::basisu_transcoder_init();
-        _basisuInitialized = true;
-        ENGINE_LOG("Basis Universal transcoder initialized (KTX2 support active)");
+    if (instance == this) {
+        instance = nullptr;
     }
-#endif
-    ENGINE_LOG("AssetManager initialized");
 }
 
-void AssetManager::Shutdown() {
-    Clear();
-    ENGINE_LOG("AssetManager shutdown");
+AssetManager& AssetManager::Get() {
+    assert(instance && "AssetManager is owned by Application — construct the Application first");
+    return *instance;
 }
 
 void AssetManager::Clear() {
@@ -150,10 +141,8 @@ void AssetManager::Clear() {
     _textureCache.clear();
     _nextTextureID = 0;
 
-    // Shaders may have nullptr slots (RemoveMaterial/RemoveShader leaves holes).
-    for (auto* shader : shaders) {
-        if (shader) delete shader;
-    }
+    // Shaders may have nullptr slots (RemoveMaterial/RemoveShader leaves
+    // holes); unique_ptr destructors handle occupied and empty slots alike.
     shaders.clear();
     _shaderCache.clear();
     _nextShaderID = 0;
@@ -167,10 +156,7 @@ void AssetManager::Clear() {
     _ownedMeshIDs.clear();
     _nextMeshID = 1;
 
-    // Materials may have nullptr slots.
-    for (auto* material : materials) {
-        if (material) delete material;
-    }
+    // Materials may have nullptr slots; unique_ptr handles cleanup either way.
     materials.clear();
     _materialCache.clear();
     _nextMaterialID = 0;
@@ -188,16 +174,15 @@ void AssetManager::ClearSceneAssets() {
     // Remove scene texture cache entries (keep default texture entries by glID).
     std::unordered_set<GLuint> defaultIDs(defaultTextures.begin(), defaultTextures.end());
     for (auto it = _textureCache.begin(); it != _textureCache.end(); ) {
-        if (defaultIDs.count(it->second.glID))
+        if (defaultIDs.contains(it->second.glID))
             ++it;
         else
             it = _textureCache.erase(it);
     }
 
-    // Shaders: delete only scene shaders (indices >= _defaultShaderCount).
-    // Slots may be nullptr if RemoveMaterial/UnloadSceneAssets nulled them.
-    for (uint32_t i = _defaultShaderCount; i < (uint32_t)shaders.size(); ++i)
-        if (shaders[i]) delete shaders[i];
+    // Shaders: release only scene shaders (indices >= _defaultShaderCount).
+    // Slots may be nullptr if RemoveMaterial/UnloadSceneAssets nulled them;
+    // resize destroys the tail via unique_ptr either way.
     shaders.resize(_defaultShaderCount);
     // Rebuild shader cache to only contain default shaders.
     for (auto it = _shaderCache.begin(); it != _shaderCache.end(); )
@@ -205,7 +190,6 @@ void AssetManager::ClearSceneAssets() {
     _nextShaderID = _defaultShaderCount;
 
     // Materials and meshes are always scene-specific (slots may be nullptr).
-    for (auto* m : materials) if (m) delete m;
     materials.clear();
     _materialCache.clear();
     _nextMaterialID = 0;
@@ -227,13 +211,12 @@ void AssetManager::ClearSceneAssets() {
 void AssetManager::RemoveMaterial(Material* mat) {
     if (!mat) return;
     for (auto it = _materialCache.begin(); it != _materialCache.end(); ++it) {
-        if (it->second < materials.size() && materials[it->second] == mat) {
-            materials[it->second] = nullptr;
+        if (it->second < materials.size() && materials[it->second].get() == mat) {
+            materials[it->second].reset();// destroys the material, keeps the slot
             _materialCache.erase(it);
             break;
         }
     }
-    delete mat;
 }
 
 
@@ -261,7 +244,7 @@ void AssetManager::UnloadSceneAssets(const std::string& sceneName) {
     nlohmann::json j;
     try {
         j = nlohmann::json::parse(it->second);
-    } catch (...) {
+    } catch (const nlohmann::json::exception&) {
         _sceneJsons.erase(it);
         return;
     }
@@ -288,8 +271,7 @@ void AssetManager::UnloadSceneAssets(const std::string& sceneName) {
             if (shaderIt == _shaderCache.end()) continue;
             uint32_t idx = shaderIt->second;
             if (idx < shaders.size()) {
-                delete shaders[idx];
-                shaders[idx] = nullptr;
+                shaders[idx].reset();
             }
             _shaderCache.erase(shaderIt);
         }
@@ -304,8 +286,7 @@ void AssetManager::UnloadSceneAssets(const std::string& sceneName) {
             if (matIt == _materialCache.end()) continue;
             uint32_t idx = matIt->second;
             if (idx < materials.size()) {
-                delete materials[idx];
-                materials[idx] = nullptr;
+                materials[idx].reset();
             }
             _materialCache.erase(matIt);
         }
@@ -315,7 +296,7 @@ void AssetManager::UnloadSceneAssets(const std::string& sceneName) {
     // TODO: unload meshes declared in the scene JSON "meshes" array.
 
     _sceneJsons.erase(it);
-    Console::Get()->Info(fmt::format("[AssetManager] Unloaded assets for scene '{}'.", sceneName));
+    ConsoleSubsystem::Get()->Info(fmt::format("[AssetManager] Unloaded assets for scene '{}'.", sceneName));
 }
 
 // ============================================================================
@@ -332,13 +313,13 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
     // Read raw bytes via FileSystem to support transparent web prefetching
     FileSystem::Bytes fileData = FileSystem::Get().ReadSync(path);
     if (fileData.empty()) {
-        Console::Get()->Warn(fmt::format("AssetManager::LoadImage: Failed to read file bytes via FileSystem at '{}'", path));
+        ConsoleSubsystem::Get()->Warn(fmt::format("AssetManager::LoadImage: Failed to read file bytes via FileSystem at '{}'", path));
         return nullptr;
     }
 
     int width, height, numChannels;
-    if (!stbi_info_from_memory(fileData.data(), (int)fileData.size(), &width, &height, &numChannels)) {
-        Console::Get()->Warn(fmt::format("stbi_info_from_memory: Failed to read image metadata at '{}'", path));
+    if (!stbi_info_from_memory(fileData.data(), static_cast<int>(fileData.size()), &width, &height, &numChannels)) {
+        ConsoleSubsystem::Get()->Warn(fmt::format("stbi_info_from_memory: Failed to read image metadata at '{}'", path));
         return nullptr;
     }
 
@@ -359,7 +340,7 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
     }
 
     stbi_set_flip_vertically_on_load(true);
-    uint8_t* data = stbi_load_from_memory(fileData.data(), (int)fileData.size(), &width, &height, &numChannels, desiredChannels);
+    uint8_t* data = stbi_load_from_memory(fileData.data(), static_cast<int>(fileData.size()), &width, &height, &numChannels, desiredChannels);
     if (data) {
         auto image = std::make_shared<Image>(width, height, desiredChannels, data);
         stbi_image_free(data);
@@ -422,7 +403,7 @@ void AssetManager::LoadDefaultShaders() {
                   { "bloom_downsample",{ .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_downsample.frag" } },
                   { "bloom_upsample",  { .vert = "assets/shaders/bloom.vert",            .frag = "assets/shaders/bloom_upsample.frag" } },
                   { "bloom_composite",    { .vert = "assets/shaders/bloom.vert",  .frag = "assets/shaders/bloom_composite.frag"    } } });
-    _defaultShaderCount = (uint32_t)shaders.size();
+    _defaultShaderCount = static_cast<uint32_t>(shaders.size());
 }
 
 void AssetManager::LoadShaders(const std::unordered_map<std::string, ShaderProgramProps>& shaderDefs) {
@@ -436,30 +417,44 @@ ShaderProgram* AssetManager::CreateShader(const std::string& name, const ShaderP
     auto it = _shaderCache.find(name);
     if (it != _shaderCache.end()) {
         ENGINE_LOG("Shader '{}' already exists, returning existing shader", name);
-        return shaders[it->second];
+        return shaders[it->second].get();
     }
 
-    auto* shader = new GLShaderProgram(props);
-    shaders.push_back(shader);
+    auto shader = std::make_unique<GLShaderProgram>(props);
+    auto* ptr = shader.get();
+    shaders.push_back(std::move(shader));
     _shaderCache[name] = _nextShaderID++;
 
     ENGINE_LOG("Shader '{}' loaded", name);
-    return shader;
+    return ptr;
 }
 
 ShaderProgram* AssetManager::GetShader(const std::string& name) const {
     auto it = _shaderCache.find(name);
     if (it != _shaderCache.end()) {
-        return shaders[it->second];
+        return shaders[it->second].get();
     }
     throw std::runtime_error(fmt::format("Shader '{}' not found", name));
 }
 
 ShaderProgram* AssetManager::GetShaderByID(uint32_t id) const {
     if (id < shaders.size()) {
-        return shaders[id];
+        return shaders[id].get();
     }
     throw std::runtime_error(fmt::format("Shader ID {} out of range", id));
+}
+
+// Handles are 1-based (0 is ShaderHandle::INVALID); slot index = id - 1.
+
+ShaderHandle AssetManager::GetShaderHandle(const std::string& name) const {
+    auto it = _shaderCache.find(name);
+    return it != _shaderCache.end() ? ShaderHandle(it->second + 1) : ShaderHandle{};
+}
+
+ShaderProgram* AssetManager::ResolveShader(ShaderHandle handle) const {
+    if (!handle.IsValid()) return nullptr;
+    uint32_t index = handle.id - 1;
+    return index < shaders.size() ? shaders[index].get() : nullptr;
 }
 
 void AssetManager::ReloadShaders() {
@@ -473,7 +468,7 @@ void AssetManager::ReloadShaders() {
 
 void AssetManager::LoadMaterials(const std::vector<MaterialProps>& materialDefs) {
     for (const auto& props : materialDefs) {
-        materials.push_back(new Material(props));
+        materials.push_back(std::make_unique<Material>(props));
     }
 }
 
@@ -485,31 +480,35 @@ Material* AssetManager::CreateMaterial(const std::string& name, const MaterialPr
         return GetMaterialByID(it->second);
     }
 
-    auto* material = new Material(props);
-    materials.push_back(material);
+    auto material = std::make_unique<Material>(props);
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
     _materialCache[name] = _nextMaterialID++;
-    return material;
+    return ptr;
 }
 
 Material* AssetManager::CreateMaterial(const MaterialProps& props) {
-    auto* material = new Material(props);
-    materials.push_back(material);
+    auto material = std::make_unique<Material>(props);
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
     _materialCache["unnamed_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
-    return material;
+    return ptr;
 }
 
 WaterMaterial* AssetManager::CreateWaterMaterial() {
-    auto* mat = new WaterMaterial();
-    materials.push_back(mat);
+    auto material = std::make_unique<WaterMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
     _materialCache["water_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
-    return mat;
+    return ptr;
 }
 
 TerrainMaterial* AssetManager::CreateTerrainMaterial() {
-    auto* mat = new TerrainMaterial();
-    materials.push_back(mat);
+    auto material = std::make_unique<TerrainMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
     _materialCache["terrain_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
-    return mat;
+    return ptr;
 }
 
 Material* AssetManager::GetMaterial(const std::string& name) const {
@@ -522,9 +521,30 @@ Material* AssetManager::GetMaterial(const std::string& name) const {
 
 Material* AssetManager::GetMaterialByID(uint32_t id) const {
     if (id < materials.size()) {
-        return materials[id];
+        return materials[id].get();
     }
     throw std::runtime_error(fmt::format("Material ID {} out of range", id));
+}
+
+// Handles are 1-based (0 is MaterialHandle::INVALID); slot index = id - 1.
+
+MaterialHandle AssetManager::GetMaterialHandle(const std::string& name) const {
+    auto it = _materialCache.find(name);
+    return it != _materialCache.end() ? MaterialHandle(it->second + 1) : MaterialHandle{};
+}
+
+MaterialHandle AssetManager::GetMaterialHandle(const Material* material) const {
+    if (!material) return {};
+    for (uint32_t i = 0; i < materials.size(); ++i) {
+        if (materials[i].get() == material) return MaterialHandle(i + 1);
+    }
+    return {};
+}
+
+Material* AssetManager::ResolveMaterial(MaterialHandle handle) const {
+    if (!handle.IsValid()) return nullptr;
+    uint32_t index = handle.id - 1;
+    return index < materials.size() ? materials[index].get() : nullptr;
 }
 
 // ============================================================================
@@ -575,8 +595,8 @@ static std::string RedirectToKTX2(const std::string& path) {
 #endif
 
 void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
-    int oldCount = (int)textures.size();
-    int newCount = (int)paths.size();
+    int oldCount = static_cast<int>(textures.size());
+    int newCount = static_cast<int>(paths.size());
 
     // Reserve final slots so ordering matches input path ordering.
     textures.resize(oldCount + newCount, 0u);
@@ -593,7 +613,7 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
 #if defined(AE_USE_BASIS_UNIVERSAL) && defined(__EMSCRIPTEN__)
         path = RedirectToKTX2(path);
 #endif
-        if (path.size() >= 5 && path.compare(path.size() - 5, 5, ".ktx2") == 0) {
+        if (path.ends_with(".ktx2")) {
 #ifdef AE_USE_BASIS_UNIVERSAL
             auto cached = _textureCache.find(path);
             if (cached != _textureCache.end()) {
@@ -618,7 +638,7 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
 
     // ── Parallel CPU image decode for regular (non-KTX2) textures
     std::vector<std::shared_ptr<Image>> images(regularPaths.size());
-    for (int j = 0; j < (int)regularPaths.size(); j++) {
+    for (int j = 0; j < static_cast<int>(regularPaths.size()); j++) {
         auto path  = regularPaths[j];
         auto image = &images[j];
         JobSystem::Get()->Execute([this, path, image](int /*threadID*/) { *image = LoadImage(path); });
@@ -630,11 +650,11 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
     // than the raw glGenTextures batch below (which would crash on GLctx). Keeps
     // the same slot/cache bookkeeping the GL loop uses so lookups by path work.
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
-        for (int j = 0; j < (int)regularPaths.size(); j++) {
+        for (int j = 0; j < static_cast<int>(regularPaths.size()); j++) {
             int   i   = regularIndices[j];
             auto& img = images[j];
             if (!img) {
-                Console::Get()->Warn(fmt::format("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]));
+                ConsoleSubsystem::Get()->Warn(fmt::format("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]));
                 textures[oldCount + i] = defaultTextures.empty() ? 0u : defaultTextures[0];
                 _textureCache[regularPaths[j]] = { textures[oldCount + i], 0, 0, 0 };
                 continue;
@@ -665,15 +685,15 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
 
     // ── Batch generate GL texture objects for regular images
     std::vector<GLuint> regularTexIDs(regularPaths.size());
-    glGenTextures((GLsizei)regularPaths.size(), regularTexIDs.data());
+    glGenTextures(static_cast<GLsizei>(regularPaths.size()), regularTexIDs.data());
 
-    for (int j = 0; j < (int)regularPaths.size(); j++) {
+    for (int j = 0; j < static_cast<int>(regularPaths.size()); j++) {
         int i      = regularIndices[j];
         auto& img  = images[j];
         GLuint texID = regularTexIDs[j];
 
         if (!img) {
-            Console::Get()->Warn(fmt::format("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]));
+            ConsoleSubsystem::Get()->Warn(fmt::format("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]));
             // Re-use the default texture (defaultTextures[0]) as a safe fallback
             textures[oldCount + i] = defaultTextures.empty() ? 0u : defaultTextures[0];
             _textureCache[regularPaths[j]] = { textures[oldCount + i], 0, 0, 0 };
@@ -705,8 +725,8 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
             throw std::runtime_error(fmt::format("Unknown texture format at {}\n", regularPaths[j]));
         }
         glGenerateMipmap(GL_TEXTURE_2D);
-        _textureCache[regularPaths[j]] = { texID, (uint32_t)img->width, (uint32_t)img->height,
-                                           (size_t)img->width * img->height * img->channelCount };
+        _textureCache[regularPaths[j]] = { texID, static_cast<uint32_t>(img->width), static_cast<uint32_t>(img->height),
+                                           static_cast<size_t>(img->width) * img->height * img->channelCount };
     }
 }
 
@@ -726,7 +746,7 @@ TextureHandle AssetManager::CreateTexture(const std::string& path) {
 
 #ifdef AE_USE_BASIS_UNIVERSAL
     // Route .ktx2 files to the GPU-compressed loader.
-    if (redirectedPath.size() >= 5 && redirectedPath.compare(redirectedPath.size() - 5, 5, ".ktx2") == 0) {
+    if (redirectedPath.ends_with(".ktx2")) {
         Texture2D tex2d;
         GLuint texID = LoadKTX2Texture(redirectedPath, &tex2d);
         textures.push_back(texID);
@@ -738,7 +758,7 @@ TextureHandle AssetManager::CreateTexture(const std::string& path) {
     // Regular image (PNG / JPG / etc.) via stb_image.
     auto image = LoadImage(redirectedPath);
     if (!image) {
-        Console::Get()->Warn(fmt::format("AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.", redirectedPath));
+        ConsoleSubsystem::Get()->Warn(fmt::format("AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.", redirectedPath));
         GLuint fallbackTex = defaultTextures.empty() ? 0u : defaultTextures[0];
         _textureCache[redirectedPath] = { fallbackTex, 0, 0, 0 };
         return TextureHandle(fallbackTex);
@@ -748,7 +768,7 @@ TextureHandle AssetManager::CreateTexture(const std::string& path) {
 
 TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>& image) {
     if (!image) {
-        Console::Get()->Warn("AssetManager::CreateTextureFromImage: Null image, returning default fallback texture.");
+        ConsoleSubsystem::Get()->Warn("AssetManager::CreateTextureFromImage: Null image, returning default fallback texture.");
         GLuint fallbackTex = defaultTextures.empty() ? 0u : defaultTextures[0];
         return TextureHandle(fallbackTex);
     }
@@ -809,8 +829,8 @@ TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>&
     }
     glGenerateMipmap(GL_TEXTURE_2D);
 
-    size_t bytes = (size_t)image->width * image->height * image->channelCount;
-    _textureCache["unnamed_" + std::to_string(_nextTextureID++)] = { texID, (uint32_t)image->width, (uint32_t)image->height, bytes };
+    size_t bytes = static_cast<size_t>(image->width) * image->height * image->channelCount;
+    _textureCache["unnamed_" + std::to_string(_nextTextureID++)] = { texID, static_cast<uint32_t>(image->width), static_cast<uint32_t>(image->height), bytes };
     textures.push_back(texID);
     return TextureHandle(texID);
 }
@@ -888,7 +908,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
 
     // ── Parse KTX2 container ─────────────────────────────────────────────────
     basist::ktx2_transcoder ktx2Dec;
-    if (!ktx2Dec.init(fileData.data(), (uint32_t)fileData.size()))
+    if (!ktx2Dec.init(fileData.data(), static_cast<uint32_t>(fileData.size())))
         throw std::runtime_error(fmt::format("Failed to parse KTX2 header: {}", path));
 
     // ── Choose transcoding target based on GL extension availability ─────────
@@ -1001,7 +1021,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
     if (levels > 1) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, (GLint)(levels - 1));
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(levels - 1));
     } else {
         // Single level in the KTX2 — warn the user and use bilinear.
         ENGINE_LOG("KTX2 '{}' has no pre-generated mips; encoding with -mipmap is recommended", path);
@@ -1028,11 +1048,11 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         }
 
         // Level dimensions (clamped to 1 for very small mips).
-        GLsizei w = (GLsizei)std::max(1u, baseWidth  >> level);
-        GLsizei h = (GLsizei)std::max(1u, baseHeight >> level);
+        GLsizei w = static_cast<GLsizei>(std::max(1u, baseWidth  >> level));
+        GLsizei h = static_cast<GLsizei>(std::max(1u, baseHeight >> level));
 
-        glCompressedTexImage2D(GL_TEXTURE_2D, (GLint)level, glFmt,
-                               w, h, 0, (GLsizei)bufferSize, buf.data());
+        glCompressedTexImage2D(GL_TEXTURE_2D, static_cast<GLint>(level), glFmt,
+                               w, h, 0, static_cast<GLsizei>(bufferSize), buf.data());
     }
 
     ENGINE_LOG("Loaded KTX2 texture '{}' ({}×{}, {} mips, {})",
@@ -1045,7 +1065,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         for (uint32_t level = 0; level < levels; ++level) {
             basist::ktx2_image_level_info info;
             if (ktx2Dec.get_image_level_info(info, level, 0, 0))
-                totalBytes += (size_t)info.m_total_blocks * bytesPerBlk;
+                totalBytes += static_cast<size_t>(info.m_total_blocks) * bytesPerBlk;
         }
         *out = { texID, baseWidth, baseHeight, totalBytes };
     }
@@ -1089,7 +1109,7 @@ void AssetManager::UnregisterMesh(MeshHandle handle) {
 MeshHandle AssetManager::CreateCubeMesh(const std::string& name, float size) {
     auto mesh = MeshBuilder::CreateCube(size);
     if (_materialCache.find("Default") != _materialCache.end()) {
-        mesh->SetMaterial(GetMaterial("Default"));
+        mesh->SetMaterial(GetMaterialHandle("Default"));
     }
     return CreateMesh(name, mesh);
 }
@@ -1097,7 +1117,7 @@ MeshHandle AssetManager::CreateCubeMesh(const std::string& name, float size) {
 MeshHandle AssetManager::CreatePlaneMesh(const std::string& name, float width, float height) {
     auto mesh = MeshBuilder::CreatePlane(width, height);
     if (_materialCache.find("Default") != _materialCache.end()) {
-        mesh->SetMaterial(GetMaterial("Default"));
+        mesh->SetMaterial(GetMaterialHandle("Default"));
     }
     return CreateMesh(name, mesh);
 }
@@ -1117,21 +1137,21 @@ MeshHandle AssetManager::CreatePlaneMeshSubdivided(const std::string& name,
             float fx = -hw + width  * x / n;
             float fz = -hh + height * z / n;
             verts.push_back({ { fx, 0.0f, fz },
-                              { (float)x / n, (float)z / n },
+                              { static_cast<float>(x) / n, static_cast<float>(z) / n },
                               { 0.0f, 1.0f, 0.0f } });
         }
     }
     for (int z = 0; z < n; ++z) {
         for (int x = 0; x < n; ++x) {
-            uint16_t i0 = (uint16_t)( z      * (n + 1) + x    );
-            uint16_t i1 = (uint16_t)( z      * (n + 1) + x + 1);
-            uint16_t i2 = (uint16_t)((z + 1) * (n + 1) + x    );
-            uint16_t i3 = (uint16_t)((z + 1) * (n + 1) + x + 1);
+            uint16_t i0 = static_cast<uint16_t>( z      * (n + 1) + x    );
+            uint16_t i1 = static_cast<uint16_t>( z      * (n + 1) + x + 1);
+            uint16_t i2 = static_cast<uint16_t>((z + 1) * (n + 1) + x    );
+            uint16_t i3 = static_cast<uint16_t>((z + 1) * (n + 1) + x + 1);
             tris.insert(tris.end(), { i0, i2, i1, i1, i2, i3 });
         }
     }
 
-    auto mesh = new Mesh(MeshType::PRIM);
+    auto* mesh = new Mesh(MeshType::PRIM);
     mesh->Initialize(verts, tris);
     return CreateMesh(name, mesh);
 }
@@ -1139,7 +1159,7 @@ MeshHandle AssetManager::CreatePlaneMeshSubdivided(const std::string& name,
 MeshHandle AssetManager::CreateSphereMesh(const std::string& name, float radius, int division) {
     auto mesh = MeshBuilder::CreateSphere(radius, division);
     if (_materialCache.find("Default") != _materialCache.end()) {
-        mesh->SetMaterial(GetMaterial("Default"));
+        mesh->SetMaterial(GetMaterialHandle("Default"));
     }
     return CreateMesh(name, mesh);
 }
@@ -1147,9 +1167,9 @@ MeshHandle AssetManager::CreateSphereMesh(const std::string& name, float radius,
 MeshHandle AssetManager::CreateCapsuleMesh(const std::string& name, float radius, float height) {
     // TODO: Implement capsule mesh generation
     ENGINE_LOG("Capsule mesh '{}' created (generation not yet implemented)", name);
-    auto mesh = new Mesh();
+    auto* mesh = new Mesh();
     if (_materialCache.find("Default") != _materialCache.end()) {
-        mesh->SetMaterial(GetMaterial("Default"));
+        mesh->SetMaterial(GetMaterialHandle("Default"));
     }
     return CreateMesh(name, mesh);
 }
@@ -1157,7 +1177,7 @@ MeshHandle AssetManager::CreateCapsuleMesh(const std::string& name, float radius
 MeshHandle AssetManager::CreateTerrainMesh(const std::string& name, float worldSize, int resolution) {
     auto mesh = MeshBuilder::CreateTerrain(worldSize, resolution);
     if (_materialCache.find("Default") != _materialCache.end()) {
-        mesh->SetMaterial(GetMaterial("Default"));
+        mesh->SetMaterial(GetMaterialHandle("Default"));
     }
     return CreateMesh(name, mesh);
 }
@@ -1214,14 +1234,14 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     );
 
     bool result;
-    if (path.size() >= 4 && path.compare(path.size() - 4, 4, ".glb") == 0) {
+    if (path.ends_with(".glb")) {
         result = loader.LoadBinaryFromFile(&model, &err, &warn, path);
     } else {
         result = loader.LoadASCIIFromFile(&model, &err, &warn, path);
     }
 
-    if (!warn.empty()) Console::Get()->Warn(fmt::format("LoadGLTF '{}': {}", path, warn));
-    if (!err.empty())  Console::Get()->Warn(fmt::format("LoadGLTF '{}' error: {}", path, err));
+    if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF '{}': {}", path, warn));
+    if (!err.empty())  ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF '{}' error: {}", path, err));
     if (!result || model.meshes.empty()) return MeshHandle{};
 
     // Upload each referenced image to GPU immediately; CPU copy is discarded afterwards.
@@ -1331,7 +1351,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
             break;
         }
         default:
-            Console::Get()->Warn(fmt::format("LoadGLTF: unsupported TEXCOORD component type {}", acc.componentType));
+            ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF: unsupported TEXCOORD component type {}", acc.componentType));
             break;
         }
         return out;
@@ -1346,14 +1366,14 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
 
     for (const auto& srcMesh : model.meshes) {
         for (const auto& prim : srcMesh.primitives) {
-            if (!prim.attributes.count("POSITION")) continue;
+            if (!prim.attributes.contains("POSITION")) continue;
 
             const size_t vertBase  = allVerts.size();
             const auto&  posAcc    = model.accessors[prim.attributes.at("POSITION")];
             const size_t vertCount = posAcc.count;
 
             if (vertBase + vertCount > 65535) {
-                Console::Get()->Warn(fmt::format(
+                ConsoleSubsystem::Get()->Warn(fmt::format(
                     "LoadGLTF '{}': vertex count exceeds uint16_t limit, primitive skipped. "
                     "Consider splitting the mesh or upgrading to 32-bit indices.",
                     path
@@ -1364,16 +1384,16 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
             auto positions = readFloat3(posAcc);
 
             std::vector<glm::vec3> normals(vertCount, glm::vec3(0.f, 1.f, 0.f));
-            if (prim.attributes.count("NORMAL"))
+            if (prim.attributes.contains("NORMAL"))
                 normals = readFloat3(model.accessors[prim.attributes.at("NORMAL")]);
 
             std::vector<glm::vec2> uvs(vertCount, glm::vec2(0.f));
-            if (prim.attributes.count("TEXCOORD_0"))
+            if (prim.attributes.contains("TEXCOORD_0"))
                 uvs = readTexcoord(model.accessors[prim.attributes.at("TEXCOORD_0")]);
 
             // GLTF TANGENT is vec4: xyz = tangent direction, w = bitangent handedness.
             std::vector<glm::vec4> tangents4(vertCount, glm::vec4(1.f, 0.f, 0.f, 1.f));
-            if (prim.attributes.count("TANGENT"))
+            if (prim.attributes.contains("TANGENT"))
                 tangents4 = readFloat4(model.accessors[prim.attributes.at("TANGENT")]);
 
             for (size_t i = 0; i < vertCount; ++i) {
@@ -1409,7 +1429,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
                         allIndices.push_back(static_cast<uint16_t>(vertBase + base[i]));
                     break;
                 default:
-                    Console::Get()->Warn(fmt::format("LoadGLTF: unsupported index component type {}", idxAcc.componentType));
+                    ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF: unsupported index component type {}", idxAcc.componentType));
                     break;
                 }
             } else {
@@ -1423,13 +1443,13 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     }
 
     if (allVerts.empty()) {
-        Console::Get()->Warn(fmt::format("LoadGLTF: no geometry found in '{}'", path));
+        ConsoleSubsystem::Get()->Warn(fmt::format("LoadGLTF: no geometry found in '{}'", path));
         return MeshHandle{};
     }
 
     auto* mesh = new Mesh(MeshType::PRIM);
     mesh->Initialize(allVerts, allIndices);
-    if (material) mesh->SetMaterial(material);
+    if (material) mesh->SetMaterial(GetMaterialHandle(material));
 
     ENGINE_LOG("LoadGLTF '{}': {} verts, {} indices", path, allVerts.size(), allIndices.size());
     return CreateMesh(path, mesh);
@@ -1445,7 +1465,7 @@ static void UploadHeightmapPixels(const std::vector<float>& grid, int width, int
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, width, height, 0, GL_RED, GL_FLOAT, grid.data());
 #else
-    const size_t count = (size_t)width * height;
+    const size_t count = static_cast<size_t>(width) * height;
     std::vector<uint16_t> texels(count);
     for (size_t i = 0; i < count; ++i)
         texels[i] = static_cast<uint16_t>(std::clamp(grid[i], 0.0f, 1.0f) * 65535.0f);
@@ -1486,7 +1506,8 @@ TextureHandle AssetManager::CreateHeightmapTexture(
     glBindTexture(GL_TEXTURE_2D, 0);
 
     textures.push_back(texID);
-    _textureCache[name] = { texID, (uint32_t)width, (uint32_t)height, (size_t)width * height * 2 };
+    // 2 bytes per texel: heightmaps upload as GL_R16 (see UploadHeightmapPixels).
+    _textureCache[name] = { texID, static_cast<uint32_t>(width), static_cast<uint32_t>(height), static_cast<size_t>(width) * height * 2 };
     return TextureHandle(texID);
 }
 

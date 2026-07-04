@@ -4,7 +4,7 @@
 #include <unordered_set>
 #include <vector>
 
-class GraphicsServer;
+class GraphicsSubsystem;
 
 /// Tile-map data descriptor (mirrors 2d-engine TilemapData)
 struct Tilemap2DData {
@@ -24,7 +24,7 @@ public:
     Tilemap2D(const Tilemap2DData& data, uint32_t tilesetTexID);
 
     /// Draw only tiles visible in the camera viewport [camX, camY, screenW, screenH].
-    void Draw(GraphicsServer* gfx, float camX, float camY,
+    void Draw(GraphicsSubsystem* gfx, float camX, float camY,
               int screenW, int screenH) const;
 
     /// True if the world-space pixel (wx, wy) falls on a solid tile.

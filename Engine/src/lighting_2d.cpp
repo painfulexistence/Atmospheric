@@ -1,9 +1,9 @@
 #include "lighting_2d.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include <algorithm>
 #include <cmath>
 
-void LightingSystem2D::Apply(GraphicsServer* gfx, int screenW, int screenH) const {
+void LightingSystem2D::Apply(GraphicsSubsystem* gfx, int screenW, int screenH) const {
     // ---------------------------------------------------------------------------
     // 1. Dark ambient overlay
     // ---------------------------------------------------------------------------
@@ -13,7 +13,7 @@ void LightingSystem2D::Apply(GraphicsServer* gfx, int screenW, int screenH) cons
     float darkness = std::max(0.0f, 1.0f - ambientBrightness * 1.5f);
 
     if (darkness > 0.01f) {
-        gfx->DrawQuad(screenW * 0.5f, screenH * 0.5f, (float)screenW, (float)screenH, 0.0f,
+        gfx->DrawQuad(screenW * 0.5f, screenH * 0.5f, static_cast<float>(screenW), static_cast<float>(screenH), 0.0f,
                       glm::vec4(ambientR * 0.05f,
                                 ambientG * 0.05f,
                                 ambientB * 0.05f,
@@ -33,7 +33,7 @@ void LightingSystem2D::Apply(GraphicsServer* gfx, int screenW, int screenH) cons
 
         for (int k = 0; k < RINGS; k++) {
             // t = 0 → innermost ring, t = 1 → outermost ring
-            float t     = (float)(k + 1) / RINGS;
+            float t     = static_cast<float>(k + 1) / RINGS;
             float rad   = light.radius * t;
             // Quadratic falloff: brightest at centre, fades quickly outward
             float alpha = clampedIntensity * (1.0f - t) * (1.0f - t) * 0.30f;

@@ -1,6 +1,6 @@
 #include "batch_renderer_2d.hpp"
 #include "asset_manager.hpp"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "gfx_factory.hpp"
 #include "globals.hpp" // provides glad on native, GLES3/gl3.h on Emscripten
 #include "shader.hpp"
@@ -23,10 +23,11 @@ struct BatchRenderer2D::Renderer2DData {
     uint32_t WhiteTextureSlot = 0;
 
     uint32_t QuadIndexCount = 0;
-    BatchVertex* QuadVertexBufferBase = nullptr;
+    // Base owns the CPU-side staging array; Ptr is the write cursor into it.
+    std::unique_ptr<BatchVertex[]> QuadVertexBufferBase;
     BatchVertex* QuadVertexBufferPtr = nullptr;
 
-    uint32_t* QuadIndexBufferBase = nullptr;
+    std::unique_ptr<uint32_t[]> QuadIndexBufferBase;
     uint32_t* QuadIndexBufferPtr = nullptr;
 
     std::array<uint32_t, MaxTextureSlots> TextureSlots;
@@ -55,8 +56,8 @@ void BatchRenderer2D::Init() {
     // CPU-side staging is needed by both backends: under WebGPU the batcher
     // runs in CPU-only mode (StartBatch/DrawGeometry/DrainToCommands feed
     // GPUCanvasPass) and must not touch GL — no context exists.
-    m_Data->QuadVertexBufferBase = new BatchVertex[m_Data->MaxVertices];
-    m_Data->QuadIndexBufferBase  = new uint32_t[m_Data->MaxIndices];
+    m_Data->QuadVertexBufferBase = std::make_unique<BatchVertex[]>(m_Data->MaxVertices);
+    m_Data->QuadIndexBufferBase  = std::make_unique<uint32_t[]>(m_Data->MaxIndices);
 
     m_Data->QuadVertexPositions[0] = { -0.5f, -0.5f, 0.0f, 1.0f };
     m_Data->QuadVertexPositions[1] = {  0.5f, -0.5f, 0.0f, 1.0f };
@@ -117,12 +118,12 @@ void BatchRenderer2D::Init() {
     try {
         auto shader = AssetManager::Get().GetShader("canvas");
         if (!shader) {
-            Console::Get()->Error("BatchRenderer2D::Init: 'canvas' shader not found!");
+            ConsoleSubsystem::Get()->Error("BatchRenderer2D::Init: 'canvas' shader not found!");
         } else {
-            Console::Get()->Info("BatchRenderer2D::Init: 'canvas' shader loaded successfully.");
+            ConsoleSubsystem::Get()->Info("BatchRenderer2D::Init: 'canvas' shader loaded successfully.");
         }
     } catch (const std::exception& e) {
-        Console::Get()->Error(fmt::format("BatchRenderer2D::Init: Exception loading shader: {}", e.what()));
+        ConsoleSubsystem::Get()->Error(fmt::format("BatchRenderer2D::Init: Exception loading shader: {}", e.what()));
     }
 
     glBindVertexArray(0);// Unbind VAO to avoid state leakage
@@ -146,15 +147,8 @@ void BatchRenderer2D::Shutdown() {
         m_Data->WhiteTexture = 0;
     }
 
-    if (m_Data->QuadVertexBufferBase) {
-        delete[] m_Data->QuadVertexBufferBase;
-        m_Data->QuadVertexBufferBase = nullptr;
-    }
-
-    if (m_Data->QuadIndexBufferBase) {
-        delete[] m_Data->QuadIndexBufferBase;
-        m_Data->QuadIndexBufferBase = nullptr;
-    }
+    m_Data->QuadVertexBufferBase.reset();
+    m_Data->QuadIndexBufferBase.reset();
 }
 
 void BatchRenderer2D::BeginBatch(const glm::mat4& viewProj, BlendMode blendMode) {
@@ -164,14 +158,14 @@ void BatchRenderer2D::BeginBatch(const glm::mat4& viewProj, BlendMode blendMode)
     // Check for errors after Activate
     GLenum err;
     while ((err = glGetError()) != GL_NO_ERROR) {
-        Console::Get()->Error(fmt::format("BatchRenderer2D::BeginScene (Activate): {}", err));
+        ConsoleSubsystem::Get()->Error(fmt::format("BatchRenderer2D::BeginScene (Activate): {}", err));
     }
 
     m_Data->TextureShader->SetUniform("Projection", viewProj);
 
     // Check for errors after SetUniform
     while ((err = glGetError()) != GL_NO_ERROR) {
-        Console::Get()->Error(fmt::format("BatchRenderer2D::BeginScene (SetUniform): {}", err));
+        ConsoleSubsystem::Get()->Error(fmt::format("BatchRenderer2D::BeginScene (SetUniform): {}", err));
     }
 
     // Set blend mode
@@ -186,8 +180,8 @@ void BatchRenderer2D::EndBatch() {
 
 void BatchRenderer2D::StartBatch() {
     m_Data->QuadIndexCount = 0;
-    m_Data->QuadVertexBufferPtr = m_Data->QuadVertexBufferBase;
-    m_Data->QuadIndexBufferPtr = m_Data->QuadIndexBufferBase;
+    m_Data->QuadVertexBufferPtr = m_Data->QuadVertexBufferBase.get();
+    m_Data->QuadIndexBufferPtr = m_Data->QuadIndexBufferBase.get();
     m_Data->TextureSlotIndex = 1;
 }
 
@@ -199,13 +193,13 @@ void BatchRenderer2D::Flush() {
     // geometry is dropped for that frame (staging holds 20k quads).
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
 
-    uint32_t dataSize = (uint32_t)((uint8_t*)m_Data->QuadVertexBufferPtr - (uint8_t*)m_Data->QuadVertexBufferBase);
+    auto dataSize = static_cast<uint32_t>((m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase.get()) * sizeof(BatchVertex));
     glBindBuffer(GL_ARRAY_BUFFER, m_Data->QuadVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, dataSize, m_Data->QuadVertexBufferBase);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, dataSize, m_Data->QuadVertexBufferBase.get());
 
-    uint32_t indexDataSize = (uint32_t)((uint8_t*)m_Data->QuadIndexBufferPtr - (uint8_t*)m_Data->QuadIndexBufferBase);
+    auto indexDataSize = static_cast<uint32_t>((m_Data->QuadIndexBufferPtr - m_Data->QuadIndexBufferBase.get()) * sizeof(uint32_t));
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_Data->QuadIBO);
-    glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, indexDataSize, m_Data->QuadIndexBufferBase);
+    glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, indexDataSize, m_Data->QuadIndexBufferBase.get());
 
     // Apply blend mode
     if (m_Data->CurrentBlendMode == BlendMode::None) {
@@ -239,7 +233,7 @@ void BatchRenderer2D::Flush() {
         glActiveTexture(GL_TEXTURE0 + i);
         glBindTexture(GL_TEXTURE_2D, m_Data->TextureSlots[i]);
         // Update shader uniform if needed (if using individual uniforms)
-        m_Data->TextureShader->SetUniform(fmt::format("Textures[{}]", i), (int)i);
+        m_Data->TextureShader->SetUniform(fmt::format("Textures[{}]", i), static_cast<int>(i));
     }
 
     glBindVertexArray(m_Data->QuadVAO);
@@ -249,7 +243,7 @@ void BatchRenderer2D::Flush() {
     // Check for errors
     GLenum err;
     while ((err = glGetError()) != GL_NO_ERROR) {
-        Console::Get()->Error(fmt::format("BatchRenderer2D::Flush: {}", err));
+        ConsoleSubsystem::Get()->Error(fmt::format("BatchRenderer2D::Flush: {}", err));
     }
 
     m_Data->Stats.drawCalls++;
@@ -337,7 +331,7 @@ void BatchRenderer2D::DrawQuad(
     if (textureID != m_Data->WhiteTexture) {
         for (uint32_t i = 1; i < m_Data->TextureSlotIndex; i++) {
             if (m_Data->TextureSlots[i] == textureID) {
-                textureIndex = (float)i;
+                textureIndex = static_cast<float>(i);
                 break;
             }
         }
@@ -345,13 +339,13 @@ void BatchRenderer2D::DrawQuad(
         if (textureIndex == 0.0f) {
             if (m_Data->TextureSlotIndex >= Renderer2DData::MaxTextureSlots) NextBatch();
 
-            textureIndex = (float)m_Data->TextureSlotIndex;
+            textureIndex = static_cast<float>(m_Data->TextureSlotIndex);
             m_Data->TextureSlots[m_Data->TextureSlotIndex] = textureID;
             m_Data->TextureSlotIndex++;
         }
     }
 
-    uint32_t vertexOffset = (uint32_t)(m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase);
+    uint32_t vertexOffset = static_cast<uint32_t>(m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase.get());
 
     // Vertex population (existing code)
     for (size_t i = 0; i < 4; i++) {
@@ -359,7 +353,7 @@ void BatchRenderer2D::DrawQuad(
         m_Data->QuadVertexBufferPtr->color = color;
         m_Data->QuadVertexBufferPtr->uv = texCoords[i];
         m_Data->QuadVertexBufferPtr->texIndex = textureIndex;
-        m_Data->QuadVertexBufferPtr->entityID = (float)entityID;
+        m_Data->QuadVertexBufferPtr->entityID = static_cast<float>(entityID);
         m_Data->QuadVertexBufferPtr++;
     }
 
@@ -433,7 +427,7 @@ void BatchRenderer2D::DrawLine(const glm::vec3& p0, const glm::vec3& p1, const g
     m_Data->QuadVertexBufferPtr++;
 
     // Index population
-    uint32_t vertexOffset = (uint32_t)(m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase) - 4;
+    uint32_t vertexOffset = static_cast<uint32_t>(m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase.get()) - 4;
     m_Data->QuadIndexBufferPtr[0] = vertexOffset + 0;
     m_Data->QuadIndexBufferPtr[1] = vertexOffset + 1;
     m_Data->QuadIndexBufferPtr[2] = vertexOffset + 2;
@@ -549,7 +543,7 @@ void BatchRenderer2D::DrawTriangleFilled(
     m_Data->QuadVertexBufferPtr++;
 
     // Index population
-    uint32_t vertexOffset = (uint32_t)(m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase) - 4;
+    uint32_t vertexOffset = static_cast<uint32_t>(m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase.get()) - 4;
     m_Data->QuadIndexBufferPtr[0] = vertexOffset + 0;
     m_Data->QuadIndexBufferPtr[1] = vertexOffset + 1;
     m_Data->QuadIndexBufferPtr[2] = vertexOffset + 2;
@@ -630,7 +624,7 @@ void BatchRenderer2D::DrawGeometry(
 
     // Check if we have enough space
     if (m_Data->QuadIndexCount + indices.size() >= Renderer2DData::MaxIndices
-    || (m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase) + vertices.size() >= Renderer2DData::MaxVertices) {
+    || (m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase.get()) + vertices.size() >= Renderer2DData::MaxVertices) {
         NextBatch();
     }
 
@@ -641,7 +635,7 @@ void BatchRenderer2D::DrawGeometry(
     if (textureID != m_Data->WhiteTexture) {
         for (uint32_t i = 1; i < m_Data->TextureSlotIndex; i++) {
             if (m_Data->TextureSlots[i] == textureID) {
-                textureIndex = (float)i;
+                textureIndex = static_cast<float>(i);
                 break;
             }
         }
@@ -649,14 +643,14 @@ void BatchRenderer2D::DrawGeometry(
         if (textureIndex == 0.0f) {
             if (m_Data->TextureSlotIndex >= Renderer2DData::MaxTextureSlots) NextBatch();
 
-            textureIndex = (float)m_Data->TextureSlotIndex;
+            textureIndex = static_cast<float>(m_Data->TextureSlotIndex);
             m_Data->TextureSlots[m_Data->TextureSlotIndex] = textureID;
             m_Data->TextureSlotIndex++;
         }
     }
 
     // Current vertex count (offset for indices)
-    uint32_t vertexOffset = (uint32_t)(m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase);
+    uint32_t vertexOffset = static_cast<uint32_t>(m_Data->QuadVertexBufferPtr - m_Data->QuadVertexBufferBase.get());
 
     // Copy vertices
     for (const auto& vertex : vertices) {
@@ -674,8 +668,8 @@ void BatchRenderer2D::DrawGeometry(
         m_Data->QuadIndexBufferPtr++;
     }
 
-    m_Data->QuadIndexCount += (uint32_t)indices.size();
-    m_Data->Stats.quadCount += (uint32_t)indices.size() / 6;// Approx
+    m_Data->QuadIndexCount += static_cast<uint32_t>(indices.size());
+    m_Data->Stats.quadCount += static_cast<uint32_t>(indices.size()) / 6;// Approx
 }
 
 std::vector<BatchDrawCommand> BatchRenderer2D::DrainToCommands() {
