@@ -205,15 +205,21 @@ void LockstepNet::Pump(uint32_t nowMs) {
 // Send a binary frame over the WebRTC DataChannel (set up by the JS lobby).
 // HEAPU8.buffer.slice() copies the bytes before async send so the WASM heap
 // reallocation can't corrupt the in-flight buffer.
+// clang-format off
+// NOLINTBEGIN
 EM_JS(void, js_rtc_send, (const uint8_t* data, int len), {
     var ch = window['_rtcChannel'];
-    if (ch&& ch.readyState == = 'open') {
+    if (ch&& ch.readyState === 'open') {
         ch.send(HEAPU8.buffer.slice(data, data + len));
     }
 });
+// NOLINTEND
+// clang-format on
 
 // Pull one queued message from the JS receive ring into buf.
 // Returns bytes written, or 0 if the queue is empty.
+// clang-format off
+// NOLINTBEGIN
 EM_JS(int, js_rtc_recv, (uint8_t* buf, int maxLen), {
     var q = window['_rtcRecvQueue'];
     if (!q || !q.length) return 0;
@@ -223,6 +229,8 @@ EM_JS(int, js_rtc_recv, (uint8_t* buf, int maxLen), {
     HEAPU8.set(src.subarray(0, n), buf);
     return n;
 });
+// NOLINTEND
+// clang-format on
 
 bool LockstepNet::OpenSocket(uint16_t) {
     return true;
