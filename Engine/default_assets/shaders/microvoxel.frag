@@ -15,6 +15,13 @@
 //   u_occupancy usampler3D  R8UI, (gridDim/BRICK_DIM)^3, nonzero = brick solid
 //   u_palette   sampler2D   256x1 RGBA8, albedo per material index
 
+#ifdef GL_ES
+precision highp float;
+precision highp int;
+precision highp usampler3D;
+precision highp sampler2D;
+#endif
+
 in vec2 v_uv;
 
 uniform usampler3D u_volume;
@@ -26,7 +33,7 @@ uniform mat4  u_viewProj;      // world -> clip (for depth output)
 uniform vec3  u_cameraPos;
 uniform vec3  u_volumeOrigin;  // world-space min corner
 uniform float u_voxelSize;     // world edge length of one voxel
-uniform ivec3 u_gridDim;       // voxels per volume edge
+uniform int   u_gridDim;       // voxels per volume edge (cubic)
 uniform int   u_brickDim;      // voxels per brick edge (8)
 uniform int   u_maxRaySteps;   // cap on coarse DDA iterations
 uniform vec3  u_sunDir;        // normalized, toward the sun
@@ -105,7 +112,7 @@ Hit raycast(vec3 ro, vec3 rd) {
 
     vec3 invDir = mix(vec3(1e30), 1.0 / rd, notEqual(rd, vec3(0.0)));
     vec3 bmin = u_volumeOrigin;
-    vec3 bmax = bmin + vec3(u_gridDim) * u_voxelSize;
+    vec3 bmax = bmin + vec3(float(u_gridDim)) * u_voxelSize;
 
     vec3 tA = (bmin - ro) * invDir;
     vec3 tB = (bmax - ro) * invDir;
@@ -129,7 +136,7 @@ Hit raycast(vec3 ro, vec3 rd) {
     }
 
     float brickSize = u_voxelSize * float(u_brickDim);
-    ivec3 brickGrid = u_gridDim / u_brickDim;
+    ivec3 brickGrid = ivec3(u_gridDim / u_brickDim);
 
     float t = max(tEnter, 0.0);
     float eps = u_voxelSize * 1e-3;
@@ -169,7 +176,7 @@ Hit raycast(vec3 ro, vec3 rd) {
 
 void main() {
     // Reconstruct the world-space ray for this pixel from clip space.
-    vec2 ndc = v_uv * 2.0 - 1.0;    // v_uv is 0..2; *2-1 gives -1..3 spanning the tri
+    vec2 ndc = v_uv * 2.0 - 1.0;    // v_uv is 0..1 across the screen quad
     vec4 farH = u_invViewProj * vec4(ndc, 1.0, 1.0);
     vec3 ro = u_cameraPos;
     vec3 rd = normalize(farH.xyz / farH.w - ro);
@@ -181,7 +188,7 @@ void main() {
 
     vec3 hitPos = ro + rd * h.t;
     ivec3 cell = clamp(ivec3(floor((hitPos + rd * u_voxelSize * 0.01 - u_volumeOrigin) / u_voxelSize)),
-                       ivec3(0), u_gridDim - 1);
+                       ivec3(0), ivec3(u_gridDim - 1));
 
     vec3 albedo = texelFetch(u_palette, ivec2(int(h.material), 0), 0).rgb;
     albedo *= 0.85 + 0.3 * voxelHash(cell);

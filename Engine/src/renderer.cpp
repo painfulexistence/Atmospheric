@@ -197,6 +197,7 @@ void Renderer::Init(int width, int height) {
     _renderGraph->AddPass(std::make_unique<SkyboxPass>());// after clear, fills empty sky pixels
     _renderGraph->AddPass(std::make_unique<SunPass>());
     _renderGraph->AddPass(std::make_unique<VoxelChunkPass>());
+    _renderGraph->AddPass(std::make_unique<MicroVoxelPass>());// raymarched micro voxels (inert until GenerateDemoVolume)
     _renderGraph->AddPass(std::make_unique<MSAAResolvePass>());
     _renderGraph->AddPass(std::make_unique<WaterPass>());
     _renderGraph->AddPass(std::make_unique<WorldCanvasPass>());// World sprites with depth testing

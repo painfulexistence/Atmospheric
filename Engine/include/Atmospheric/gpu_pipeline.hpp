@@ -23,6 +23,7 @@ struct GpuBGLEntry {
         Sampler,
         DepthTexture,// texture_depth_2d (e.g. shadow map)
         ComparisonSampler,// sampler_comparison (for textureSampleCompare)
+        UintTexture3D,// texture_3d<u32> (e.g. micro voxel volume, read via textureLoad)
     } kind = Kind::Uniform;
     uint64_t minBindingSize = 0;
 };
@@ -44,6 +45,9 @@ inline GpuBGLEntry gpuDepthTexture(uint32_t b, WGPUShaderStage v = WGPUShaderSta
 }
 inline GpuBGLEntry gpuCompareSampler(uint32_t b, WGPUShaderStage v = WGPUShaderStage_Fragment) {
     return { b, v, GpuBGLEntry::Kind::ComparisonSampler, 0 };
+}
+inline GpuBGLEntry gpuUintTexture3D(uint32_t b, WGPUShaderStage v = WGPUShaderStage_Fragment) {
+    return { b, v, GpuBGLEntry::Kind::UintTexture3D, 0 };
 }
 
 // Correctly-defaulted WGPUSamplerDescriptor. Zero-initializing the struct is

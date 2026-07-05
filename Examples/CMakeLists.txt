@@ -16,6 +16,7 @@ add_subdirectory(VideoPlayer)        # FFmpeg decode → texture
 # ── 3D ───────────────────────────────────────────────────────────────────────
 add_subdirectory(3DBasics)           # scene JSON + components, PBR, 2D+3D basics
 add_subdirectory(VoxelWorld)         # voxel streaming, fly camera, bloom
+add_subdirectory(MicroVoxel)         # raymarched micro voxels (DDA over 3D texture)
 add_subdirectory(Terrain)            # procedural / heightmap terrain, RmlUi HUD
 
 # ── Networking ───────────────────────────────────────────────────────────────
