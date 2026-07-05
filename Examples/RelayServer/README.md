@@ -9,6 +9,18 @@ players connect to this relay instead and it forwards their lockstep packets.
 ./RelayServer --port 7000    # custom port
 ```
 
+Two binaries build from this directory:
+
+- **`RelayServer`** (`main.cpp`) — a bare loop that constructs `UdpRelay`
+  directly and calls `Start()`/`Process(dt)` itself. No `Application`, no
+  window, minimal moving parts.
+- **`RelayServerApp`** (`main_app.cpp`) — the same relay, driven through a
+  headless `Application` + `RelaySubsystem` (`AddSubsystem<RelaySubsystem>()`)
+  instead. Worth it once the relay needs to share a process with
+  matchmaking/game logic ticked through the same `Application`, or you want
+  a live ImGui debug panel. Relies on `AppConfig::headless`, a recent
+  addition still being shaken out (see the note in `main_app.cpp`).
+
 ## How it works
 
 Clients prepend a 4-byte little-endian room id to every datagram
@@ -52,10 +64,9 @@ on a port you open yourself by default.
 
 ## Notes
 
-`UdpRelay` is a plain class, not an engine Subsystem — it has no per-frame
-`Application` dependency and no per-entity meaning, so this example just
-`Start()`s it and pumps `Process(dt)` in a manual loop. If a project ever
-needs to embed it inside an `Application`-driven process (e.g. to show a
-debug panel), the right shape is a thin Subsystem that owns a `UdpRelay`
-member and forwards `Process()`/`DrawImGui()` to it — the same pattern
-`NetworkSubsystem` uses to wrap `HttpClient`/`WebSocketClient`.
+`UdpRelay` itself is a plain class, not an engine Subsystem — it has no
+per-frame `Application` dependency and no per-entity meaning. `RelayServer`
+uses it directly; `RelaySubsystem` (`Engine/include/Atmospheric/relay_subsystem.hpp`)
+is the thin wrapper `RelayServerApp` uses to embed it in an `Application`,
+following the same pattern `NetworkSubsystem` uses to wrap
+`HttpClient`/`WebSocketClient`.

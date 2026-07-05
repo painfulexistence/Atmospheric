@@ -261,6 +261,9 @@ list(APPEND SOURCES src/file_system.cpp)
 # builds and the relay loopback test don't require AE_USE_NETWORKING (which
 # drags in curl/libwebsockets/OpenSSL). Empty TU on Emscripten.
 list(APPEND SOURCES src/udp_relay.cpp)
+# RelaySubsystem: thin Application/AddSubsystem<T> wrapper around UdpRelay
+# (same zero-extra-dependency reasoning; empty TU on Emscripten).
+list(APPEND SOURCES src/relay_subsystem.cpp)
 
 set(SOURCES_EXT
     external/imgui/imgui.cpp
