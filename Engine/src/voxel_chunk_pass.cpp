@@ -727,11 +727,17 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
         if (!camera) return;
         LightComponent* light = ctx->GetMainLight();
 
+        // Auxiliary views (portal recursion) drive us via viewOverride: render
+        // into the aux RT, reflection off (it was computed for the main camera).
+        // The WGSL water is already depth-less, so no per-view depth is needed.
+        ResolvedView rv = ResolveView(renderer, camera);
+        bool auxView = renderer.viewOverride != nullptr;
+
         if (!_pipeline) {
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue q = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)renderer.sceneRT->GetNumSamples());
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)rv.target->GetNumSamples());
         }
 
         // Water params now live on WaterMaterial (mesh/material decoupling);
@@ -772,11 +778,12 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
 
         glm::vec3 lightDir = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);
         glm::vec3 lightColor = light ? light->diffuse : glm::vec3(1.0f);
-        glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+        glm::mat4 viewProj = rv.proj * rv.view;
 
-        // Planar reflection RT, rendered earlier this frame by PlanarReflectionPass.
+        // Planar reflection RT, rendered earlier by PlanarReflectionPass. Off in
+        // aux views (that reflection is the main camera's).
         auto* refl = renderer.GetPass<PlanarReflectionPass>();
-        bool reflActive = refl && refl->IsActive() && refl->GetReflectionRT();
+        bool reflActive = refl && refl->IsActive() && refl->GetReflectionRT() && !auxView;
         glm::mat4 reflViewProj = reflActive ? refl->GetReflectionViewProj() : glm::mat4(1.0f);
 
         struct {
@@ -829,7 +836,7 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
         wgpuQueueWriteBuffer(_gpuQueue, _drawUniformBuf, 0, drawData.data(), drawData.size());
 
         auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
-        renderer.sceneRT->Begin(enc);
+        rv.target->Begin(enc);
         wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _pipeline);
         wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 1, _reflBG, 0, nullptr);
         for (size_t i = 0; i < draws.size(); ++i) {
@@ -837,7 +844,7 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
             wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 0, _uniformBG, 1, &dynamicOffset);
             draws[i].buf->Draw(enc, PrimitiveTopology::Triangles);
         }
-        renderer.sceneRT->End();
+        rv.target->End();
         return;
     }
 #endif
@@ -851,27 +858,35 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
     if (!camera) return;
     LightComponent* light = ctx->GetMainLight();
 
-    auto [width, height] = Window::Get()->GetPhysicalSize();
-    glViewport(0, 0, width, height);
+    // Auxiliary views (portal recursion) drive us via viewOverride. There we
+    // render into the aux RT with a simplified water: no per-view scene depth
+    // (Beer-Lambert) and no reflection — matching the WebGPU water. The main
+    // view still renders into msaaResolveRT (post-resolve, through bloom).
+    ResolvedView rv = ResolveView(renderer, camera);
+    bool auxView = renderer.viewOverride != nullptr;
+    RenderTarget* target = auxView ? rv.target : renderer.msaaResolveRT.get();
 
-    // Render into msaaResolveRT so water goes through bloom + tonemapping
-    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID());
+    glViewport(0, 0, target->GetWidth(), target->GetHeight());
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(target)->GetNativeFBOID());
 
-    // WaterPass runs after MSAAResolvePass so the resolved depth is ready
+    // WaterPass runs after MSAAResolvePass so the resolved depth is ready.
+    // In aux views it stays bound but unsampled (u_useDepth = 0) — reading the
+    // aux RT's own depth here would be a feedback loop.
     GLuint depthTex = renderer.GetResolvedDepthTexture();
 
     shader->Activate();
 
-    glm::mat4 proj = camera->GetProjectionMatrix();
-    glm::mat4 view = camera->GetViewMatrix();
+    glm::mat4 proj = rv.proj;
+    glm::mat4 view = rv.view;
     glm::mat4 viewProj = proj * view;
     shader->SetUniform("u_viewProj", viewProj);
-    shader->SetUniform("u_cameraPos", camera->GetEyePosition());
+    shader->SetUniform("u_cameraPos", rv.eye);
     shader->SetUniform("u_time", renderer.frameTime);
     shader->SetUniform("u_invProj", glm::inverse(proj));
     shader->SetUniform("u_invView", glm::inverse(view));
-    shader->SetUniform("u_screenSize", glm::vec2(static_cast<float>(width), static_cast<float>(height)));
+    shader->SetUniform("u_screenSize", glm::vec2((float)target->GetWidth(), (float)target->GetHeight()));
     shader->SetUniform("u_depthTexture", 1);
+    shader->SetUniform("u_useDepth", auxView ? 0.0f : 1.0f);
 
     glm::vec3 lightDir = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);
     glm::vec3 lightColor = light ? light->diffuse : glm::vec3(1.0f);
@@ -882,9 +897,11 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
     auto* skybox = renderer.GetPass<SkyboxPass>();
     glm::vec3 skyFogColor = skybox ? skybox->skyColor : glm::vec3(0.686f, 0.933f, 0.933f);
 
-    // Planar reflection RT, rendered earlier this frame by PlanarReflectionPass.
+    // Planar reflection RT, rendered earlier by PlanarReflectionPass. Off in
+    // aux views: that reflection was computed for the main camera, so sampling
+    // it from a portal camera would show the wrong scene.
     auto* refl = renderer.GetPass<PlanarReflectionPass>();
-    bool reflActive = refl && refl->IsActive() && refl->GetReflectionRT();
+    bool reflActive = refl && refl->IsActive() && refl->GetReflectionRT() && !auxView;
     shader->SetUniform("u_reflectionTex", 2);
     if (reflActive) {
         shader->SetUniform("u_reflViewProj", refl->GetReflectionViewProj());

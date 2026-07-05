@@ -488,6 +488,7 @@ private:
         std::unique_ptr<SkyboxPass> skybox;
         std::unique_ptr<SunPass> sun;
         std::unique_ptr<VoxelChunkPass> voxel;
+        std::unique_ptr<WaterPass> water;// simplified (depth-less, no reflection) inside portals
     };
     WorldReplay& _replaySlot(size_t index);
 

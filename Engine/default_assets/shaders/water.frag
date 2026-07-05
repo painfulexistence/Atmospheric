@@ -18,6 +18,11 @@ uniform vec3      u_deepColor;
 uniform vec3      u_shallowColor;
 uniform float     u_beerCoef;
 
+// 0 in auxiliary views (portals) where no per-view scene depth is available:
+// the Beer-Lambert thickness blend is skipped in favour of a fresnel-based
+// deep/shallow mix, matching the WebGPU water's documented simplification.
+uniform float     u_useDepth;
+
 // Planar reflection, rendered by PlanarReflectionPass. u_reflStrength is 0
 // when the pass is inactive or the material opted out, which fully disables
 // the blend (the sampler unit then holds no meaningful texture).
@@ -48,17 +53,24 @@ void main() {
         return;
     }
 
-    // Beer-Lambert depth via screen-space depth reconstruction
-    vec2  screenUV       = gl_FragCoord.xy / u_screenSize;
-    float rawDepth       = texture(u_depthTexture, screenUV).r;
-    vec3  floorPos       = reconstructWorldPos(screenUV, rawDepth);
-    float waterThickness = max(v_worldPos.y - floorPos.y, 0.0);
-    float beerFactor     = max(1.0 - exp(-waterThickness * u_beerCoef), 0.0);
-    vec3  col            = mix(u_shallowColor, u_deepColor, beerFactor);
-
     float diff    = max(dot(norm, lightDir), 0.0);
     float spec    = pow(max(dot(norm, halfDir), 0.0), 128.0);
     float fresnel = pow(1.0 - max(dot(norm, viewDir), 0.0), 5.0);
+
+    // Beer-Lambert depth via screen-space depth reconstruction. Auxiliary views
+    // (portals) have no matching scene-depth texture, so fall back to a
+    // fresnel-driven deep/shallow blend there (u_useDepth == 0).
+    float beerFactor;
+    if (u_useDepth > 0.5) {
+        vec2  screenUV       = gl_FragCoord.xy / u_screenSize;
+        float rawDepth       = texture(u_depthTexture, screenUV).r;
+        vec3  floorPos       = reconstructWorldPos(screenUV, rawDepth);
+        float waterThickness = max(v_worldPos.y - floorPos.y, 0.0);
+        beerFactor           = max(1.0 - exp(-waterThickness * u_beerCoef), 0.0);
+    } else {
+        beerFactor = fresnel;
+    }
+    vec3 col = mix(u_shallowColor, u_deepColor, beerFactor);
 
     col = mix(col, col * diff * u_lightColor + vec3(1.0) * spec * u_lightColor, 0.2);
 

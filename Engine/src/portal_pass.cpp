@@ -57,6 +57,7 @@ PortalPass::WorldReplay& PortalPass::_replaySlot(size_t index) {
         replay->skybox = std::make_unique<SkyboxPass>();
         replay->sun = std::make_unique<SunPass>();
         replay->voxel = std::make_unique<VoxelChunkPass>();
+        replay->water = std::make_unique<WaterPass>();
         _replays.push_back(std::move(replay));
     }
     return *_replays[index];
@@ -223,6 +224,7 @@ void PortalPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             replay.skybox->Execute(ctx, renderer, enc);
             replay.sun->Execute(ctx, renderer, enc);
             replay.voxel->Execute(ctx, renderer, enc);
+            replay.water->Execute(ctx, renderer, enc);// simplified water (depth-less, no reflection)
             // Nested portals: surfaces inside level i+1's image show level i+2
             // (or the void at the recursion floor). Exclude the partner — the
             // virtual camera sits just behind it; it is the window itself.
