@@ -419,13 +419,12 @@ private:
     void DrawScreenQuad(GLuint screenVAO);
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    // Simplified WebGPU bloom: single half-res threshold + separable
-    // horizontal/vertical Gaussian blur (ping-ponging _brightA/_brightB) +
-    // additive composite — a deliberate simplification of GL's 5-level mip
-    // pyramid (see header comment). Avoids reading sceneRT's own texture
-    // while it's bound as the composite pass's render attachment by first
-    // copying it into _snapshotTex (requires CopySrc on sceneRT's texture,
-    // see gpu_render_target.cpp).
+    // WebGPU bloom mirrors the GL path exactly: a MIP_LEVELS mip pyramid with
+    // threshold -> downsample chain -> additive upsample chain -> composite.
+    // Avoids reading sceneRT's own texture while it's bound as the composite
+    // pass's render attachment by first copying it into _snapshotTex (requires
+    // CopySrc on sceneRT's texture, see gpu_render_target.cpp); the threshold
+    // pass samples that same snapshot.
     void _initGPU(WGPUDevice device, WGPUQueue queue, uint32_t sceneSampleCount);
     void _resizeGPU(int width, int height);
 
@@ -434,31 +433,42 @@ private:
     WGPUSampler _sampler = nullptr;
 
     WGPURenderPipeline _threshPipeline = nullptr;
-    WGPURenderPipeline _blurPipeline = nullptr;
+    WGPURenderPipeline _downPipeline = nullptr;
+    WGPURenderPipeline _upPipeline = nullptr;// additive blend
     WGPURenderPipeline _compPipeline = nullptr;
 
     WGPUBindGroupLayout _threshBGL = nullptr;
-    WGPUBindGroupLayout _blurBGL = nullptr;
+    WGPUBindGroupLayout _downBGL = nullptr;
+    WGPUBindGroupLayout _upBGL = nullptr;
     WGPUBindGroupLayout _compBGL = nullptr;
 
-    WGPUBuffer _threshUniformBuf = nullptr;
-    WGPUBuffer _blurHUniformBuf = nullptr;// direction+texelSize, fixed per resize
-    WGPUBuffer _blurVUniformBuf = nullptr;
-    WGPUBuffer _compUniformBuf = nullptr;
+    WGPUBuffer _threshUniformBuf = nullptr;// threshold, rewritten each frame
+    WGPUBuffer _compUniformBuf = nullptr;// bloomStrength, rewritten each frame
+    // One texelSize uniform per down/up step; content depends only on the mip
+    // sizes, so written once per resize. Indices 1..MIP_LEVELS-1 are used.
+    WGPUBuffer _downUniformBuf[MIP_LEVELS] = {};
+    WGPUBuffer _upUniformBuf[MIP_LEVELS] = {};
 
-    // Half-resolution ping-pong textures for the blur chain.
-    WGPUTexture _brightA = nullptr, _brightB = nullptr;
-    WGPUTextureView _brightAView = nullptr, _brightBView = nullptr;
+    // GPU mip chain mirroring the GL _mips pyramid; level 0 is half-res, each
+    // subsequent level halves again. Level 0 also holds the final accumulated
+    // bloom after the upsample chain (what the composite samples).
+    struct GpuMip {
+        WGPUTexture tex = nullptr;
+        WGPUTextureView view = nullptr;
+        int w = 0, h = 0;
+    };
+    GpuMip _gpuMips[MIP_LEVELS];
+
     // Full-resolution copy of sceneRT, refreshed each frame before composite.
     WGPUTexture _snapshotTex = nullptr;
     WGPUTextureView _snapshotView = nullptr;
 
-    WGPUBindGroup _threshBG = nullptr;
-    WGPUBindGroup _blurHBG = nullptr;// reads _brightA, writes _brightB
-    WGPUBindGroup _blurVBG = nullptr;// reads _brightB, writes _brightA
-    WGPUBindGroup _compBG = nullptr;// reads _snapshotTex + _brightB(final)
+    WGPUBindGroup _threshBG = nullptr;// reads _snapshotTex, writes mip[0]
+    WGPUBindGroup _downBG[MIP_LEVELS] = {};// _downBG[i] reads mip[i-1], writes mip[i]
+    WGPUBindGroup _upBG[MIP_LEVELS] = {};// _upBG[i] reads mip[i], writes mip[i-1]
+    WGPUBindGroup _compBG = nullptr;// reads _snapshotTex + mip[0]
 
-    int _gpuWidth = 0, _gpuHeight = 0, _gpuHalfW = 0, _gpuHalfH = 0;
+    int _gpuWidth = 0, _gpuHeight = 0;
 
     void _destroyGPUTextures();
 #endif

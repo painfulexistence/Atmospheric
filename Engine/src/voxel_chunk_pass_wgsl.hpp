@@ -313,8 +313,8 @@ struct VOut {
 }
 )";
 
-// Soft-knee threshold: zeroes pixels at/below threshold, keeps only the
-// brightness "excess" above it. Simplified stand-in for GL's bloom_threshold.frag.
+// Hard luminance cutoff — an exact port of GL's bloom_threshold.frag: pixels
+// at/below the threshold are dropped, brighter ones pass through unmodified.
 static const std::string BLOOM_THRESH_WGSL = std::string(BLOOM_VS_WGSL) + R"(
 struct ThreshUniforms { threshold: f32, _pad0: f32, _pad1: f32, _pad2: f32 };
 @group(0) @binding(0) var<uniform> u: ThreshUniforms;
@@ -322,30 +322,72 @@ struct ThreshUniforms { threshold: f32, _pad0: f32, _pad1: f32, _pad2: f32 };
 @group(0) @binding(2) var samp: sampler;
 
 @fragment fn fs(in: VOut) -> @location(0) vec4<f32> {
-    let c = textureSample(srcTex, samp, in.uv);
-    let brightness = max(c.r, max(c.g, c.b));
-    let over = max(brightness - u.threshold, 0.0);
-    let factor = over / max(brightness, 0.0001);
-    return vec4<f32>(c.rgb * factor, 1.0);
+    let c = textureSample(srcTex, samp, in.uv).rgb;
+    let brightness = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+    if (brightness > u.threshold) {
+        return vec4<f32>(c, 1.0);
+    }
+    return vec4<f32>(0.0, 0.0, 0.0, 1.0);
 }
 )";
 
-// 5-tap separable Gaussian blur; direction is (1,0) or (0,1) scaled by
-// texelSize so the same pipeline serves both the horizontal and vertical pass.
-static const std::string BLOOM_BLUR_WGSL = std::string(BLOOM_VS_WGSL) + R"(
-struct BlurUniforms { direction: vec2<f32>, texelSize: vec2<f32> };
-@group(0) @binding(0) var<uniform> u: BlurUniforms;
+// 13-tap Kawase-style downsample — port of GL's bloom_downsample.frag. Halves
+// resolution while pre-filtering, one level of the mip pyramid per invocation.
+static const std::string BLOOM_DOWN_WGSL = std::string(BLOOM_VS_WGSL) + R"(
+struct DownUniforms { texelSize: vec2<f32>, _pad: vec2<f32> };
+@group(0) @binding(0) var<uniform> u: DownUniforms;
 @group(0) @binding(1) var srcTex: texture_2d<f32>;
 @group(0) @binding(2) var samp: sampler;
 
 @fragment fn fs(in: VOut) -> @location(0) vec4<f32> {
-    let weights = array<f32, 5>(0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
-    var result = textureSample(srcTex, samp, in.uv).rgb * weights[0];
-    for (var i: i32 = 1; i < 5; i = i + 1) {
-        let offset = u.direction * u.texelSize * f32(i);
-        result += textureSample(srcTex, samp, in.uv + offset).rgb * weights[i];
-        result += textureSample(srcTex, samp, in.uv - offset).rgb * weights[i];
-    }
+    let t = u.texelSize;
+    let uv = in.uv;
+    let a = textureSample(srcTex, samp, uv + t * vec2<f32>(-1.0, -1.0)).rgb;
+    let b = textureSample(srcTex, samp, uv + t * vec2<f32>( 0.0, -1.0)).rgb;
+    let c = textureSample(srcTex, samp, uv + t * vec2<f32>( 1.0, -1.0)).rgb;
+    let d = textureSample(srcTex, samp, uv + t * vec2<f32>(-0.5, -0.5)).rgb;
+    let e = textureSample(srcTex, samp, uv + t * vec2<f32>( 0.5, -0.5)).rgb;
+    let f = textureSample(srcTex, samp, uv + t * vec2<f32>(-1.0,  0.0)).rgb;
+    let g = textureSample(srcTex, samp, uv).rgb;
+    let h = textureSample(srcTex, samp, uv + t * vec2<f32>( 1.0,  0.0)).rgb;
+    let i = textureSample(srcTex, samp, uv + t * vec2<f32>(-0.5,  0.5)).rgb;
+    let j = textureSample(srcTex, samp, uv + t * vec2<f32>( 0.5,  0.5)).rgb;
+    let k = textureSample(srcTex, samp, uv + t * vec2<f32>(-1.0,  1.0)).rgb;
+    let l = textureSample(srcTex, samp, uv + t * vec2<f32>( 0.0,  1.0)).rgb;
+    let m = textureSample(srcTex, samp, uv + t * vec2<f32>( 1.0,  1.0)).rgb;
+    var result = g * 0.125;
+    result += (b + f + h + l) * 0.0625;
+    result += (a + c + k + m) * 0.03125;
+    result += (d + e + i + j) * 0.125;
+    return vec4<f32>(result, 1.0);
+}
+)";
+
+// 9-tap tent upsample — port of GL's bloom_upsample.frag. Drawn with additive
+// blending so each level accumulates onto the coarser one already in the mip.
+static const std::string BLOOM_UP_WGSL = std::string(BLOOM_VS_WGSL) + R"(
+struct UpUniforms { texelSize: vec2<f32>, filterRadius: f32, _pad: f32 };
+@group(0) @binding(0) var<uniform> u: UpUniforms;
+@group(0) @binding(1) var srcTex: texture_2d<f32>;
+@group(0) @binding(2) var samp: sampler;
+
+@fragment fn fs(in: VOut) -> @location(0) vec4<f32> {
+    let r = u.filterRadius;
+    let t = u.texelSize;
+    let uv = in.uv;
+    let a = textureSample(srcTex, samp, uv + t * vec2<f32>(-r,  r)).rgb;
+    let b = textureSample(srcTex, samp, uv + t * vec2<f32>(0.0,  r)).rgb;
+    let c = textureSample(srcTex, samp, uv + t * vec2<f32>( r,  r)).rgb;
+    let d = textureSample(srcTex, samp, uv + t * vec2<f32>(-r, 0.0)).rgb;
+    let e = textureSample(srcTex, samp, uv).rgb;
+    let f = textureSample(srcTex, samp, uv + t * vec2<f32>( r, 0.0)).rgb;
+    let g = textureSample(srcTex, samp, uv + t * vec2<f32>(-r, -r)).rgb;
+    let h = textureSample(srcTex, samp, uv + t * vec2<f32>(0.0, -r)).rgb;
+    let i = textureSample(srcTex, samp, uv + t * vec2<f32>( r, -r)).rgb;
+    var result = e * 4.0;
+    result += (b + d + f + h) * 2.0;
+    result += (a + c + g + i) * 1.0;
+    result = result / 16.0;
     return vec4<f32>(result, 1.0);
 }
 )";

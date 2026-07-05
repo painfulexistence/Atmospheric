@@ -1054,37 +1054,38 @@ void PlanarReflectionPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
 // ============================================================================
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 void BloomPass::_destroyGPUTextures() {
-    if (_blurHBG) {
-        wgpuBindGroupRelease(_blurHBG);
-        _blurHBG = nullptr;
+    // Bind groups first — they reference the mip views / snapshot below.
+    if (_threshBG) {
+        wgpuBindGroupRelease(_threshBG);
+        _threshBG = nullptr;
     }
-    if (_blurVBG) {
-        wgpuBindGroupRelease(_blurVBG);
-        _blurVBG = nullptr;
+    for (int i = 0; i < MIP_LEVELS; ++i) {
+        if (_downBG[i]) {
+            wgpuBindGroupRelease(_downBG[i]);
+            _downBG[i] = nullptr;
+        }
+        if (_upBG[i]) {
+            wgpuBindGroupRelease(_upBG[i]);
+            _upBG[i] = nullptr;
+        }
     }
     if (_compBG) {
         wgpuBindGroupRelease(_compBG);
         _compBG = nullptr;
     }
-    if (_brightAView) {
-        wgpuTextureViewRelease(_brightAView);
-        _brightAView = nullptr;
-    }
-    if (_brightBView) {
-        wgpuTextureViewRelease(_brightBView);
-        _brightBView = nullptr;
+    for (int i = 0; i < MIP_LEVELS; ++i) {
+        if (_gpuMips[i].view) {
+            wgpuTextureViewRelease(_gpuMips[i].view);
+            _gpuMips[i].view = nullptr;
+        }
+        if (_gpuMips[i].tex) {
+            wgpuTextureRelease(_gpuMips[i].tex);
+            _gpuMips[i].tex = nullptr;
+        }
     }
     if (_snapshotView) {
         wgpuTextureViewRelease(_snapshotView);
         _snapshotView = nullptr;
-    }
-    if (_brightA) {
-        wgpuTextureRelease(_brightA);
-        _brightA = nullptr;
-    }
-    if (_brightB) {
-        wgpuTextureRelease(_brightB);
-        _brightB = nullptr;
     }
     if (_snapshotTex) {
         wgpuTextureRelease(_snapshotTex);
@@ -1110,11 +1111,16 @@ void BloomPass::_initGPU(WGPUDevice device, WGPUQueue queue, uint32_t sceneSampl
         return wgpuDeviceCreateBuffer(device, &d);
     };
     _threshUniformBuf = makeUniformBuf(16);
-    _blurHUniformBuf = makeUniformBuf(16);
-    _blurVUniformBuf = makeUniformBuf(16);
     _compUniformBuf = makeUniformBuf(16);
+    // One texelSize uniform per down/up step (indices 1..MIP_LEVELS-1); content
+    // is resolution-dependent and written in _resizeGPU, not per frame.
+    for (int i = 1; i < MIP_LEVELS; ++i) {
+        _downUniformBuf[i] = makeUniformBuf(16);
+        _upUniformBuf[i] = makeUniformBuf(16);
+    }
 
-    // Thresh and blur share the same BGL shape: 1 uniform + 1 texture + 1 sampler.
+    // Thresh, downsample and upsample all share the same BGL shape:
+    // 1 uniform + 1 texture + 1 sampler.
     std::vector<GpuBGLEntry> singleTexBGL = {
         gpuUniform(0, wgsl_stage::frag, 16),
         gpuTexture(1),
@@ -1131,18 +1137,31 @@ void BloomPass::_initGPU(WGPUDevice device, WGPUQueue queue, uint32_t sceneSampl
     }
     {
         auto p = GpuPipelineBuilder(device)
-                     .wgsl(BLOOM_BLUR_WGSL)
+                     .wgsl(BLOOM_DOWN_WGSL)
                      .bgl(singleTexBGL)
                      .colorFormat(WGPUTextureFormat_RGBA16Float)
                      .build();
-        _blurPipeline = p.pipeline;
-        _blurBGL = p.bgl(0);
+        _downPipeline = p.pipeline;
+        _downBGL = p.bgl(0);
+    }
+    {
+        // Additive blend (one/one) so the upsample accumulates onto the
+        // destination mip's existing downsampled content — the WebGPU
+        // equivalent of GL's upsample glBlendFunc(GL_ONE, GL_ONE).
+        auto p = GpuPipelineBuilder(device)
+                     .wgsl(BLOOM_UP_WGSL)
+                     .bgl(singleTexBGL)
+                     .colorFormat(WGPUTextureFormat_RGBA16Float)
+                     .additiveBlend()
+                     .build();
+        _upPipeline = p.pipeline;
+        _upBGL = p.bgl(0);
     }
     {
         // Composite renders back into sceneRT, whose pass carries a depth
         // attachment — declare a matching depth-transparent state (write=false,
-        // Always) so the attachment states are compatible. Threshold/blur
-        // stay depthless: they target the standalone half-res bright textures.
+        // Always) so the attachment states are compatible. Threshold/down/up
+        // stay depthless: they target the standalone mip textures.
         auto p = GpuPipelineBuilder(device)
                      .wgsl(BLOOM_COMP_WGSL)
                      .bgl({ gpuUniform(0, wgsl_stage::frag, 16), gpuTexture(1), gpuTexture(2), gpuSampler(3) })
@@ -1156,14 +1175,12 @@ void BloomPass::_initGPU(WGPUDevice device, WGPUQueue queue, uint32_t sceneSampl
 }
 
 void BloomPass::_resizeGPU(int width, int height) {
-    if (width == _gpuWidth && height == _gpuHeight && _brightA) return;
+    if (width == _gpuWidth && height == _gpuHeight && _gpuMips[0].tex) return;
 
     _destroyGPUTextures();
 
     _gpuWidth = width;
     _gpuHeight = height;
-    _gpuHalfW = std::max(1, width / 2);
-    _gpuHalfH = std::max(1, height / 2);
 
     auto makeTex = [this](int w, int h, WGPUTextureUsage usage) {
         WGPUTextureDescriptor d{};
@@ -1175,23 +1192,33 @@ void BloomPass::_resizeGPU(int width, int height) {
         d.sampleCount = 1;
         return wgpuDeviceCreateTexture(_gpuDevice, &d);
     };
-    _brightA = makeTex(_gpuHalfW, _gpuHalfH, WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding);
-    _brightB = makeTex(_gpuHalfW, _gpuHalfH, WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding);
-    _snapshotTex = makeTex(_gpuWidth, _gpuHeight, WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst);
 
-    _brightAView = wgpuTextureCreateView(_brightA, nullptr);
-    _brightBView = wgpuTextureCreateView(_brightB, nullptr);
+    // Mip chain: level 0 is half-res, each subsequent level halves again —
+    // the exact sizing of GL's InitMips loop.
+    int w = width, h = height;
+    for (int i = 0; i < MIP_LEVELS; ++i) {
+        w = std::max(1, w / 2);
+        h = std::max(1, h / 2);
+        _gpuMips[i].w = w;
+        _gpuMips[i].h = h;
+        _gpuMips[i].tex = makeTex(w, h, WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding);
+        _gpuMips[i].view = wgpuTextureCreateView(_gpuMips[i].tex, nullptr);
+    }
+
+    _snapshotTex = makeTex(width, height, WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst);
     _snapshotView = wgpuTextureCreateView(_snapshotTex, nullptr);
 
-    // Direction+texelSize are fixed for this resolution — written once here,
-    // not every frame (see header comment).
-    struct BlurUniforms {
-        float dx, dy, tx, ty;
+    // texelSize per step is fixed for this resolution — written once here, not
+    // every frame. Down step i samples mip[i-1]; up step i samples mip[i].
+    struct StepUniforms {
+        float tx, ty, filterRadius, pad;
     };
-    BlurUniforms hU{ 1.0f, 0.0f, 1.0f / (float)_gpuHalfW, 1.0f / (float)_gpuHalfH };
-    BlurUniforms vU{ 0.0f, 1.0f, 1.0f / (float)_gpuHalfW, 1.0f / (float)_gpuHalfH };
-    wgpuQueueWriteBuffer(_gpuQueue, _blurHUniformBuf, 0, &hU, sizeof(hU));
-    wgpuQueueWriteBuffer(_gpuQueue, _blurVUniformBuf, 0, &vU, sizeof(vU));
+    for (int i = 1; i < MIP_LEVELS; ++i) {
+        StepUniforms du{ 1.0f / (float)_gpuMips[i - 1].w, 1.0f / (float)_gpuMips[i - 1].h, 0.0f, 0.0f };
+        wgpuQueueWriteBuffer(_gpuQueue, _downUniformBuf[i], 0, &du, sizeof(du));
+        StepUniforms uu{ 1.0f / (float)_gpuMips[i].w, 1.0f / (float)_gpuMips[i].h, 1.0f, 0.0f };
+        wgpuQueueWriteBuffer(_gpuQueue, _upUniformBuf[i], 0, &uu, sizeof(uu));
+    }
 
     auto makeSingleTexBG = [this](WGPUBindGroupLayout bgl, WGPUBuffer uniformBuf, WGPUTextureView view) {
         return GpuBindGroupBuilder(_gpuDevice, bgl)
@@ -1200,15 +1227,17 @@ void BloomPass::_resizeGPU(int width, int height) {
             .sampler(2, _sampler)
             .build();
     };
-    _blurHBG = makeSingleTexBG(_blurBGL, _blurHUniformBuf, _brightAView);// thresholded -> blurred-H
-    _blurVBG = makeSingleTexBG(
-        _blurBGL, _blurVUniformBuf, _brightBView
-    );// blurred-H   -> blurred-HV (final, lands in _brightA)
+    // Threshold samples the scene snapshot -> mip[0].
+    _threshBG = makeSingleTexBG(_threshBGL, _threshUniformBuf, _snapshotView);
+    for (int i = 1; i < MIP_LEVELS; ++i) {
+        _downBG[i] = makeSingleTexBG(_downBGL, _downUniformBuf[i], _gpuMips[i - 1].view);// mip[i-1] -> mip[i]
+        _upBG[i] = makeSingleTexBG(_upBGL, _upUniformBuf[i], _gpuMips[i].view);// mip[i]   -> mip[i-1]
+    }
 
     _compBG = GpuBindGroupBuilder(_gpuDevice, _compBGL)
                   .buffer(0, _compUniformBuf, 16)
                   .textureView(1, _snapshotView)
-                  .textureView(2, _brightAView)// final blurred bloom (H then V both land here)
+                  .textureView(2, _gpuMips[0].view)// final accumulated bloom lands in mip[0]
                   .sampler(3, _sampler)
                   .build();
 }
@@ -1225,14 +1254,18 @@ BloomPass::~BloomPass() {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     _destroyGPUTextures();
     if (_threshUniformBuf) wgpuBufferRelease(_threshUniformBuf);
-    if (_blurHUniformBuf) wgpuBufferRelease(_blurHUniformBuf);
-    if (_blurVUniformBuf) wgpuBufferRelease(_blurVUniformBuf);
     if (_compUniformBuf) wgpuBufferRelease(_compUniformBuf);
+    for (int i = 0; i < MIP_LEVELS; ++i) {
+        if (_downUniformBuf[i]) wgpuBufferRelease(_downUniformBuf[i]);
+        if (_upUniformBuf[i]) wgpuBufferRelease(_upUniformBuf[i]);
+    }
     if (_threshPipeline) wgpuRenderPipelineRelease(_threshPipeline);
-    if (_blurPipeline) wgpuRenderPipelineRelease(_blurPipeline);
+    if (_downPipeline) wgpuRenderPipelineRelease(_downPipeline);
+    if (_upPipeline) wgpuRenderPipelineRelease(_upPipeline);
     if (_compPipeline) wgpuRenderPipelineRelease(_compPipeline);
     if (_threshBGL) wgpuBindGroupLayoutRelease(_threshBGL);
-    if (_blurBGL) wgpuBindGroupLayoutRelease(_blurBGL);
+    if (_downBGL) wgpuBindGroupLayoutRelease(_downBGL);
+    if (_upBGL) wgpuBindGroupLayoutRelease(_upBGL);
     if (_compBGL) wgpuBindGroupLayoutRelease(_compBGL);
     if (_sampler) wgpuSamplerRelease(_sampler);
 #endif
@@ -1328,46 +1361,44 @@ void BloomPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
         } compU{ bloomStrength, 0.0f, 0.0f, 0.0f };
         wgpuQueueWriteBuffer(_gpuQueue, _compUniformBuf, 0, &compU, sizeof(compU));
 
-        // Threshold pass's source bind group reads sceneRT's live texture, so
-        // it is rebuilt fresh each frame (uncached) rather than stored as a
-        // class member.
-        WGPUBindGroup threshBG = GpuBindGroupBuilder(_gpuDevice, _threshBGL)
-                                     .buffer(0, _threshUniformBuf, 16)
-                                     .texture(1, sceneTex)
-                                     .sampler(2, _sampler)
-                                     .build();
+        // loadOp=Clear for threshold/downsample (they own their whole target);
+        // loadOp=Load for the additive upsample so the destination mip's
+        // downsampled content is preserved and accumulated onto.
+        auto runFullscreenPass =
+            [&](WGPUTextureView target, WGPURenderPipeline pipeline, WGPUBindGroup bg, WGPULoadOp loadOp) {
+                WGPURenderPassColorAttachment ca{};
+                ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;// required for non-3D attachments
+                ca.view = target;
+                ca.loadOp = loadOp;
+                ca.storeOp = WGPUStoreOp_Store;
+                ca.clearValue = { 0.0, 0.0, 0.0, 1.0 };
+                WGPURenderPassDescriptor rpDesc{};
+                rpDesc.colorAttachmentCount = 1;
+                rpDesc.colorAttachments = &ca;
+                WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &rpDesc);
+                wgpuRenderPassEncoderSetPipeline(pass, pipeline);
+                wgpuRenderPassEncoderSetBindGroup(pass, 0, bg, 0, nullptr);
+                wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+                wgpuRenderPassEncoderEnd(pass);
+                wgpuRenderPassEncoderRelease(pass);
+            };
 
-        auto runFullscreenPass = [&](WGPUTextureView target, WGPURenderPipeline pipeline, WGPUBindGroup bg) {
-            WGPURenderPassColorAttachment ca{};
-            ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;// required for non-3D attachments
-            ca.view = target;
-            ca.loadOp = WGPULoadOp_Clear;
-            ca.storeOp = WGPUStoreOp_Store;
-            ca.clearValue = { 0.0, 0.0, 0.0, 1.0 };
-            WGPURenderPassDescriptor rpDesc{};
-            rpDesc.colorAttachmentCount = 1;
-            rpDesc.colorAttachments = &ca;
-            WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &rpDesc);
-            wgpuRenderPassEncoderSetPipeline(pass, pipeline);
-            wgpuRenderPassEncoderSetBindGroup(pass, 0, bg, 0, nullptr);
-            wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
-            wgpuRenderPassEncoderEnd(pass);
-            wgpuRenderPassEncoderRelease(pass);
-        };
+        // 1. Threshold: snapshot -> mip[0].
+        runFullscreenPass(_gpuMips[0].view, _threshPipeline, _threshBG, WGPULoadOp_Clear);
+        // 2. Downsample chain: mip[i-1] -> mip[i].
+        for (int i = 1; i < MIP_LEVELS; ++i)
+            runFullscreenPass(_gpuMips[i].view, _downPipeline, _downBG[i], WGPULoadOp_Clear);
+        // 3. Upsample chain (additive): mip[i] -> mip[i-1], accumulating.
+        for (int i = MIP_LEVELS - 1; i >= 1; --i)
+            runFullscreenPass(_gpuMips[i - 1].view, _upPipeline, _upBG[i], WGPULoadOp_Load);
 
-        runFullscreenPass(_brightAView, _threshPipeline, threshBG);// threshold -> _brightA
-        runFullscreenPass(_brightBView, _blurPipeline, _blurHBG);// blur H: _brightA -> _brightB
-        runFullscreenPass(_brightAView, _blurPipeline, _blurVBG);// blur V: _brightB -> _brightA (final)
-
-        // Composite: snapshot + final blurred bloom -> sceneRT (loadOp=Load,
+        // 4. Composite: snapshot + final bloom (mip[0]) -> sceneRT (loadOp=Load,
         // since earlier passes this frame have already drawn into sceneRT).
         renderer.sceneRT->Begin(enc);
         wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _compPipeline);
         wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 0, _compBG, 0, nullptr);
         wgpuRenderPassEncoderDraw(gpuEnc->pass, 3, 1, 0, 0);
         renderer.sceneRT->End();
-
-        wgpuBindGroupRelease(threshBG);
         return;
     }
 #endif

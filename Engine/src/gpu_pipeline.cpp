@@ -75,14 +75,19 @@ GpuPipeline GpuPipelineBuilder::build() {
     plDesc.bindGroupLayouts = layouts.empty() ? nullptr : layouts.data();
     WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(_device, &plDesc);
 
-    // Blend state (standard src-alpha / one-minus-src-alpha)
+    // Blend state: standard src-alpha by default, or additive (one/one) when
+    // requested (bloom upsample — mirrors GL's glBlendFunc(GL_ONE, GL_ONE)).
     WGPUBlendComponent blendColor{ WGPUBlendOperation_Add, WGPUBlendFactor_SrcAlpha, WGPUBlendFactor_OneMinusSrcAlpha };
     WGPUBlendComponent blendAlpha{ WGPUBlendOperation_Add, WGPUBlendFactor_One, WGPUBlendFactor_OneMinusSrcAlpha };
+    if (_additiveBlend) {
+        blendColor = { WGPUBlendOperation_Add, WGPUBlendFactor_One, WGPUBlendFactor_One };
+        blendAlpha = { WGPUBlendOperation_Add, WGPUBlendFactor_One, WGPUBlendFactor_One };
+    }
     WGPUBlendState blendState{ blendColor, blendAlpha };
 
     WGPUColorTargetState colorTarget{};
     colorTarget.format = _colorFmt;
-    colorTarget.blend = _blend ? &blendState : nullptr;
+    colorTarget.blend = (_blend || _additiveBlend) ? &blendState : nullptr;
     colorTarget.writeMask = WGPUColorWriteMask_All;
 
     WGPUFragmentState frag{};
