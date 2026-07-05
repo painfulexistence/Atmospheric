@@ -503,6 +503,7 @@
         var _wasmReady   = false;
         var _pendingCall = null;  // set when DataChannel opens before WASM is ready
         var _pendingAns  = null;  // compressed answer ready before lobby is visible
+        var _preGather   = null;  // Promise<{pc,ch}|null> — host ICE gathered in background
 
         // Detect invite URL on load; processing runs in parallel with WASM download.
         var _joinParam = new URLSearchParams(location.search).get('join');
@@ -521,7 +522,7 @@
         function waitForIce(pc) {
             return new Promise(function(resolve) {
                 if (pc.iceGatheringState === 'complete') { resolve(); return; }
-                var t = setTimeout(resolve, 10000);
+                var t = setTimeout(resolve, 4000);
                 pc.addEventListener('icegatheringstatechange', function() {
                     if (pc.iceGatheringState === 'complete') { clearTimeout(t); resolve(); }
                 });
@@ -566,6 +567,22 @@
                 });
         }
 
+        // Pre-gather a host offer in the background so clicking "Host" is instant.
+        // Closes any previous in-progress gather before starting a new one.
+        function _startPreGather() {
+            if (_preGather) {
+                _preGather.then(function(g) { if (g) g.pc.close(); });
+                _preGather = null;
+            }
+            var pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+            var ch = pc.createDataChannel('game', DC_OPTS);
+            _preGather = pc.createOffer()
+                .then(function(o) { return pc.setLocalDescription(o); })
+                .then(function()  { return waitForIce(pc); })
+                .then(function()  { return { pc: pc, ch: ch }; })
+                .catch(function() { return null; });
+        }
+
         // If opened via invite URL, start processing immediately (parallel with WASM).
         if (_joinParam) {
             decompress(_joinParam)
@@ -588,6 +605,10 @@
                     showPanel('panel-join');
                     if (_pendingAns) { showAnswerCode(_pendingAns); }
                     else             { setStatus('Generating reply...'); }
+                } else {
+                    // Start gathering a host offer in the background while the user
+                    // reads the menu, so "Host Game" shows the invite link instantly.
+                    _startPreGather();
                 }
             },
 
@@ -601,6 +622,7 @@
                 window._rtcRecvQueue = [];
                 _pendingCall = null; _pendingAns = null;
                 showPanel('panel-menu');
+                _startPreGather();  // restart so the next "Host" click is instant
             },
 
             showHost: function() {
@@ -611,15 +633,26 @@
                 setStatus('Gathering connection info...');
 
                 var seed = Math.floor(Math.random() * 0xFFFFFFFF) >>> 0;
-                _pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-                var ch = _pc.createDataChannel('game', DC_OPTS);
-                window._rtcChannel = ch;
-                attachChannel(ch, ['--host', '--seed', String(seed)]);
 
-                _pc.createOffer()
-                    .then(function(o) { return _pc.setLocalDescription(o); })
-                    .then(function()  { return waitForIce(_pc); })
-                    .then(function()  {
+                // Swap out the pre-gathered PC (if ready) and restart for next time.
+                var pg = _preGather; _preGather = null; _startPreGather();
+
+                // If pre-gather is already resolved this resolves instantly; otherwise
+                // we fall back to a fresh gather (same path, just with no head start).
+                (pg || Promise.resolve(null))
+                    .then(function(gathered) {
+                        if (gathered) return gathered;
+                        var pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+                        var ch = pc.createDataChannel('game', DC_OPTS);
+                        return pc.createOffer()
+                            .then(function(o) { return pc.setLocalDescription(o); })
+                            .then(function()  { return waitForIce(pc); })
+                            .then(function()  { return { pc: pc, ch: ch }; });
+                    })
+                    .then(function(gathered) {
+                        _pc = gathered.pc;
+                        window._rtcChannel = gathered.ch;
+                        attachChannel(gathered.ch, ['--host', '--seed', String(seed)]);
                         return compress({ type: _pc.localDescription.type,
                                           sdp:  _pc.localDescription.sdp });
                     })
@@ -670,6 +703,10 @@
 
             cleanup: function() {
                 if (_pc) { _pc.close(); _pc = null; }
+                if (_preGather) {
+                    _preGather.then(function(g) { if (g) g.pc.close(); });
+                    _preGather = null;
+                }
                 window._rtcChannel = null;
             },
 
