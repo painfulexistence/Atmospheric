@@ -27,9 +27,18 @@ adopts the room-id framing, not just `LockstepNet`.
 ## Testing against MultiplayerSandbox
 
 `LockstepNet` in the MultiplayerSandbox example has relay support via
-`StartRelayHost()` / `StartRelayClient()`. An automated end-to-end check
-lives in `RelayLoopbackTest` (run via `ctest`), which spins up a `UdpRelay`
-and two lockstep peers inside one process over 127.0.0.1.
+`StartRelayHost()` / `StartRelayClient()`. Two ways to exercise it:
+
+- **Automated**: `RelayLoopbackTest` (run via `ctest`) spins up a `UdpRelay`
+  and two lockstep peers inside one process over 127.0.0.1 — proves protocol
+  correctness (handshake, input exchange, stale-peer rebind), but never
+  launches the actual game.
+- **Manual, real processes**: run this relay, then two instances of
+  `NoitaLikeDemo` with `--relay-host` / `--relay-join` (see
+  [MultiplayerSandbox's README](../MultiplayerSandbox/README.md#playing-through-a-relay)).
+  Start with all three on one machine over `127.0.0.1` to prove the plumbing,
+  then repeat with the relay on a publicly reachable host and the two game
+  instances on separate networks to prove it actually solves NAT traversal.
 
 ## Notes
 

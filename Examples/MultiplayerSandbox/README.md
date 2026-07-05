@@ -26,6 +26,22 @@ Options:
 - `--autotest <ticks>` headless-ish smoke test: run N ticks, print the world
   checksum, and exit (used to verify cross-peer determinism).
 
+### Playing through a relay
+
+When direct UDP can't reach the other peer (NAT/firewall on either side),
+route through a [`UdpRelay`](../RelayServer) instead:
+
+```sh
+./RelayServer --port 9000                                # on a host both players can reach
+
+./NoitaLikeDemo --relay-host 203.0.113.10 9000 42         # player 0
+./NoitaLikeDemo --relay-join 203.0.113.10 9000 42         # player 1
+```
+
+`42` is a shared room id — any number both players agree on ahead of time.
+The relay pairs the first two distinct senders it sees for that room, so
+picking an unused id avoids colliding with someone else's session.
+
 ## Controls
 
 | Input            | Action                              |
