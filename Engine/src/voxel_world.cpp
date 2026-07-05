@@ -6,6 +6,7 @@
 #include "graphics_subsystem.hpp"
 #include "job_system.hpp"
 #include "light_component.hpp"
+#include "renderer.hpp"
 #include "sun_component.hpp"
 
 #include "FastNoiseLite.h"
@@ -120,11 +121,18 @@ void VoxelWorld::Update(float /*dt*/, const glm::vec3& cameraPos) {
 void VoxelWorld::SubmitRenderCommands(Renderer* renderer, const glm::mat4& viewProj, const glm::vec3& cameraPos) {
     Frustum frustum(viewProj);
 
+    // Portal views look in arbitrary directions but re-render this frame's
+    // queues — main-camera frustum culling would leave holes in them, so
+    // submit the whole streamed working set while portals are active.
+    const bool skipCulling = renderer && renderer->NeedsFullSceneSubmission();
+
     for (auto& [pos, chunk] : _chunkMap) {
         Mesh* mesh = chunk->GetMesh();
         if (!mesh || !mesh->UsesRenderMesh()) continue;
 
-        if (!frustum.IntersectsSphere(chunk->GetBoundingSphereCenter(), VoxelChunkComponent::BSPHERE_RADIUS)) continue;
+        if (!skipCulling
+            && !frustum.IntersectsSphere(chunk->GetBoundingSphereCenter(), VoxelChunkComponent::BSPHERE_RADIUS))
+            continue;
 
         glm::vec3 wp = chunk->GetWorldPos();
         glm::mat4 model = glm::translate(glm::mat4(1.0f), wp);
@@ -271,9 +279,8 @@ void VoxelWorld::RebuildDirtyChunks() {
             task->chunk = chunk;
             pendingTasks.push_back(task);
 
-            JobSystem::Get()->Execute([task](int /*threadIndex*/) {
-                task->vertices = task->chunk->GenerateMeshData();
-            });
+            JobSystem::Get()->Execute([task](int /*threadIndex*/) { task->vertices = task->chunk->GenerateMeshData(); }
+            );
         }
     }
 

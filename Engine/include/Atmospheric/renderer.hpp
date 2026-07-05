@@ -411,6 +411,115 @@ private:
     std::unique_ptr<WorldCanvasPass> _worldCanvas;
 };
 
+class PortalMaterial;
+
+// Recursive "through the portal" views for every linked PortalMaterial pair
+// found in the transparent queue (see PortalMaterial in material.hpp).
+//
+// Per visible portal surface s (looking into s shows the world seen from
+// behind its partner), a chain of virtual cameras is rendered depth-first:
+// rts[i] holds the image after i+1 portal transits, each level clipped at the
+// partner's plane and drawn with the world sub-passes (ForwardOpaque, Skybox,
+// Sun, VoxelChunk) plus the portal surfaces themselves sampling one level
+// deeper — that nesting is what produces the infinite-corridor recursion.
+// The recursion floor (level == recursionDepth) paints the void fill.
+//
+// Water and world sprites are not re-rendered inside portal views yet (water
+// depends on the main view's resolve/reflection chain; sprites share
+// GPUCanvasPass's per-variant uniform slots on WebGPU).
+//
+// Like PlanarReflectionPass, this is the hardcoded precursor of a future
+// generic AuxViewPass; see that class's comment for the WebGPU
+// one-uniform-write-per-frame rationale behind the private sub-pass copies.
+class PortalPass : public RenderPass {
+public:
+    PortalPass();
+    ~PortalPass() override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+    int recursionDepth = 3;// portal-in-portal levels before the void floor
+    float resolutionScale = 0.5f;// portal RT size relative to the window
+
+    struct PortalView {
+        PortalMaterial* mat = nullptr;// identity key
+        Mesh* mesh = nullptr;// surface mesh, refreshed each frame from the queue
+        glm::mat4 surfaceTransform{ 1.0f };
+        bool active = false;// linked and its chain was rendered this frame
+        bool seenThisFrame = false;// surface draw found in the queue this frame
+        std::vector<std::unique_ptr<RenderTarget>> rts;// rts[i] = image after i+1 transits
+        std::vector<glm::mat4> viewProjs;// viewProj rts[i] was rendered with
+    };
+
+    bool AnyActive() const {
+        return _anyActive;
+    }
+
+    // Draws every portal surface found this frame into the currently resolved
+    // target (main view or a recursion RT). sampleLevel picks the recursion
+    // image the surfaces show: 0 in the main view, k inside rts[k-1];
+    // >= recursionDepth (or an inactive surface) paints the void fill.
+    // `exclude` skips the portal being looked through (the virtual camera
+    // sits just behind it — drawing it would curtain the whole view).
+    void DrawPortalSurfaces(
+        GraphicsSubsystem* ctx,
+        Renderer& renderer,
+        CommandEncoder* enc,
+        int sampleLevel,
+        const Material* exclude = nullptr
+    );
+
+private:
+    // Per (portal, recursion level) world sub-pass copies — same WebGPU
+    // uniform-write rationale as PlanarReflectionPass's private instances.
+    struct WorldReplay {
+        std::unique_ptr<ForwardOpaquePass> forward;
+        std::unique_ptr<SkyboxPass> skybox;
+        std::unique_ptr<SunPass> sun;
+        std::unique_ptr<VoxelChunkPass> voxel;
+    };
+    WorldReplay& _replaySlot(size_t index);
+
+    std::vector<std::unique_ptr<WorldReplay>> _replays;
+    std::vector<PortalView> _views;
+    bool _anyActive = false;
+
+    PortalView& _viewFor(PortalMaterial* mat);
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    // Portal-surface drawing state. One dynamic-offset slot per surface draw,
+    // consumed across all invocations of DrawPortalSurfaces in a frame (the
+    // cursor resets in Execute); one texture bind group per sampled RT.
+    void _initSurfaceGPU(WGPUDevice device, WGPUQueue queue, uint32_t sampleCount);
+    void _ensureSurfCapacity(uint32_t slotCount);
+    WGPUBindGroup _getOrCreateSurfTexBG(WGPUTexture tex);
+
+    WGPUDevice _gpuDevice = nullptr;
+    WGPUQueue _gpuQueue = nullptr;
+    WGPURenderPipeline _surfPipeline = nullptr;
+    WGPUBindGroupLayout _surfUniformBGL = nullptr;
+    WGPUBindGroupLayout _surfTexBGL = nullptr;
+    WGPUBindGroup _surfUniformBG = nullptr;
+    WGPUBuffer _surfDrawBuf = nullptr;// dynamic-offset slots
+    uint32_t _surfSlotCapacity = 0;
+    uint32_t _surfSlotCursor = 0;
+    WGPUSampler _surfSampler = nullptr;
+    WGPUTexture _surfFallbackTex = nullptr;// bound when a surface shows the void
+    struct CachedSurfTexBG {
+        WGPUBindGroup bg = nullptr;
+        WGPUTexture tex = nullptr;
+    };
+    std::unordered_map<uintptr_t, CachedSurfTexBG> _surfTexBGCache;
+#endif
+};
+
+// Draws the portal surfaces into the main view (PortalPass::DrawPortalSurfaces
+// with sampleLevel 0). Runs after the opaque world passes, before MSAA
+// resolve, so portals are depth-tested/-written like solid geometry.
+class PortalSurfacePass : public RenderPass {
+public:
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+};
+
 // Pyramid bloom: threshold → downsample → upsample → composite.
 class BloomPass : public RenderPass {
 public:
@@ -555,6 +664,14 @@ public:
     template<typename T> T* GetPass() {
         return _renderGraph ? _renderGraph->GetPass<T>() : nullptr;
     }
+
+    // True when an auxiliary view whose frustum can differ arbitrarily from
+    // the main camera's is being rendered (portals, as of last frame) — the
+    // submission side then skips frustum culling so aux views see the whole
+    // scene. The mirrored reflection view is deliberately not included: its
+    // frustum mostly overlaps the main one and always-on water would disable
+    // culling permanently.
+    bool NeedsFullSceneSubmission();
 
     std::vector<std::pair<std::string, float>> GetTimings() const {
         return _renderGraph ? _renderGraph->GetTimings() : std::vector<std::pair<std::string, float>>{};

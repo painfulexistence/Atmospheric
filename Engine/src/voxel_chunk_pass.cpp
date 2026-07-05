@@ -746,6 +746,7 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
             if (!mesh || mesh->type != MeshType::PRIM) continue;
             Material* mat = AssetManager::Get().ResolveMaterial(mesh->GetMaterial());
             if (!mat || mat->renderQueue != RenderQueue::Transparent) continue;
+            if (dynamic_cast<PortalMaterial*>(mat)) continue;// drawn by PortalSurfacePass
             if (!mesh->UsesRenderMesh()) continue;
             Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
             if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
@@ -906,6 +907,7 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
 
         Material* mat = AssetManager::Get().ResolveMaterial(mesh->GetMaterial());
         if (!mat || mat->renderQueue != RenderQueue::Transparent) continue;
+        if (dynamic_cast<PortalMaterial*>(mat)) continue;// drawn by PortalSurfacePass
 
         auto* wm = dynamic_cast<WaterMaterial*>(AssetManager::Get().ResolveMaterial(mesh->GetMaterial()));
         shader->SetUniform("u_waterLine", wm ? wm->waterLine : 32.0f);

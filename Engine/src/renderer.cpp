@@ -194,10 +194,12 @@ void Renderer::Init(int width, int height) {
     _renderGraph = std::make_unique<RenderGraph>();
     _renderGraph->AddPass(std::make_unique<ShadowPass>());
     _renderGraph->AddPass(std::make_unique<PlanarReflectionPass>());// mirrored world RT for WaterPass
+    _renderGraph->AddPass(std::make_unique<PortalPass>());// recursive portal-view RTs
     _renderGraph->AddPass(std::make_unique<ForwardOpaquePass>());
     _renderGraph->AddPass(std::make_unique<SkyboxPass>());// after clear, fills empty sky pixels
     _renderGraph->AddPass(std::make_unique<SunPass>());
     _renderGraph->AddPass(std::make_unique<VoxelChunkPass>());
+    _renderGraph->AddPass(std::make_unique<PortalSurfacePass>());// portal windows in the main view
     _renderGraph->AddPass(std::make_unique<MSAAResolvePass>());
     _renderGraph->AddPass(std::make_unique<WaterPass>());
     _renderGraph->AddPass(std::make_unique<WorldCanvasPass>());// World sprites with depth testing
@@ -235,6 +237,14 @@ void Renderer::Resize(int width, int height) {
 
 void Renderer::SubmitCommand(const RenderCommand& cmd) {
     _commandList.push_back(cmd);
+}
+
+bool Renderer::NeedsFullSceneSubmission() {
+    // Reflects last frame's PortalPass activity — submission happens before
+    // the passes run, so the first portal frame may still be culled. See the
+    // header comment for why reflections are excluded.
+    auto* portals = GetPass<PortalPass>();
+    return portals && portals->AnyActive();
 }
 
 void Renderer::BeginTransformFeedbackPass() {
@@ -1691,6 +1701,13 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             glBindVertexArray(0);
             break;
         }
+    }
+
+    // Debug lines belong to the main view only — aux-view replays (reflection,
+    // portals) run before the main pass and must not consume-and-clear them.
+    if (renderer.viewOverride) {
+        renderer.CheckErrors("Opaque pass");
+        return;
     }
 
     ctx->_debugLineCount = ctx->debugLines.size() / 2;

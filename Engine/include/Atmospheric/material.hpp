@@ -107,6 +107,27 @@ public:
     }
 };
 
+// A "through the portal" window surface. PortalPass finds every PortalMaterial
+// draw in the transparent queue, pairs it with its partner, and renders the
+// recursive views the surface then samples (see PortalPass in renderer.hpp).
+// The disc mesh's local frame defines the portal: +Z faces out (the side you
+// look into / exit from), +Y is up. Pair two portals via PortalComponent::Link,
+// which sets `partner` on both materials.
+//
+// Sits in the Transparent queue only to stay out of ForwardOpaquePass's PRIM
+// drawing; WaterPass explicitly skips PortalMaterial and PortalSurfacePass
+// draws it (opaque, depth-written).
+class PortalMaterial : public Material {
+public:
+    PortalMaterial* partner = nullptr;// the linked exit portal; null = unlinked (renders as void)
+    glm::vec3 rimColor = { 0.35f, 0.65f, 1.0f };// HDR-scaled edge glow (feeds bloom)
+
+    PortalMaterial() : Material(MaterialProps{}) {
+        renderQueue = RenderQueue::Transparent;
+        cullFaceEnabled = false;// visible (as void) from behind too
+    }
+};
+
 // One detail texture layer of a terrain, blended by splat-map weight (or by
 // the automatic slope/height weights when no splat map is set).
 struct TerrainLayer {
