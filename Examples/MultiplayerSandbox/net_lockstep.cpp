@@ -173,8 +173,12 @@ void LockstepNet::Pump(uint32_t nowMs) {
         sockaddr_in from{};
         socklen_t fromLen = sizeof(from);
         int n = ::recvfrom(
-            sock, reinterpret_cast<char*>(buf), static_cast<int>(sizeof(buf)), 0,
-            reinterpret_cast<sockaddr*>(&from), &fromLen
+            sock,
+            reinterpret_cast<char*>(buf),
+            static_cast<int>(sizeof(buf)),
+            0,
+            reinterpret_cast<sockaddr*>(&from),
+            &fromLen
         );
         if (n <= 0) break;
         HandlePacket(buf, n, from.sin_addr.s_addr, from.sin_port, nowMs);
@@ -203,7 +207,7 @@ void LockstepNet::Pump(uint32_t nowMs) {
 // reallocation can't corrupt the in-flight buffer.
 EM_JS(void, js_rtc_send, (const uint8_t* data, int len), {
     var ch = window['_rtcChannel'];
-    if (ch && ch.readyState === 'open') {
+    if (ch&& ch.readyState == = 'open') {
         ch.send(HEAPU8.buffer.slice(data, data + len));
     }
 });
@@ -220,7 +224,9 @@ EM_JS(int, js_rtc_recv, (uint8_t* buf, int maxLen), {
     return n;
 });
 
-bool LockstepNet::OpenSocket(uint16_t) { return true; }
+bool LockstepNet::OpenSocket(uint16_t) {
+    return true;
+}
 
 bool LockstepNet::StartHost(uint16_t, uint32_t s, int delay) {
     mode = Mode::Host;
@@ -243,7 +249,9 @@ bool LockstepNet::StartClient(const std::string&, uint16_t) {
     return true;
 }
 
-void LockstepNet::Shutdown() { state = State::Idle; }
+void LockstepNet::Shutdown() {
+    state = State::Idle;
+}
 
 void LockstepNet::SendRaw(const uint8_t* data, int len) {
     js_rtc_send(data, len);

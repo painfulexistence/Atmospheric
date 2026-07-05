@@ -264,9 +264,8 @@ class NoitaLikeGame : public Application {
             std::string s;
             if (net.state == LockstepNet::State::Connecting) {
 #ifdef __EMSCRIPTEN__
-                s = (net.mode == LockstepNet::Mode::Host)
-                  ? "waiting for player 2 via WebRTC ..."
-                  : "connecting via WebRTC ...";
+                s = (net.mode == LockstepNet::Mode::Host) ? "waiting for player 2 via WebRTC ..."
+                                                          : "connecting via WebRTC ...";
 #else
                 s = (net.mode == LockstepNet::Mode::Host)
                         ? fmt::format("waiting for player 2 on UDP :{} ...", gcli.port)
