@@ -42,9 +42,9 @@ engine, you already know how to structure a game here.
 
 ## A rich set of examples, all open-source
 
-The `Examples/` directory is the living documentation: from HelloWorld to a
-voxel world, a card battler, 2D physics, procedural terrain, multiplayer, and
-video playback. Every example builds on every platform, is captured by
+The `Examples/` directory is the living documentation: from 2D animation and
+3D basics to a voxel world, a card battler, 2D physics, procedural terrain,
+multiplayer, and video playback. Every example builds on every platform, is captured by
 automated smoke tests, and is free to copy from. If a feature has no example,
 it isn't finished.
 

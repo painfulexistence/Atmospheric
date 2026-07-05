@@ -5,13 +5,13 @@ name: Deploy (WebAssembly)
 # deployment to a VPS or any static host.
 #
 # Trigger this workflow manually after a successful ci-web run, passing the
-# artifact name printed by that run (e.g. helloworld-wasm-<full-sha>).
+# artifact name printed by that run (e.g. 3dbasics-wasm-<full-sha>).
 
 on:
   workflow_dispatch:
     inputs:
       artifact_name:
-        description: "Artifact name from ci-web (helloworld-wasm-<sha>)"
+        description: "Artifact name from ci-web (3dbasics-wasm-<sha>)"
         required: true
         type: string
       sha_short:

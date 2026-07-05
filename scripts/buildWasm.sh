@@ -19,6 +19,7 @@ BUILD_TYPE="Release"
 WEBGPU_SUPPORT="OFF"
 NO_SERVER="OFF"
 NO_EXAMPLES="OFF"
+CLEAN_BUILD="OFF"
 
 # 解析參數
 for arg in "$@"; do
@@ -37,6 +38,9 @@ for arg in "$@"; do
             ;;
         --no-examples)
             NO_EXAMPLES="ON"
+            ;;
+        --clean)
+            CLEAN_BUILD="ON"
             ;;
     esac
 done
@@ -89,6 +93,36 @@ echo -e "${BLUE}配置資訊:${NC}"
 echo -e "  - 專案根目錄: $(pwd)"
 echo -e "  - 建置目錄:   $BUILD_DIR"
 echo -e ""
+
+# 3.5 Clean build: 清除建置目錄底下 (vcpkg_installed 除外) 的所有產物，確保輸出可
+# 重現、不殘留已改名/移除範例的舊產物。保留 vcpkg_installed 可省下重裝/重編依賴的
+# 時間，只重編我們自己的 engine + examples。
+if [ "$CLEAN_BUILD" = "ON" ] && [ -d "$BUILD_DIR" ]; then
+    # 安全防護：只允許清理位於 build-wasm/ 底下的建置目錄，避免誤刪其他路徑。
+    if [ -z "$BUILD_DIR" ] || [[ "$BUILD_DIR" != *"/build-wasm/"* ]]; then
+        echo -e "${RED}❌ 拒絕清理非預期的建置路徑: '$BUILD_DIR'${NC}"
+        exit 1
+    fi
+
+    DO_CLEAN="ON"
+    # 互動式終端機才詢問確認；非互動式 (CI/自動化) 直接執行，避免卡住流程。
+    if [ -t 0 ]; then
+        echo -e "${YELLOW}🧹 Clean build 將清除 (vcpkg_installed 除外)：${NC}$BUILD_DIR"
+        read -p "確定要清除嗎？(y/N): " CONFIRM
+        if [[ ! "$CONFIRM" =~ ^[yY]$ ]]; then
+            DO_CLEAN="OFF"
+            echo -e "${BLUE}已略過清理，改用 incremental build。${NC}"
+        fi
+    fi
+
+    if [ "$DO_CLEAN" = "ON" ]; then
+        echo -e "${YELLOW}🧹 正在清除建置產物 (保留 vcpkg_installed) ...${NC}"
+        # 只刪除 BUILD_DIR 的第一層項目 (vcpkg_installed 除外)：CMakeCache、
+        # CMakeFiles、ninja 檔、以及各範例輸出目錄 (含已改名的殘留)。
+        find "$BUILD_DIR" -mindepth 1 -maxdepth 1 -not -name vcpkg_installed -exec rm -rf {} +
+    fi
+    echo -e ""
+fi
 
 # 4. 執行 CMake 設定
 echo -e "${YELLOW}🛠️  正在為 Emscripten (WebAssembly) 設定 CMake 專案...${NC}"
@@ -180,17 +214,17 @@ if [ "$RUN_SERVER" = "y" ] || [ "$RUN_SERVER" = "Y" ]; then
     echo -e "按下 ${RED}Ctrl+C${NC} 可以停止伺服器。"
     echo -e ""
 
-    # 如果是 Mac，自動在瀏覽器中開啟 HelloWorld 範例
+    # 如果是 Mac，自動在瀏覽器中開啟 3DBasics 範例
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        hw_dir="$BUILD_DIR/HelloWorld"
+        hw_dir="$BUILD_DIR/3DBasics"
         if [ -d "$hw_dir" ]; then
             html_file=$(find "$hw_dir" -maxdepth 1 -name "*.html" | head -n 1)
             if [ -n "$html_file" ]; then
                 html_name=$(basename "$html_file")
                 if [ "$html_name" = "index.html" ]; then
-                    sleep 1 && open "http://localhost:$PORT/HelloWorld/" &
+                    sleep 1 && open "http://localhost:$PORT/3DBasics/" &
                 else
-                    sleep 1 && open "http://localhost:$PORT/HelloWorld/$html_name" &
+                    sleep 1 && open "http://localhost:$PORT/3DBasics/$html_name" &
                 fi
             else
                 sleep 1 && open "http://localhost:$PORT/" &

@@ -4,7 +4,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>HelloWorld</string>
+    <string>3D Basics</string>
     <key>CFBundleIdentifier</key>
     <string>com.atmospheric.helloworld</string>
     <key>CFBundleVersion</key>
