@@ -24,7 +24,16 @@
 //  PortalPass
 // ============================================================================
 
-PortalPass::PortalPass() = default;
+PortalPass::PortalPass() {
+    // Handheld tile-based GPUs pay dearly per offscreen pass (each recursion
+    // level is a full scene re-render + RT load/store), so drop to a single
+    // hop and a smaller RT there. Desktop/web keep the full corridor. Any
+    // scene using portals inherits this — no per-example platform code.
+#if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
+    recursionDepth = 1;
+    resolutionScale = 0.3f;
+#endif
+}
 
 PortalPass::~PortalPass() {
     if (_glFallbackTex) glDeleteTextures(1, &_glFallbackTex);
@@ -63,6 +72,7 @@ PortalPass::PortalView& PortalPass::_viewFor(PortalMaterial* mat) {
 
 void PortalPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     _anyActive = false;
+    _activeViewProjs.clear();
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     _surfSlotCursor = 0;// per-frame dynamic-slot allocator for surface draws
 #endif
@@ -176,6 +186,8 @@ void PortalPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
                 eAcc = glm::vec3(tWorld * glm::vec4(eAcc, 1.0f));
                 levelViews[i] = vAcc;
                 levelEyes[i] = eAcc;
+                // Publish this level's frustum for next frame's aux-view culling.
+                _activeViewProjs.push_back(proj * vAcc);
             }
         }
 

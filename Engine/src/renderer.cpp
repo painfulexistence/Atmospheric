@@ -239,12 +239,19 @@ void Renderer::SubmitCommand(const RenderCommand& cmd) {
     _commandList.push_back(cmd);
 }
 
-bool Renderer::NeedsFullSceneSubmission() {
-    // Reflects last frame's PortalPass activity — submission happens before
-    // the passes run, so the first portal frame may still be culled. See the
-    // header comment for why reflections are excluded.
-    auto* portals = GetPass<PortalPass>();
-    return portals && portals->AnyActive();
+std::vector<glm::mat4> Renderer::GetAuxViewProjs() {
+    // Last frame's aux views (submission runs before the passes). Portal
+    // recursion levels plus the water reflection, so the submission side can
+    // union-cull against them instead of disabling culling entirely.
+    std::vector<glm::mat4> out;
+    if (auto* portals = GetPass<PortalPass>()) {
+        const auto& vps = portals->ActiveViewProjs();
+        out.insert(out.end(), vps.begin(), vps.end());
+    }
+    if (auto* refl = GetPass<PlanarReflectionPass>()) {
+        if (refl->IsActive()) out.push_back(refl->GetReflectionViewProj());
+    }
+    return out;
 }
 
 void Renderer::BeginTransformFeedbackPass() {

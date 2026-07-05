@@ -151,9 +151,15 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
 
     Frustum frustum(camera->GetProjectionMatrix() * camera->GetViewMatrix());
 
-    // Portal views look in arbitrary directions but re-render this frame's
-    // queues — main-camera frustum culling would leave holes in them.
-    const bool skipCulling = renderer && renderer->NeedsFullSceneSubmission();
+    // Auxiliary views (portal recursion levels, water reflection) re-render
+    // this frame's queues from other viewpoints. Rather than disabling culling
+    // wholesale, keep anything visible in the main frustum OR any aux frustum
+    // (per-view culling — bounds the submitted set instead of drawing it all).
+    std::vector<Frustum> auxFrusta;
+    if (renderer) {
+        for (const glm::mat4& vp : renderer->GetAuxViewProjs())
+            auxFrusta.emplace_back(vp);
+    }
 
     // Submit render commands
     int totalCount = 0;
@@ -179,7 +185,7 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
             isPortalSurface = dynamic_cast<PortalMaterial*>(mat) != nullptr;
         }
 
-        if (FRUSTUM_CULLING_ON && !skipCulling && !isPortalSurface) {
+        if (FRUSTUM_CULLING_ON && !isPortalSurface) {
             ZoneScopedN("Frustum Culling");
             const auto& boundingBox = mesh->GetBoundingBox();
             std::array<glm::vec3, 8> worldBounds;
@@ -190,7 +196,12 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
                 }
                 worldBounds[i] = transform * glm::vec4(boundingBox[i], 1.0f);
             }
-            if (hasValidBounds && !frustum.Intersects(worldBounds)) {
+            bool visible = frustum.Intersects(worldBounds);
+            for (const Frustum& aux : auxFrusta) {
+                if (visible) break;
+                visible = aux.Intersects(worldBounds);
+            }
+            if (hasValidBounds && !visible) {
                 culledCount++;
                 continue;
             }

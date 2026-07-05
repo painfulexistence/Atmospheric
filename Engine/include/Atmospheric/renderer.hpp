@@ -437,8 +437,21 @@ public:
     ~PortalPass() override;
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
+    // Platform-scaled budget defaults, set in the constructor: handheld GPUs
+    // (iOS/Android, tile-based) get a single hop and a smaller RT since each
+    // recursion level is a full offscreen scene re-render. Any scene using
+    // portals inherits these — the per-platform choice lives here, not in the
+    // examples. Override after construction for a per-scene budget.
     int recursionDepth = 3;// portal-in-portal levels before the void floor
-    float resolutionScale = 0.5f;// portal RT size relative to the window
+    float resolutionScale = 0.4f;// portal RT size relative to the window
+
+    // viewProj of every portal recursion level rendered last frame. Published
+    // so the submission side can cull against these instead of disabling
+    // culling wholesale (see Renderer::GetAuxViewProjs). One frame stale —
+    // submission runs before Execute — which is fine for slow-moving portals.
+    const std::vector<glm::mat4>& ActiveViewProjs() const {
+        return _activeViewProjs;
+    }
 
     struct PortalView {
         PortalMaterial* mat = nullptr;// identity key
@@ -480,6 +493,7 @@ private:
 
     std::vector<std::unique_ptr<WorldReplay>> _replays;
     std::vector<PortalView> _views;
+    std::vector<glm::mat4> _activeViewProjs;// one per rendered recursion level
     bool _anyActive = false;
 
     // GL: 1x1 black texture bound while a surface shows the void — sampling an
@@ -674,7 +688,13 @@ public:
     // scene. The mirrored reflection view is deliberately not included: its
     // frustum mostly overlaps the main one and always-on water would disable
     // culling permanently.
-    bool NeedsFullSceneSubmission();
+    // View-projection matrices of every auxiliary view rendered last frame
+    // (portal recursion levels + the water reflection). The submission side
+    // keeps any object visible in the main frustum OR any of these, so aux
+    // views see the whole scene without disabling frustum culling wholesale.
+    // Empty when no aux views are active. One frame stale by construction
+    // (submission precedes the passes) — fine for slow-moving portals/water.
+    std::vector<glm::mat4> GetAuxViewProjs();
 
     std::vector<std::pair<std::string, float>> GetTimings() const {
         return _renderGraph ? _renderGraph->GetTimings() : std::vector<std::pair<std::string, float>>{};
