@@ -20,9 +20,19 @@ Clients prepend a 4-byte little-endian room id to every datagram
 - lets a new address replace a peer that has been silent for 5 s
   (`kPeerStaleMs`) — handles mobile clients rebinding after a network switch
 - evicts rooms idle for 60 s (`kRoomTimeoutMs`)
+- caps new-room creation to 5 per source address per minute
+  (`maxNewRoomsPerIpPerWindow` / `rateLimitWindowMs`) — throttles one address
+  from burning through the whole room budget; packets to an already-open room
+  (ordinary gameplay traffic) are never rate-limited
 
 The relay never inspects the payload, so it works with any protocol that
 adopts the room-id framing, not just `LockstepNet`.
+
+None of this defends against a distributed flood from many source addresses
+at once — that needs network-layer mitigation (firewall the port to known
+ranges, lean on your VPS provider's DDoS protection, or put a UDP-aware proxy
+like Cloudflare Spectrum in front). Most VPS providers don't filter anything
+on a port you open yourself by default.
 
 ## Testing against MultiplayerSandbox
 

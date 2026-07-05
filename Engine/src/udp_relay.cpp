@@ -112,7 +112,10 @@ void UdpRelay::Process(float dt) {
     _totalMs += uint32_t(dt * 1000.f);
     _pump();
     // Evict once per second
-    if (_totalMs / 1000 != prevMs / 1000) _evictStaleRooms();
+    if (_totalMs / 1000 != prevMs / 1000) {
+        _evictStaleRooms();
+        _evictStaleIpBudgets();
+    }
 }
 
 void UdpRelay::_pump() {
@@ -132,18 +135,20 @@ void UdpRelay::_pump() {
         const uint8_t* payload = buf + 4;
         const int payloadLen = n - 4;
 
+        const uint32_t senderAddr = from.sin_addr.s_addr;
+        const uint16_t senderPort = from.sin_port;// already network-byte-order
+
         auto roomIt = _rooms.find(roomId);
         if (roomIt == _rooms.end()) {
             // New room — refuse beyond the cap so a packet flood with random
-            // roomIds can't grow the map without bound.
+            // roomIds can't grow the map without bound, and throttle how fast
+            // any one source address can create rooms in the first place.
             if (static_cast<int>(_rooms.size()) >= maxRooms) continue;
+            if (!_allowNewRoom(senderAddr)) continue;
             roomIt = _rooms.emplace(roomId, Room{}).first;
         }
         Room& room = roomIt->second;
         room.lastActivityMs = _totalMs;
-
-        const uint32_t senderAddr = from.sin_addr.s_addr;
-        const uint16_t senderPort = from.sin_port;// already network-byte-order
 
         // Find which slot this sender occupies (or assign one).
         int senderIdx = -1;
@@ -194,6 +199,33 @@ void UdpRelay::_evictStaleRooms() {
         if (_totalMs - it->second.lastActivityMs > kRoomTimeoutMs) {
             spdlog::debug("UdpRelay: evicting idle room {}", it->first);
             it = _rooms.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+bool UdpRelay::_allowNewRoom(uint32_t senderAddr) {
+    IpBudget& budget = _ipBudgets[senderAddr];
+    if (_totalMs - budget.windowStartMs >= rateLimitWindowMs) {
+        budget.windowStartMs = _totalMs;
+        budget.roomsThisWindow = 0;
+    }
+    if (budget.roomsThisWindow >= maxNewRoomsPerIpPerWindow) {
+        spdlog::debug("UdpRelay: rate-limiting new-room request from {:#010x}", senderAddr);
+        return false;
+    }
+    budget.roomsThisWindow++;
+    return true;
+}
+
+void UdpRelay::_evictStaleIpBudgets() {
+    // A budget whose window closed a full window ago hasn't tried to open a
+    // room since; forgetting it is safe (a fresh attempt just starts a new
+    // window) and keeps this map from growing forever with one-off senders.
+    for (auto it = _ipBudgets.begin(); it != _ipBudgets.end();) {
+        if (_totalMs - it->second.windowStartMs > rateLimitWindowMs) {
+            it = _ipBudgets.erase(it);
         } else {
             ++it;
         }

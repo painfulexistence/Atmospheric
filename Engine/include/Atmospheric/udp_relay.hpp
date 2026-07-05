@@ -24,6 +24,15 @@
 //     sender address (handles mobile clients rebinding after a network switch).
 //   - Rooms with no activity for kRoomTimeoutMs milliseconds are removed.
 //
+// Abuse mitigation: UDP has no handshake, so anyone can send a datagram
+// claiming any roomId. maxRooms bounds total memory; maxNewRoomsPerIpPerWindow
+// additionally throttles how fast any single source address can open new
+// rooms, so one misbehaving client can't burn through the whole room budget
+// and lock out real players. Neither defends against a distributed flood
+// from many source addresses at once — that needs network-layer mitigation
+// (firewalling the port to known ranges, a provider's DDoS protection, or a
+// UDP-aware proxy like Cloudflare Spectrum in front of the relay).
+//
 // Usage (headless relay process — see Examples/RelayServer):
 //   UdpRelay relay;
 //   relay.Start(9000);
@@ -47,6 +56,12 @@ public:
     // Cap on simultaneous rooms; packets that would create a room beyond this
     // are dropped. Guards the room map against packet-flood memory growth.
     int maxRooms = 1024;
+
+    // Per-source-IP limit on how many NEW rooms may be created per
+    // rateLimitWindowMs. Packets to an already-open room (ordinary gameplay
+    // traffic) are never throttled — only the act of creating a room is.
+    int maxNewRoomsPerIpPerWindow = 5;
+    uint32_t rateLimitWindowMs = 60'000;// 1 minute
 
     // port 0 binds an OS-assigned ephemeral port; BoundPort() reports it.
     bool Start(uint16_t port);
@@ -76,6 +91,10 @@ private:
         Peer peers[2];
         uint32_t lastActivityMs = 0;
     };
+    struct IpBudget {
+        uint32_t windowStartMs = 0;
+        int roomsThisWindow = 0;
+    };
 
 #if defined(_WIN32)
     using SocketHandle = uintptr_t;
@@ -91,9 +110,12 @@ private:
     uint32_t _totalMs = 0;// accumulated from Process(dt)
 
     std::unordered_map<uint32_t, Room> _rooms;// roomId → Room
+    std::unordered_map<uint32_t, IpBudget> _ipBudgets;// source addr → rate-limit state
 
     void _pump();
     void _evictStaleRooms();
+    void _evictStaleIpBudgets();
+    bool _allowNewRoom(uint32_t senderAddr);
     void _forwardTo(const Peer& dst, const uint8_t* payload, int len);
 };
 

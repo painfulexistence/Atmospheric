@@ -116,6 +116,23 @@ int main() {
     REQUIRE(client2.state == LockstepNet::State::Running);
     std::printf("stale-peer rebind ok\n");
 
+    // ── 5: per-source-IP new-room rate limit ────────────────────────────────
+    // Every peer in this test shares 127.0.0.1 (same process). Room kRoomId
+    // above already consumed one slot of that address's budget; tighten the
+    // limit so the next attempt trips it regardless of exactly how many
+    // rooms earlier steps happened to open.
+    relay.maxNewRoomsPerIpPerWindow = 2;
+    const int roomsBeforeLimit = relay.RoomCount();
+    LockstepNet limited1, limited2;
+    REQUIRE(limited1.StartRelayHost("127.0.0.1", port, 100, kSeed, kDelay));// 2nd new room — allowed
+    REQUIRE(limited2.StartRelayHost("127.0.0.1", port, 101, kSeed, kDelay));// 3rd new room — rate-limited
+    for (int i = 0; i < 20; i++)
+        step(relay, &limited1, &limited2);
+    REQUIRE(relay.RoomCount() == roomsBeforeLimit + 1);// only room 100 was created; 101 was dropped
+    limited1.Shutdown();
+    limited2.Shutdown();
+    std::printf("per-IP new-room rate limit ok\n");
+
     host.Shutdown();
     client2.Shutdown();
     relay.Stop();
