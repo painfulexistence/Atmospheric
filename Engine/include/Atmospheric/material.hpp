@@ -49,6 +49,22 @@ public:
     RenderQueue renderQueue = RenderQueue::Opaque;
     int renderQueueOffset = 0;// Fine-tune rendering order within queue
 
+    // ── Planar reflection (opt-in) ──────────────────────────────────────────
+    // When enabled, PlanarReflectionPass re-renders the scene mirrored about
+    // this object's plane — the plane through the object's position with the
+    // object transform's up (+Y) axis as its normal — into an offscreen
+    // RenderTarget the surface shader then samples. This lives on the base
+    // Material (not WaterMaterial) so any flat surface can become reflective:
+    // water today, a wall mirror later is just planarReflection=true plus a
+    // shader that samples PlanarReflectionPass's RT. The reflection RT itself
+    // is owned by the pass, never by a material (materials are shareable
+    // value-ish objects; GPU targets are per-backend resources).
+    // Current pass limitation: one reflection plane per frame (the first
+    // enabled draw wins); see PlanarReflectionPass.
+    bool planarReflection = false;
+    float reflectionStrength = 0.6f;// blend weight toward the mirror image at grazing angles
+    float reflectionDistortion = 0.02f;// normal-driven UV wobble (waves); 0 for a perfect mirror
+
     int GetFinalRenderQueue() const {
         return static_cast<int>(renderQueue) + renderQueueOffset;
     }
@@ -87,6 +103,7 @@ public:
     WaterMaterial() : Material(MaterialProps{}) {
         renderQueue = RenderQueue::Transparent;
         cullFaceEnabled = false;
+        planarReflection = true;// water reflects the sky/terrain by default
     }
 };
 

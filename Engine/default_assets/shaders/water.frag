@@ -18,6 +18,14 @@ uniform vec3      u_deepColor;
 uniform vec3      u_shallowColor;
 uniform float     u_beerCoef;
 
+// Planar reflection, rendered by PlanarReflectionPass. u_reflStrength is 0
+// when the pass is inactive or the material opted out, which fully disables
+// the blend (the sampler unit then holds no meaningful texture).
+uniform sampler2D u_reflectionTex;
+uniform mat4      u_reflViewProj;
+uniform float     u_reflStrength;
+uniform float     u_reflDistortion;
+
 out vec4 fragColor;
 
 vec3 reconstructWorldPos(vec2 screenUV, float depth) {
@@ -53,10 +61,26 @@ void main() {
     float fresnel = pow(1.0 - max(dot(norm, viewDir), 0.0), 5.0);
 
     col = mix(col, col * diff * u_lightColor + vec3(1.0) * spec * u_lightColor, 0.2);
-    col = mix(col, vec3(1.0), fresnel * 0.5);
+
+    // Planar reflection: project this surface point with the mirrored
+    // camera's viewProj and sample the reflection RT there, wobbled by the
+    // wave normal. Strongest at grazing angles (fresnel), like the old
+    // white highlight it replaces.
+    float reflAmount = 0.0;
+    if (u_reflStrength > 0.0) {
+        vec4 reflClip = u_reflViewProj * vec4(v_worldPos, 1.0);
+        vec2 reflUV   = reflClip.xy / reflClip.w * 0.5 + 0.5;
+        reflUV       += norm.xz * u_reflDistortion;
+        vec3 reflCol  = texture(u_reflectionTex, clamp(reflUV, vec2(0.001), vec2(0.999))).rgb;
+        reflAmount    = clamp(u_reflStrength * (0.15 + 0.85 * fresnel), 0.0, 1.0);
+        col = mix(col, reflCol, reflAmount);
+    }
+    col = mix(col, vec3(1.0), fresnel * 0.5 * (1.0 - u_reflStrength));
 
     float dist = length(v_worldPos - u_cameraPos);
     col = mix(u_fogColor, col, clamp(exp(-u_fogDensity * dist * dist), 0.0, 1.0));
 
-    fragColor = vec4(col, smoothstep(0.1, 0.9, beerFactor + 0.3));
+    // Mirrored sky/terrain shouldn't fade out through the water's own
+    // transparency — raise opacity where the reflection dominates.
+    fragColor = vec4(col, max(smoothstep(0.1, 0.9, beerFactor + 0.3), reflAmount));
 }

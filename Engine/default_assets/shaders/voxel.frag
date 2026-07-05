@@ -14,6 +14,10 @@ uniform vec3  u_cameraPos;
 
 uniform int   u_paletteIndex;  // 0-5, default 4 (VX Palette 5)
 
+// World-space clip plane (n, d) used by PlanarReflectionPass to cut away
+// geometry below the mirror plane; all-zero disables (dot == 0 is kept).
+uniform vec4  u_clipPlane;
+
 out vec4 fragColor;
 
 // Cosine colour palette: a + b * cos(2π * (c*t + d))
@@ -44,6 +48,10 @@ vec3 palette(float t) {
 }
 
 void main() {
+    if (dot(u_clipPlane.xyz, v_worldPos) + u_clipPlane.w < 0.0) {
+        discard;
+    }
+
     vec3 norm = normalize(v_normal);
 
     float diff = max(dot(norm, normalize(u_lightDir)), 0.0);

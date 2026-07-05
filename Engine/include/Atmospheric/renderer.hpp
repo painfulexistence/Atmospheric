@@ -38,6 +38,21 @@ struct RenderCommand {
     glm::mat4 transform;
 };
 
+// Camera/target override consumed by the scene passes (Skybox, Sun,
+// VoxelChunk) so PlanarReflectionPass can re-render the world from a mirrored
+// camera into an offscreen RenderTarget. Renderer::viewOverride is null while
+// rendering the main view.
+struct RenderViewOverride {
+    glm::mat4 view{ 1.0f };
+    glm::mat4 proj{ 1.0f };
+    glm::vec3 eyePos{ 0.0f };
+    RenderTarget* target = nullptr;// render here instead of sceneRT
+    // World-space clip plane (n, d): fragments with dot(n, P) + d < 0 are
+    // discarded. All-zero disables clipping (dot == 0 is kept).
+    glm::vec4 clipPlane{ 0.0f };
+    bool flipCull = false;// mirrored views reverse triangle winding
+};
+
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "gpu_canvas_pass.hpp"
 #endif
@@ -265,7 +280,9 @@ public:
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
-    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
+    void _initGPU(
+        WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount, WGPUCullMode cullMode
+    );
     // Grows _drawUniformBuf/_uniformBG to fit at least drawCount dynamic-offset slots.
     void _ensureDrawCapacity(uint32_t drawCount);
     WGPUDevice _gpuDevice = nullptr;
@@ -310,7 +327,66 @@ private:
     // mesh, mirrors ForwardOpaquePass/VoxelChunkPass's pattern.
     WGPUBuffer _drawUniformBuf = nullptr;
     uint32_t _drawSlotCapacity = 0;
+
+    // Planar-reflection texture (group 1). When PlanarReflectionPass is
+    // inactive a 1x1 black fallback is bound instead; the per-draw
+    // reflection strength is zeroed so the sample is never visible. The bind
+    // group is rebuilt whenever the bound WGPUTexture changes (RT resize).
+    WGPUBindGroupLayout _reflBGL = nullptr;
+    WGPUSampler _reflSampler = nullptr;
+    WGPUTexture _reflFallbackTex = nullptr;
+    WGPUBindGroup _reflBG = nullptr;
+    WGPUTexture _reflBGSource = nullptr;
 #endif
+};
+
+// Re-renders the world (Skybox + Sun + VoxelChunk content) mirrored about a
+// reflective material's plane into an offscreen RenderTarget. Consumed by
+// WaterPass today; a future mirror surface only needs planarReflection=true
+// on its material plus a shader that samples GetReflectionRT().
+//
+// The reflection plane is derived from the reflective object's transform:
+// the plane through its position with its up (+Y) axis as normal. One plane
+// is supported per frame — the first draw whose material opts in wins.
+// PRIM opaque meshes (ForwardOpaquePass content) are not yet re-rendered.
+class PlanarReflectionPass : public RenderPass {
+public:
+    PlanarReflectionPass();
+    ~PlanarReflectionPass() override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+    // Reflection RT resolution relative to the window's physical size.
+    float resolutionScale = 0.5f;
+
+    // True when a reflection was rendered this frame (reflective material
+    // found and the camera is on the reflective side of the plane).
+    bool IsActive() const {
+        return _active;
+    }
+    RenderTarget* GetReflectionRT() const {
+        return _rt.get();
+    }
+    // proj * mirroredView of the frame this RT was rendered with; project a
+    // world position with it to get the RT sample position in clip space.
+    const glm::mat4& GetReflectionViewProj() const {
+        return _reflViewProj;
+    }
+
+private:
+    std::unique_ptr<RenderTarget> _rt;
+    glm::mat4 _reflViewProj{ 1.0f };
+    bool _active = false;
+
+    // Private sub-pass instances rather than the RenderGraph's: under WebGPU
+    // every pass writes its single per-frame uniform buffer via
+    // wgpuQueueWriteBuffer, whose ordering is relative to Queue::Submit — so
+    // executing the graph's own instances a second time per frame would make
+    // both views observe only the last-written uniforms. Separate instances
+    // own separate buffers (and, for VoxelChunkPass, a front-face-culling
+    // pipeline for the mirrored winding).
+    std::unique_ptr<SkyboxPass> _skybox;
+    std::unique_ptr<SunPass> _sun;
+    std::unique_ptr<VoxelChunkPass> _voxel;
 };
 
 // Pyramid bloom: threshold → downsample → upsample → composite.
@@ -511,6 +587,10 @@ public:
 
     glm::vec4 clearColor = glm::vec4(0.15f, 0.183f, 0.2f, 1.0f);
     bool wireframeEnabled = false;
+
+    // Non-null only while PlanarReflectionPass drives the scene passes with a
+    // mirrored camera; passes fall back to the main camera + sceneRT when null.
+    const RenderViewOverride* viewOverride = nullptr;
 
     // Abstract render targets (backend-independent)
     std::unique_ptr<RenderTarget> sceneRT;
