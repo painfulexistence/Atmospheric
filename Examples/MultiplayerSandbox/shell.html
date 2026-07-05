@@ -545,6 +545,12 @@
                 window._rtcChannel = e.channel;
                 attachChannel(e.channel, ['--join', '0.0.0.0']);
             };
+            _pc.oniceconnectionstatechange = function() {
+                if (_pc.iceConnectionState === 'failed' ||
+                    _pc.iceConnectionState === 'disconnected') {
+                    setStatus('Connection failed. Make sure you and your host are not both on the same machine, or try a different network.', true);
+                }
+            };
             return _pc.setRemoteDescription(desc)
                 .then(function() { return _pc.createAnswer(); })
                 .then(function(a) { return _pc.setLocalDescription(a); })
@@ -639,6 +645,13 @@
                     })
                     .then(function(gathered) {
                         _pc = gathered.pc;
+                        _pc.oniceconnectionstatechange = function() {
+                            if (_pc.iceConnectionState === 'failed' ||
+                                _pc.iceConnectionState === 'disconnected') {
+                                setStatus('Connection failed. Make sure your friend is not on the same machine, or try a different network.', true);
+                                document.getElementById('btn-connect').disabled = false;
+                            }
+                        };
                         window._rtcChannel = gathered.ch;
                         attachChannel(gathered.ch, ['--host', '--seed', String(seed)]);
                         return compress({ type: _pc.localDescription.type,
