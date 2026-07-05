@@ -17,8 +17,8 @@
 // a captured 'this' pointer.
 
 #include "file_system.hpp"
-#include "log.hpp"
 #include "console_subsystem.hpp"
+#include "log.hpp"
 
 #include <cstdio>
 #include <cstring>

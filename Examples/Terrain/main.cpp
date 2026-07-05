@@ -1,5 +1,4 @@
 #include "Atmospheric.hpp"
-#include "log.hpp"
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Elements/ElementFormControlSelect.h>
 #include <array>
@@ -183,8 +182,10 @@ class TerrainDemo : public Application {
         ApplyProcedural(_showProcedural);
         ApplyPalette(_paletteIndex);
 
-        Log::Info("Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, ESC "
-            "quit.");
+        Log::Info(
+            "Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, ESC "
+            "quit."
+        );
     }
 
     void OnUpdate(float dt, float /*time*/) override {

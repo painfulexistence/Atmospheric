@@ -1,5 +1,4 @@
 #include "Atmospheric.hpp"
-#include "log.hpp"
 #include "components.hpp"
 
 // Camera navigation is FlyCameraComponent; world streaming and rendering are

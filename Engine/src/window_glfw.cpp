@@ -1,5 +1,5 @@
-#include "window.hpp"
 #include "log.hpp"
+#include "window.hpp"
 #include <GLFW/glfw3.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>

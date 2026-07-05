@@ -1,6 +1,6 @@
 #include "physics_debug_drawer.hpp"
-#include "log.hpp"
 #include "graphics_subsystem.hpp"
+#include "log.hpp"
 
 void PhysicsDebugDrawer::reportErrorWarning(const char* text) {
     Log::Info("Bullet Warning: {}", text);

@@ -1,10 +1,10 @@
 #include "scene_loader.hpp"
-#include "log.hpp"
 #include "action.hpp"
 #include "action_manager.hpp"
 #include "application.hpp"
 #include "asset_manager.hpp"
 #include "game_object.hpp"
+#include "log.hpp"
 #include "sprite_component.hpp"
 #include "text_2d_component.hpp"
 #include "text_3d_component.hpp"
@@ -80,9 +80,7 @@ SceneLoadResult SceneLoader::Load(const std::string& filename, const SceneLoadCo
 
     SceneLoadResult res = LoadFromBuffer(buffer.data(), buffer.size(), actualConfig);
     if (res.success) {
-        Log::Info(
-            "SceneLoader: CSB file '{}' loaded successfully ({} nodes created)", filename, res.allNodes.size()
-        );
+        Log::Info("SceneLoader: CSB file '{}' loaded successfully ({} nodes created)", filename, res.allNodes.size());
     }
     return res;
 }
@@ -304,9 +302,9 @@ void SceneLoader::ParseAnimations(
 
             if (!parsed) {
                 Log::Warn(
-                        "SceneLoader: RotationSkew timeline found on '{}' but frames contain no IntFrame data.",
-                        target->GetName()
-                    );
+                    "SceneLoader: RotationSkew timeline found on '{}' but frames contain no IntFrame data.",
+                    target->GetName()
+                );
             }
         } else if (property == "CColor") {
             for (auto frame : *timeline->frames()) {

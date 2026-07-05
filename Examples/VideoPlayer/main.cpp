@@ -1,5 +1,4 @@
 #include "Atmospheric.hpp"
-#include "log.hpp"
 #include "Atmospheric/gfx_factory.hpp"
 
 // Path or HTTP/HTTPS/RTSP URL passed in as the first CLI argument.
@@ -39,11 +38,11 @@ class VideoPlayerDemo : public Application {
             Log::Info("Playing '{}' ({:.1f} s)", gvideoPath, _m_player.getDuration());
         } else {
             Log::Warn(
-                    "Could not open '{}'. "
-                    "Make sure the engine was built with FFmpeg support "
-                    "and that the path / URL is valid.",
-                    gvideoPath
-                );
+                "Could not open '{}'. "
+                "Make sure the engine was built with FFmpeg support "
+                "and that the path / URL is valid.",
+                gvideoPath
+            );
         }
 
         // Fullscreen 2D sprite.  CanvasPass uses top-left origin, Y-down, pixels.

@@ -1,5 +1,4 @@
 #include "graphics_subsystem.hpp"
-#include "log.hpp"
 #include "Atmospheric/window.hpp"
 #include "application.hpp"
 #include "asset_manager.hpp"
@@ -10,6 +9,7 @@
 #include "gfx_factory.hpp"
 #include "gl_render_target.hpp"
 #include "light_component.hpp"
+#include "log.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_component.hpp"

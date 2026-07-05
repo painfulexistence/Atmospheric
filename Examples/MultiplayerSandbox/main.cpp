@@ -1,5 +1,4 @@
 #include "Atmospheric.hpp"
-#include "log.hpp"
 #include "Atmospheric/gfx_factory.hpp"
 #include "Atmospheric/rmlui_manager.hpp"
 #include "components.hpp"
@@ -319,11 +318,8 @@ class NoitaLikeGame : public Application {
             const GameSim& sim = _netComp->GetSim();
             if (sim.tick >= gcli.autotestTicks) {
                 Log::Info(
-                        "AUTOTEST tick={} checksum={:#010x} desync={}",
-                        sim.tick,
-                        sim.Checksum(),
-                        _netComp->GetNet().desync
-                    );
+                    "AUTOTEST tick={} checksum={:#010x} desync={}", sim.tick, sim.Checksum(), _netComp->GetNet().desync
+                );
                 _netComp->Shutdown();
                 Quit();
             }

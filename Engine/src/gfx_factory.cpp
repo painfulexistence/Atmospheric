@@ -1,9 +1,9 @@
 #include "gfx_factory.hpp"
-#include "log.hpp"
 #include "console_subsystem.hpp"
 #include "gl_buffer.hpp"
 #include "gl_render_target.hpp"
 #include "globals.hpp"// glad / GLES3
+#include "log.hpp"
 #include <vector>
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)

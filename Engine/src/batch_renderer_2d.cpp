@@ -1,9 +1,9 @@
 #include "batch_renderer_2d.hpp"
-#include "log.hpp"
 #include "asset_manager.hpp"
 #include "console_subsystem.hpp"
 #include "gfx_factory.hpp"
 #include "globals.hpp"// provides glad on native, GLES3/gl3.h on Emscripten
+#include "log.hpp"
 #include "shader.hpp"
 #include <array>
 #include <fmt/format.h>

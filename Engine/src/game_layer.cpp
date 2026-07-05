@@ -13,7 +13,6 @@ void GameLayer::OnUpdate(float dt) {
     for (auto& entity : _app->GetEntities()) {
         entity->Tick(dt);
     }
-
 }
 
 void GameLayer::OnRender(float dt) {

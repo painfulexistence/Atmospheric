@@ -1,5 +1,4 @@
 #include "renderer.hpp"
-#include "log.hpp"
 #include "asset_manager.hpp"
 #include "batch_renderer_2d.hpp"
 #include "canvas_drawable.hpp"
@@ -9,6 +8,7 @@
 #include "gl_buffer.hpp"
 #include "gl_render_target.hpp"
 #include "graphics_subsystem.hpp"
+#include "log.hpp"
 #include "particle_subsystem.hpp"
 #include "physics_subsystem_2d.hpp"
 #include "window.hpp"
@@ -1924,7 +1924,8 @@ void WorldCanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
         std::vector<CanvasDrawable*> worldDrawables;
         for (auto* drawable : ctx->canvasDrawables) {
             if (!drawable->gameObject->isActive) continue;
-            if (static_cast<int>(drawable->GetLayer()) < static_cast<int>(CanvasLayer::LAYER_WORLD_2D)) worldDrawables.push_back(drawable);
+            if (static_cast<int>(drawable->GetLayer()) < static_cast<int>(CanvasLayer::LAYER_WORLD_2D))
+                worldDrawables.push_back(drawable);
         }
         if (worldDrawables.empty()) return;
         if (!renderer.sceneRT) return;
@@ -2342,7 +2343,9 @@ void UIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder*
         if (!swapchainView) return;// surface not ready (device still initializing)
 
         auto logicalSize = Window::Get()->GetLogicalSize();
-        glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(logicalSize.width), static_cast<float>(logicalSize.height), 0.0f, -1.0f, 1.0f);
+        glm::mat4 projection = glm::ortho(
+            0.0f, static_cast<float>(logicalSize.width), static_cast<float>(logicalSize.height), 0.0f, -1.0f, 1.0f
+        );
 
         // UIPass runs after PostProcessPass, which has already resolved
         // sceneRT to the swapchain — record onto the swapchain view directly

@@ -1,7 +1,7 @@
 #pragma once
 #include "console_subsystem.hpp"
-#include "log.hpp"
 #include "globals.hpp"
+#include "log.hpp"
 #include <cstring>
 
 // GL_TIMESTAMP / glQueryCounter require OpenGL ≥ 3.3 (GL_ARB_timer_query,

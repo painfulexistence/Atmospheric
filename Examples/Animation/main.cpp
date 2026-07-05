@@ -1,5 +1,4 @@
 #include "Atmospheric.hpp"
-#include "log.hpp"
 
 class CSBDemo : public Application {
     using Application::Application;

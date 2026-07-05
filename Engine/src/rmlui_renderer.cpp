@@ -1,6 +1,6 @@
 #include "rmlui_renderer.hpp"
-#include "log.hpp"
 #include "gfx_factory.hpp"
+#include "log.hpp"
 #include "renderer.hpp"
 #include <RmlUi/Core.h>
 #include <spdlog/spdlog.h>

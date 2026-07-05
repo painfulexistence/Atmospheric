@@ -1,5 +1,4 @@
 #include "Atmospheric.hpp"
-#include "log.hpp"
 #include "components.hpp"
 #if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
 #include <SDL3/SDL_main.h>

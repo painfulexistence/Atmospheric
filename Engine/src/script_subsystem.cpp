@@ -1,11 +1,11 @@
 #include "script_subsystem.hpp"
-#include "log.hpp"
 #include "Atmospheric/file_system.hpp"
 #include "application.hpp"
 #include "asset_manager.hpp"
 #include "camera_component.hpp"
 #include "game_object.hpp"
 #include "light_component.hpp"
+#include "log.hpp"
 #include "material.hpp"
 #include "scene.hpp"
 #include <string>

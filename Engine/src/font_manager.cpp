@@ -1,6 +1,6 @@
 #define STB_TRUETYPE_IMPLEMENTATION
-#include "stb_truetype.h"
 #include "log.hpp"
+#include "stb_truetype.h"
 
 #include "Atmospheric/font_manager.hpp"
 #include "Atmospheric/gfx_factory.hpp"
@@ -39,11 +39,13 @@ FontHandle FontManager::LoadFont(const std::string& path, float baseSize, int fi
         return 0;
     }
 
-    Log::Info("[FontManager] Loaded font: {} (size: {}, texture: {}x{})",
+    Log::Info(
+        "[FontManager] Loaded font: {} (size: {}, texture: {}x{})",
         path,
         baseSize,
         font.textureWidth,
-        font.textureHeight);
+        font.textureHeight
+    );
 
     return id;
 }

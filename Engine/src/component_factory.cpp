@@ -1,6 +1,6 @@
 #include "component_factory.hpp"
-#include "log.hpp"
 #include "game_object.hpp"
+#include "log.hpp"
 #include <spdlog/spdlog.h>
 
 std::unordered_map<std::string, ComponentFactory::CreatorFunc>& ComponentFactory::GetRegistry() {

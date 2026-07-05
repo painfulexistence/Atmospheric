@@ -16,8 +16,7 @@ private:
     std::function<void()> _cb;
 };
 
-UIPageComponent::UIPageComponent(GameObject* owner, std::string documentPath)
-  : _documentPath(std::move(documentPath)) {
+UIPageComponent::UIPageComponent(GameObject* owner, std::string documentPath) : _documentPath(std::move(documentPath)) {
     gameObject = owner;
 }
 
@@ -52,7 +51,7 @@ void UIPageComponent::AddListener(Rml::Element* element, const std::string& even
 }
 
 void UIPageComponent::AddListener(
-  const std::string& elementId, const std::string& event, std::function<void()> callback
+    const std::string& elementId, const std::string& event, std::function<void()> callback
 ) {
     AddListener(GetElement(elementId), event, std::move(callback));
 }

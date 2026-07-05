@@ -1,7 +1,7 @@
 #include "animator_2d.hpp"
-#include "log.hpp"
 #include "console_subsystem.hpp"
 #include "game_object.hpp"
+#include "log.hpp"
 #include "sprite_component.hpp"
 
 Animator2D::Animator2D(GameObject* gameObject) {

@@ -1,5 +1,5 @@
-#include "window.hpp"
 #include "log.hpp"
+#include "window.hpp"
 #include <SDL3/SDL.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -12,10 +12,10 @@
 // frame-loop boundaries. Useful for chasing INVALID_OPERATION on GLES3 ports
 // where the offending call lies outside any renderer pass.
 #ifdef AE_GL_DEBUG_PROBES
-#define AE_GL_PROBE(name)                                                                   \
-    do {                                                                                    \
-        GLenum _e;                                                                          \
-        while ((_e = glGetError()) != GL_NO_ERROR)                                          \
+#define AE_GL_PROBE(name)                                  \
+    do {                                                   \
+        GLenum _e;                                         \
+        while ((_e = glGetError()) != GL_NO_ERROR)         \
             Log::Error("GL probe [{}]: 0x{:x}", name, _e); \
     } while (0)
 #else

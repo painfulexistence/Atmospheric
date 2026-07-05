@@ -1,6 +1,6 @@
 #include "rmlui_system.hpp"
-#include "log.hpp"
 #include "console_subsystem.hpp"
+#include "log.hpp"
 #include "window.hpp"
 #include <fmt/format.h>
 

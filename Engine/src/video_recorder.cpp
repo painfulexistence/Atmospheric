@@ -1,6 +1,6 @@
 #include "video_recorder.hpp"
-#include "log.hpp"
 #include "audio_subsystem.hpp"
+#include "log.hpp"
 #include <fmt/format.h>
 
 #ifdef AE_HAS_FFMPEG
@@ -356,13 +356,15 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
         return false;
     }
 
-    Log::Info("[VideoRecorder] Started: {} ({}x{} @ {} fps, encoder: {}{}",
+    Log::Info(
+        "[VideoRecorder] Started: {} ({}x{} @ {} fps, encoder: {}{}",
         _config.outputPath,
         width,
         height,
         _config.fps,
         usedEncoder,
-        _audioActive ? ", AAC audio)" : ")");
+        _audioActive ? ", AAC audio)" : ")"
+    );
     return true;
 #endif
 }
@@ -514,10 +516,12 @@ bool VideoRecorder::initAudioEncoder() {
         return false;
     }
 
-    Log::Info("[VideoRecorder] Audio track: AAC {} Hz, {} ch, {} kbps",
+    Log::Info(
+        "[VideoRecorder] Audio track: AAC {} Hz, {} ch, {} kbps",
         _config.audioSampleRate,
         _config.audioChannels,
-        _config.audioBitrate / 1000);
+        _config.audioBitrate / 1000
+    );
     return true;
 #endif
 }

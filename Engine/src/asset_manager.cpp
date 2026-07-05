@@ -1,9 +1,9 @@
 #include "asset_manager.hpp"
-#include "log.hpp"
 #include "console_subsystem.hpp"
 #include "file_system.hpp"
 #include "gfx_factory.hpp"
 #include "job_system.hpp"
+#include "log.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_builder.hpp"
@@ -695,9 +695,10 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
             }
             uint32_t texID = GfxFactory::UploadTexture2D(rgba, img->width, img->height);
             textures[oldCount + i] = texID;
-            _textureCache[regularPaths[j]] = {
-                texID, static_cast<uint32_t>(img->width), static_cast<uint32_t>(img->height), static_cast<size_t>(img->width) * img->height * 4
-            };
+            _textureCache[regularPaths[j]] = { texID,
+                                               static_cast<uint32_t>(img->width),
+                                               static_cast<uint32_t>(img->height),
+                                               static_cast<size_t>(img->width) * img->height * 4 };
         }
         return;
     }
@@ -784,9 +785,8 @@ TextureHandle AssetManager::CreateTexture(const std::string& path) {
     auto image = LoadImage(redirectedPath);
     if (!image) {
         Log::Warn(
-                "AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.",
-                redirectedPath
-            );
+            "AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.", redirectedPath
+        );
         GLuint fallbackTex = defaultTextures.empty() ? 0u : defaultTextures[0];
         _textureCache[redirectedPath] = { fallbackTex, 0, 0, 0 };
         return TextureHandle(fallbackTex);
@@ -1019,7 +1019,9 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
             ))
             throw std::runtime_error(fmt::format("KTX2 transcode_image_level failed (level 0): {}", path));
 
-        uint32_t texID = GfxFactory::UploadTexture2D(buf.data(), static_cast<int>(info0._orig_width), static_cast<int>(info0._orig_height));
+        uint32_t texID = GfxFactory::UploadTexture2D(
+            buf.data(), static_cast<int>(info0._orig_width), static_cast<int>(info0._orig_height)
+        );
         Log::Info(
             "Loaded KTX2 texture '{}' ({}×{}, WebGPU RGBA32 fallback, no mips)",
             path,
@@ -1416,10 +1418,10 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
 
             if (vertBase + vertCount > 65535) {
                 Log::Warn(
-                        "LoadGLTF '{}': vertex count exceeds uint16_t limit, primitive skipped. "
-                        "Consider splitting the mesh or upgrading to 32-bit indices.",
-                        path
-                    );
+                    "LoadGLTF '{}': vertex count exceeds uint16_t limit, primitive skipped. "
+                    "Consider splitting the mesh or upgrading to 32-bit indices.",
+                    path
+                );
                 continue;
             }
 
@@ -1530,7 +1532,9 @@ TextureHandle AssetManager::CreateHeightmapTexture(
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
         uint32_t texID = GfxFactory::UploadTextureR16F(grid.data(), width, height);
         textures.push_back(texID);
-        _textureCache[name] = { texID, static_cast<uint32_t>(width), static_cast<uint32_t>(height), static_cast<size_t>(width) * height * 2 };
+        _textureCache[name] = {
+            texID, static_cast<uint32_t>(width), static_cast<uint32_t>(height), static_cast<size_t>(width) * height * 2
+        };
         return TextureHandle(texID);
     }
 #endif

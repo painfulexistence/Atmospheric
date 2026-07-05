@@ -1,6 +1,6 @@
 #include "../lua_application.hpp"
-#include "log.hpp"
 #include "../scriptable_component.hpp"
+#include "log.hpp"
 
 void BindWorldAPI(sol::state& lua, LuaApplication* app) {
     sol::table atmos = lua["atmos"];

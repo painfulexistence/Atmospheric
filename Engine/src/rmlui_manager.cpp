@@ -1,6 +1,6 @@
 #include "rmlui_manager.hpp"
-#include "log.hpp"
 #include "file_system.hpp"
+#include "log.hpp"
 #include "rmlui_renderer.hpp"
 #include "rmlui_system.hpp"
 #include <RmlUi/Core.h>

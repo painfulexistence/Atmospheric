@@ -1,11 +1,11 @@
 #include "text_2d_component.hpp"
-#include "log.hpp"
 #include "application.hpp"
 #include "batch_renderer_2d.hpp"
 #include "console_subsystem.hpp"
 #include "game_object.hpp"
 #include "graphics_subsystem.hpp"
 #include "imgui.h"
+#include "log.hpp"
 
 Text2DComponent::Text2DComponent(GameObject* gameObject, const Text2DProps& props) : CanvasDrawable(gameObject) {
     _text = props.text;

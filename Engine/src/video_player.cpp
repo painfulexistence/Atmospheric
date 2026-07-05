@@ -1,6 +1,6 @@
 #include "video_player.hpp"
-#include "log.hpp"
 #include "Atmospheric/file_system.hpp"
+#include "log.hpp"
 #include <fmt/format.h>
 
 #ifdef AE_HAS_FFMPEG
@@ -646,7 +646,9 @@ bool VideoPlayer::initDecoder(const std::string& path) {
                         static_cast<unsigned int>(ff.audioSampleRate), 16, static_cast<unsigned int>(ff.audioChannels)
                     );
                     ff.audioReady = true;
-                    Log::Info("[VideoPlayer] Audio: {} Hz, {} ch ({})", ff.audioSampleRate, ff.audioChannels, acodec->name);
+                    Log::Info(
+                        "[VideoPlayer] Audio: {} Hz, {} ch ({})", ff.audioSampleRate, ff.audioChannels, acodec->name
+                    );
                 } else {
                     Log::Error("[VideoPlayer] swr init failed; audio disabled");
                     if (ff.audioSwrCtx) {

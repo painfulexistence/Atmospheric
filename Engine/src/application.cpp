@@ -1383,7 +1383,8 @@ void Application::SaveScreenshot(const std::string& path) {
         FrameStats st = AnalyzeFrame(img.data.data(), img.width, img.height, img.channelCount);
         // Machine-readable marker consumed by scripts/smokeTest.sh (grepped from
         // stdout). Flushed so it survives the imminent auto-quit.
-        Log::Info("[Smoke] result path={} size={}x{} meanRGB={:.1f},{:.1f},{:.1f} spread={} blank={} write={}",
+        Log::Info(
+            "[Smoke] result path={} size={}x{} meanRGB={:.1f},{:.1f},{:.1f} spread={} blank={} write={}",
             path,
             img.width,
             img.height,
@@ -1392,7 +1393,8 @@ void Application::SaveScreenshot(const std::string& path) {
             st.meanB,
             st.spread,
             st.blank ? 1 : 0,
-            ok ? 1 : 0);
+            ok ? 1 : 0
+        );
         std::fflush(stdout);
         if (ok)
             Log::Info("Screenshot saved: {} ({}x{})", path, img.width, img.height);
@@ -1467,18 +1469,15 @@ extern "C" {
             jsHeapSizeMB = static_cast<double>(jsHeapBytes) / mb;
         }
 
-        Log::Info("========== Memory Stats ==========")
-        Log::Info("WASM Heap Size     : {:.2f} MB", heapSize / mb)
-        Log::Info("dlmalloc Arena     : {:.2f} MB", mi.arena / mb)
-        Log::Info("Used               : {:.2f} MB", mi.uordblks / mb)
-        Log::Info("Free               : {:.2f} MB", mi.fordblks / mb)
-        if (jsHeapSizeMB >= 0.0) {
+        Log::Info("========== Memory Stats ==========") Log::Info("WASM Heap Size     : {:.2f} MB", heapSize / mb)
+            Log::Info("dlmalloc Arena     : {:.2f} MB", mi.arena / mb)
+                Log::Info("Used               : {:.2f} MB", mi.uordblks / mb)
+                    Log::Info("Free               : {:.2f} MB", mi.fordblks / mb) if (jsHeapSizeMB >= 0.0) {
             Log::Info("JS Heap Size       : {:.2f} MB", jsHeapSizeMB)
-        } else {
-            Log::Info("JS Heap Size       : N/A (unsupported)")
         }
-        Log::Info("VRAM (textures)    : {:.2f} MB", vramBytes / mb)
-        Log::Info("==================================")
+        else {
+            Log::Info("JS Heap Size       : N/A (unsupported)")
+        } Log::Info("VRAM (textures)    : {:.2f} MB", vramBytes / mb) Log::Info("==================================")
     }
 
 }// extern "C"

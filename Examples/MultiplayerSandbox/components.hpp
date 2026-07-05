@@ -1,6 +1,5 @@
 #pragma once
 #include "Atmospheric.hpp"
-#include "log.hpp"
 #include "game_sim.hpp"
 #include "net_lockstep.hpp"
 #include <chrono>
