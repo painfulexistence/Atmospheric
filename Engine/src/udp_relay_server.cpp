@@ -76,9 +76,16 @@ bool UdpRelayServer::Start(uint16_t port) {
         _sock = kInvalidSocket;
         return false;
     }
+    if (port == 0) {
+        // Ephemeral bind — ask the OS which port it picked.
+        sockaddr_in bound{};
+        socklen_t   boundLen = sizeof(bound);
+        if (::getsockname(_sock, reinterpret_cast<sockaddr*>(&bound), &boundLen) == 0)
+            port = ntohs(bound.sin_port);
+    }
     _boundPort = port;
     _running   = true;
-    spdlog::info("UdpRelayServer: listening on UDP port {}", port);
+    spdlog::info("UdpRelayServer: listening on UDP port {}", _boundPort);
     return true;
 }
 
@@ -146,7 +153,14 @@ void UdpRelayServer::_pump() {
         const uint8_t* payload    = buf + 4;
         const int      payloadLen = n - 4;
 
-        Room& room = _rooms[roomId];
+        auto roomIt = _rooms.find(roomId);
+        if (roomIt == _rooms.end()) {
+            // New room — refuse beyond the cap so a packet flood with random
+            // roomIds can't grow the map without bound.
+            if (static_cast<int>(_rooms.size()) >= maxRooms) continue;
+            roomIt = _rooms.emplace(roomId, Room{}).first;
+        }
+        Room& room = roomIt->second;
         room.lastActivityMs = _totalMs;
 
         const uint32_t senderAddr = from.sin_addr.s_addr;
@@ -154,31 +168,47 @@ void UdpRelayServer::_pump() {
 
         // Find which slot this sender occupies (or assign one).
         int senderIdx = -1;
-        int otherIdx  = -1;
         for (int i = 0; i < 2; i++) {
             if (room.peers[i].valid &&
                 room.peers[i].addr == senderAddr &&
                 room.peers[i].port == senderPort) {
                 senderIdx = i;
-                otherIdx  = 1 - i;
                 break;
             }
         }
         if (senderIdx < 0) {
-            // New sender — register in the first empty slot.
+            // New sender — take the first empty slot.
             for (int i = 0; i < 2; i++) {
                 if (!room.peers[i].valid) {
-                    room.peers[i] = {senderAddr, senderPort, true};
                     senderIdx = i;
-                    otherIdx  = 1 - i;
                     break;
                 }
             }
         }
-        if (senderIdx < 0) continue; // room full, unknown sender — drop
+        if (senderIdx < 0) {
+            // Room full. A mobile client that switched networks re-appears as a
+            // new address while its old slot is still registered — allow the
+            // newcomer to replace a peer that has gone silent, but never a
+            // live one (that would let a roomId-guesser hijack the session).
+            int staleIdx = -1;
+            uint32_t oldestSeen = UINT32_MAX;
+            for (int i = 0; i < 2; i++) {
+                if (room.peers[i].lastSeenMs < oldestSeen) {
+                    oldestSeen = room.peers[i].lastSeenMs;
+                    staleIdx = i;
+                }
+            }
+            if (staleIdx >= 0 && _totalMs - oldestSeen > kPeerStaleMs) {
+                senderIdx = staleIdx;
+            } else {
+                continue; // both peers live — drop the unknown sender
+            }
+        }
 
-        // Forward bare payload to the other peer (if already registered).
-        if (otherIdx >= 0 && room.peers[otherIdx].valid)
+        room.peers[senderIdx] = {senderAddr, senderPort, true, _totalMs};
+
+        const int otherIdx = 1 - senderIdx;
+        if (room.peers[otherIdx].valid)
             _forwardTo(room.peers[otherIdx], payload, payloadLen);
     }
 }

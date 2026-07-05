@@ -21,6 +21,8 @@
 //   - A room is created automatically on the first packet received for a roomId.
 //   - The first sender is registered as peer A; the second distinct sender as peer B.
 //   - Once both peers are registered, packets flow bidirectionally.
+//   - A peer that has been silent for kPeerStaleMs can be replaced by a new
+//     sender address (handles mobile clients rebinding after a network switch).
 //   - Rooms with no activity for kRoomTimeoutMs milliseconds are removed.
 //
 // Usage (server build):
@@ -32,12 +34,18 @@
 
 class UdpRelayServer : public Server {
 public:
-    static constexpr uint32_t kRoomTimeoutMs = 60'000; // 1 minute idle → evict
+    static constexpr uint32_t kRoomTimeoutMs = 60'000; // 1 minute idle → evict room
+    static constexpr uint32_t kPeerStaleMs   = 5'000;  // silent this long → replaceable
+
+    // Cap on simultaneous rooms; packets that would create a room beyond this
+    // are dropped. Guards the room map against packet-flood memory growth.
+    int maxRooms = 1024;
 
     void Init(Application* app) override;
     void Process(float dt) override;
     void DrawImGui(float dt) override;
 
+    // port 0 binds an OS-assigned ephemeral port; BoundPort() reports it.
     bool Start(uint16_t port);
     void Stop();
 
@@ -50,6 +58,7 @@ private:
         uint32_t addr = 0;
         uint16_t port = 0;
         bool     valid = false;
+        uint32_t lastSeenMs = 0;
     };
     struct Room {
         Peer     peers[2];
