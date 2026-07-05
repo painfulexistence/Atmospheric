@@ -1469,15 +1469,18 @@ extern "C" {
             jsHeapSizeMB = static_cast<double>(jsHeapBytes) / mb;
         }
 
-        Log::Info("========== Memory Stats ==========") Log::Info("WASM Heap Size     : {:.2f} MB", heapSize / mb)
-            Log::Info("dlmalloc Arena     : {:.2f} MB", mi.arena / mb)
-                Log::Info("Used               : {:.2f} MB", mi.uordblks / mb)
-                    Log::Info("Free               : {:.2f} MB", mi.fordblks / mb) if (jsHeapSizeMB >= 0.0) {
-            Log::Info("JS Heap Size       : {:.2f} MB", jsHeapSizeMB)
+        Log::Info("========== Memory Stats ==========");
+        Log::Info("WASM Heap Size     : {:.2f} MB", heapSize / mb);
+        Log::Info("dlmalloc Arena     : {:.2f} MB", mi.arena / mb);
+        Log::Info("Used               : {:.2f} MB", mi.uordblks / mb);
+        Log::Info("Free               : {:.2f} MB", mi.fordblks / mb);
+        if (jsHeapSizeMB >= 0.0) {
+            Log::Info("JS Heap Size       : {:.2f} MB", jsHeapSizeMB);
+        } else {
+            Log::Info("JS Heap Size       : N/A (unsupported)");
         }
-        else {
-            Log::Info("JS Heap Size       : N/A (unsupported)")
-        } Log::Info("VRAM (textures)    : {:.2f} MB", vramBytes / mb) Log::Info("==================================")
+        Log::Info("VRAM (textures)    : {:.2f} MB", vramBytes / mb);
+        Log::Info("==================================");
     }
 
 }// extern "C"
