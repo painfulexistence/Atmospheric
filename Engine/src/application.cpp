@@ -33,7 +33,6 @@
 #include "text_2d_component.hpp"
 #include "text_3d_component.hpp"
 #include "transform_component.hpp"
-#include "ui_page_manager.hpp"
 #include "video_recorder.hpp"
 #include "window.hpp"
 #include <algorithm>
@@ -249,7 +248,6 @@ Application::Application(AppConfig config) : _config(config) {
 
     _assetManager = std::make_unique<AssetManager>();
     _rmlUi = std::make_unique<RmlUiManager>();
-    _uiPages = std::make_unique<UIPageManager>();
 
     PushLayer(new GameLayer(this));
 #ifndef NDEBUG
