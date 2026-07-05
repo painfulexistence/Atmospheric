@@ -447,7 +447,6 @@ public:
         bool active = false;// linked and its chain was rendered this frame
         bool seenThisFrame = false;// surface draw found in the queue this frame
         std::vector<std::unique_ptr<RenderTarget>> rts;// rts[i] = image after i+1 transits
-        std::vector<glm::mat4> viewProjs;// viewProj rts[i] was rendered with
     };
 
     bool AnyActive() const {
@@ -482,6 +481,10 @@ private:
     std::vector<std::unique_ptr<WorldReplay>> _replays;
     std::vector<PortalView> _views;
     bool _anyActive = false;
+
+    // GL: 1x1 black texture bound while a surface shows the void — sampling an
+    // unbound unit is undefined and trips macOS's "texture unloadable" warning.
+    GLuint _glFallbackTex = 0;
 
     PortalView& _viewFor(PortalMaterial* mat);
 

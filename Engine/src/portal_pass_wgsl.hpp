@@ -6,22 +6,25 @@
 // ── Portal surface ────────────────────────────────────────────────────────────
 // WebGPU-spec-guaranteed-safe minUniformBufferOffsetAlignment.
 constexpr uint32_t PORTAL_SURF_SLOT_STRIDE = 256;
-// model(64) + viewProj(64) + portalViewProj(64) + params0(16) + cameraPos(16)
-constexpr uint64_t PORTAL_SURF_UNIFORM_SIZE = 224;
+// model(64) + viewProj(64) + params0(16) + cameraPos(16)
+constexpr uint64_t PORTAL_SURF_UNIFORM_SIZE = 160;
 
 // Mirrors default_assets/shaders/portal.vert + portal.frag. Everything lives
 // in one dynamic-offset slot per surface draw: DrawPortalSurfaces runs many
 // times per frame (main view + every recursion level) and wgpuQueueWriteBuffer
 // ordering is relative to Queue::Submit, so each draw must own its slot.
-// params0 = (rimColor.rgb, hasView). Reflection-style y-flip when sampling:
-// WebGPU NDC y is up while texture v is down.
+// params0 = (rimColor.rgb, hasView).
+//
+// Sampling: the recursion image was rendered with exactly one more portal
+// transit than the current view, so the sample position collapses to the
+// fragment's own clip position in the CURRENT view (see portal.frag). WebGPU
+// NDC y is up while texture v is down, so the y component flips.
 static const char* PORTAL_SURFACE_WGSL = R"(
 struct DrawUniforms {
-    model:          mat4x4<f32>,
-    viewProj:       mat4x4<f32>,
-    portalViewProj: mat4x4<f32>,
-    params0:        vec4<f32>,
-    cameraPos:      vec4<f32>,
+    model:     mat4x4<f32>,
+    viewProj:  mat4x4<f32>,
+    params0:   vec4<f32>,
+    cameraPos: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> draw: DrawUniforms;
 @group(1) @binding(0) var portal_tex: texture_2d<f32>;
@@ -32,6 +35,7 @@ struct VSOut {
     @location(0) worldPos: vec3<f32>,
     @location(1) uv:       vec2<f32>,
     @location(2) normal:   vec3<f32>,
+    @location(3) clipPos:  vec4<f32>,
 };
 
 @vertex
@@ -43,6 +47,7 @@ fn vs(@location(0) aPos: vec3<f32>, @location(1) aUV: vec2<f32>, @location(2) aN
     out.normal = normalize(normalMat * aNormal);
     out.uv = aUV;
     out.position = draw.viewProj * world;
+    out.clipPos = out.position;
     return out;
 }
 
@@ -59,9 +64,8 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     // Sample unconditionally (uniform control flow for textureSample), then
     // select — `facing` is a varying, so branching before the sample would be
     // non-uniform and rejected by WGSL validation.
-    let clip = draw.portalViewProj * vec4<f32>(in.worldPos, 1.0);
-    let ndc  = clip.xy / max(abs(clip.w), 0.0001) * sign(clip.w);
-    let uv   = clamp(vec2<f32>(ndc.x, -ndc.y) * 0.5 + 0.5, vec2<f32>(0.001), vec2<f32>(0.999));
+    let ndc = in.clipPos.xy / in.clipPos.w;
+    let uv  = clamp(vec2<f32>(ndc.x, -ndc.y) * 0.5 + 0.5, vec2<f32>(0.001), vec2<f32>(0.999));
     let sampled = textureSample(portal_tex, samp, uv).rgb;
 
     var col = VOID_COLOR;

@@ -3,12 +3,18 @@
 in vec3 v_worldPos;
 in vec2 v_uv;
 in vec3 v_normal;
+in vec4 v_clipPos;
 
-// The recursion image this surface reveals (rendered by PortalPass from the
-// virtual camera whose viewProj is u_portalViewProj). u_hasView == 0 when the
-// portal is unlinked or the recursion floor was reached: paint the void fill.
+// The recursion image this surface reveals. Because the sampled image was
+// rendered with exactly one more portal transit than the current view
+// (view_img = view_cur * T_view), the correct sample position collapses to the
+// fragment's own clip position in the CURRENT view:
+//   proj * view_img * (T_world * P) = proj * view_cur * P.
+// (Unlike the water mirror, projecting with the virtual camera's viewProj is
+// wrong here — the surface point isn't its own image under a portal transit.)
+// u_hasView == 0 when the portal is unlinked or the recursion floor was
+// reached: paint the void fill.
 uniform sampler2D u_portalTex;
-uniform mat4      u_portalViewProj;
 uniform vec3      u_rimColor;
 uniform vec3      u_cameraPos;
 uniform float     u_hasView;
@@ -26,8 +32,7 @@ void main() {
 
     // Sample unconditionally, then select — implicit-LOD sampling inside a
     // varying-dependent branch has undefined derivatives in GLSL.
-    vec4 clip = u_portalViewProj * vec4(v_worldPos, 1.0);
-    vec2 uv   = clip.xy / max(abs(clip.w), 0.0001) * sign(clip.w) * 0.5 + 0.5;
+    vec2 uv = v_clipPos.xy / v_clipPos.w * 0.5 + 0.5;
     vec3 sampled = texture(u_portalTex, clamp(uv, vec2(0.001), vec2(0.999))).rgb;
 
     vec3 col = (u_hasView > 0.5 && facing > 0.0) ? sampled : VOID_COLOR;

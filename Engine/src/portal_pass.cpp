@@ -27,6 +27,7 @@
 PortalPass::PortalPass() = default;
 
 PortalPass::~PortalPass() {
+    if (_glFallbackTex) glDeleteTextures(1, &_glFallbackTex);
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     for (auto& [key, entry] : _surfTexBGCache)
         wgpuBindGroupRelease(entry.bg);
@@ -134,7 +135,6 @@ void PortalPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             v.rts.clear();
             v.rts.resize(recursionDepth);
         }
-        v.viewProjs.assign(recursionDepth, glm::mat4(1.0f));
         bool rtsOK = true;
         for (auto& rt : v.rts) {
             if (!rt) {
@@ -176,7 +176,6 @@ void PortalPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
                 eAcc = glm::vec3(tWorld * glm::vec4(eAcc, 1.0f));
                 levelViews[i] = vAcc;
                 levelEyes[i] = eAcc;
-                v.viewProjs[i] = proj * vAcc;
             }
         }
 
@@ -359,13 +358,11 @@ void PortalPass::DrawPortalSurfaces(
             struct {
                 glm::mat4 model;
                 glm::mat4 viewProj;
-                glm::mat4 portalViewProj;
                 glm::vec4 params0;
                 glm::vec4 cameraPos;
             } slotData{
                 v.surfaceTransform,
                 viewProj,
-                hasView ? v.viewProjs[sampleLevel] : glm::mat4(1.0f),
                 glm::vec4(v.mat->rimColor, hasView ? 1.0f : 0.0f),
                 glm::vec4(rv.eye, 1.0f),
             };
@@ -393,6 +390,18 @@ void PortalPass::DrawPortalSurfaces(
     glViewport(0, 0, rv.target->GetWidth(), rv.target->GetHeight());
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(rv.target)->GetNativeFBOID());
 
+    // The void-fill draws still sample u_portalTex (select-after-sample, see
+    // portal.frag); bind a real 1x1 black texture so the sample is defined
+    // (an incomplete texture trips macOS's "texture unloadable" warning).
+    if (_glFallbackTex == 0) {
+        glGenTextures(1, &_glFallbackTex);
+        glBindTexture(GL_TEXTURE_2D, _glFallbackTex);
+        const unsigned char black[4] = { 0, 0, 0, 255 };
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, black);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    }
+
     shader->Activate();
     shader->SetUniform("u_viewProj", viewProj);
     shader->SetUniform("u_cameraPos", rv.eye);
@@ -411,9 +420,10 @@ void PortalPass::DrawPortalSurfaces(
 
         bool hasView = v.active && sampleLevel < static_cast<int>(v.rts.size()) && v.rts[sampleLevel];
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, hasView ? static_cast<GLuint>(v.rts[sampleLevel]->GetTextureID()) : 0);
+        glBindTexture(
+            GL_TEXTURE_2D, hasView ? static_cast<GLuint>(v.rts[sampleLevel]->GetTextureID()) : _glFallbackTex
+        );
         shader->SetUniform("u_model", v.surfaceTransform);
-        shader->SetUniform("u_portalViewProj", hasView ? v.viewProjs[sampleLevel] : glm::mat4(1.0f));
         shader->SetUniform("u_rimColor", v.mat->rimColor);
         shader->SetUniform("u_hasView", hasView ? 1.0f : 0.0f);
 
