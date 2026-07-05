@@ -105,7 +105,8 @@ include(FetchContent)
 
 # Must precede add_subdirectory(Engine): add_test() calls inside a directory
 # only register with ctest when testing was enabled before that directory was
-# added (Engine/tests/HeadlessSmoke, Examples' RelayLoopback).
+# added (Examples' RelayLoopback; Engine currently builds HeadlessSmokeTest
+# but doesn't register it as a test — see Engine/CMakeLists.txt).
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND AE_BUILD_EXAMPLES)
     enable_testing()
 endif()
