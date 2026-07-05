@@ -1,5 +1,5 @@
 #include "scriptable_component.hpp"
-#include "log.hpp"
+#include "Atmospheric/log.hpp"
 
 ScriptableComponent::ScriptableComponent(GameObject* go, sol::state& lua, const std::string& className)
   : _lua(lua), _className(className) {

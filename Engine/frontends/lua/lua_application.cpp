@@ -1,6 +1,6 @@
 #include "lua_application.hpp"
 #include "Atmospheric/gfx_factory.hpp"
-#include "log.hpp"
+#include "Atmospheric/log.hpp"
 
 #include "Atmospheric/file_system.hpp"
 #include <filesystem>

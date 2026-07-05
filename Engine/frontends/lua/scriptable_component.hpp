@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Atmospheric.hpp"
-#include "log.hpp"
+#include "Atmospheric/log.hpp"
 #include <sol/sol.hpp>
 #include <string>
 
