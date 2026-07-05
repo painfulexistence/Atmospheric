@@ -15,13 +15,21 @@ struct WsCallbacks {
     std::function<void(int code, std::string reason)> onClose;
 };
 
+struct WsOptions {
+    // Accept self-signed certificates and skip hostname verification on wss://
+    // connections. Development convenience only — never enable against
+    // production servers. Ignored on Emscripten (the browser owns TLS).
+    bool allowInsecureTls = false;
+};
+
 class WebSocketClient {
 public:
     WebSocketClient();
     ~WebSocketClient();
 
     // url must be ws:// or wss://
-    WsConnectionID Connect(const std::string& url, WsCallbacks callbacks);
+    WsConnectionID Connect(const std::string& url, WsCallbacks callbacks,
+                            const WsOptions& options = {});
     void Send(WsConnectionID id, const std::vector<uint8_t>& data);
     void SendText(WsConnectionID id, const std::string& text);
     void Close(WsConnectionID id);
@@ -32,7 +40,10 @@ public:
     // no-op on Emscripten (browser fires WebSocket callbacks asynchronously).
     void Pump();
 
-private:
+    // pimpl — forward declaration is public so the C callback shims in the
+    // .cpp can name it; the definition never leaves the translation unit.
     struct Impl;
+
+private:
     std::unique_ptr<Impl> _impl;
 };

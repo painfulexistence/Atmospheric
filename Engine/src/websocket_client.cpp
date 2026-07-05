@@ -149,7 +149,8 @@ WebSocketClient::~WebSocketClient() {
     if (_impl->ctx) lws_context_destroy(_impl->ctx);
 }
 
-WsConnectionID WebSocketClient::Connect(const std::string& url, WsCallbacks cbs) {
+WsConnectionID WebSocketClient::Connect(const std::string& url, WsCallbacks cbs,
+                                          const WsOptions& options) {
     if (!_impl->ctx) return 0;
     const WsConnectionID id = _impl->nextId++;
     WsConnection conn;
@@ -166,9 +167,16 @@ WsConnectionID WebSocketClient::Connect(const std::string& url, WsCallbacks cbs)
     ccinfo.host         = parsed.host.c_str();
     ccinfo.origin       = parsed.host.c_str();
     ccinfo.protocol     = kProtocols[0].name;
-    ccinfo.ssl_connection = parsed.ssl
-        ? (LCCSCF_USE_SSL | LCCSCF_ALLOW_SELFSIGNED | LCCSCF_SKIP_SERVER_CERT_HOSTNAME_CHECK)
-        : 0;
+    ccinfo.ssl_connection = 0;
+    if (parsed.ssl) {
+        ccinfo.ssl_connection = LCCSCF_USE_SSL;
+        if (options.allowInsecureTls) {
+            spdlog::warn("WebSocketClient: TLS verification disabled for {} "
+                          "(WsOptions::allowInsecureTls) — dev only", url);
+            ccinfo.ssl_connection |= LCCSCF_ALLOW_SELFSIGNED
+                                   | LCCSCF_SKIP_SERVER_CERT_HOSTNAME_CHECK;
+        }
+    }
 
     struct lws* wsi = lws_client_connect_via_info(&ccinfo);
     if (wsi) {
@@ -300,7 +308,8 @@ WebSocketClient::~WebSocketClient() {
     }
 }
 
-WsConnectionID WebSocketClient::Connect(const std::string& url, WsCallbacks cbs) {
+WsConnectionID WebSocketClient::Connect(const std::string& url, WsCallbacks cbs,
+                                          const WsOptions& /*options: browser owns TLS*/) {
     EmscriptenWebSocketCreateAttributes attr{url.c_str(), nullptr, EM_TRUE};
     EMSCRIPTEN_WEBSOCKET_T sock = emscripten_websocket_new(&attr);
     if (sock <= 0) {
