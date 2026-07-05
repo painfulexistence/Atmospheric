@@ -364,7 +364,6 @@
             <div id="panel-menu" class="lobby-panel active">
                 <button class="lobby-btn" onclick="lobby.doSolo()">Solo Sandbox</button>
                 <button class="lobby-btn primary" onclick="lobby.showHost()">Host Game</button>
-                <button class="lobby-btn" onclick="lobby.showJoin()">Join Game</button>
                 <div id="wasm-hint" class="wasm-loading-hint" style="display:none">Loading game engine...</div>
             </div>
 
@@ -387,27 +386,14 @@
                 <span class="back-link" onclick="lobby.showMenu()">← Back</span>
             </div>
 
-            <!-- Join flow -->
+            <!-- Join flow (entered automatically via invite URL) -->
             <div id="panel-join" class="lobby-panel">
-                <p class="step-hint" id="join-hint">Paste the host's invite link to generate your reply.</p>
+                <p class="step-hint">Send this reply to the host, then wait for them to connect.</p>
 
-                <!-- Step 1: input offer (shown when joining manually, hidden when via URL) -->
-                <div id="join-step1" style="width:100%">
-                    <div class="lobby-label">Host's invite link or code</div>
-                    <textarea id="offer-input" class="lobby-code" placeholder="Paste link or code here..."></textarea>
-                    <div class="lobby-row">
-                        <button class="lobby-btn primary" onclick="lobby.submitOffer()">Generate Reply</button>
-                    </div>
-                </div>
-
-                <!-- Step 2: show answer code -->
-                <div id="join-step2" style="width:100%; display:none">
-                    <div class="lobby-label">Your reply — send this back to the host</div>
-                    <textarea id="answer-code" class="lobby-code" readonly placeholder="Generating..."></textarea>
-                    <div class="lobby-row">
-                        <button class="lobby-btn primary" onclick="lobby.copyCode('answer-code')">Copy Reply</button>
-                    </div>
-                    <p class="step-hint">Waiting for the host to paste your reply and connect...</p>
+                <div class="lobby-label">Your reply — send this back to the host</div>
+                <textarea id="answer-code" class="lobby-code" readonly placeholder="Generating..."></textarea>
+                <div class="lobby-row">
+                    <button class="lobby-btn primary" onclick="lobby.copyCode('answer-code')">Copy Reply</button>
                 </div>
 
                 <span class="back-link" onclick="lobby.showMenu()">← Back</span>
@@ -479,12 +465,6 @@
         var w = ds.writable.getWriter(); w.write(_fromB64url(s.trim())); w.close();
         return new Response(ds.readable).text().then(JSON.parse);
     }
-    // Accept either a full invite URL (?join=xxx) or a bare code.
-    function extractCode(input) {
-        input = input.trim();
-        try { var p = new URL(input).searchParams.get('join'); if (p) return p; } catch(_){}
-        return input;
-    }
     function buildInviteUrl(code) {
         return location.origin + location.pathname + '?join=' + code;
     }
@@ -544,11 +524,7 @@
             else            { _pendingCall = args; }
         }
         function showAnswerCode(code) {
-            document.getElementById('join-step1').style.display = 'none';
-            document.getElementById('join-step2').style.display = '';
             document.getElementById('answer-code').value = code;
-            document.getElementById('join-hint').textContent =
-                'Send this reply to the host, then wait for them to connect.';
         }
         // Build and return a compressed answer code; also wires up the DataChannel.
         function processOffer(desc) {
@@ -677,28 +653,6 @@
                         document.getElementById('btn-connect').disabled = false;
                         setStatus('Invalid reply — paste the full text your friend sent.', true);
                     });
-            },
-
-            showJoin: function() {
-                showPanel('panel-join');
-                document.getElementById('offer-input').value = '';
-                document.getElementById('answer-code').value = '';
-                document.getElementById('join-step1').style.display = '';
-                document.getElementById('join-step2').style.display = 'none';
-                document.getElementById('join-hint').textContent =
-                    'Paste the host\'s invite link to generate your reply.';
-            },
-
-            submitOffer: function() {
-                var code = extractCode(document.getElementById('offer-input').value);
-                setStatus('Generating reply...');
-                decompress(code)
-                    .then(function(desc) {
-                        if (desc.type !== 'offer') throw new Error('not an offer');
-                        return processOffer(desc);
-                    })
-                    .then(function(ansCode) { showAnswerCode(ansCode); setStatus(''); })
-                    .catch(function() { setStatus('Invalid invite link or code.', true); });
             },
 
             cleanup: function() {
