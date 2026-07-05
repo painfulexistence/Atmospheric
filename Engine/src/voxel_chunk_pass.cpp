@@ -412,8 +412,10 @@ void VoxelChunkPass::_initGPU(
     // PlanarReflectionPass's mirrored view (reversed triangle winding).
     auto p = GpuPipelineBuilder(device)
                  .wgsl(VOXEL_WGSL)
-                 .bgl({ gpuUniform(0, wgsl_stage::both, VOXEL_FRAME_UNIFORM_SIZE),
-                        gpuDynUniform(1, wgsl_stage::vert, VOXEL_DRAW_UNIFORM_SIZE) })
+                 .bgl(
+                     { gpuUniform(0, wgsl_stage::both, VOXEL_FRAME_UNIFORM_SIZE),
+                       gpuDynUniform(1, wgsl_stage::vert, VOXEL_DRAW_UNIFORM_SIZE) }
+                 )
                  .vertex(8, { { WGPUVertexFormat_Uint8x4, 0, 0 }, { WGPUVertexFormat_Uint8x4, 4, 1 } })
                  .colorFormat(colorFormat)
                  .depth(true, WGPUCompareFunction_Less)
@@ -636,8 +638,10 @@ void WaterPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat c
     // Group 1 holds the planar-reflection texture written by PlanarReflectionPass.
     auto p = GpuPipelineBuilder(device)
                  .wgsl(WATER_WGSL)
-                 .bgl({ gpuUniform(0, wgsl_stage::both, WATER_FRAME_UNIFORM_SIZE),
-                        gpuDynUniform(1, wgsl_stage::both, WATER_DRAW_UNIFORM_SIZE) })
+                 .bgl(
+                     { gpuUniform(0, wgsl_stage::both, WATER_FRAME_UNIFORM_SIZE),
+                       gpuDynUniform(1, wgsl_stage::both, WATER_DRAW_UNIFORM_SIZE) }
+                 )
                  .bgl({ gpuTexture(0), gpuSampler(1) })
                  .vertex(
                      56,

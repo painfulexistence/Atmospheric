@@ -331,9 +331,9 @@ void Renderer::SortOpaque() {
 void Renderer::SortTransparent() {
     // Back-to-front sorting: render far objects first for correct blending
     std::sort(
-        _transparentQueue.begin(),
-        _transparentQueue.end(),
-        [](const SortableCommand& a, const SortableCommand& b) { return a.sortKey > b.sortKey; }
+        _transparentQueue.begin(), _transparentQueue.end(), [](const SortableCommand& a, const SortableCommand& b) {
+            return a.sortKey > b.sortKey;
+        }
     );
 }
 
@@ -744,8 +744,10 @@ void ShadowPass::_initGPU(WGPUDevice device, WGPUQueue queue) {
     // Vertex layout: only position (offset 0) from the 56-byte Standard format.
     auto p = GpuPipelineBuilder(device)
                  .wgsl(SHADOW_WGSL)
-                 .bgl({ gpuUniform(0, wgsl_stage::vert, SHADOW_FRAME_UNIFORM_SIZE),
-                        gpuDynUniform(1, wgsl_stage::vert, SHADOW_DRAW_UNIFORM_SIZE) })
+                 .bgl(
+                     { gpuUniform(0, wgsl_stage::vert, SHADOW_FRAME_UNIFORM_SIZE),
+                       gpuDynUniform(1, wgsl_stage::vert, SHADOW_DRAW_UNIFORM_SIZE) }
+                 )
                  .vertex(56, { { WGPUVertexFormat_Float32x3, 0, 0 } })
                  .depth(true, WGPUCompareFunction_Less)
                  .depthOnly()
@@ -1109,8 +1111,10 @@ void ForwardOpaquePass::_initGPU(
     // buffer layout since the underlying Buffer is shared with the GL path.
     auto p = GpuPipelineBuilder(device)
                  .wgsl(FORWARD_OPAQUE_WGSL)
-                 .bgl({ gpuUniform(0, wgsl_stage::both, FWD_FRAME_UNIFORM_SIZE),
-                        gpuDynUniform(1, wgsl_stage::both, FWD_DRAW_UNIFORM_SIZE) })
+                 .bgl(
+                     { gpuUniform(0, wgsl_stage::both, FWD_FRAME_UNIFORM_SIZE),
+                       gpuDynUniform(1, wgsl_stage::both, FWD_DRAW_UNIFORM_SIZE) }
+                 )
                  // Group 1 must be vertex-visible too: the terrain pipeline borrows
                  // this BGL and its vertex shader samples the heightmap for
                  // displacement. Fragment-only visibility fails terrain pipeline

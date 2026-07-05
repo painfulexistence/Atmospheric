@@ -120,8 +120,9 @@ void GraphicsSubsystem::Init(Application* app) {
 
     renderer = std::make_unique<Renderer>();
     renderer->Init(width, height);
-    window->AddFramebufferResizeCallback([this](int newWidth, int newHeight) { renderer->Resize(newWidth, newHeight); }
-    );
+    window->AddFramebufferResizeCallback([this](int newWidth, int newHeight) {
+        renderer->Resize(newWidth, newHeight);
+    });
 
     debugLineMesh = std::make_unique<Mesh>(MeshType::DEBUG);
     debugLineMesh->updateFreq = UpdateFrequency::Dynamic;

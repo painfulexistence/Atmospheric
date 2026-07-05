@@ -279,8 +279,9 @@ void VoxelWorld::RebuildDirtyChunks() {
             task->chunk = chunk;
             pendingTasks.push_back(task);
 
-            JobSystem::Get()->Execute([task](int /*threadIndex*/) { task->vertices = task->chunk->GenerateMeshData(); }
-            );
+            JobSystem::Get()->Execute([task](int /*threadIndex*/) {
+                task->vertices = task->chunk->GenerateMeshData();
+            });
         }
     }
 
