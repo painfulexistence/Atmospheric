@@ -1,4 +1,4 @@
-name: CI (Desktop)
+name: E2E
 
 on:
   push:
@@ -9,8 +9,8 @@ on:
 
 
 jobs:
-  build-desktop:
-    name: Desktop, Debug and MinSizeRel
+  ctest:
+    name: CTest (Desktop, Debug and MinSizeRel)
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -93,3 +93,22 @@ jobs:
 
       - name: CMake Build
         run: cmake --build ${{ steps.strings.outputs.build-dir }}
+
+      # Not a required check yet: continue-on-error keeps this from blocking
+      # merges while the suite (esp. the headless Application path) is still
+      # being shaken out. Flip to a hard failure once it's proven stable.
+      - name: CTest
+        id: ctest
+        continue-on-error: true
+        run: ctest --test-dir ${{ steps.strings.outputs.build-dir }} --output-on-failure --timeout 120
+
+      # TEMPORARY: diagnose the HeadlessSmoke segfault with a backtrace.
+      # Remove once the crash is fixed (and HeadlessSmoke is re-registered
+      # with ctest in Engine/CMakeLists.txt).
+      - name: Backtrace HeadlessSmoke (temporary)
+        if: steps.ctest.outcome == 'failure' && matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get install -y gdb
+          stdbuf -o0 -e0 ${{ steps.strings.outputs.build-dir }}/HeadlessSmokeTest || true
+          gdb -batch -ex run -ex bt -ex 'thread apply all bt' \
+            --args ${{ steps.strings.outputs.build-dir }}/HeadlessSmokeTest || true
