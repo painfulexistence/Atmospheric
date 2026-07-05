@@ -445,11 +445,15 @@
 
     // ── Compression: deflate-raw + base64url (~55% smaller than plain btoa) ─
     function _toB64url(bytes) {
-        return btoa(String.fromCharCode.apply(null, bytes))
-            .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+        // Loop avoids apply() stack-overflow risk on large TypedArrays.
+        var str = '';
+        for (var i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+        return btoa(str).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
     }
     function _fromB64url(s) {
-        s = s.replace(/-/g,'+').replace(/_/g,'/');
+        // Strip all whitespace before decoding: URLSearchParams may decode
+        // '+' as space if a relay converted our '-' chars, and atob() rejects spaces.
+        s = s.replace(/\s/g, '').replace(/-/g,'+').replace(/_/g,'/');
         s += '='.repeat((4 - s.length % 4) % 4);
         return Uint8Array.from(atob(s), function(c){ return c.charCodeAt(0); });
     }
@@ -466,7 +470,10 @@
         return new Response(ds.readable).text().then(JSON.parse);
     }
     function buildInviteUrl(code) {
-        return location.origin + location.pathname + '?join=' + code;
+        // encodeURIComponent ensures canonical percent-encoding so that any
+        // intermediary that later decodes the URL cannot mistake our base64url
+        // '-' chars for the '+'-means-space convention.
+        return location.origin + location.pathname + '?join=' + encodeURIComponent(code);
     }
 
     // ── WebRTC globals read by C++ EM_JS transport ─────────────────────────
@@ -486,7 +493,13 @@
         var _preGather   = null;  // Promise<{pc,ch}|null> — host ICE gathered in background
 
         // Detect invite URL on load; processing runs in parallel with WASM download.
-        var _joinParam = new URLSearchParams(location.search).get('join');
+        // Use a manual regex + decodeURIComponent (not URLSearchParams) so that a
+        // bare '+' in the raw query string is NOT decoded as a space — URLSearchParams
+        // uses application/x-www-form-urlencoded rules where '+' means space.
+        var _joinParam = (function() {
+            var m = location.search.match(/[?&]join=([^&]*)/);
+            return m ? decodeURIComponent(m[1]) : null;
+        })();
 
         function setStatus(msg, isError) {
             var el = document.getElementById('lobby-status');
