@@ -576,4 +576,17 @@ if(EMSCRIPTEN)
     )
 endif()
 
+# ── Headless smoke test (runs in CI via ctest) ────────────────────────────────
+# Boots a full Application with AppConfig::headless — no window, no GL — and
+# verifies the fixed-tick loop drives OnUpdate and shuts down cleanly. The only
+# Application integration test CI can run: the windowed path needs a display.
+# Gated on AE_BUILD_EXAMPLES so downstream projects consuming Engine directly
+# via add_subdirectory don't grow an extra target.
+if(AE_BUILD_EXAMPLES AND NOT EMSCRIPTEN)
+    add_executable(HeadlessSmokeTest tests/headless_smoke_test.cpp)
+    target_link_libraries(HeadlessSmokeTest PRIVATE AtmosphericEngine)
+    add_test(NAME HeadlessSmoke COMMAND HeadlessSmokeTest)
+    set_tests_properties(HeadlessSmoke PROPERTIES TIMEOUT 60)
+endif()
+
 set(AE_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/default_assets" PARENT_SCOPE)

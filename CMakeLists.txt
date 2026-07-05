@@ -103,6 +103,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 include(FetchContent)
 
+# Must precede add_subdirectory(Engine): add_test() calls inside a directory
+# only register with ctest when testing was enabled before that directory was
+# added (Engine/tests/HeadlessSmoke, Examples' RelayLoopback).
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND AE_BUILD_EXAMPLES)
+    enable_testing()
+endif()
 
 add_subdirectory(Engine)
 
@@ -119,6 +125,5 @@ endif()
 # own executables. Pass -DAE_BUILD_EXAMPLES=OFF to skip examples (e.g. when
 # only the engine WASM package is needed for editor deployment).
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND AE_BUILD_EXAMPLES)
-    enable_testing() # registers add_test() targets (e.g. RelayLoopback) with ctest
     add_subdirectory(Examples)
 endif()
