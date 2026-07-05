@@ -1,5 +1,6 @@
 #pragma once
 #include "game_sim.hpp"
+#include <Atmospheric/udp_relay_client.hpp>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -39,10 +40,9 @@ public:
     bool desync = false;
     std::string error;
 
-    // Relay mode: set by StartRelayHost/StartRelayClient.
-    // SendRaw prepends [roomId: uint32_t LE] when useRelay is true.
+    // Relay mode: set by StartRelayHost/StartRelayClient. SendRaw delegates
+    // to _relayClient (below) when useRelay is true.
     bool useRelay = false;
-    uint32_t relayRoomId = 0;
 
     void StartSolo(uint32_t seed);
     bool StartHost(uint16_t port, uint32_t seed, int delay);
@@ -74,6 +74,7 @@ private:
     bool havePeer = false;
     uint32_t peerAddr = 0;
     uint16_t peerPort = 0;
+    UdpRelayClient _relayClient;// only touched when useRelay is true
 
     std::unordered_map<uint32_t, InputFrame> localInputs;
     std::unordered_map<uint32_t, InputFrame> remoteInputs;

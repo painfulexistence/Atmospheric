@@ -23,8 +23,13 @@ Two binaries build from this directory:
 
 ## How it works
 
-Clients prepend a 4-byte little-endian room id to every datagram
-(`LockstepNet` does this automatically in relay mode). The relay:
+Clients prepend a 4-byte little-endian room id to every datagram, via
+`UdpRelayClient` (`Engine/include/Atmospheric/udp_relay_client.hpp`) — the
+client-side counterpart to `UdpRelay`, also engine-level and payload-agnostic.
+`LockstepNet` owns one internally and routes through it in relay mode, but
+nothing about `UdpRelayClient` is specific to `LockstepNet`'s protocol: any
+UDP-based transport can wrap its own socket's sends with it the same way. The
+relay:
 
 - creates a room on the first packet for an unseen room id (up to `maxRooms`)
 - registers the first two distinct sender addresses as the room's peers

@@ -158,7 +158,6 @@ void LockstepNet::Shutdown() {
     peerAddr = 0;
     peerPort = 0;
     useRelay = false;
-    relayRoomId = 0;
 }
 
 bool LockstepNet::StartRelayHost(
@@ -168,8 +167,7 @@ bool LockstepNet::StartRelayHost(
         state = State::Failed;
         return false;
     }
-    in_addr a{};
-    if (inet_pton(AF_INET, relayIp.c_str(), &a) != 1) {
+    if (!_relayClient.Connect(relayIp, relayPort, roomId)) {
         error = "invalid relay address: " + relayIp;
         state = State::Failed;
         return false;
@@ -179,11 +177,10 @@ bool LockstepNet::StartRelayHost(
     seed = s;
     inputDelay = delay;
     localPlayer = 0;
-    peerAddr = a.s_addr;
-    peerPort = htons(relayPort);
+    peerAddr = _relayClient.RelayAddr();
+    peerPort = _relayClient.RelayPort();
     havePeer = true;// always send to relay from the start
     useRelay = true;
-    relayRoomId = roomId;
     return true;
 }
 
@@ -192,8 +189,7 @@ bool LockstepNet::StartRelayClient(const std::string& relayIp, uint16_t relayPor
         state = State::Failed;
         return false;
     }
-    in_addr a{};
-    if (inet_pton(AF_INET, relayIp.c_str(), &a) != 1) {
+    if (!_relayClient.Connect(relayIp, relayPort, roomId)) {
         error = "invalid relay address: " + relayIp;
         state = State::Failed;
         return false;
@@ -201,32 +197,24 @@ bool LockstepNet::StartRelayClient(const std::string& relayIp, uint16_t relayPor
     mode = Mode::Client;
     state = State::Connecting;
     localPlayer = 1;
-    peerAddr = a.s_addr;
-    peerPort = htons(relayPort);
+    peerAddr = _relayClient.RelayAddr();
+    peerPort = _relayClient.RelayPort();
     havePeer = true;
     useRelay = true;
-    relayRoomId = roomId;
     return true;
 }
 
 void LockstepNet::SendRaw(const uint8_t* data, int len) {
     if (sock == kInvalidSocket || !havePeer) return;
+    if (useRelay) {
+        _relayClient.Send(sock, data, len);
+        return;
+    }
     sockaddr_in to{};
     to.sin_family = AF_INET;
     to.sin_addr.s_addr = peerAddr;
     to.sin_port = peerPort;
-    if (useRelay) {
-        // Prepend [roomId: uint32_t LE] so the relay can route the packet.
-        uint8_t relayBuf[4 + 1500];
-        if (len > 1500) return;
-        PutU32(relayBuf, relayRoomId);
-        std::memcpy(relayBuf + 4, data, len);
-        ::sendto(
-            sock, reinterpret_cast<const char*>(relayBuf), 4 + len, 0, reinterpret_cast<sockaddr*>(&to), sizeof(to)
-        );
-    } else {
-        ::sendto(sock, reinterpret_cast<const char*>(data), len, 0, reinterpret_cast<sockaddr*>(&to), sizeof(to));
-    }
+    ::sendto(sock, reinterpret_cast<const char*>(data), len, 0, reinterpret_cast<sockaddr*>(&to), sizeof(to));
 }
 
 void LockstepNet::Pump(uint32_t nowMs) {
