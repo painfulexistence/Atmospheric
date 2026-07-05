@@ -263,15 +263,24 @@ class NoitaLikeGame : public Application {
         if (_elStatus) {
             std::string s;
             if (net.state == LockstepNet::State::Connecting) {
+#ifdef __EMSCRIPTEN__
+                s = (net.mode == LockstepNet::Mode::Host) ? "waiting for player 2 via WebRTC ..."
+                                                          : "connecting via WebRTC ...";
+#else
                 s = (net.mode == LockstepNet::Mode::Host)
                         ? fmt::format("waiting for player 2 on UDP :{} ...", gcli.port)
                         : fmt::format("connecting to {}:{} ...", gcli.joinIp, gcli.port);
+#endif
             } else if (net.state == LockstepNet::State::Failed) {
                 s = "network error: " + net.error;
             } else if (net.desync) {
                 s = "DESYNC DETECTED - peers have diverged";
             } else if (net.mode == LockstepNet::Mode::Solo) {
+#ifdef __EMSCRIPTEN__
+                s = "solo sandbox";
+#else
                 s = "solo sandbox - run with --host / --join for 2P";
+#endif
             } else {
                 s = fmt::format(
                     "{} | ping {} ms | delay {} ticks{}",

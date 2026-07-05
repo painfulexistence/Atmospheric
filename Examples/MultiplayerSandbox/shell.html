@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Atmospheric Engine - WASM Demo</title>
+    <title>Atmospheric Engine - Multiplayer Sandbox</title>
     <style>
         html, body {
             margin: 0;
@@ -42,17 +42,14 @@
             /* To scale up to fill the stage while keeping aspect ratio (contain), uncomment below: */
             /* width: 100%; height: 100%; object-fit: contain; */
         }
-        
-        #canvas:focus {
-            outline: none;
-        }
-        
+
+        #canvas:focus { outline: none; }
+
+        /* ── Loading overlay ──────────────────────────────────────── */
         #loading-container {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             background-color: #000000;
             display: flex;
             flex-direction: column;
@@ -61,36 +58,167 @@
             z-index: 9999;
             transition: opacity 0.5s ease;
         }
-        
+
         .spinner {
-            width: 50px;
-            height: 50px;
-            border: 3px solid rgba(255, 255, 255, 0.05);
+            width: 50px; height: 50px;
+            border: 3px solid rgba(255,255,255,0.05);
             border-radius: 50%;
             border-top-color: #3b82f6;
             animation: spin 1s ease-in-out infinite;
             margin-bottom: 20px;
-            box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+            box-shadow: 0 0 15px rgba(59,130,246,0.2);
         }
-        
+
         #loading-title {
-            font-size: 20px;
-            font-weight: 600;
+            font-size: 20px; font-weight: 600;
             color: #f3f4f6;
             margin-bottom: 8px;
             letter-spacing: 0.05em;
             text-transform: uppercase;
         }
-        
+
         #loading-status {
-            font-size: 14px;
+            font-size: 14px; color: #9ca3af; font-weight: 300;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Lobby overlay ────────────────────────────────────────── */
+        #lobby {
+            display: none;
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(9, 8, 20, 0.96);
+            z-index: 200;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #f3f4f6;
+        }
+
+        #lobby h1 {
+            margin: 0 0 4px;
+            font-size: 26px; font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #e2e8f0;
+        }
+
+        #lobby h2 {
+            margin: 0 0 36px;
+            font-size: 13px; font-weight: 400;
+            color: #6b7280;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .lobby-btn {
+            display: block;
+            width: 260px;
+            padding: 14px 0;
+            margin: 8px 0;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            background: #111827;
+            color: #e2e8f0;
+            font-size: 15px; font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+            text-align: center;
+        }
+
+        .lobby-btn:hover { background: #1f2937; border-color: #4b5563; }
+
+        .lobby-btn.primary {
+            background: #1d4ed8;
+            border-color: #2563eb;
+        }
+        .lobby-btn.primary:hover { background: #2563eb; border-color: #3b82f6; }
+
+        .lobby-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .lobby-panel {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            width: 380px;
+        }
+
+        .lobby-panel.active { display: flex; }
+
+        .lobby-label {
+            font-size: 12px; font-weight: 500;
             color: #9ca3af;
-            font-weight: 300;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            align-self: flex-start;
+            margin-bottom: 6px;
         }
-        
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+
+        .lobby-code {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px 12px;
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 6px;
+            color: #94a3b8;
+            font-size: 12px;
+            font-family: monospace;
+            resize: none;
+            height: 80px;
+            margin-bottom: 8px;
         }
+
+        .lobby-code::placeholder { color: #374151; }
+
+        .lobby-row {
+            display: flex;
+            gap: 8px;
+            width: 100%;
+            margin-bottom: 16px;
+        }
+
+        .lobby-row .lobby-btn { flex: 1; width: auto; margin: 0; }
+
+        #lobby-status {
+            margin-top: 18px;
+            font-size: 13px;
+            color: #6b7280;
+            min-height: 18px;
+            text-align: center;
+        }
+
+        #lobby-status.error { color: #f87171; }
+
+        .back-link {
+            margin-top: 24px;
+            font-size: 13px;
+            color: #4b5563;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        .back-link:hover { color: #6b7280; }
+
+        .step-hint {
+            font-size: 13px;
+            color: #6b7280;
+            text-align: center;
+            margin-bottom: 14px;
+            line-height: 1.5;
+        }
+
+        .wasm-loading-hint {
+            font-size: 12px;
+            color: #374151;
+            margin-top: 6px;
+        }
+
         /* ── On-screen touch controls (mobile-browser demo) ────────────────
            Buttons synthesize the same keyboard events the game already reads,
            so no engine-side input changes are needed. See the script below. */
@@ -189,6 +317,7 @@
             .actions button { width: 46px; height: 46px; font-size: 16px; }
             .actions .btn-a { margin-bottom: 0; }
         }
+
         #btn-fullscreen {
             position: fixed;
             top: 12px;
@@ -218,6 +347,60 @@
 
     <div id="stage">
         <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+
+        <!-- Loading overlay (shown while WASM downloads) -->
+        <div id="loading-container">
+            <div class="spinner" id="loading-spinner"></div>
+            <div id="loading-title">Atmospheric Engine</div>
+            <div id="loading-status">Downloading...</div>
+        </div>
+
+        <!-- Lobby overlay (shown after WASM is ready) -->
+        <div id="lobby">
+            <h1>Multiplayer Sandbox</h1>
+            <h2>2-Player Falling Sand Arena</h2>
+
+            <!-- Main menu -->
+            <div id="panel-menu" class="lobby-panel active">
+                <button class="lobby-btn" onclick="lobby.doSolo()">Solo Sandbox</button>
+                <button class="lobby-btn primary" onclick="lobby.showHost()">Host Game</button>
+                <div id="wasm-hint" class="wasm-loading-hint" style="display:none">Loading game engine...</div>
+            </div>
+
+            <!-- Host flow -->
+            <div id="panel-host" class="lobby-panel">
+                <p class="step-hint">Share this link with your friend, then paste their reply to connect.</p>
+
+                <div class="lobby-label">Invite link</div>
+                <textarea id="offer-code" class="lobby-code" readonly placeholder="Generating..."></textarea>
+                <div class="lobby-row">
+                    <button class="lobby-btn" onclick="lobby.copyCode('offer-code')">Copy Link</button>
+                </div>
+
+                <div class="lobby-label">Their answer code</div>
+                <textarea id="answer-input" class="lobby-code" placeholder="Paste here..."></textarea>
+                <div class="lobby-row">
+                    <button id="btn-connect" class="lobby-btn primary" onclick="lobby.submitAnswer()">Connect</button>
+                </div>
+
+                <span class="back-link" onclick="lobby.showMenu()">← Back</span>
+            </div>
+
+            <!-- Join flow (entered automatically via invite URL) -->
+            <div id="panel-join" class="lobby-panel">
+                <p class="step-hint">Send this reply to the host, then wait for them to connect.</p>
+
+                <div class="lobby-label">Your reply — send this back to the host</div>
+                <textarea id="answer-code" class="lobby-code" readonly placeholder="Generating..."></textarea>
+                <div class="lobby-row">
+                    <button class="lobby-btn primary" onclick="lobby.copyCode('answer-code')">Copy Reply</button>
+                </div>
+
+                <span class="back-link" onclick="lobby.showMenu()">← Back</span>
+            </div>
+
+            <div id="lobby-status"></div>
+        </div>
     </div>
 
     <!-- On-screen controls: each button carries the DOM key it emits. -->
@@ -249,251 +432,473 @@
         </svg>
     </button>
 
-    <div id="loading-container">
-        <div class="spinner" id="loading-spinner"></div>
-        <div id="loading-title">Atmospheric Engine</div>
-        <div id="loading-status">Downloading...</div>
-    </div>
-
     <script type="text/javascript">
-      var statusElement = document.getElementById('loading-status');
-      var spinnerElement = document.getElementById('loading-spinner');
-      
-      var Module = {
+
+    // ── Signaling abstraction ──────────────────────────────────────────────
+    // Currently: manual copy-paste (no server needed).
+    // To add a relay later, replace publishOffer/pollAnswer with API calls
+    // and hide the answer-input textarea — nothing else needs to change.
+    var Signaling = {
+        publishOffer: function(/*code*/) { return Promise.resolve(null); },
+        pollAnswer:   function(/*roomId*/) { return Promise.resolve(null); }
+    };
+
+    // ── Compression: deflate-raw + base64url (~55% smaller than plain btoa) ─
+    function _toB64url(bytes) {
+        // Loop avoids apply() stack-overflow risk on large TypedArrays.
+        var str = '';
+        for (var i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+        return btoa(str).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+    }
+    function _fromB64url(s) {
+        // Keep only valid base64url characters before converting to standard base64.
+        // This strips trailing path separators (e.g. '/' appended by server redirects
+        // when the invite URL is used as the page URL), whitespace, invisible Unicode,
+        // and any other stray characters that make atob() throw InvalidCharacterError.
+        s = s.replace(/[^A-Za-z0-9\-_]/g, '').replace(/-/g,'+').replace(/_/g,'/');
+        s += '='.repeat((4 - s.length % 4) % 4);
+        return Uint8Array.from(atob(s), function(c){ return c.charCodeAt(0); });
+    }
+    function compress(obj) {
+        var bytes = new TextEncoder().encode(JSON.stringify(obj));
+        var cs = new CompressionStream('deflate-raw');
+        var w = cs.writable.getWriter(); w.write(bytes); w.close();
+        return new Response(cs.readable).arrayBuffer()
+            .then(function(buf){ return _toB64url(new Uint8Array(buf)); });
+    }
+    function decompress(s) {
+        var ds = new DecompressionStream('deflate-raw');
+        var w = ds.writable.getWriter(); w.write(_fromB64url(s.trim())); w.close();
+        return new Response(ds.readable).text().then(JSON.parse);
+    }
+    function buildInviteUrl(code) {
+        // encodeURIComponent ensures canonical percent-encoding so that any
+        // intermediary that later decodes the URL cannot mistake our base64url
+        // '-' chars for the '+'-means-space convention.
+        return location.origin + location.pathname + '?join=' + encodeURIComponent(code);
+    }
+
+    // ── WebRTC globals read by C++ EM_JS transport ─────────────────────────
+    window._rtcChannel   = null;
+    window._rtcRecvQueue = [];
+
+    var ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' },
+                       { urls: 'stun:stun1.l.google.com:19302' }];
+    var DC_OPTS     = { ordered: false, maxRetransmits: 0 };
+
+    // ── Lobby controller ───────────────────────────────────────────────────
+    var lobby = (function() {
+        var _pc          = null;
+        var _wasmReady   = false;
+        var _pendingCall = null;  // set when DataChannel opens before WASM is ready
+        var _pendingAns  = null;  // compressed answer ready before lobby is visible
+        var _preGather   = null;  // Promise<{pc,ch}|null> — host ICE gathered in background
+
+        // Detect invite URL on load; processing runs in parallel with WASM download.
+        // URLSearchParams is the correct standard API: it handles %XX decoding and
+        // & boundary parsing. Any stray characters that survive (trailing '/', etc.)
+        // are stripped downstream by _fromB64url's base64url allowlist.
+        var _joinParam = new URLSearchParams(location.search).get('join');
+
+        function setStatus(msg, isError) {
+            var el = document.getElementById('lobby-status');
+            el.textContent = msg;
+            el.className = isError ? 'error' : '';
+        }
+        function showPanel(id) {
+            ['panel-menu','panel-host','panel-join'].forEach(function(p) {
+                document.getElementById(p).classList.toggle('active', p === id);
+            });
+            setStatus('');
+        }
+        function waitForIce(pc) {
+            return new Promise(function(resolve) {
+                if (pc.iceGatheringState === 'complete') { resolve(); return; }
+                var t = setTimeout(resolve, 4000);
+                pc.addEventListener('icegatheringstatechange', function() {
+                    if (pc.iceGatheringState === 'complete') { clearTimeout(t); resolve(); }
+                });
+            });
+        }
+        // gameArgs are captured per-connection so there is no shared _pendingArgs race.
+        function attachChannel(ch, gameArgs) {
+            ch.binaryType = 'arraybuffer';
+            ch.onmessage  = function(e) { window._rtcRecvQueue.push(e.data); };
+            ch.onerror    = function()  { setStatus('Connection error. Try again.', true); };
+            ch.onopen     = function()  {
+                setStatus('Connected! Starting game...');
+                setTimeout(function() { startGame(gameArgs); }, 100);
+            };
+        }
+        function startGame(args) {
+            document.getElementById('lobby').style.display = 'none';
+            if (_wasmReady) { Module['callMain'](args); }
+            else            { _pendingCall = args; }
+        }
+        function showAnswerCode(code) {
+            document.getElementById('answer-code').value = code;
+        }
+        // Build and return a compressed answer code; also wires up the DataChannel.
+        function processOffer(desc) {
+            _pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+            _pc.ondatachannel = function(e) {
+                window._rtcChannel = e.channel;
+                attachChannel(e.channel, ['--join', '0.0.0.0']);
+            };
+            _pc.oniceconnectionstatechange = function() {
+                if (_pc.iceConnectionState === 'failed' ||
+                    _pc.iceConnectionState === 'disconnected') {
+                    setStatus('Connection failed. Make sure you and your host are not both on the same machine, or try a different network.', true);
+                }
+            };
+            return _pc.setRemoteDescription(desc)
+                .then(function() { return _pc.createAnswer(); })
+                .then(function(a) { return _pc.setLocalDescription(a); })
+                .then(function()  { return waitForIce(_pc); })
+                .then(function()  {
+                    return compress({ type: _pc.localDescription.type,
+                                      sdp:  _pc.localDescription.sdp });
+                });
+        }
+
+        // Pre-gather a host offer in the background so clicking "Host" is instant.
+        // Closes any previous in-progress gather before starting a new one.
+        function _startPreGather() {
+            if (_preGather) {
+                _preGather.then(function(g) { if (g) g.pc.close(); });
+                _preGather = null;
+            }
+            var pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+            var ch = pc.createDataChannel('game', DC_OPTS);
+            _preGather = pc.createOffer()
+                .then(function(o) { return pc.setLocalDescription(o); })
+                .then(function()  { return waitForIce(pc); })
+                .then(function()  { return { pc: pc, ch: ch }; })
+                .catch(function() { return null; });
+        }
+
+        // If opened via invite URL, start processing immediately (parallel with WASM).
+        if (_joinParam) {
+            decompress(_joinParam)
+                .then(function(desc) { return processOffer(desc); })
+                .then(function(code) {
+                    _pendingAns = code;
+                    if (_wasmReady) { showPanel('panel-join'); showAnswerCode(code); }
+                })
+                .catch(function() { setStatus('Invalid invite link.', true); });
+        }
+
+        return {
+            onWasmReady: function() {
+                _wasmReady = true;
+                document.getElementById('wasm-hint').style.display = 'none';
+                if (_pendingCall) {
+                    Module['callMain'](_pendingCall); _pendingCall = null; return;
+                }
+                if (_joinParam) {
+                    showPanel('panel-join');
+                    if (_pendingAns) { showAnswerCode(_pendingAns); }
+                    else             { setStatus('Generating reply...'); }
+                } else {
+                    // Start gathering a host offer in the background while the user
+                    // reads the menu, so "Host Game" shows the invite link instantly.
+                    _startPreGather();
+                }
+            },
+
+            doSolo: function() {
+                startGame(['--seed', String(Math.floor(Math.random() * 0xFFFFFFFF) >>> 0)]);
+            },
+
+            showMenu: function() {
+                if (_pc) { _pc.close(); _pc = null; }
+                window._rtcChannel = null;
+                window._rtcRecvQueue = [];
+                _pendingCall = null; _pendingAns = null;
+                showPanel('panel-menu');
+                _startPreGather();  // restart so the next "Host" click is instant
+            },
+
+            showHost: function() {
+                showPanel('panel-host');
+                document.getElementById('offer-code').value = '';
+                document.getElementById('answer-input').value = '';
+                document.getElementById('btn-connect').disabled = false;
+                setStatus('Gathering connection info...');
+
+                var seed = Math.floor(Math.random() * 0xFFFFFFFF) >>> 0;
+
+                // Swap out the pre-gathered PC (if ready) and restart for next time.
+                var pg = _preGather; _preGather = null; _startPreGather();
+
+                // If pre-gather is already resolved this resolves instantly; otherwise
+                // we fall back to a fresh gather (same path, just with no head start).
+                (pg || Promise.resolve(null))
+                    .then(function(gathered) {
+                        if (gathered) return gathered;
+                        var pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+                        var ch = pc.createDataChannel('game', DC_OPTS);
+                        return pc.createOffer()
+                            .then(function(o) { return pc.setLocalDescription(o); })
+                            .then(function()  { return waitForIce(pc); })
+                            .then(function()  { return { pc: pc, ch: ch }; });
+                    })
+                    .then(function(gathered) {
+                        _pc = gathered.pc;
+                        _pc.oniceconnectionstatechange = function() {
+                            if (_pc.iceConnectionState === 'failed' ||
+                                _pc.iceConnectionState === 'disconnected') {
+                                setStatus('Connection failed. Make sure your friend is not on the same machine, or try a different network.', true);
+                                document.getElementById('btn-connect').disabled = false;
+                            }
+                        };
+                        window._rtcChannel = gathered.ch;
+                        attachChannel(gathered.ch, ['--host', '--seed', String(seed)]);
+                        return compress({ type: _pc.localDescription.type,
+                                          sdp:  _pc.localDescription.sdp });
+                    })
+                    .then(function(code) {
+                        document.getElementById('offer-code').value = buildInviteUrl(code);
+                        setStatus('Share the link, then paste your friend\'s reply here.');
+                        Signaling.publishOffer(code); // no-op until relay is added
+                    })
+                    .catch(function(e) { setStatus('Failed: ' + e.message, true); });
+            },
+
+            submitAnswer: function() {
+                var raw = document.getElementById('answer-input').value.trim();
+                document.getElementById('btn-connect').disabled = true;
+                setStatus('Connecting...');
+                decompress(raw)
+                    .then(function(desc) {
+                        if (desc.type !== 'answer') throw new Error('not an answer');
+                        return _pc.setRemoteDescription(desc);
+                    })
+                    .catch(function() {
+                        document.getElementById('btn-connect').disabled = false;
+                        setStatus('Invalid reply — paste the full text your friend sent.', true);
+                    });
+            },
+
+            cleanup: function() {
+                if (_pc) { _pc.close(); _pc = null; }
+                if (_preGather) {
+                    _preGather.then(function(g) { if (g) g.pc.close(); });
+                    _preGather = null;
+                }
+                window._rtcChannel = null;
+            },
+
+            copyCode: function(id) {
+                var el = document.getElementById(id);
+                el.select();
+                navigator.clipboard.writeText(el.value).catch(function() {
+                    document.execCommand('copy');
+                });
+                setStatus('Copied!');
+                setTimeout(function() { setStatus(''); }, 2000);
+            }
+        };
+    })();
+
+    // ── Emscripten Module config ───────────────────────────────────────────
+
+    var statusElement = document.getElementById('loading-status');
+
+    var Module = {
+        noInitialRun: true, // main() is called explicitly from lobby after WebRTC connects
         preRun: [],
-        postRun: [function() {
-          var loader = document.getElementById('loading-container');
-          loader.style.opacity = 0;
-          setTimeout(function() {
-            loader.style.display = 'none';
-          }, 500);
-        }],
+        postRun: [], // postRun fires after main() returns; nothing needed here
         canvas: (function() {
-          var canvas = document.getElementById('canvas');
-          canvas.addEventListener("webglcontextlost", function(e) { 
-              if (typeof cleanupRan !== 'undefined' && cleanupRan) {
-                  e.preventDefault();
-                  return;
-              }
-              alert('WebGL context lost. Please reload the page.'); 
-              e.preventDefault(); 
-          }, false);
-          return canvas;
+            var canvas = document.getElementById('canvas');
+            canvas.addEventListener("webglcontextlost", function(e) {
+                if (typeof cleanupRan !== 'undefined' && cleanupRan) { e.preventDefault(); return; }
+                alert('WebGL context lost. Please reload the page.');
+                e.preventDefault();
+            }, false);
+            return canvas;
         })(),
         setStatus: function(text) {
-          if (!Module.setStatus.last) Module.setStatus.last = { time: Date.now(), text: '' };
-          if (text === Module.setStatus.last.text) return;
-          var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
-          var now = Date.now();
-          if (m && now - Module.setStatus.last.time < 30) return; // limit update rate
-          Module.setStatus.last.time = now;
-          Module.setStatus.last.text = text;
-          if (m) {
-            text = m[1];
-          }
-          statusElement.innerHTML = text;
+            if (!Module.setStatus.last) Module.setStatus.last = { time: Date.now(), text: '' };
+            if (text === Module.setStatus.last.text) return;
+            var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+            var now = Date.now();
+            if (m && now - Module.setStatus.last.time < 30) return;
+            Module.setStatus.last.time = now;
+            Module.setStatus.last.text = text;
+            if (m) text = m[1];
+            statusElement.innerHTML = text;
         },
         totalDependencies: 0,
         monitorRunDependencies: function(left) {
-          this.totalDependencies = Math.max(this.totalDependencies, left);
-          Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+            this.totalDependencies = Math.max(this.totalDependencies, left);
+            Module.setStatus(left
+                ? 'Preparing... (' + (this.totalDependencies - left) + '/' + this.totalDependencies + ')'
+                : 'All downloads complete.');
+        },
+        onRuntimeInitialized: function() {
+            // WASM is ready; hide loading screen and show lobby.
+            var loader = document.getElementById('loading-container');
+            loader.style.opacity = 0;
+            setTimeout(function() {
+                loader.style.display = 'none';
+                document.getElementById('lobby').style.display = 'flex';
+            }, 400);
+            lobby.onWasmReady();
         }
-      };
-      Module.setStatus('Downloading...');
-    
-      // Clean up Web Workers, WebGL contexts, and Audio contexts on page unload
-      // to prevent memory leaks in iframes and avoid iOS WebContent jetsam on
-      // reload. See docs/resource-cleaning-up.md for the rationale behind
-      // ordering and the Path A / Path B split.
-      var cleanupRan = false;
-      function cleanupWorkers(e) {
-        // ── Path A: BFCache freeze ──────────────────────────────────────
-        // Page being frozen, not torn down. Destructive cleanup here would
-        // wreck the runtime if user navigates back. Only safe action is to
-        // disqualify BFCache so the next real reload uses Path B.
-        if (e && e.persisted) {
-          try {
-            var req = indexedDB.open('__bfcache_evict__');
-            req.onsuccess = function(ev) { ev.target.result.close(); };
-          } catch (_) {}
-          return;
-        }
+    };
 
-        // ── Path B: real unload ────────────────────────────────────────
-        // pagehide + unload can both fire on desktop Safari; idempotency
-        // guard makes the second call a no-op.
+    Module.setStatus('Downloading...');
+
+    // ── Fullscreen ────────────────────────────────────────────────────────
+    function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(function() {});
+        } else {
+            document.exitFullscreen();
+        }
+    }
+    document.addEventListener('fullscreenchange', function() {
+        var fs = !!document.fullscreenElement;
+        document.getElementById('fs-icon-expand').style.display  = fs ? 'none' : '';
+        document.getElementById('fs-icon-collapse').style.display = fs ? '' : 'none';
+    });
+    // F key also toggles fullscreen while the game is running.
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'F' && !e.ctrlKey && !e.metaKey && !e.altKey) toggleFullscreen();
+    });
+
+    // ── Page cleanup (BFCache / unload) ───────────────────────────────────
+
+    var cleanupRan = false;
+    function cleanupWorkers(e) {
+        if (e && e.persisted) {
+            try {
+                var req = indexedDB.open('__bfcache_evict__');
+                req.onsuccess = function(ev) { ev.target.result.close(); };
+            } catch (_) {}
+            return;
+        }
         if (cleanupRan) return;
         cleanupRan = true;
         console.log("Cleaning up Emscripten Web Workers, WebGL, and Audio contexts...");
 
-        // B2. Explicitly lose the WebGL context to release GPU resources immediately.
         var canvas = document.getElementById('canvas');
         try {
-          if (canvas) {
-            var gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-            if (gl) {
-              var loseContextExt = gl.getExtension('WEBGL_lose_context');
-              if (loseContextExt) {
-                loseContextExt.loseContext();
-                console.log("WebGL context lost explicitly.");
-              }
+            if (canvas) {
+                var gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                if (gl) {
+                    var loseContextExt = gl.getExtension('WEBGL_lose_context');
+                    if (loseContextExt) { loseContextExt.loseContext(); }
+                }
             }
-          }
-        } catch (e) {
-          console.error("Error losing WebGL context:", e);
-        }
+        } catch (e) { console.error("Error losing WebGL context:", e); }
 
-        // B2a. Detach canvas backing store. loseContext invalidates GL state
-        //      but does NOT free the canvas framebuffer (multi-MB on retina).
         try {
-          if (canvas) {
-            canvas.width = 1; canvas.height = 1;
-            if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
-          }
+            if (canvas) {
+                canvas.width = 1; canvas.height = 1;
+                if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+            }
         } catch (e) { console.error(e); }
 
-        // B3. Close all Web Audio API contexts. AudioContext.close() returns
-        //     a Promise — DO NOT await. The synchronous detach happens before
-        //     close() returns; awaiting freezes pagehide.
         try {
-          if (window.AudioManager && typeof window.AudioManager.shutdown === 'function') {
-            try {
-              window.AudioManager.shutdown();
-              window.AudioManager = null;
-              console.log("window.AudioManager shut down successfully.");
-            } catch (err) {
-              console.error("Error shutting down window.AudioManager:", err);
+            if (window.AudioManager && typeof window.AudioManager.shutdown === 'function') {
+                window.AudioManager.shutdown();
+                window.AudioManager = null;
             }
-          }
-          if (typeof AL !== 'undefined' && AL.contexts) {
-            AL.contexts.forEach(function(ctx) {
-              if (ctx && ctx.audioCtx && typeof ctx.audioCtx.close === 'function') {
-                ctx.audioCtx.close();
-              }
-            });
-          }
-          if (typeof SDL2 !== 'undefined' && SDL2.audioContext && typeof SDL2.audioContext.close === 'function') {
-            SDL2.audioContext.close();
-          }
-          if (typeof Module !== 'undefined' && Module) {
-            for (var prop in Module) {
-              if (Module[prop] && typeof Module[prop].close === 'function' &&
-                  (Module[prop].constructor && (Module[prop].constructor.name === 'AudioContext' || Module[prop].constructor.name === 'webkitAudioContext'))) {
-                Module[prop].close();
-              }
+            if (typeof AL !== 'undefined' && AL.contexts) {
+                AL.contexts.forEach(function(ctx) {
+                    if (ctx && ctx.audioCtx && typeof ctx.audioCtx.close === 'function') ctx.audioCtx.close();
+                });
             }
-          }
-        } catch (e) {
-          console.error("Error closing AudioContext:", e);
-        }
+            if (typeof SDL2 !== 'undefined' && SDL2.audioContext && typeof SDL2.audioContext.close === 'function') {
+                SDL2.audioContext.close();
+            }
+        } catch (e) { console.error("Error closing AudioContext:", e); }
 
-        // B4. Null HEAP* views + WASM module handles. Each view is an independent
-        //     strong reference to the linear-memory ArrayBuffer; Safari needs
-        //     all of them dropped before the heap can GC.
         try {
-          if (typeof Module !== 'undefined') {
-            Module.HEAPU8  = null; Module.HEAP8   = null;
-            Module.HEAPU16 = null; Module.HEAP16  = null;
-            Module.HEAPU32 = null; Module.HEAP32  = null;
-            Module.HEAPF32 = null; Module.HEAPF64 = null;
-            if (Module.wasmMemory)      Module.wasmMemory      = null;
-            if (Module.asm)             Module.asm             = null;
-            if (Module.wasmExports)     Module.wasmExports     = null;  // Emscripten 3.x renamed asm → wasmExports
-            if (Module.preloadedImages) Module.preloadedImages = null;
-            if (Module.preloadedAudios) Module.preloadedAudios = null;
-            if (Module.preloadedWasm)   Module.preloadedWasm   = null;
-          }
+            if (typeof Module !== 'undefined') {
+                Module.HEAPU8  = null; Module.HEAP8   = null;
+                Module.HEAPU16 = null; Module.HEAP16  = null;
+                Module.HEAPU32 = null; Module.HEAP32  = null;
+                Module.HEAPF32 = null; Module.HEAPF64 = null;
+                if (Module.wasmMemory)      Module.wasmMemory      = null;
+                if (Module.asm)             Module.asm             = null;
+                if (Module.wasmExports)     Module.wasmExports     = null;
+                if (Module.preloadedImages) Module.preloadedImages = null;
+                if (Module.preloadedAudios) Module.preloadedAudios = null;
+                if (Module.preloadedWasm)   Module.preloadedWasm   = null;
+            }
         } catch (e) { console.error(e); }
 
-        // B5. Terminate Emscripten pthread Workers. POINT OF NO RETURN —
-        //     any cross-thread WASM call after this hangs forever. Must come
-        //     last among runtime-touching steps. Engine's post.js wrap of
-        //     terminateAllThreads already includes a manual worker.terminate
-        //     sweep, so no extra sweep needed here.
         try {
-          if (typeof Module !== 'undefined' && typeof Module.terminateAllThreads === 'function') {
-            Module.terminateAllThreads();
-            console.log("Emscripten threads terminated successfully.");
-          }
-        } catch (e) {
-          console.error("Error during thread cleanup:", e);
-        }
+            if (typeof Module !== 'undefined' && typeof Module.terminateAllThreads === 'function') {
+                Module.terminateAllThreads();
+            }
+        } catch (e) { console.error("Error during thread cleanup:", e); }
 
-        // B6. Null Module last — every previous step reads Module.
         if (typeof Module !== 'undefined') Module = null;
-      }
-      // ── Fullscreen ────────────────────────────────────────────────────────
-      function toggleFullscreen() {
-        if (!document.fullscreenElement) {
-          document.documentElement.requestFullscreen().catch(function() {});
-        } else {
-          document.exitFullscreen();
-        }
-      }
-      document.addEventListener("fullscreenchange", function() {
-        var fs = !!document.fullscreenElement;
-        document.getElementById("fs-icon-expand").style.display  = fs ? "none" : "";
-        document.getElementById("fs-icon-collapse").style.display = fs ? "" : "none";
-      });
-      document.addEventListener("keydown", function(e) {
-        if (e.key === "F" && !e.ctrlKey && !e.metaKey && !e.altKey) toggleFullscreen();
-      });
 
-      window.addEventListener('pagehide', cleanupWorkers);
-      window.addEventListener('unload', cleanupWorkers);
+        // Close any open RTCPeerConnection on unload.
+        try {
+            lobby.cleanup();
+        } catch (_) {}
+    }
+    window.addEventListener('pagehide', cleanupWorkers);
+    window.addEventListener('unload', cleanupWorkers);
 
-      // ── On-screen touch controls ──────────────────────────────────────────
-      // The engine polls keyboard state through GLFW (glfwGetKey), and GLFW's
-      // Emscripten port derives that state from DOM keydown/keyup events. So a
-      // button just needs to dispatch a synthetic keyboard event and the game
-      // reads it exactly like a real key press — no C++ / export changes.
-      (function () {
+    // ── On-screen touch controls ──────────────────────────────────────────
+    // The engine polls keyboard state through GLFW (glfwGetKey), and GLFW's
+    // Emscripten port derives that state from DOM keydown/keyup events. So a
+    // button just needs to dispatch a synthetic keyboard event and the game
+    // reads it exactly like a real key press — no C++ / export changes.
+    (function () {
         var canvas = document.getElementById('canvas');
 
         function fireKey(type, btn) {
-          var keyCode = parseInt(btn.dataset.keycode, 10);
-          var ev = new KeyboardEvent(type, {
-            key: btn.dataset.key,
-            code: btn.dataset.code,
-            bubbles: true,
-            cancelable: true,
-            view: window
-          });
-          // Emscripten's GLFW port maps physical keys via event.keyCode, which
-          // is 0 on synthetic events unless forced. `which` mirrors it for
-          // legacy code paths.
-          Object.defineProperty(ev, 'keyCode', { get: function () { return keyCode; } });
-          Object.defineProperty(ev, 'which',   { get: function () { return keyCode; } });
-          var target = (window.Module && Module.canvas) ? Module.canvas : canvas;
-          target.dispatchEvent(ev);
+            var keyCode = parseInt(btn.dataset.keycode, 10);
+            var ev = new KeyboardEvent(type, {
+                key: btn.dataset.key,
+                code: btn.dataset.code,
+                bubbles: true,
+                cancelable: true,
+                view: window
+            });
+            // Emscripten's GLFW port maps physical keys via event.keyCode, which
+            // is 0 on synthetic events unless forced. `which` mirrors it for
+            // legacy code paths.
+            Object.defineProperty(ev, 'keyCode', { get: function () { return keyCode; } });
+            Object.defineProperty(ev, 'which',   { get: function () { return keyCode; } });
+            var target = (window.Module && Module.canvas) ? Module.canvas : canvas;
+            target.dispatchEvent(ev);
         }
 
         var buttons = document.querySelectorAll('#touch-controls button[data-keycode]');
         buttons.forEach(function (btn) {
-          var pressed = false;
-          function press(e) {
-            e.preventDefault();
-            if (pressed) return;
-            pressed = true;
-            btn.classList.add('active');
-            try { btn.setPointerCapture(e.pointerId); } catch (_) {}
-            fireKey('keydown', btn);
-          }
-          function release(e) {
-            if (e) e.preventDefault();
-            if (!pressed) return;
-            pressed = false;
-            btn.classList.remove('active');
-            fireKey('keyup', btn);
-          }
-          btn.addEventListener('pointerdown', press);
-          btn.addEventListener('pointerup', release);
-          btn.addEventListener('pointercancel', release);
-          btn.addEventListener('pointerleave', release);
-          // Releasing focus (tab switch, alert) must not latch a key on.
-          window.addEventListener('blur', function () { release(); });
+            var pressed = false;
+            function press(e) {
+                e.preventDefault();
+                if (pressed) return;
+                pressed = true;
+                btn.classList.add('active');
+                try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+                fireKey('keydown', btn);
+            }
+            function release(e) {
+                if (e) e.preventDefault();
+                if (!pressed) return;
+                pressed = false;
+                btn.classList.remove('active');
+                fireKey('keyup', btn);
+            }
+            btn.addEventListener('pointerdown', press);
+            btn.addEventListener('pointerup', release);
+            btn.addEventListener('pointercancel', release);
+            btn.addEventListener('pointerleave', release);
+            // Releasing focus (tab switch, alert) must not latch a key on.
+            window.addEventListener('blur', function () { release(); });
         });
-      })();
+    })();
     </script>
     {{{ SCRIPT }}}
 </body>
