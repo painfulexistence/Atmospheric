@@ -92,3 +92,6 @@ jobs:
 
       - name: CMake Build
         run: cmake --build ${{ steps.strings.outputs.build-dir }}
+
+      - name: CTest
+        run: ctest --test-dir ${{ steps.strings.outputs.build-dir }} --output-on-failure --timeout 120

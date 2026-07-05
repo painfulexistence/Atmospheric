@@ -119,5 +119,6 @@ endif()
 # own executables. Pass -DAE_BUILD_EXAMPLES=OFF to skip examples (e.g. when
 # only the engine WASM package is needed for editor deployment).
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND AE_BUILD_EXAMPLES)
+    enable_testing() # registers add_test() targets (e.g. RelayLoopback) with ctest
     add_subdirectory(Examples)
 endif()
