@@ -42,6 +42,22 @@ if [ -n "${DEPLOY_DEST}" ]; then
 fi
 echo -e ""
 
+# 集中一次確認：在做任何破壞性動作前，把所有 blast radius 一次講清楚。
+# 非互動式終端 (CI/自動化) 跳過確認、直接繼續。
+if [ -t 0 ]; then
+    if [ -n "${DEPLOY_DEST}" ] && [ "${DEPLOY_DEST}" != "${LOCAL_WWW}" ]; then
+        echo -e "${YELLOW}⚠️  Deploy 採取 clean build 模式，將重建 ${LOCAL_WWW} 底下所有現有 artifacts，並覆蓋遠端 ${DEPLOY_DEST} 內容，繼續嗎？(y/N)${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Deploy 採取 clean build 模式，將重建 ${LOCAL_WWW} 底下所有現有 artifacts，繼續嗎？(y/N)${NC}"
+    fi
+    read -p "> " CONFIRM
+    if [[ ! "$CONFIRM" =~ ^[yY]$ ]]; then
+        echo -e "${RED}❌ 部署已取消。${NC}"
+        exit 0
+    fi
+    echo -e ""
+fi
+
 # 1. 初始化本地 www/ 目錄
 echo -e "${YELLOW}📁 正在初始化本地 www/ 目錄...${NC}"
 rm -rf "${LOCAL_WWW}"
@@ -144,20 +160,10 @@ fi
 echo -e "${GREEN}✓ 本地 www/ 目錄更新完成！(已整理 $COPIED_COUNT 個範例)${NC}"
 
 # 5. 如果指定了部署目的地 (DEPLOY_DEST)，執行複製/同步手續
+# (最終確認已在腳本開頭一次問完，這裡直接執行。)
 if [ -n "${DEPLOY_DEST}" ] && [ "${DEPLOY_DEST}" != "${LOCAL_WWW}" ]; then
     echo -e ""
-    echo -e "${YELLOW}⚠️ 警告: 準備部署至目標目錄: ${GREEN}${DEPLOY_DEST}${NC}"
-    
-    # 僅在互動式終端機環境中進行手動確認，避免破壞 CI/CD 自動化流程
-    if [ -t 0 ]; then
-        read -p "確定要將 www/ 內容同步/覆蓋至該目錄嗎？這將會覆蓋舊檔案！(y/N): " CONFIRM
-        if [[ ! "$CONFIRM" =~ ^[yY]$ ]]; then
-            echo -e "${RED}❌ 部署已取消。${NC}"
-            exit 0
-        fi
-    else
-        echo -e "${BLUE}偵測到非互動式環境，自動進行部署...${NC}"
-    fi
+    echo -e "${YELLOW}🚀 準備部署至目標目錄: ${GREEN}${DEPLOY_DEST}${NC}"
 
     if [[ "$DEPLOY_DEST" == *":"* ]]; then
         # 遠端複製 (例如 user@vps:/var/www/atmospheric)
