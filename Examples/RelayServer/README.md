@@ -1,9 +1,8 @@
 # RelayServer
 
 A headless UDP relay for 2-player sessions — the deployment shape of the
-engine's `UdpRelayServer` subsystem. When direct peer-to-peer NAT traversal
-fails, both players connect to this relay instead and it forwards their
-lockstep packets.
+engine's `UdpRelay` class. When direct peer-to-peer NAT traversal fails, both
+players connect to this relay instead and it forwards their lockstep packets.
 
 ```sh
 ./RelayServer                # relay on UDP :9000
@@ -29,11 +28,15 @@ adopts the room-id framing, not just `LockstepNet`.
 
 `LockstepNet` in the MultiplayerSandbox example has relay support via
 `StartRelayHost()` / `StartRelayClient()`. An automated end-to-end check
-lives in `RelayLoopbackTest` (run via `ctest`), which spins up this relay
-subsystem and two lockstep peers inside one process over 127.0.0.1.
+lives in `RelayLoopbackTest` (run via `ctest`), which spins up a `UdpRelay`
+and two lockstep peers inside one process over 127.0.0.1.
 
 ## Notes
 
-This example drives the subsystem with a plain fixed-rate loop instead of
-`Application`, which currently always creates a window. Once the engine gains
-a headless application mode this becomes `app->AddSubsystem<UdpRelayServer>()`.
+`UdpRelay` is a plain class, not an engine Subsystem — it has no per-frame
+`Application` dependency and no per-entity meaning, so this example just
+`Start()`s it and pumps `Process(dt)` in a manual loop. If a project ever
+needs to embed it inside an `Application`-driven process (e.g. to show a
+debug panel), the right shape is a thin Subsystem that owns a `UdpRelay`
+member and forwards `Process()`/`DrawImGui()` to it — the same pattern
+`NetworkSubsystem` uses to wrap `HttpClient`/`WebSocketClient`.

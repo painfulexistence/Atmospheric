@@ -95,7 +95,7 @@ else()
     endif()
 
     # ── Relay loopback integration test (runs in CI via ctest) ──────────────
-    # One process: UdpRelayServer (engine) + two LockstepNet peers over
+    # One process: UdpRelay (engine) + two LockstepNet peers over
     # 127.0.0.1. Exercises the relay handshake, input exchange, and
     # stale-peer rebind without any real network.
     add_executable(RelayLoopbackTest

@@ -1,10 +1,8 @@
-#include "udp_relay_server.hpp"
+#include "udp_relay.hpp"
 
 #ifndef __EMSCRIPTEN__
 
-#include "application.hpp"
 #include <cstring>
-#include <imgui.h>
 #include <spdlog/spdlog.h>
 
 #if defined(_WIN32)
@@ -62,20 +60,15 @@ namespace {
 
 }// namespace
 
-void UdpRelayServer::Init(Application* app) {
-    Subsystem::Init(app);
-    spdlog::info("UdpRelayServer: initialized");
-}
-
-bool UdpRelayServer::Start(uint16_t port) {
+bool UdpRelay::Start(uint16_t port) {
     if (_running) Stop();
     if (!EnsureSocketLib()) {
-        spdlog::error("UdpRelayServer: socket subsystem init failed");
+        spdlog::error("UdpRelay: socket subsystem init failed");
         return false;
     }
     _sock = static_cast<SocketHandle>(::socket(AF_INET, SOCK_DGRAM, 0));
     if (_sock == kInvalidSocket) {
-        spdlog::error("UdpRelayServer: socket() failed");
+        spdlog::error("UdpRelay: socket() failed");
         return false;
     }
     SetNonBlocking(static_cast<SockH>(_sock));
@@ -85,7 +78,7 @@ bool UdpRelayServer::Start(uint16_t port) {
     addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port = htons(port);
     if (::bind(_sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-        spdlog::error("UdpRelayServer: bind() failed on port {} (port in use?)", port);
+        spdlog::error("UdpRelay: bind() failed on port {} (port in use?)", port);
         CloseSocket(static_cast<SockH>(_sock));
         _sock = kInvalidSocket;
         return false;
@@ -98,11 +91,11 @@ bool UdpRelayServer::Start(uint16_t port) {
     }
     _boundPort = port;
     _running = true;
-    spdlog::info("UdpRelayServer: listening on UDP port {}", _boundPort);
+    spdlog::info("UdpRelay: listening on UDP port {}", _boundPort);
     return true;
 }
 
-void UdpRelayServer::Stop() {
+void UdpRelay::Stop() {
     if (_sock != kInvalidSocket) {
         CloseSocket(static_cast<SockH>(_sock));
         _sock = kInvalidSocket;
@@ -110,10 +103,10 @@ void UdpRelayServer::Stop() {
     _rooms.clear();
     _running = false;
     _boundPort = 0;
-    spdlog::info("UdpRelayServer: stopped");
+    spdlog::info("UdpRelay: stopped");
 }
 
-void UdpRelayServer::Process(float dt) {
+void UdpRelay::Process(float dt) {
     if (!_running) return;
     uint32_t prevMs = _totalMs;
     _totalMs += uint32_t(dt * 1000.f);
@@ -122,34 +115,7 @@ void UdpRelayServer::Process(float dt) {
     if (_totalMs / 1000 != prevMs / 1000) _evictStaleRooms();
 }
 
-void UdpRelayServer::DrawImGui(float /*dt*/) {
-#ifndef NDEBUG
-    if (!ImGui::CollapsingHeader("UdpRelayServer")) return;
-    ImGui::Text("Running  : %s", _running ? "yes" : "no");
-    ImGui::Text("Port     : %u", _boundPort);
-    ImGui::Text("Rooms    : %d", RoomCount());
-    if (ImGui::TreeNode("Rooms##relay")) {
-        for (auto& [id, room] : _rooms) {
-            ImGui::Text("Room %u  idle %u ms", id, _totalMs - room.lastActivityMs);
-            for (int i = 0; i < 2; i++) {
-                const auto& p = room.peers[i];
-                if (p.valid) {
-                    in_addr a{};
-                    a.s_addr = p.addr;
-                    char ipbuf[INET_ADDRSTRLEN] = "?";
-                    inet_ntop(AF_INET, &a, ipbuf, sizeof(ipbuf));
-                    ImGui::Text("  peer[%d] %s:%u", i, ipbuf, ntohs(p.port));
-                } else {
-                    ImGui::Text("  peer[%d] <waiting>", i);
-                }
-            }
-        }
-        ImGui::TreePop();
-    }
-#endif
-}
-
-void UdpRelayServer::_pump() {
+void UdpRelay::_pump() {
     // Wire format: [roomId: uint32_t LE][LockstepNet payload ...]
     // Minimum meaningful packet: 4 (roomId) + 1 (any payload byte) = 5 bytes.
     uint8_t buf[1504];// 4-byte header + 1500-byte max UDP payload
@@ -223,10 +189,10 @@ void UdpRelayServer::_pump() {
     }
 }
 
-void UdpRelayServer::_evictStaleRooms() {
+void UdpRelay::_evictStaleRooms() {
     for (auto it = _rooms.begin(); it != _rooms.end();) {
         if (_totalMs - it->second.lastActivityMs > kRoomTimeoutMs) {
-            spdlog::debug("UdpRelayServer: evicting idle room {}", it->first);
+            spdlog::debug("UdpRelay: evicting idle room {}", it->first);
             it = _rooms.erase(it);
         } else {
             ++it;
@@ -234,7 +200,7 @@ void UdpRelayServer::_evictStaleRooms() {
     }
 }
 
-void UdpRelayServer::_forwardTo(const Peer& dst, const uint8_t* payload, int len) {
+void UdpRelay::_forwardTo(const Peer& dst, const uint8_t* payload, int len) {
     if (!dst.valid || _sock == kInvalidSocket) return;
     sockaddr_in to{};
     to.sin_family = AF_INET;

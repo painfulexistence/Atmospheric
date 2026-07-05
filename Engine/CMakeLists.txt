@@ -257,10 +257,10 @@ endif()
 #   Native : synchronous fread + JobSystem-parallel Prefetch.
 # Compiled on all platforms (not just Emscripten).
 list(APPEND SOURCES src/file_system.cpp)
-# UdpRelayServer: OS sockets only, no third-party deps — compiled always so
-# server builds and the relay loopback test don't require AE_USE_NETWORKING
-# (which drags in curl/libwebsockets/OpenSSL). Empty TU on Emscripten.
-list(APPEND SOURCES src/udp_relay_server.cpp)
+# UdpRelay: OS sockets only, no third-party deps — compiled always so server
+# builds and the relay loopback test don't require AE_USE_NETWORKING (which
+# drags in curl/libwebsockets/OpenSSL). Empty TU on Emscripten.
+list(APPEND SOURCES src/udp_relay.cpp)
 
 set(SOURCES_EXT
     external/imgui/imgui.cpp
@@ -510,7 +510,7 @@ else()
     endif()
     target_link_libraries(AtmosphericEngine PUBLIC SDL3::SDL3)
     if(WIN32)
-        # Winsock2 for UdpRelayServer (compiled into the engine unconditionally).
+        # Winsock2 for UdpRelay (compiled into the engine unconditionally).
         target_link_libraries(AtmosphericEngine PUBLIC ws2_32)
     endif()
     if(ANDROID)

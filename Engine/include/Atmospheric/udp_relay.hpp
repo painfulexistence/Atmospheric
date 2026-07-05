@@ -1,14 +1,13 @@
 #pragma once
-#include "subsystem.hpp"
 #include <cstdint>
 #include <string>
 #include <unordered_map>
 
-// UdpRelayServer
+// UdpRelay
 //
-// Engine-level subsystem that forwards UDP packets between two peers identified
-// by a shared roomId.  Intended for server builds where direct peer-to-peer
-// NAT traversal has failed.
+// Forwards UDP packets between two peers identified by a shared roomId.
+// Intended for server builds where direct peer-to-peer NAT traversal has
+// failed.
 //
 // Packet wire format (client → relay):
 //   [roomId: uint32_t LE][...LockstepNet payload...]
@@ -25,14 +24,22 @@
 //     sender address (handles mobile clients rebinding after a network switch).
 //   - Rooms with no activity for kRoomTimeoutMs milliseconds are removed.
 //
-// Usage (server build):
-//   auto relay = app->AddSubsystem<UdpRelayServer>();
-//   relay->Start(9000);
+// Usage (headless relay process — see Examples/RelayServer):
+//   UdpRelay relay;
+//   relay.Start(9000);
+//   while (running) relay.Process(dt);
+//
+// A plain class, not an engine Subsystem: it has no per-frame Application
+// dependency and no per-entity meaning, so it doesn't fit AddSubsystem<T>()
+// or Component. If a project needs to embed it inside an Application-driven
+// process (e.g. to show a debug panel), wrap it the way NetworkSubsystem
+// wraps HttpClient/WebSocketClient: a thin Subsystem that owns a UdpRelay
+// member and forwards Process()/DrawImGui() to it.
 //
 // Not available on Emscripten (no raw UDP sockets in the browser).
 #ifndef __EMSCRIPTEN__
 
-class UdpRelayServer : public Subsystem {
+class UdpRelay {
 public:
     static constexpr uint32_t kRoomTimeoutMs = 60'000;// 1 minute idle → evict room
     static constexpr uint32_t kPeerStaleMs = 5'000;// silent this long → replaceable
@@ -41,13 +48,12 @@ public:
     // are dropped. Guards the room map against packet-flood memory growth.
     int maxRooms = 1024;
 
-    void Init(Application* app) override;
-    void Process(float dt) override;
-    void DrawImGui(float dt) override;
-
     // port 0 binds an OS-assigned ephemeral port; BoundPort() reports it.
     bool Start(uint16_t port);
     void Stop();
+
+    // Call once per frame/tick to pump the socket and evict stale rooms.
+    void Process(float dt);
 
     bool IsRunning() const {
         return _running;

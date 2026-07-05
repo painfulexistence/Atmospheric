@@ -1,16 +1,12 @@
 // RelayServer — headless UDP relay for 2-player sessions.
 //
-// The deployment shape of UdpRelayServer: no window, no graphics, no audio —
-// just the relay subsystem driven by a plain fixed-rate loop. Run it on any
-// host both players can reach, and point LockstepNet at it with
-// StartRelayHost / StartRelayClient using a shared room id.
+// The deployment shape of UdpRelay: no window, no graphics, no audio — just
+// the relay driven by a plain fixed-rate loop. Run it on any host both
+// players can reach, and point LockstepNet at it with StartRelayHost /
+// StartRelayClient using a shared room id.
 //
 //   ./RelayServer [--port <n>]     (default 9000)
-//
-// NOTE: this example drives the subsystem manually instead of going through
-// Application, which currently always creates a window. Once Application
-// grows a headless mode, this collapses to AddSubsystem<UdpRelayServer>().
-#include <Atmospheric/udp_relay_server.hpp>
+#include <Atmospheric/udp_relay.hpp>
 #include <spdlog/spdlog.h>
 
 #include <atomic>
@@ -35,7 +31,7 @@ int main(int argc, char* argv[]) {
     std::signal(SIGTERM, [](int) { g_stop = true; });
 #endif
 
-    UdpRelayServer relay;
+    UdpRelay relay;
     if (!relay.Start(port)) {
         spdlog::error("RelayServer: failed to bind UDP port {}", port);
         return 1;

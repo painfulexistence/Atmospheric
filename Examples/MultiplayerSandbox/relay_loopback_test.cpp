@@ -1,4 +1,4 @@
-// Loopback integration test: one UdpRelayServer and two LockstepNet peers in a
+// Loopback integration test: one UdpRelay and two LockstepNet peers in a
 // single process, talking over 127.0.0.1. No real network required, so this
 // runs in CI. Verifies:
 //   1. relay handshake — both peers reach Running through the relay
@@ -8,7 +8,7 @@
 //      the slot of a peer that has gone silent past kPeerStaleMs
 // Exit code 0 = pass; prints the failing check otherwise.
 #include "net_lockstep.hpp"
-#include <Atmospheric/udp_relay_server.hpp>
+#include <Atmospheric/udp_relay.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -33,7 +33,7 @@ namespace {
     uint32_t g_nowMs = 1000;// synthetic clock for LockstepNet (starts past the hello throttle)
 
     // One scheduler step: relay processes, peers pump, clocks advance 5 ms.
-    void step(UdpRelayServer& relay, LockstepNet* a, LockstepNet* b) {
+    void step(UdpRelay& relay, LockstepNet* a, LockstepNet* b) {
         relay.Process(0.005f);
         if (a) a->Pump(g_nowMs);
         if (b) b->Pump(g_nowMs);
@@ -49,7 +49,7 @@ namespace {
 }// namespace
 
 int main() {
-    UdpRelayServer relay;
+    UdpRelay relay;
     REQUIRE(relay.Start(0));// ephemeral port — no CI port conflicts
     const uint16_t port = relay.BoundPort();
     REQUIRE(port != 0);
@@ -101,8 +101,8 @@ int main() {
     // different source port. The relay must hand the slot over once the old
     // address has been silent past kPeerStaleMs.
     client.Shutdown();
-    relay.Process(float(UdpRelayServer::kPeerStaleMs) / 1000.0f + 1.0f);// fast-forward relay clock
-    g_nowMs += UdpRelayServer::kPeerStaleMs + 1000;
+    relay.Process(float(UdpRelay::kPeerStaleMs) / 1000.0f + 1.0f);// fast-forward relay clock
+    g_nowMs += UdpRelay::kPeerStaleMs + 1000;
     // The fast-forward made BOTH peers look stale to the relay. Let the host
     // pump a few steps (it keeps sending inputs/pings) so its lastSeen is
     // fresh again and only the dead client's slot is the stale one.

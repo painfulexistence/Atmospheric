@@ -324,7 +324,7 @@ bool LockstepNet::StartClient(const std::string&, uint16_t) {
     return true;
 }
 
-// UdpRelayServer is a raw-UDP fallback for native builds; it has no meaning
+// UdpRelay is a raw-UDP fallback for native builds; it has no meaning
 // over a WebRTC DataChannel, which already negotiates NAT traversal itself
 // (ICE, with TURN relay as its own fallback). Fail cleanly rather than
 // silently drop to solo mode.
