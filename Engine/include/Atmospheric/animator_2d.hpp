@@ -35,11 +35,11 @@ public:
 
     // Helper to create animation from tileset
     void CreateAnimationFromTileset(
-      const std::string& name,
-      const glm::vec2& tilesetSize,
-      const std::vector<int>& tileIndices,
-      float frameDuration,
-      bool loop = true
+        const std::string& name,
+        const glm::vec2& tilesetSize,
+        const std::vector<int>& tileIndices,
+        float frameDuration,
+        bool loop = true
     );
 
 private:

@@ -3,9 +3,9 @@
 #include "batch_renderer_2d.hpp"
 #include "canvas_drawable.hpp"
 #include "game_object.hpp"
-#include "graphics_server.hpp"
-#include "renderer.hpp"
+#include "graphics_subsystem.hpp"
 #include "imgui.h"
+#include "renderer.hpp"
 
 SpriteComponent::SpriteComponent(GameObject* gameObject, const SpriteProps& props) : CanvasDrawable(gameObject) {
     _size = props.size;
@@ -29,20 +29,22 @@ void SpriteComponent::DrawImGui() {
     glm::vec2 pivot = GetPivot();
     glm::vec4 color = GetColor();
     int textureVal = GetTexture();
-    if (ImGui::DragFloat2("Size",  &size.x,  0.001f, 9999.999f)) SetSize(size);
-    if (ImGui::DragFloat2("Pivot", &pivot.x, 0.0f,   1.0f))      SetPivot(pivot);
-    if (ImGui::ColorEdit4("Color", &color.r))                     SetColor(color);
-    auto* graphics = gameObject->GetApp()->GetGraphicsServer();
-    int minTex = 0, maxTex = (int)(graphics->canvasTextures.size() - 1);
-    if (ImGui::SliderInt("Texture ID", &textureVal, minTex, maxTex))
-        SetTexture(textureVal);
+    if (ImGui::DragFloat2("Size", &size.x, 0.001f, 9999.999f)) SetSize(size);
+    if (ImGui::DragFloat2("Pivot", &pivot.x, 0.0f, 1.0f)) SetPivot(pivot);
+    if (ImGui::ColorEdit4("Color", &color.r)) SetColor(color);
+    auto* graphics = GraphicsSubsystem::Get();
+    int minTex = 0, maxTex = static_cast<int>(graphics->canvasTextures.size() - 1);
+    if (ImGui::SliderInt("Texture ID", &textureVal, minTex, maxTex)) SetTexture(textureVal);
 }
 
 void SpriteComponent::OnAttach() {
-    gameObject->GetApp()->GetGraphicsServer()->RegisterCanvasDrawable(this);
+    GraphicsSubsystem::Get()->RegisterCanvasDrawable(this);
 }
 
 void SpriteComponent::OnDetach() {
+    if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->UnregisterCanvasDrawable(this);
+    }
 }
 
 void SpriteComponent::Draw(BatchRenderer2D* renderer) {
@@ -71,6 +73,6 @@ void SpriteComponent::Draw(BatchRenderer2D* renderer) {
     };
 
     // Combine layer and zOrder for sorting (layer * 1000 + zOrder)
-    int sortKey = (int)_layer * 1000 + _zOrder;
+    int sortKey = static_cast<int>(_layer) * 1000 + _zOrder;
     renderer->DrawQuad(transform, _texture, uvs, _color, sortKey);
 }

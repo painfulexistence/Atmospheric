@@ -1,0 +1,98 @@
+name: CI (Desktop)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+
+jobs:
+  build-desktop:
+    name: Desktop, Debug and MinSizeRel
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+        build-type: [Debug, MinSizeRel]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: rlalik/setup-cpp-compiler@master
+        with:
+          compiler: latest
+
+      - uses: seanmiddleditch/gha-setup-ninja@master
+
+      - name: Set strings
+        id: strings
+        shell: bash
+        run: |
+          echo "build-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
+      - name: Install vcpkg
+        uses: actions/checkout@v4
+        with:
+          repository: "microsoft/vcpkg"
+          path: "vcpkg"
+
+      - name: Bootstrap vcpkg on Unix
+        if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
+        run: |
+          ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+      - name: Bootstrap vcpkg on Windows
+        if: matrix.os == 'windows-latest'
+        shell: cmd
+        run: |
+          ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+
+      - name: Cache vcpkg installed packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/vcpkg/installed
+            ${{ github.workspace }}/vcpkg/packages
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-
+
+      - name: Install CMake and other dependencies on Ubuntu
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake libxmu-dev libxi-dev libgl-dev libxinerama-dev libxcursor-dev xorg-dev libglu1-mesa-dev pkg-config
+
+      - name: Install CMake on macOS
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install cmake
+
+      - name: Install CMake on Windows
+        if: matrix.os == 'windows-latest'
+        run: |
+          choco install cmake.portable
+
+      - name: Set up MSVC developer environment
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: CMake Configure
+        run: >
+          cmake -G Ninja
+          -B ${{ steps.strings.outputs.build-dir }}
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DCMAKE_BUILD_TYPE=${{ matrix.build-type }}
+          -S ${{ github.workspace }}
+
+      - name: CMake Build
+        run: cmake --build ${{ steps.strings.outputs.build-dir }}
+
+      - name: CTest
+        run: ctest --test-dir ${{ steps.strings.outputs.build-dir }} --output-on-failure --timeout 120

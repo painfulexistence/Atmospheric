@@ -3,43 +3,58 @@
 #include <cmath>
 
 namespace {
-constexpr int kDispersion[] = {
-    0,// Empty
-    0,// Stone
-    0,// Dirt
-    0,// Sand
-    0,// Wood
-    5,// Water
-    3,// Oil
-    4,// Acid
-    1,// Lava
-};
+    constexpr int gkDispersion[] = {
+        0,// Empty
+        0,// Stone
+        0,// Dirt
+        0,// Sand
+        0,// Wood
+        5,// Water
+        3,// Oil
+        4,// Acid
+        1,// Lava
+    };
 }
 
 int SandWorld::Density(Mat m) {
     switch (m) {
-    case Mat::Empty: return 0;
+    case Mat::Empty:
+        return 0;
     case Mat::Smoke:
-    case Mat::Steam: return 1;
-    case Mat::Oil: return 2;
+    case Mat::Steam:
+        return 1;
+    case Mat::Oil:
+        return 2;
     case Mat::Water:
-    case Mat::Acid: return 3;
-    case Mat::Lava: return 4;
-    case Mat::Sand: return 5;
-    default: return 100;// static solids never get displaced
+    case Mat::Acid:
+        return 3;
+    case Mat::Lava:
+        return 4;
+    case Mat::Sand:
+        return 5;
+    default:
+        return 100;// static solids never get displaced
     }
 }
 
 void SandWorld::SetCell(int x, int y, Mat m) {
     if (!InBounds(x, y)) return;
     Cell& c = C(x, y);
-    c.mat = uint8_t(m);
-    c.shade = uint8_t(Rand() & 0xFF);
+    c.mat = static_cast<uint8_t>(m);
+    c.shade = static_cast<uint8_t>(Rand() & 0xFF);
     switch (m) {
-    case Mat::Fire: c.life = uint8_t(30 + (Rand() % 50)); break;
-    case Mat::Smoke: c.life = uint8_t(60 + (Rand() % 90)); break;
-    case Mat::Steam: c.life = uint8_t(80 + (Rand() % 100)); break;
-    default: c.life = 0; break;
+    case Mat::Fire:
+        c.life = static_cast<uint8_t>(30 + (Rand() % 50));
+        break;
+    case Mat::Smoke:
+        c.life = static_cast<uint8_t>(60 + (Rand() % 90));
+        break;
+    case Mat::Steam:
+        c.life = static_cast<uint8_t>(80 + (Rand() % 100));
+        break;
+    default:
+        c.life = 0;
+        break;
     }
 }
 
@@ -49,13 +64,13 @@ void SandWorld::SetCell(int x, int y, Mat m) {
 
 void SandWorld::Generate(uint32_t seed) {
     rng = seed | 1u;
-    cells.assign(size_t(W) * H, Cell{});
+    cells.assign(static_cast<size_t>(W) * H, Cell{});
 
     // Surface heightmap via a bounded random walk
     std::vector<int> surf(W);
-    int h = int(H * 0.42f);
+    int h = static_cast<int>(H * 0.42f);
     for (int x = 0; x < W; x++) {
-        h += int(Rand() % 3) - 1;
+        h += static_cast<int>(Rand() % 3) - 1;
         h = std::clamp(h, H / 4, (H * 3) / 5);
         surf[x] = h;
     }
@@ -69,9 +84,9 @@ void SandWorld::Generate(uint32_t seed) {
 
     // Stone veins deep down
     for (int i = 0; i < 24; i++) {
-        int cx = 8 + int(Rand() % (W - 16));
-        int cy = surf[cx] + 25 + int(Rand() % std::max(1, H - surf[cx] - 30));
-        int r = 4 + int(Rand() % 8);
+        int cx = 8 + static_cast<int>(Rand() % (W - 16));
+        int cy = surf[cx] + 25 + static_cast<int>(Rand() % std::max(1, H - surf[cx] - 30));
+        int r = 4 + static_cast<int>(Rand() % 8);
         for (int y = cy - r; y <= cy + r; y++) {
             for (int x = cx - r; x <= cx + r; x++) {
                 if (!InBounds(x, y)) continue;
@@ -85,10 +100,10 @@ void SandWorld::Generate(uint32_t seed) {
 
     // Caves: drunkard's walk tunnels
     for (int i = 0; i < 14; i++) {
-        int x = 16 + int(Rand() % (W - 32));
-        int y = surf[x] + 10 + int(Rand() % 60);
+        int x = 16 + static_cast<int>(Rand() % (W - 32));
+        int y = surf[x] + 10 + static_cast<int>(Rand() % 60);
         for (int step = 0; step < 260; step++) {
-            int r = 2 + int(Rand() % 3);
+            int r = 2 + static_cast<int>(Rand() % 3);
             for (int oy = -r; oy <= r; oy++) {
                 for (int ox = -r; ox <= r; ox++) {
                     if (ox * ox + oy * oy > r * r) continue;
@@ -107,13 +122,12 @@ void SandWorld::Generate(uint32_t seed) {
     }
 
     // Liquid pools
-    static const Mat kPoolMats[] = { Mat::Water, Mat::Water, Mat::Water, Mat::Oil,
-                                     Mat::Oil,   Mat::Acid,  Mat::Lava };
+    static const Mat gkPoolMats[] = { Mat::Water, Mat::Water, Mat::Water, Mat::Oil, Mat::Oil, Mat::Acid, Mat::Lava };
     for (int i = 0; i < 10; i++) {
-        int cx = 20 + int(Rand() % (W - 40));
-        int cy = surf[cx] + 15 + int(Rand() % std::max(1, H - surf[cx] - 25));
-        int r = 5 + int(Rand() % 8);
-        Mat liquid = kPoolMats[Rand() % 7];
+        int cx = 20 + static_cast<int>(Rand() % (W - 40));
+        int cy = surf[cx] + 15 + static_cast<int>(Rand() % std::max(1, H - surf[cx] - 25));
+        int r = 5 + static_cast<int>(Rand() % 8);
+        Mat liquid = gkPoolMats[Rand() % 7];
         for (int y = cy - r; y <= cy + r; y++) {
             for (int x = cx - r; x <= cx + r; x++) {
                 if (!InBounds(x, y)) continue;
@@ -126,9 +140,9 @@ void SandWorld::Generate(uint32_t seed) {
 
     // Wood platforms floating in the air above the surface
     for (int i = 0; i < 12; i++) {
-        int len = 8 + int(Rand() % 20);
-        int x0 = 8 + int(Rand() % (W - len - 16));
-        int y0 = std::max(8, surf[x0] - 8 - int(Rand() % 50));
+        int len = 8 + static_cast<int>(Rand() % 20);
+        int x0 = 8 + static_cast<int>(Rand() % (W - len - 16));
+        int y0 = std::max(8, surf[x0] - 8 - static_cast<int>(Rand() % 50));
         for (int x = x0; x < x0 + len; x++) {
             for (int y = y0; y < y0 + 3; y++) {
                 SetCell(x, y, Mat::Wood);
@@ -138,9 +152,9 @@ void SandWorld::Generate(uint32_t seed) {
 
     // Sand piles near the surface
     for (int i = 0; i < 10; i++) {
-        int cx = 12 + int(Rand() % (W - 24));
+        int cx = 12 + static_cast<int>(Rand() % (W - 24));
         int cy = surf[cx];
-        int r = 3 + int(Rand() % 6);
+        int r = 3 + static_cast<int>(Rand() % 6);
         for (int y = cy - r; y <= cy + r; y++) {
             for (int x = cx - r; x <= cx + r; x++) {
                 if (!InBounds(x, y)) continue;
@@ -198,30 +212,37 @@ bool SandWorld::TryDisplace(int x, int y, int nx, int ny, uint8_t parity) {
 }
 
 void SandWorld::Step(uint32_t tick) {
-    uint8_t parity = uint8_t(tick);
+    auto parity = static_cast<uint8_t>(tick);
 
     // Bottom-up pass: everything that falls (granulars, liquids) plus fire
     for (int y = H - 2; y >= 1; y--) {
-        bool l2r = ((tick + uint32_t(y)) & 1) == 0;
+        bool l2r = ((tick + static_cast<uint32_t>(y)) & 1) == 0;
         for (int i = 1; i < W - 1; i++) {
             int x = l2r ? i : W - 1 - i;
             Cell& c = C(x, y);
             if (c.stamp == parity) continue;
             switch (Mat(c.mat)) {
-            case Mat::Sand: UpdateGranular(x, y, parity); break;
+            case Mat::Sand:
+                UpdateGranular(x, y, parity);
+                break;
             case Mat::Water:
             case Mat::Oil:
             case Mat::Acid:
-            case Mat::Lava: UpdateLiquid(x, y, parity); break;
-            case Mat::Fire: UpdateFire(x, y, parity); break;
-            default: break;
+            case Mat::Lava:
+                UpdateLiquid(x, y, parity);
+                break;
+            case Mat::Fire:
+                UpdateFire(x, y, parity);
+                break;
+            default:
+                break;
             }
         }
     }
 
     // Top-down pass: gases rise
     for (int y = 1; y < H - 1; y++) {
-        bool l2r = ((tick + uint32_t(y)) & 1) == 0;
+        bool l2r = ((tick + static_cast<uint32_t>(y)) & 1) == 0;
         for (int i = 1; i < W - 1; i++) {
             int x = l2r ? i : W - 1 - i;
             Cell& c = C(x, y);
@@ -245,31 +266,31 @@ void SandWorld::UpdateLiquid(int x, int y, uint8_t parity) {
 
     if (m == Mat::Lava) {
         // Lava interacts with neighbors before (slow) movement
-        static const int nx[] = { 0, 0, -1, 1 };
-        static const int ny[] = { -1, 1, 0, 0 };
+        static const int gnx[] = { 0, 0, -1, 1 };
+        static const int gny[] = { -1, 1, 0, 0 };
         for (int n = 0; n < 4; n++) {
-            Mat nm = GetMat(x + nx[n], y + ny[n]);
+            Mat nm = GetMat(x + gnx[n], y + gny[n]);
             if (nm == Mat::Water) {
-                SetCell(x + nx[n], y + ny[n], Mat::Steam);
+                SetCell(x + gnx[n], y + gny[n], Mat::Steam);
                 SetCell(x, y, Mat::Stone);
                 C(x, y).stamp = parity;
                 return;
             }
             if ((nm == Mat::Wood || nm == Mat::Oil) && (Rand() & 7) == 0) {
-                SetCell(x + nx[n], y + ny[n], Mat::Fire);
+                SetCell(x + gnx[n], y + gny[n], Mat::Fire);
             }
         }
         // Lava is viscous: only moves on some ticks
-        if (((uint32_t(parity) + c.shade) & 1) != 0) return;
+        if (((static_cast<uint32_t>(parity) + c.shade) & 1) != 0) return;
     }
 
     if (m == Mat::Acid) {
-        static const int nx[] = { 0, 0, -1, 1 };
-        static const int ny[] = { -1, 1, 0, 0 };
+        static const int gnx[] = { 0, 0, -1, 1 };
+        static const int gny[] = { -1, 1, 0, 0 };
         for (int n = 0; n < 4; n++) {
-            Mat nm = GetMat(x + nx[n], y + ny[n]);
+            Mat nm = GetMat(x + gnx[n], y + gny[n]);
             if ((nm == Mat::Dirt || nm == Mat::Sand || nm == Mat::Wood) && (Rand() & 15) == 0) {
-                SetCell(x + nx[n], y + ny[n], Mat::Empty);
+                SetCell(x + gnx[n], y + gny[n], Mat::Empty);
                 if ((Rand() & 3) == 0) {
                     C(x, y) = Cell{};// acid is consumed
                     return;
@@ -279,11 +300,11 @@ void SandWorld::UpdateLiquid(int x, int y, uint8_t parity) {
     }
 
     if (m == Mat::Water) {
-        static const int nx[] = { 0, 0, -1, 1 };
-        static const int ny[] = { -1, 1, 0, 0 };
+        static const int gnx[] = { 0, 0, -1, 1 };
+        static const int gny[] = { -1, 1, 0, 0 };
         for (int n = 0; n < 4; n++) {
-            if (GetMat(x + nx[n], y + ny[n]) == Mat::Fire) {
-                SetCell(x + nx[n], y + ny[n], Mat::Steam);
+            if (GetMat(x + gnx[n], y + gny[n]) == Mat::Fire) {
+                SetCell(x + gnx[n], y + gny[n], Mat::Steam);
             }
         }
     }
@@ -294,7 +315,7 @@ void SandWorld::UpdateLiquid(int x, int y, uint8_t parity) {
     if (TryDisplace(x, y, x - d, y + 1, parity)) return;
 
     // Horizontal dispersion: move toward the farthest reachable empty cell
-    int disp = kDispersion[size_t(m)];
+    int disp = gkDispersion[static_cast<size_t>(m)];
     int moved = 0;
     for (int k = 1; k <= disp; k++) {
         Mat ahead = GetMat(x + d * k, y);
@@ -319,16 +340,16 @@ void SandWorld::UpdateFire(int x, int y, uint8_t parity) {
     c.life--;
     c.stamp = parity;
 
-    static const int nx[] = { 0, 0, -1, 1, -1, 1, -1, 1 };
-    static const int ny[] = { -1, 1, 0, 0, -1, -1, 1, 1 };
+    static const int gnx[] = { 0, 0, -1, 1, -1, 1, -1, 1 };
+    static const int gny[] = { -1, 1, 0, 0, -1, -1, 1, 1 };
     for (int n = 0; n < 8; n++) {
-        Mat nm = GetMat(x + nx[n], y + ny[n]);
+        Mat nm = GetMat(x + gnx[n], y + gny[n]);
         if (nm == Mat::Water) {
             SetCell(x, y, Mat::Steam);
             return;
         }
-        if (nm == Mat::Wood && (Rand() & 31) == 0) SetCell(x + nx[n], y + ny[n], Mat::Fire);
-        if (nm == Mat::Oil && (Rand() & 3) == 0) SetCell(x + nx[n], y + ny[n], Mat::Fire);
+        if (nm == Mat::Wood && (Rand() & 31) == 0) SetCell(x + gnx[n], y + gny[n], Mat::Fire);
+        if (nm == Mat::Oil && (Rand() & 3) == 0) SetCell(x + gnx[n], y + gny[n], Mat::Fire);
     }
 
     if (GetMat(x, y - 1) == Mat::Empty && (Rand() & 15) == 0) {
@@ -381,7 +402,7 @@ void SandWorld::PaintCircle(int cx, int cy, int r, Mat m, int prob256) {
             if (dx * dx + dy * dy > r * r) continue;
             Mat cur = GetMat(x, y);
             if (IsSolid(cur)) continue;
-            if (int(Rand() & 0xFF) < prob256) SetCell(x, y, m);
+            if (static_cast<int>(Rand() & 0xFF) < prob256) SetCell(x, y, m);
         }
     }
 }
@@ -395,7 +416,7 @@ void SandWorld::IgniteCircle(int cx, int cy, int r, int prob256) {
             Mat cur = GetMat(x, y);
             bool flammable = (cur == Mat::Wood || cur == Mat::Oil);
             bool flash = (cur == Mat::Empty && (dx * dx + dy * dy) > (r - 2) * (r - 2));
-            if ((flammable || flash) && int(Rand() & 0xFF) < prob256) {
+            if ((flammable || flash) && static_cast<int>(Rand() & 0xFF) < prob256) {
                 SetCell(x, y, Mat::Fire);
             }
         }
@@ -405,15 +426,15 @@ void SandWorld::IgniteCircle(int cx, int cy, int r, int prob256) {
 int SandWorld::Raycast(float x, float y, float dx, float dy, int maxLen, int& outX, int& outY) const {
     float len = std::sqrt(dx * dx + dy * dy);
     if (len < 1e-6f) {
-        outX = int(x);
-        outY = int(y);
+        outX = static_cast<int>(x);
+        outY = static_cast<int>(y);
         return 0;
     }
     dx /= len;
     dy /= len;
     for (int i = 0; i < maxLen; i++) {
-        int cx = int(x + dx * i);
-        int cy = int(y + dy * i);
+        int cx = static_cast<int>(x + dx * i);
+        int cy = static_cast<int>(y + dy * i);
         outX = cx;
         outY = cy;
         if (SolidAt(cx, cy)) return i;

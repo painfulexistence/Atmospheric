@@ -7,23 +7,23 @@
 // ─────────────────────────────────────────────────────────────────────────────
 #ifndef __EMSCRIPTEN__
 
-#include <curl/curl.h>
 #include <cctype>
+#include <curl/curl.h>
 
 struct HttpClient::Impl {
     CURLM* multi = nullptr;
 
     struct Request {
         HttpRequestID id;
-        HttpCallback  callback;
-        HttpResponse  response;
-        std::vector<uint8_t> body;  // owned copy for CURLOPT_POSTFIELDS
-        curl_slist*   headers = nullptr;
-        curl_mime*    mime    = nullptr;
+        HttpCallback callback;
+        HttpResponse response;
+        std::vector<uint8_t> body;// owned copy for CURLOPT_POSTFIELDS
+        curl_slist* headers = nullptr;
+        curl_mime* mime = nullptr;
         std::function<void(uint64_t, uint64_t)> onProgress;
     };
 
-    std::unordered_map<CURL*, Request> pending; // CURL* → in-flight request
+    std::unordered_map<CURL*, Request> pending;// CURL* → in-flight request
     HttpRequestID nextId = 1;
 
     Impl() {
@@ -35,7 +35,7 @@ struct HttpClient::Impl {
         for (auto& [handle, req] : pending) {
             curl_multi_remove_handle(multi, handle);
             if (req.headers) curl_slist_free_all(req.headers);
-            if (req.mime)    curl_mime_free(req.mime);
+            if (req.mime) curl_mime_free(req.mime);
             curl_easy_cleanup(handle);
         }
         curl_multi_cleanup(multi);
@@ -44,10 +44,10 @@ struct HttpClient::Impl {
 
     CURL* makeHandle(const std::string& url, int timeoutSeconds) {
         CURL* h = curl_easy_init();
-        curl_easy_setopt(h, CURLOPT_URL,            url.c_str());
-        curl_easy_setopt(h, CURLOPT_HTTP_VERSION,   CURL_HTTP_VERSION_2TLS);
+        curl_easy_setopt(h, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(h, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_2TLS);
         curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
-        curl_easy_setopt(h, CURLOPT_TIMEOUT,        (long)timeoutSeconds);
+        curl_easy_setopt(h, CURLOPT_TIMEOUT, (long)timeoutSeconds);
         return h;
     }
 
@@ -58,23 +58,20 @@ struct HttpClient::Impl {
     HttpRequestID start(CURL* h, Request&& req) {
         const HttpRequestID id = req.id;
         Request& stored = pending.emplace(h, std::move(req)).first->second;
-        curl_easy_setopt(h, CURLOPT_WRITEFUNCTION,  writeCallback);
-        curl_easy_setopt(h, CURLOPT_WRITEDATA,      &stored.response.body);
+        curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, writeCallback);
+        curl_easy_setopt(h, CURLOPT_WRITEDATA, &stored.response.body);
         curl_easy_setopt(h, CURLOPT_HEADERFUNCTION, headerCallback);
-        curl_easy_setopt(h, CURLOPT_HEADERDATA,     &stored.response.headers);
-        if (stored.headers)
-            curl_easy_setopt(h, CURLOPT_HTTPHEADER, stored.headers);
+        curl_easy_setopt(h, CURLOPT_HEADERDATA, &stored.response.headers);
+        if (stored.headers) curl_easy_setopt(h, CURLOPT_HTTPHEADER, stored.headers);
         if (!stored.body.empty()) {
-            curl_easy_setopt(h, CURLOPT_POSTFIELDS,
-                              reinterpret_cast<const char*>(stored.body.data()));
+            curl_easy_setopt(h, CURLOPT_POSTFIELDS, reinterpret_cast<const char*>(stored.body.data()));
             curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, (long)stored.body.size());
         }
-        if (stored.mime)
-            curl_easy_setopt(h, CURLOPT_MIMEPOST, stored.mime);
+        if (stored.mime) curl_easy_setopt(h, CURLOPT_MIMEPOST, stored.mime);
         if (stored.onProgress) {
-            curl_easy_setopt(h, CURLOPT_NOPROGRESS,       0L);
+            curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);
             curl_easy_setopt(h, CURLOPT_XFERINFOFUNCTION, xferCallback);
-            curl_easy_setopt(h, CURLOPT_XFERINFODATA,     &stored);
+            curl_easy_setopt(h, CURLOPT_XFERINFODATA, &stored);
         }
         curl_multi_add_handle(multi, h);
         return id;
@@ -93,8 +90,10 @@ struct HttpClient::Impl {
         const size_t colon = line.find(':');
         if (colon != std::string::npos) {
             auto trim = [](std::string s) {
-                while (!s.empty() && std::isspace((unsigned char)s.front())) s.erase(s.begin());
-                while (!s.empty() && std::isspace((unsigned char)s.back()))  s.pop_back();
+                while (!s.empty() && std::isspace((unsigned char)s.front()))
+                    s.erase(s.begin());
+                while (!s.empty() && std::isspace((unsigned char)s.back()))
+                    s.pop_back();
                 return s;
             };
             headers->emplace_back(trim(line.substr(0, colon)), trim(line.substr(colon + 1)));
@@ -102,8 +101,7 @@ struct HttpClient::Impl {
         return total;
     }
 
-    static int xferCallback(void* ud, curl_off_t dltotal, curl_off_t dlnow,
-                             curl_off_t ultotal, curl_off_t ulnow) {
+    static int xferCallback(void* ud, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow) {
         auto* req = static_cast<Request*>(ud);
         if (req->onProgress) {
             if (ultotal > 0 && ulnow < ultotal)
@@ -111,28 +109,27 @@ struct HttpClient::Impl {
             else if (dltotal > 0)
                 req->onProgress((uint64_t)dlnow, (uint64_t)dltotal);
         }
-        return 0; // non-zero would abort the transfer
+        return 0;// non-zero would abort the transfer
     }
 };
 
-HttpClient::HttpClient() : _impl(std::make_unique<Impl>()) {}
+HttpClient::HttpClient() : _impl(std::make_unique<Impl>()) {
+}
 HttpClient::~HttpClient() = default;
 
 HttpRequestID HttpClient::Send(const HttpRequest& r, HttpCallback cb) {
     Impl::Request req;
-    req.id         = _impl->nextId++;
-    req.callback   = std::move(cb);
-    req.body       = r.body;
+    req.id = _impl->nextId++;
+    req.callback = std::move(cb);
+    req.body = r.body;
     req.onProgress = r.onProgress;
     for (const auto& [key, value] : r.headers)
         req.headers = curl_slist_append(req.headers, (key + ": " + value).c_str());
     if (!r.contentType.empty())
-        req.headers = curl_slist_append(req.headers,
-                                         ("Content-Type: " + r.contentType).c_str());
+        req.headers = curl_slist_append(req.headers, ("Content-Type: " + r.contentType).c_str());
 
     CURL* h = _impl->makeHandle(r.url, r.timeoutSeconds);
-    if (r.method != "GET")
-        curl_easy_setopt(h, CURLOPT_CUSTOMREQUEST, r.method.c_str());
+    if (r.method != "GET") curl_easy_setopt(h, CURLOPT_CUSTOMREQUEST, r.method.c_str());
     // Body-less POST/PUT/PATCH still need curl switched into upload mode,
     // otherwise CUSTOMREQUEST alone sends GET semantics with a renamed verb.
     if (r.body.empty() && (r.method == "POST" || r.method == "PUT" || r.method == "PATCH")) {
@@ -142,11 +139,11 @@ HttpRequestID HttpClient::Send(const HttpRequest& r, HttpCallback cb) {
     return _impl->start(h, std::move(req));
 }
 
-HttpRequestID HttpClient::PostMultipart(const std::string& url,
-                                         const std::vector<MultipartField>& fields,
-                                         HttpCallback cb, const HttpHeaders& headers) {
+HttpRequestID HttpClient::PostMultipart(
+    const std::string& url, const std::vector<MultipartField>& fields, HttpCallback cb, const HttpHeaders& headers
+) {
     Impl::Request req;
-    req.id       = _impl->nextId++;
+    req.id = _impl->nextId++;
     req.callback = std::move(cb);
     for (const auto& [key, value] : headers)
         req.headers = curl_slist_append(req.headers, (key + ": " + value).c_str());
@@ -160,9 +157,7 @@ HttpRequestID HttpClient::PostMultipart(const std::string& url,
             curl_mime_filename(part, field.filename.c_str());
             curl_mime_type(part, field.contentType.c_str());
         }
-        curl_mime_data(part,
-                        reinterpret_cast<const char*>(field.data.data()),
-                        field.data.size());
+        curl_mime_data(part, reinterpret_cast<const char*>(field.data.data()), field.data.size());
     }
     return _impl->start(h, std::move(req));
 }
@@ -173,7 +168,7 @@ void HttpClient::Cancel(HttpRequestID id) {
         CURL* h = it->first;
         curl_multi_remove_handle(_impl->multi, h);
         if (it->second.headers) curl_slist_free_all(it->second.headers);
-        if (it->second.mime)    curl_mime_free(it->second.mime);
+        if (it->second.mime) curl_mime_free(it->second.mime);
         curl_easy_cleanup(h);
         _impl->pending.erase(it);
         return;
@@ -202,17 +197,16 @@ void HttpClient::Pump() {
 
         HttpResponse resp;
         resp.statusCode = static_cast<int>(status);
-        resp.body       = std::move(req.response.body);
-        resp.headers    = std::move(req.response.headers);
-        resp.success    = (msg->data.result == CURLE_OK);
-        if (!resp.success)
-            resp.error = curl_easy_strerror(msg->data.result);
+        resp.body = std::move(req.response.body);
+        resp.headers = std::move(req.response.headers);
+        resp.success = (msg->data.result == CURLE_OK);
+        if (!resp.success) resp.error = curl_easy_strerror(msg->data.result);
 
         HttpCallback cb = std::move(req.callback);
 
         curl_multi_remove_handle(_impl->multi, h);
         if (req.headers) curl_slist_free_all(req.headers);
-        if (req.mime)    curl_mime_free(req.mime);
+        if (req.mime) curl_mime_free(req.mime);
         curl_easy_cleanup(h);
         _impl->pending.erase(it);
 
@@ -228,8 +222,7 @@ void HttpClient::Pump() {
 #include <cstring>
 #include <emscripten/fetch.h>
 
-static std::string buildMultipartBody(const std::vector<MultipartField>& fields,
-                                       const std::string& boundary) {
+static std::string buildMultipartBody(const std::vector<MultipartField>& fields, const std::string& boundary) {
     // Returns the raw multipart body as a string (bytes are preserved).
     // The caller is responsible for setting Content-Type with the boundary.
     std::string body;
@@ -238,8 +231,8 @@ static std::string buildMultipartBody(const std::vector<MultipartField>& fields,
         if (field.filename.empty()) {
             body += "Content-Disposition: form-data; name=\"" + field.name + "\"\r\n\r\n";
         } else {
-            body += "Content-Disposition: form-data; name=\"" + field.name
-                 + "\"; filename=\"" + field.filename + "\"\r\n";
+            body +=
+                "Content-Disposition: form-data; name=\"" + field.name + "\"; filename=\"" + field.filename + "\"\r\n";
             body += "Content-Type: " + field.contentType + "\r\n\r\n";
         }
         body.append(reinterpret_cast<const char*>(field.data.data()), field.data.size());
@@ -256,18 +249,19 @@ struct HttpClient::Impl {
     // Deleted inside the static callbacks after firing.
     struct FetchState {
         HttpRequestID id;
-        HttpCallback  callback;
+        HttpCallback callback;
         // Owns memory that must outlive the fetch (headers, body).
-        std::string              bodyOwned;
-        std::vector<std::string> headerStrings; // flat [key, value, key, value, ...]
-        std::vector<const char*> headerPtrs;    // null-terminated, points into headerStrings
+        std::string bodyOwned;
+        std::vector<std::string> headerStrings;// flat [key, value, key, value, ...]
+        std::vector<const char*> headerPtrs;// null-terminated, points into headerStrings
         std::function<void(uint64_t, uint64_t)> onProgress;
 
         // Call after ALL headerStrings pushes: growing the vector moves the
         // strings, which would invalidate previously captured c_str pointers.
         void finalizeHeaders() {
             headerPtrs.clear();
-            for (const auto& s : headerStrings) headerPtrs.push_back(s.c_str());
+            for (const auto& s : headerStrings)
+                headerPtrs.push_back(s.c_str());
             headerPtrs.push_back(nullptr);
         }
     };
@@ -287,8 +281,10 @@ static HttpHeaders parseResponseHeaders(emscripten_fetch_t* fetch) {
         const size_t colon = line.find(':');
         if (colon != std::string::npos) {
             auto trim = [](std::string s) {
-                while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(s.begin());
-                while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\r')) s.pop_back();
+                while (!s.empty() && (s.front() == ' ' || s.front() == '\t'))
+                    s.erase(s.begin());
+                while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\r'))
+                    s.pop_back();
                 return s;
             };
             out.emplace_back(trim(line.substr(0, colon)), trim(line.substr(colon + 1)));
@@ -302,8 +298,8 @@ static void onFetchSuccess(emscripten_fetch_t* fetch) {
     auto* state = static_cast<HttpClient::Impl::FetchState*>(fetch->userData);
     HttpResponse resp;
     resp.statusCode = fetch->status;
-    resp.success    = (fetch->status >= 200 && fetch->status < 300);
-    resp.headers    = parseResponseHeaders(fetch);
+    resp.success = (fetch->status >= 200 && fetch->status < 300);
+    resp.headers = parseResponseHeaders(fetch);
     if (fetch->numBytes > 0) {
         const auto* d = reinterpret_cast<const uint8_t*>(fetch->data);
         resp.body.assign(d, d + fetch->numBytes);
@@ -317,8 +313,8 @@ static void onFetchError(emscripten_fetch_t* fetch) {
     auto* state = static_cast<HttpClient::Impl::FetchState*>(fetch->userData);
     HttpResponse resp;
     resp.statusCode = fetch->status;
-    resp.success    = false;
-    resp.error      = "fetch failed";
+    resp.success = false;
+    resp.error = "fetch failed";
     state->callback(std::move(resp));
     delete state;
     emscripten_fetch_close(fetch);
@@ -326,37 +322,35 @@ static void onFetchError(emscripten_fetch_t* fetch) {
 
 static void onFetchProgress(emscripten_fetch_t* fetch) {
     auto* state = static_cast<HttpClient::Impl::FetchState*>(fetch->userData);
-    if (state->onProgress && fetch->totalBytes > 0)
-        state->onProgress(fetch->dataOffset, fetch->totalBytes);
+    if (state->onProgress && fetch->totalBytes > 0) state->onProgress(fetch->dataOffset, fetch->totalBytes);
 }
 
-static emscripten_fetch_t* launchFetch(const std::string& method,
-                                        const std::string& url,
-                                        HttpClient::Impl::FetchState* state,
-                                        int timeoutSeconds) {
+static emscripten_fetch_t* launchFetch(
+    const std::string& method, const std::string& url, HttpClient::Impl::FetchState* state, int timeoutSeconds
+) {
     emscripten_fetch_attr_t attr;
     emscripten_fetch_attr_init(&attr);
     strncpy(attr.requestMethod, method.c_str(), sizeof(attr.requestMethod) - 1);
-    attr.attributes    = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
-    attr.timeoutMSecs  = (unsigned long)timeoutSeconds * 1000;
-    attr.onsuccess     = onFetchSuccess;
-    attr.onerror       = onFetchError;
+    attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+    attr.timeoutMSecs = (unsigned long)timeoutSeconds * 1000;
+    attr.onsuccess = onFetchSuccess;
+    attr.onerror = onFetchError;
     if (state->onProgress) attr.onprogress = onFetchProgress;
-    attr.userData      = state;
-    if (!state->headerPtrs.empty())
-        attr.requestHeaders = state->headerPtrs.data();
+    attr.userData = state;
+    if (!state->headerPtrs.empty()) attr.requestHeaders = state->headerPtrs.data();
     if (!state->bodyOwned.empty()) {
-        attr.requestData     = state->bodyOwned.data();
+        attr.requestData = state->bodyOwned.data();
         attr.requestDataSize = state->bodyOwned.size();
     }
     return emscripten_fetch(&attr, url.c_str());
 }
 
-HttpClient::HttpClient() : _impl(std::make_unique<Impl>()) {}
+HttpClient::HttpClient() : _impl(std::make_unique<Impl>()) {
+}
 HttpClient::~HttpClient() = default;
 
 HttpRequestID HttpClient::Send(const HttpRequest& r, HttpCallback cb) {
-    auto* state = new Impl::FetchState{_impl->nextId++, std::move(cb)};
+    auto* state = new Impl::FetchState{ _impl->nextId++, std::move(cb) };
     state->bodyOwned.assign(r.body.begin(), r.body.end());
     state->onProgress = r.onProgress;
     for (const auto& [key, value] : r.headers) {
@@ -373,11 +367,11 @@ HttpRequestID HttpClient::Send(const HttpRequest& r, HttpCallback cb) {
     return id;
 }
 
-HttpRequestID HttpClient::PostMultipart(const std::string& url,
-                                         const std::vector<MultipartField>& fields,
-                                         HttpCallback cb, const HttpHeaders& headers) {
+HttpRequestID HttpClient::PostMultipart(
+    const std::string& url, const std::vector<MultipartField>& fields, HttpCallback cb, const HttpHeaders& headers
+) {
     const std::string boundary = "AtmosphericBoundary7MA4YWxkTrZu0gW";
-    auto* state      = new Impl::FetchState{_impl->nextId++, std::move(cb)};
+    auto* state = new Impl::FetchState{ _impl->nextId++, std::move(cb) };
     state->bodyOwned = buildMultipartBody(fields, boundary);
     for (const auto& [key, value] : headers) {
         state->headerStrings.push_back(key);
@@ -396,33 +390,32 @@ void HttpClient::Cancel(HttpRequestID) {
 }
 
 int HttpClient::ActiveRequestCount() const {
-    return 0; // emscripten_fetch owns its own lifetime; we don't track in-flight count
+    return 0;// emscripten_fetch owns its own lifetime; we don't track in-flight count
 }
 
 void HttpClient::Pump() {
     // No-op: browser fires fetch callbacks asynchronously without polling.
 }
 
-#endif // __EMSCRIPTEN__
+#endif// __EMSCRIPTEN__
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared convenience wrappers
 // ─────────────────────────────────────────────────────────────────────────────
 
-HttpRequestID HttpClient::Get(const std::string& url, HttpCallback cb,
-                                const HttpHeaders& headers) {
+HttpRequestID HttpClient::Get(const std::string& url, HttpCallback cb, const HttpHeaders& headers) {
     HttpRequest r;
-    r.url     = url;
+    r.url = url;
     r.headers = headers;
     return Send(r, std::move(cb));
 }
 
-HttpRequestID HttpClient::PostJson(const std::string& url, const std::string& json,
-                                     HttpCallback cb, const HttpHeaders& headers) {
+HttpRequestID
+    HttpClient::PostJson(const std::string& url, const std::string& json, HttpCallback cb, const HttpHeaders& headers) {
     HttpRequest r;
-    r.method      = "POST";
-    r.url         = url;
-    r.headers     = headers;
+    r.method = "POST";
+    r.url = url;
+    r.headers = headers;
     r.contentType = "application/json";
     r.body.assign(json.begin(), json.end());
     return Send(r, std::move(cb));

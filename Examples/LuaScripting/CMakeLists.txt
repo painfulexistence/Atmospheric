@@ -1,4 +1,4 @@
-set(TARGET_NAME AtmosLua)
+set(TARGET_NAME LuaScripting)
 
 find_package(glm CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
@@ -58,7 +58,10 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
             ${EM_PRELOAD_STAGING_DIR}/scenes
-        COMMENT "Staging Emscripten preload assets (shaders, scenes) for ${TARGET_NAME}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/ui
+            ${EM_PRELOAD_STAGING_DIR}/ui
+        COMMENT "Staging Emscripten preload assets (shaders, scenes, ui) for ${TARGET_NAME}"
     )
     add_dependencies(${TARGET_NAME} stage_${TARGET_NAME}_em_preload)
 
@@ -73,6 +76,7 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/ui@assets/ui"
     )
 
 

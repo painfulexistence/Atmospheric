@@ -14,7 +14,7 @@ FontManager::~FontManager() {
     for (auto& [id, font] : _fonts) {
         if (font.textureID == 0) continue;
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-        if (GfxFactory::GetBackend() == GfxBackend::WebGPU) continue; // released by GfxFactory::Shutdown
+        if (GfxFactory::GetBackend() == GfxBackend::WebGPU) continue;// released by GfxFactory::Shutdown
 #endif
         glDeleteTextures(1, &font.textureID);
     }
@@ -39,11 +39,11 @@ FontHandle FontManager::LoadFont(const std::string& path, float baseSize, int fi
     }
 
     fmt::print(
-      "[FontManager] Loaded font: {} (size: {}, texture: {}x{})\n",
-      path,
-      baseSize,
-      font.textureWidth,
-      font.textureHeight
+        "[FontManager] Loaded font: {} (size: {}, texture: {}x{})\n",
+        path,
+        baseSize,
+        font.textureWidth,
+        font.textureHeight
     );
 
     return id;
@@ -97,7 +97,7 @@ const Glyph* FontManager::GetGlyph(FontHandle id, int codepoint) {
 }
 
 bool FontManager::BakeFontAtlas(
-  Font& font, const unsigned char* fontData, float fontSize, int firstChar, int numChars
+    Font& font, const unsigned char* fontData, float fontSize, int firstChar, int numChars
 ) {
     // Initialize stb_truetype
     stbtt_fontinfo fontInfo;
@@ -164,7 +164,7 @@ bool FontManager::BakeFontAtlas(
         // Render glyph to atlas
         if (glyphWidth > 0 && glyphHeight > 0) {
             stbtt_MakeCodepointBitmap(
-              &fontInfo, &atlasBitmap[y * atlasSize + x], glyphWidth, glyphHeight, atlasSize, scale, scale, codepoint
+                &fontInfo, &atlasBitmap[y * atlasSize + x], glyphWidth, glyphHeight, atlasSize, scale, scale, codepoint
             );
         }
 

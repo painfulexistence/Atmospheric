@@ -1,6 +1,6 @@
 #pragma once
 #include "http_client.hpp"
-#include "server.hpp"
+#include "subsystem.hpp"
 #include "websocket_client.hpp"
 
 // NetworkSubsystem
@@ -16,16 +16,20 @@
 //
 // Process(dt) is called automatically each frame by the Application.
 // It pumps the curl multi-handle (HTTP) and lws service loop (WebSocket).
-class NetworkSubsystem : public Server {
+class NetworkSubsystem : public Subsystem {
 public:
     void Init(Application* app) override;
     void Process(float dt) override;
     void DrawImGui(float dt) override;
 
-    HttpClient&      Http() { return _http; }
-    WebSocketClient& Ws()   { return _ws; }
+    HttpClient& Http() {
+        return _http;
+    }
+    WebSocketClient& Ws() {
+        return _ws;
+    }
 
 private:
-    HttpClient      _http;
+    HttpClient _http;
     WebSocketClient _ws;
 };

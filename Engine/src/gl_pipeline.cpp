@@ -1,7 +1,8 @@
 #include "gl_pipeline.hpp"
 #include "shader.hpp"
 
-GLPipeline::GLPipeline(ShaderProgram* shader) : _shader(shader) {}
+GLPipeline::GLPipeline(ShaderProgram* shader) : _shader(shader) {
+}
 
 void GLPipeline::Bind(CommandEncoder* /*enc*/) {
     if (_shader) _shader->Activate();

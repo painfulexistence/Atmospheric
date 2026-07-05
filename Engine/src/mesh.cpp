@@ -1,29 +1,33 @@
 #include "mesh.hpp"
 #include "asset_manager.hpp"
 #include "config.hpp"
-#include "graphics_server.hpp"
+#include "gfx_factory.hpp"
+#include "graphics_subsystem.hpp"
 
 void PrintVertex(const Vertex& v) {
     fmt::print(
-      "P: ({},{},{}), UV: ({},{})\n, N: ({},{},{}), T: ({},{},{}), B: ({},{},{})\n",
-      v.position.x,
-      v.position.y,
-      v.position.z,
-      v.uv.x,
-      v.uv.y,
-      v.normal.x,
-      v.normal.y,
-      v.normal.z,
-      v.tangent.x,
-      v.tangent.y,
-      v.tangent.z,
-      v.bitangent.x,
-      v.bitangent.y,
-      v.bitangent.z
+        "P: ({},{},{}), UV: ({},{})\n, N: ({},{},{}), T: ({},{},{}), B: ({},{},{})\n",
+        v.position.x,
+        v.position.y,
+        v.position.z,
+        v.uv.x,
+        v.uv.y,
+        v.normal.x,
+        v.normal.y,
+        v.normal.z,
+        v.tangent.x,
+        v.tangent.y,
+        v.tangent.z,
+        v.bitangent.x,
+        v.bitangent.y,
+        v.bitangent.z
     );
 }
 
-Mesh::Mesh(MeshType type) : type(type), _material(nullptr), _shape(nullptr) {
+Mesh::Mesh(MeshType type) : type(type) {
+    // No GL context exists under the WebGPU backend — geometry lives in the
+    // RenderMesh Buffer (GPUBuffer) instead; vao/vbo/ebo/ibo stay 0.
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
     glGenVertexArrays(1, &vao);
     glGenBuffers(1, &vbo);
     glGenBuffers(1, &ebo);
@@ -33,14 +37,15 @@ Mesh::Mesh(MeshType type) : type(type), _material(nullptr), _shape(nullptr) {
 Mesh::~Mesh() {
     // Free GLBuffer if using new system
     if (_renderMeshHandle.IsValid()) {
-        GraphicsServer::Get()->FreeRenderMesh(_renderMeshHandle);
+        GraphicsSubsystem::Get()->FreeRenderMesh(_renderMeshHandle);
     }
 
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
     glDeleteBuffers(1, &vbo);
     glDeleteBuffers(1, &ebo);
     glDeleteBuffers(1, &ibo);
     glDeleteVertexArrays(1, &vao);
-    // delete collisionShape; // FIXME: Should delete collisionShape somewhere else before the pointer is out of scope
+    // _shape (unique_ptr<btCollisionShape>) frees itself here.
 }
 
 // Terrain mesh initialization
@@ -48,15 +53,32 @@ void Mesh::Initialize(const std::vector<Vertex>& verts) {
     vertCount = verts.size();
     triCount = 0;
 
+    // WebGPU: no GL context — vertex-only geometry goes through the abstract
+    // Buffer system, same as the indexed variant below. Terrain meshes take
+    // this path (ForwardOpaquePass draws them with the non-tessellated
+    // heightmap-displacement pipeline, mirroring terrain_simple.vert).
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        if (!_renderMeshHandle.IsValid()) {
+            _renderMeshHandle =
+                GraphicsSubsystem::Get()->AllocateRenderMesh(VertexFormat::Standard, BufferUsage::Static);
+        }
+        Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle);
+        if (renderMesh) {
+            renderMesh->Upload(verts.data(), verts.size(), sizeof(Vertex));
+        }
+        this->initialized = true;
+        return;
+    }
+
     glBindVertexArray(vao);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(Vertex), verts.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(float)));
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(5 * sizeof(float)));
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(8 * sizeof(float)));
-    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(11 * sizeof(float)));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(3 * sizeof(float)));
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(5 * sizeof(float)));
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(8 * sizeof(float)));
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(11 * sizeof(float)));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
@@ -71,17 +93,33 @@ void Mesh::Initialize(const std::vector<Vertex>& verts) {
 void Mesh::Initialize(const std::vector<Vertex>& verts, const std::vector<uint16_t>& tris) {
     vertCount = verts.size();
     triCount = tris.size() / 3;
+
+    // WebGPU: no GL context — geometry goes through the abstract Buffer
+    // system only (ForwardOpaquePass/WaterPass draw from the render mesh).
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        if (!_renderMeshHandle.IsValid()) {
+            _renderMeshHandle =
+                GraphicsSubsystem::Get()->AllocateRenderMesh(VertexFormat::Standard, BufferUsage::Static);
+        }
+        Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle);
+        if (renderMesh) {
+            renderMesh->Upload(verts.data(), verts.size(), sizeof(Vertex), tris.data(), tris.size());
+        }
+        this->initialized = true;
+        return;
+    }
+
     // Buffer binding reference:
     // https://stackoverflow.com/questions/17332657/does-a-vao-remember-both-a-ebo-ibo-elements-or-indices-and-a-vbo
     glBindVertexArray(vao);
 
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(Vertex), verts.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(float)));
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(5 * sizeof(float)));
-    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(8 * sizeof(float)));
-    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(11 * sizeof(float)));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(3 * sizeof(float)));
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(5 * sizeof(float)));
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(8 * sizeof(float)));
+    glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(11 * sizeof(float)));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
@@ -91,10 +129,10 @@ void Mesh::Initialize(const std::vector<Vertex>& verts, const std::vector<uint16
     glBindBuffer(GL_ARRAY_BUFFER, ibo);
     InstanceData dummyData{ glm::mat4(1.0f) };
     glBufferData(GL_ARRAY_BUFFER, sizeof(InstanceData), &dummyData, GL_DYNAMIC_DRAW);
-    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), (void*)0);
-    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), (void*)(4 * sizeof(float)));
-    glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), (void*)(8 * sizeof(float)));
-    glVertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), (void*)(12 * sizeof(float)));
+    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), nullptr);
+    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), reinterpret_cast<void*>(4 * sizeof(float)));
+    glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), reinterpret_cast<void*>(8 * sizeof(float)));
+    glVertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(glm::vec4), reinterpret_cast<void*>(12 * sizeof(float)));
     glEnableVertexAttribArray(5);
     glEnableVertexAttribArray(6);
     glEnableVertexAttribArray(7);
@@ -118,19 +156,19 @@ void Mesh::SetShapeLocalScaling(glm::vec3 localScaling) {
 }
 
 void Mesh::AddCapsuleShape(float radius, float height) {
-    _shape = new btCapsuleShape(radius, height);
+    _shape = std::make_unique<btCapsuleShape>(radius, height);
 }
 
 void Mesh::Update(const std::vector<VoxelVertex>& vertices) {
     // Allocate GLBuffer on first use
     if (!_renderMeshHandle.IsValid()) {
-        _renderMeshHandle = GraphicsServer::Get()->AllocateRenderMesh(
-          VertexFormat::Voxel, updateFreq == UpdateFrequency::Static ? BufferUsage::Static : BufferUsage::Dynamic
+        _renderMeshHandle = GraphicsSubsystem::Get()->AllocateRenderMesh(
+            VertexFormat::Voxel, updateFreq == UpdateFrequency::Static ? BufferUsage::Static : BufferUsage::Dynamic
         );
     }
 
     // Get Buffer and upload data
-    Buffer* renderMesh = GraphicsServer::Get()->GetRenderMesh(_renderMeshHandle);
+    Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle);
     if (renderMesh) {
         renderMesh->Upload(vertices.data(), vertices.size(), sizeof(VoxelVertex));
         vertCount = vertices.size();
@@ -144,33 +182,46 @@ void Mesh::Update(const std::vector<VoxelVertex>& vertices) {
 template<typename VertexType> void Mesh::InitializeDynamic(GLenum primType) {
     _primitiveType = primType;
 
+    // GL-only dynamic path (debug lines, canvas geometry); the WebGPU
+    // consumers of these mesh types are guarded at the pass level.
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        initialized = true;
+        return;
+    }
+
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
     // Setup vertex attributes based on vertex type
     if constexpr (std::is_same_v<VertexType, DebugVertex>) {
         // DebugVertex: position (vec3) + color (vec3)
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), (void*)0);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), (void*)(3 * sizeof(float)));
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), nullptr);
+        glVertexAttribPointer(
+            1, 3, GL_FLOAT, GL_FALSE, sizeof(DebugVertex), reinterpret_cast<void*>(3 * sizeof(float))
+        );
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
     } else if constexpr (std::is_same_v<VertexType, CanvasVertex>) {
         // CanvasVertex: position (vec2) + texCoord (vec2) + color (vec4) + texIndex (int)
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)0);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)(2 * sizeof(float)));
-        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), (void*)(4 * sizeof(float)));
-        glVertexAttribIPointer(3, 1, GL_INT, sizeof(CanvasVertex), (void*)(8 * sizeof(float)));
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), nullptr);
+        glVertexAttribPointer(
+            1, 2, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(2 * sizeof(float))
+        );
+        glVertexAttribPointer(
+            2, 4, GL_FLOAT, GL_FALSE, sizeof(CanvasVertex), reinterpret_cast<void*>(4 * sizeof(float))
+        );
+        glVertexAttribIPointer(3, 1, GL_INT, sizeof(CanvasVertex), reinterpret_cast<void*>(8 * sizeof(float)));
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
         glEnableVertexAttribArray(2);
         glEnableVertexAttribArray(3);
     } else if constexpr (std::is_same_v<VertexType, Vertex>) {
         // Standard Vertex: full vertex attributes
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(float)));
-        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(5 * sizeof(float)));
-        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(8 * sizeof(float)));
-        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(11 * sizeof(float)));
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(3 * sizeof(float)));
+        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(5 * sizeof(float)));
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(8 * sizeof(float)));
+        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(11 * sizeof(float)));
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
         glEnableVertexAttribArray(2);
@@ -190,12 +241,14 @@ template<typename VertexType> void Mesh::UpdateDynamic(const std::vector<VertexT
     vertCount = verts.size();
     triCount = (primType == GL_TRIANGLES) ? verts.size() / 3 : 0;
 
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(
-      GL_ARRAY_BUFFER,
-      verts.size() * sizeof(VertexType),
-      verts.data(),
-      updateFreq == UpdateFrequency::Stream ? GL_STREAM_DRAW : GL_DYNAMIC_DRAW
+        GL_ARRAY_BUFFER,
+        verts.size() * sizeof(VertexType),
+        verts.data(),
+        updateFreq == UpdateFrequency::Stream ? GL_STREAM_DRAW : GL_DYNAMIC_DRAW
     );
 }
 

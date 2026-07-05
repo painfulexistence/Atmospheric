@@ -1,8 +1,8 @@
 #include "text_3d_component.hpp"
 #include "application.hpp"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "game_object.hpp"
-#include "graphics_server.hpp"
+#include "graphics_subsystem.hpp"
 #include "imgui.h"
 
 Text3DComponent::Text3DComponent(GameObject* gameObject, const Text3DProps& props) {
@@ -36,7 +36,7 @@ void Text3DComponent::OnTick(float dt) {
     if (_text.empty()) return;
     if (!gameObject->isActive) return;
 
-    auto* graphics = GraphicsServer::Get();
+    auto* graphics = GraphicsSubsystem::Get();
     if (!graphics) return;
 
     FontHandle fontID = _font == 0 ? graphics->GetOrCreateDefaultFont() : _font;

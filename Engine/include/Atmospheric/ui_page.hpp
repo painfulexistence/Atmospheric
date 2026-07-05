@@ -8,15 +8,20 @@ public:
     virtual ~UIPage() = default;
 
     // Called once the RmlUi document has been loaded and assigned
-    virtual void OnAttach() {}
+    virtual void OnAttach() {
+    }
     // Called just before the document is unloaded and the page is removed
-    virtual void OnDetach() {}
+    virtual void OnDetach() {
+    }
     // Called each time the page transitions to visible
-    virtual void OnShow() {}
+    virtual void OnShow() {
+    }
     // Called each time the page transitions to hidden
-    virtual void OnHide() {}
+    virtual void OnHide() {
+    }
     // Called every frame while the page is visible
-    virtual void OnUpdate(float dt) {}
+    virtual void OnUpdate(float dt) {
+    }
 
     Rml::ElementDocument* GetDocument() const {
         return _document;

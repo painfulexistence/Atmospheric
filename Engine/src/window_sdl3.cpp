@@ -5,20 +5,23 @@
 #endif
 #include "backends/imgui_impl_opengl3.h"
 #include "backends/imgui_impl_sdl3.h"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 
 // Define AE_GL_DEBUG_PROBES at build time to log any sticky GL errors at
 // frame-loop boundaries. Useful for chasing INVALID_OPERATION on GLES3 ports
 // where the offending call lies outside any renderer pass.
 #ifdef AE_GL_DEBUG_PROBES
-#define AE_GL_PROBE(name) \
-    do { GLenum _e; while ((_e = glGetError()) != GL_NO_ERROR) \
-        Console::Get()->Error(fmt::format("GL probe [{}]: 0x{:x}", name, _e)); } while (0)
+#define AE_GL_PROBE(name)                                                                   \
+    do {                                                                                    \
+        GLenum _e;                                                                          \
+        while ((_e = glGetError()) != GL_NO_ERROR)                                          \
+            ConsoleSubsystem::Get()->Error(fmt::format("GL probe [{}]: 0x{:x}", name, _e)); \
+    } while (0)
 #else
 #define AE_GL_PROBE(name) ((void)0)
 #endif
 
-static int convertToSDLKey(Key key) {
+static int ConvertToSdlKey(Key key) {
     switch (key) {
     case Key::UP:
         return SDL_SCANCODE_UP;
@@ -111,7 +114,7 @@ static int convertToSDLKey(Key key) {
     }
 }
 
-static Key convertFromSDLKey(int key) {
+static Key ConvertFromSdlKey(int key) {
     switch (key) {
     case SDL_SCANCODE_UP:
         return Key::UP;
@@ -232,12 +235,7 @@ Window::Window(WindowProps props) {
 #if !defined(ANDROID)
     windowFlags |= SDL_WINDOW_ALWAYS_ON_TOP;
 #endif
-    _internal = SDL_CreateWindow(
-      props.title.c_str(),
-      props.width,
-      props.height,
-      windowFlags
-    );
+    _internal = SDL_CreateWindow(props.title.c_str(), props.width, props.height, windowFlags);
     if (!_internal) {
         SDL_Log("SDL could not create window! Error: %s\n", SDL_GetError());
     }
@@ -258,13 +256,16 @@ Window::~Window() {
     SDL_GL_DestroyContext(SDL_GL_GetCurrentContext());
     SDL_DestroyWindow(static_cast<SDL_Window*>(_internal));
     SDL_Quit();
+    if (_instance == this) {
+        _instance = nullptr;
+    }
 }
 
 void Window::Init() {
 }
 
 void* Window::GetProcAddress() {
-    return (void*)SDL_GL_GetProcAddress;
+    return reinterpret_cast<void*>(SDL_GL_GetProcAddress);
 }
 
 void Window::InitImGui() {
@@ -340,12 +341,12 @@ void Window::MainLoop(std::function<void(float, float)> callback) {
                 break;
             case SDL_EVENT_KEY_DOWN:
                 for (auto [id, callback] : ctx.window->_keyPressCallbacks) {
-                    callback(convertFromSDLKey(event.key.scancode), event.key.mod);
+                    callback(ConvertFromSdlKey(event.key.scancode), event.key.mod);
                 }
                 break;
             case SDL_EVENT_KEY_UP:
                 for (auto [id, callback] : ctx.window->_keyReleaseCallbacks) {
-                    callback(convertFromSDLKey(event.key.scancode), event.key.mod);
+                    callback(ConvertFromSdlKey(event.key.scancode), event.key.mod);
                 }
                 break;
             }
@@ -405,9 +406,11 @@ void Window::MainLoop(std::function<void(float, float)> callback) {
     static LoopContext s_ctx = ctx;
     static auto s_loop = loop;
     SDL_SetiOSAnimationCallback(
-        static_cast<SDL_Window*>(_internal), 1,
+        static_cast<SDL_Window*>(_internal),
+        1,
         [](void* userdata) { s_loop(*static_cast<LoopContext*>(userdata)); },
-        &s_ctx);
+        &s_ctx
+    );
 #else
     while (_isRunning) {
         loop(ctx);
@@ -439,7 +442,7 @@ void Window::SetTitle(const std::string& title) {
 }
 
 float Window::GetTime() {
-    return (float)SDL_GetTicks()
+    return static_cast<float>(SDL_GetTicks())
            * 0.001f;// Note that glfwGetTime() only starts to calculate time after the window is created;
 }
 
@@ -490,13 +493,13 @@ void Window::SetMouseCursor(const std::string& cursorName) {
     // But since we are creating standard system cursors, maybe we should cache them.
 
     // Let's just implement a simple cache in the function for now to avoid leaking.
-    static std::unordered_map<std::string, SDL_Cursor*> cursorCache;
-    if (cursorCache.find(cursorName) == cursorCache.end()) {
-        cursorCache[cursorName] = cursor;
+    static std::unordered_map<std::string, SDL_Cursor*> gcursorCache;
+    if (gcursorCache.find(cursorName) == gcursorCache.end()) {
+        gcursorCache[cursorName] = cursor;
     } else {
         // If we already had it, we just created a duplicate, so destroy the new one and use cached
         SDL_DestroyCursor(cursor);
-        cursor = cursorCache[cursorName];
+        cursor = gcursorCache[cursorName];
         SDL_SetCursor(cursor);
     }
 }
@@ -516,8 +519,8 @@ ImageSize Window::GetPhysicalSize() {
 glm::vec2 Window::GetDPI() {
     auto fb = GetPhysicalSize();
     auto lp = GetLogicalSize();
-    float sx = (lp.width  > 0) ? float(fb.width)  / float(lp.width)  : 1.0f;
-    float sy = (lp.height > 0) ? float(fb.height) / float(lp.height) : 1.0f;
+    float sx = (lp.width > 0) ? static_cast<float>(fb.width) / static_cast<float>(lp.width) : 1.0f;
+    float sy = (lp.height > 0) ? static_cast<float>(fb.height) / static_cast<float>(lp.height) : 1.0f;
     return glm::vec2(sx, sy);
 }
 
@@ -536,7 +539,7 @@ bool Window::GetMouseButtonState() {
 }
 
 bool Window::GetKeyDown(Key key) {
-    int sdlKey = convertToSDLKey(key);
+    int sdlKey = ConvertToSdlKey(key);
     if (sdlKey == SDL_SCANCODE_UNKNOWN) {
         return false;
     }
@@ -544,7 +547,7 @@ bool Window::GetKeyDown(Key key) {
 }
 
 bool Window::GetKeyUp(Key key) {
-    int sdlKey = convertToSDLKey(key);
+    int sdlKey = ConvertToSdlKey(key);
     if (sdlKey == SDL_SCANCODE_UNKNOWN) {
         return false;
     }
@@ -552,7 +555,7 @@ bool Window::GetKeyUp(Key key) {
 }
 
 KeyState Window::GetKeyState(Key key) {
-    int sdlKey = convertToSDLKey(key);
+    int sdlKey = ConvertToSdlKey(key);
     if (sdlKey == SDL_SCANCODE_UNKNOWN) {
         return KeyState::UNKNOWN;
     }
@@ -634,7 +637,7 @@ void Window::RemoveAllEventCallbacks() {
 }
 
 bool Window::IsWebGPUAvailable() {
-    return false;  // WebGPU is a browser-only API; always false on native platforms.
+    return false;// WebGPU is a browser-only API; always false on native platforms.
 }
 
 GfxBackend Window::GetActiveBackend() {

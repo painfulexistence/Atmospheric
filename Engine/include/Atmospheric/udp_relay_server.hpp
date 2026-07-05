@@ -1,5 +1,5 @@
 #pragma once
-#include "server.hpp"
+#include "subsystem.hpp"
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -32,10 +32,10 @@
 // Not available on Emscripten (no raw UDP sockets in the browser).
 #ifndef __EMSCRIPTEN__
 
-class UdpRelayServer : public Server {
+class UdpRelayServer : public Subsystem {
 public:
-    static constexpr uint32_t kRoomTimeoutMs = 60'000; // 1 minute idle → evict room
-    static constexpr uint32_t kPeerStaleMs   = 5'000;  // silent this long → replaceable
+    static constexpr uint32_t kRoomTimeoutMs = 60'000;// 1 minute idle → evict room
+    static constexpr uint32_t kPeerStaleMs = 5'000;// silent this long → replaceable
 
     // Cap on simultaneous rooms; packets that would create a room beyond this
     // are dropped. Guards the room map against packet-flood memory growth.
@@ -49,19 +49,25 @@ public:
     bool Start(uint16_t port);
     void Stop();
 
-    bool     IsRunning()  const { return _running; }
-    uint16_t BoundPort()  const { return _boundPort; }
-    int      RoomCount()  const { return static_cast<int>(_rooms.size()); }
+    bool IsRunning() const {
+        return _running;
+    }
+    uint16_t BoundPort() const {
+        return _boundPort;
+    }
+    int RoomCount() const {
+        return static_cast<int>(_rooms.size());
+    }
 
 private:
     struct Peer {
         uint32_t addr = 0;
         uint16_t port = 0;
-        bool     valid = false;
+        bool valid = false;
         uint32_t lastSeenMs = 0;
     };
     struct Room {
-        Peer     peers[2];
+        Peer peers[2];
         uint32_t lastActivityMs = 0;
     };
 
@@ -73,16 +79,16 @@ private:
     static constexpr SocketHandle kInvalidSocket = SocketHandle(-1);
 #endif
 
-    SocketHandle _sock      = kInvalidSocket;
-    uint16_t     _boundPort = 0;
-    bool         _running   = false;
-    uint32_t     _totalMs   = 0;           // accumulated from Process(dt)
+    SocketHandle _sock = kInvalidSocket;
+    uint16_t _boundPort = 0;
+    bool _running = false;
+    uint32_t _totalMs = 0;// accumulated from Process(dt)
 
-    std::unordered_map<uint32_t, Room> _rooms; // roomId → Room
+    std::unordered_map<uint32_t, Room> _rooms;// roomId → Room
 
     void _pump();
     void _evictStaleRooms();
     void _forwardTo(const Peer& dst, const uint8_t* payload, int len);
 };
 
-#endif // !__EMSCRIPTEN__
+#endif// !__EMSCRIPTEN__

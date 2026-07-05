@@ -14,22 +14,22 @@
 
 /// Font glyph information
 struct Glyph {
-    float u0, v0, u1, v1;  // Texture coordinates
-    float xOffset, yOffset; // Offset from cursor position
-    float width, height;    // Size in pixels
-    float advance;          // Horizontal advance
+    float u0, v0, u1, v1;// Texture coordinates
+    float xOffset, yOffset;// Offset from cursor position
+    float width, height;// Size in pixels
+    float advance;// Horizontal advance
 };
 
 /// Font information
 struct Font {
-    GLuint textureID = 0;         // Atlas texture ID
+    GLuint textureID = 0;// Atlas texture ID
     int textureWidth = 0;
     int textureHeight = 0;
-    float fontSize = 0;           // Base font size (design size)
-    float lineHeight = 0;         // Line height in pixels
-    float ascent = 0;             // Distance from baseline to top
-    float descent = 0;            // Distance from baseline to bottom
-    std::unordered_map<int, Glyph> glyphs;  // Codepoint -> Glyph
+    float fontSize = 0;// Base font size (design size)
+    float lineHeight = 0;// Line height in pixels
+    float ascent = 0;// Distance from baseline to top
+    float descent = 0;// Distance from baseline to bottom
+    std::unordered_map<int, Glyph> glyphs;// Codepoint -> Glyph
 };
 
 /// FontManager - Manages font loading and text rendering
@@ -55,8 +55,7 @@ public:
     /// @param firstChar First character to include (default 32 = space)
     /// @param numChars Number of characters to include (default 95 = ASCII printable)
     /// @return Font ID, or 0 on failure
-    FontHandle LoadFont(const std::string& path, float baseSize = 48.0f,
-                    int firstChar = 32, int numChars = 95);
+    FontHandle LoadFont(const std::string& path, float baseSize = 48.0f, int firstChar = 32, int numChars = 95);
 
     /// Unload a font and free its resources
     void UnloadFont(FontHandle id);
@@ -82,6 +81,5 @@ private:
     uint32_t _nextFontID = 1;
 
     /// Bake font glyphs into a texture atlas
-    bool BakeFontAtlas(Font& font, const unsigned char* fontData,
-                       float fontSize, int firstChar, int numChars);
+    bool BakeFontAtlas(Font& font, const unsigned char* fontData, float fontSize, int firstChar, int numChars);
 };

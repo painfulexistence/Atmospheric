@@ -1,8 +1,16 @@
 # Atmospheric
 
-[![Native](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-native.yml/badge.svg)](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-native.yml)
+[![Native](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-desktop.yml/badge.svg)](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-desktop.yml)
 [![Web](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-web.yml/badge.svg)](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-web.yml)
+[![Android](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-android.yml/badge.svg)](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-android.yml)
+[![iOS](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-ios.yml/badge.svg)](https://github.com/painfulexistence/Atmospheric/actions/workflows/ci-ios.yml)
 <br />
+
+> ⚠️ **On AI-Assisted Development**
+>
+> This codebase is currently heavily AI-assisted — I won't pretend otherwise. I find AI slop just as grating as you do: generated code that compiles but doesn't reflect intent, architecture that looks plausible but collapses under real requirements. That said, I'm genuinely experimenting with agentic workflows, on my own terms. My honest take: coding AI can meaningfully accelerate development when you have a clear picture of what you're building — and I do. This is a serious engineering project, not an AI toy: I'm actively designing the tooling and pipeline to raise code quality to the standard it deserves — static analysis, formatting enforcement, ownership semantics, the works. The plan is to deslop the codebase incrementally; I'm still engineering the pipeline to do that with the rigor it deserves. Consider this an honest snapshot of that work in progress.
+>
+> All listed platform targets have been verified by me on real hardware or simulators.
 
 **Atmospheric** is a cross-platform 3D game engine developed in C++.
 The project is a labor of love, acting as my stepping stone to gain a deeper understanding of graphics programming concepts and practices.
@@ -67,6 +75,6 @@ We support building WebAssembly targets for browser deployment.
 ----
 
 ## Usage
-The engine includes some example projects to help you get started. Please note that the API is still evolving and may change in the future. To get started, you can check out the HelloWorld example.
+The engine includes some example projects to help you get started. Please note that the API is still evolving and may change in the future. To get started, you can check out the 3D Basics example.
 
 ![demo_helloworld](.github/assets/Demo_HelloWorld.gif)

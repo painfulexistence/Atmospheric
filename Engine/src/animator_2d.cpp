@@ -1,5 +1,5 @@
 #include "animator_2d.hpp"
-#include "console.hpp"
+#include "console_subsystem.hpp"
 #include "game_object.hpp"
 #include "sprite_component.hpp"
 
@@ -26,7 +26,7 @@ void Animator2D::OnTick(float dt) {
             if (_currentAnimation->loop) {
                 _currentFrameIndex = 0;
             } else {
-                _currentFrameIndex = (int)_currentAnimation->frames.size() - 1;
+                _currentFrameIndex = static_cast<int>(_currentAnimation->frames.size()) - 1;
                 _isPlaying = false;
             }
         }
@@ -43,7 +43,7 @@ void Animator2D::AddAnimation(const std::string& name, const AnimationClip& clip
 
 void Animator2D::Play(const std::string& name) {
     if (_animations.find(name) == _animations.end()) {
-        Console::Get()->Error("Animation not found: " + name);
+        ConsoleSubsystem::Get()->Error("Animation not found: " + name);
         return;
     }
 
@@ -69,11 +69,11 @@ void Animator2D::Stop() {
 }
 
 void Animator2D::CreateAnimationFromTileset(
-  const std::string& name,
-  const glm::vec2& tilesetSize,
-  const std::vector<int>& tileIndices,
-  float frameDuration,
-  bool loop
+    const std::string& name,
+    const glm::vec2& tilesetSize,
+    const std::vector<int>& tileIndices,
+    float frameDuration,
+    bool loop
 ) {
     AnimationClip clip;
     clip.name = name;
@@ -82,8 +82,8 @@ void Animator2D::CreateAnimationFromTileset(
     for (int index : tileIndices) {
         // Calculate UVs for tile index
         // Assuming tileset is a grid, index 0 is top-left, increasing right then down
-        int cols = (int)tilesetSize.x;
-        int rows = (int)tilesetSize.y;
+        int cols = static_cast<int>(tilesetSize.x);
+        int rows = static_cast<int>(tilesetSize.y);
 
         int col = index % cols;
         int row = index / cols;// Note: UV y usually starts from bottom in OpenGL, but tilesets are usually top-down.

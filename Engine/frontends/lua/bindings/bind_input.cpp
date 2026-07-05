@@ -1,26 +1,17 @@
 #include "../lua_application.hpp"
 
-void BindInputAPI(sol::state& lua, Input* input)
-{
+void BindInputAPI(sol::state& lua, InputSubsystem* input) {
     sol::table atmos = lua["atmos"];
     sol::table inp = atmos.create("input");
 
     // Key state queries
-    inp["isKeyDown"] = [input](int key) {
-        return input->IsKeyDown(static_cast<Key>(key));
-    };
+    inp["isKeyDown"] = [input](int key) { return input->IsKeyDown(static_cast<Key>(key)); };
 
-    inp["isKeyUp"] = [input](int key) {
-        return input->IsKeyUp(static_cast<Key>(key));
-    };
+    inp["isKeyUp"] = [input](int key) { return input->IsKeyUp(static_cast<Key>(key)); };
 
-    inp["isKeyPressed"] = [input](int key) {
-        return input->IsKeyPressed(static_cast<Key>(key));
-    };
+    inp["isKeyPressed"] = [input](int key) { return input->IsKeyPressed(static_cast<Key>(key)); };
 
-    inp["isKeyReleased"] = [input](int key) {
-        return input->IsKeyReleased(static_cast<Key>(key));
-    };
+    inp["isKeyReleased"] = [input](int key) { return input->IsKeyReleased(static_cast<Key>(key)); };
 
     // Mouse position
     inp["getMousePosition"] = [input]() -> std::tuple<float, float> {

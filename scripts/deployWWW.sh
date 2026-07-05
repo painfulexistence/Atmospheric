@@ -15,11 +15,18 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # 如果沒有特別指定，就只會更新本地專案根目錄下的 www 資料夾
 DEPLOY_DEST="${ATMOSPHERIC_WWW_PATH}"
 
+# 額外傳遞給 buildWasm.sh 的建置旗標 (例如 --webgpu)
+BUILD_FLAGS=()
+
 # 解析參數
 for arg in "$@"; do
     case "$arg" in
         --path=*)
             DEPLOY_DEST="${arg#*=}"
+            ;;
+        --webgpu)
+            # 透傳給 buildWasm.sh：以 WebGPU (而非 WebGL2) 建置範例
+            BUILD_FLAGS+=("--webgpu")
             ;;
     esac
 done
@@ -34,6 +41,22 @@ if [ -n "${DEPLOY_DEST}" ]; then
     echo -e "部署目標路徑: ${GREEN}${DEPLOY_DEST}${NC}"
 fi
 echo -e ""
+
+# 集中一次確認：在做任何破壞性動作前，把所有 blast radius 一次講清楚。
+# 非互動式終端 (CI/自動化) 跳過確認、直接繼續。
+if [ -t 0 ]; then
+    if [ -n "${DEPLOY_DEST}" ] && [ "${DEPLOY_DEST}" != "${LOCAL_WWW}" ]; then
+        echo -e "${YELLOW}⚠️  Deploy 採取 clean build 模式，將重建 ${LOCAL_WWW} 底下所有現有 artifacts，並覆蓋遠端 ${DEPLOY_DEST} 內容，繼續嗎？(y/N)${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Deploy 採取 clean build 模式，將重建 ${LOCAL_WWW} 底下所有現有 artifacts，繼續嗎？(y/N)${NC}"
+    fi
+    read -p "> " CONFIRM
+    if [[ ! "$CONFIRM" =~ ^[yY]$ ]]; then
+        echo -e "${RED}❌ 部署已取消。${NC}"
+        exit 0
+    fi
+    echo -e ""
+fi
 
 # 1. 初始化本地 www/ 目錄
 echo -e "${YELLOW}📁 正在初始化本地 www/ 目錄...${NC}"
@@ -50,10 +73,16 @@ else
     echo -e "${RED}⚠️ 警告: 找不到 ${PROJECT_ROOT}/docs 目錄${NC}"
 fi
 
-# 3. 啟動 buildWasm release (使用 --no-server 略過伺服器啟動)
+# 3. 啟動 buildWasm release (使用 --no-server 略過伺服器啟動)。
+#    部署一律用 --clean 重新建置，確保 www/ 只反映目前的原始碼，不會殘留
+#    已改名/移除範例的舊產物 (deploy 是逐一發佈 build 目錄下每個含 .html 的資料夾)。
 echo -e ""
-echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建...${NC}"
-"${SCRIPT_DIR}/buildWasm.sh" release --no-server
+if [ ${#BUILD_FLAGS[@]} -gt 0 ]; then
+    echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建 (clean, ${BUILD_FLAGS[*]})...${NC}"
+else
+    echo -e "${YELLOW}🔨 正在執行 Release WebAssembly 構建 (clean)...${NC}"
+fi
+"${SCRIPT_DIR}/buildWasm.sh" release --no-server --clean "${BUILD_FLAGS[@]}"
 
 # 4. 尋找每個範例產物並複製到 www/demo/ 下，重新命名為 index.html
 echo -e ""
@@ -80,9 +109,14 @@ if [ -d "${RELEASE_DIR}" ]; then
             # 複製整個資料夾到 www/demo/
             cp -R "$target_dir" "${LOCAL_WWW}/demo/${target_name}"
             
-            # 將 <TargetName>.html 改名為 index.html (相容舊版與 OUTPUT_NAME 'index' 的新版產物)
-            if [ -f "${LOCAL_WWW}/demo/${target_name}/${target_name}.html" ]; then
-                mv "${LOCAL_WWW}/demo/${target_name}/${target_name}.html" "${LOCAL_WWW}/demo/${target_name}/index.html"
+            # 將唯一的 *.html 改名為 index.html，讓 ./<target_name>/ 能直接載入
+            # (名稱無關：相容 <TargetName>.html 與 OUTPUT_NAME 'index' 兩種產物)。
+            demo_dir="${LOCAL_WWW}/demo/${target_name}"
+            if [ ! -f "${demo_dir}/index.html" ]; then
+                first_html=$(ls "${demo_dir}"/*.html 2>/dev/null | head -n1)
+                if [ -n "$first_html" ]; then
+                    mv "$first_html" "${demo_dir}/index.html"
+                fi
             fi
             
             COPIED_COUNT=$((COPIED_COUNT + 1))
@@ -99,8 +133,6 @@ find "${LOCAL_WWW}" -name ".DS_Store" -type f -delete 2>/dev/null || true
 get_deploy_name() {
     local folder_name="$1"
     case "$folder_name" in
-        "LuaScripting") echo "AtmosLua" ;;
-        "SceneLoader") echo "CSBDemo" ;;
         "Physics2D") echo "Physics2DDemo" ;;
         "MazeFPS") echo "Maze" ;;
         *) echo "$folder_name" ;;
@@ -128,20 +160,10 @@ fi
 echo -e "${GREEN}✓ 本地 www/ 目錄更新完成！(已整理 $COPIED_COUNT 個範例)${NC}"
 
 # 5. 如果指定了部署目的地 (DEPLOY_DEST)，執行複製/同步手續
+# (最終確認已在腳本開頭一次問完，這裡直接執行。)
 if [ -n "${DEPLOY_DEST}" ] && [ "${DEPLOY_DEST}" != "${LOCAL_WWW}" ]; then
     echo -e ""
-    echo -e "${YELLOW}⚠️ 警告: 準備部署至目標目錄: ${GREEN}${DEPLOY_DEST}${NC}"
-    
-    # 僅在互動式終端機環境中進行手動確認，避免破壞 CI/CD 自動化流程
-    if [ -t 0 ]; then
-        read -p "確定要將 www/ 內容同步/覆蓋至該目錄嗎？這將會覆蓋舊檔案！(y/N): " CONFIRM
-        if [[ ! "$CONFIRM" =~ ^[yY]$ ]]; then
-            echo -e "${RED}❌ 部署已取消。${NC}"
-            exit 0
-        fi
-    else
-        echo -e "${BLUE}偵測到非互動式環境，自動進行部署...${NC}"
-    fi
+    echo -e "${YELLOW}🚀 準備部署至目標目錄: ${GREEN}${DEPLOY_DEST}${NC}"
 
     if [[ "$DEPLOY_DEST" == *":"* ]]; then
         # 遠端複製 (例如 user@vps:/var/www/atmospheric)

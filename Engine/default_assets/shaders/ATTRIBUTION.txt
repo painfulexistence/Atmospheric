@@ -1,0 +1,8 @@
+Third-party shader attribution
+===============================
+
+post_composite.frag (VHS effect)
+--------------------------------
+License: CC BY-NC-SA 4.0 (https://creativecommons.org/licenses/by-nc-sa/4.0/)
+Source:  Fork of Ryk's VCR distortion shader
+         https://www.shadertoy.com/view/ldjGzV

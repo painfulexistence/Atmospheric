@@ -7,51 +7,50 @@
 //   4. stale-peer rebind — a reconnecting client (new socket/port) takes over
 //      the slot of a peer that has gone silent past kPeerStaleMs
 // Exit code 0 = pass; prints the failing check otherwise.
-#include <Atmospheric/udp_relay_server.hpp>
 #include "net_lockstep.hpp"
+#include <Atmospheric/udp_relay_server.hpp>
 
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <thread>
 
-#define REQUIRE(cond)                                                      \
-    do {                                                                   \
-        if (!(cond)) {                                                     \
-            std::printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);    \
-            return 1;                                                      \
-        }                                                                  \
+#define REQUIRE(cond)                                                   \
+    do {                                                                \
+        if (!(cond)) {                                                  \
+            std::printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); \
+            return 1;                                                   \
+        }                                                               \
     } while (0)
 
 namespace {
 
-constexpr uint32_t kRoomId = 42;
-constexpr uint32_t kSeed   = 7;
-constexpr int      kDelay  = 2;
-constexpr int      kTicks  = 50;
+    constexpr uint32_t kRoomId = 42;
+    constexpr uint32_t kSeed = 7;
+    constexpr int kDelay = 2;
+    constexpr int kTicks = 50;
 
-uint32_t g_nowMs = 1000; // synthetic clock for LockstepNet (starts past the hello throttle)
+    uint32_t g_nowMs = 1000;// synthetic clock for LockstepNet (starts past the hello throttle)
 
-// One scheduler step: relay processes, peers pump, clocks advance 5 ms.
-void step(UdpRelayServer& relay, LockstepNet* a, LockstepNet* b) {
-    relay.Process(0.005f);
-    if (a) a->Pump(g_nowMs);
-    if (b) b->Pump(g_nowMs);
-    g_nowMs += 5;
-    // Give loopback datagrams a moment to land in the receive buffers.
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-}
+    // One scheduler step: relay processes, peers pump, clocks advance 5 ms.
+    void step(UdpRelayServer& relay, LockstepNet* a, LockstepNet* b) {
+        relay.Process(0.005f);
+        if (a) a->Pump(g_nowMs);
+        if (b) b->Pump(g_nowMs);
+        g_nowMs += 5;
+        // Give loopback datagrams a moment to land in the receive buffers.
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
 
-bool bothRunning(const LockstepNet& a, const LockstepNet& b) {
-    return a.state == LockstepNet::State::Running &&
-           b.state == LockstepNet::State::Running;
-}
+    bool bothRunning(const LockstepNet& a, const LockstepNet& b) {
+        return a.state == LockstepNet::State::Running && b.state == LockstepNet::State::Running;
+    }
 
-} // namespace
+}// namespace
 
 int main() {
     UdpRelayServer relay;
-    REQUIRE(relay.Start(0)); // ephemeral port — no CI port conflicts
+    REQUIRE(relay.Start(0));// ephemeral port — no CI port conflicts
     const uint16_t port = relay.BoundPort();
     REQUIRE(port != 0);
     std::printf("relay listening on 127.0.0.1:%u\n", port);
@@ -76,7 +75,7 @@ int main() {
     // protocol design (and tick 0 is never on the wire — SendInputs starts
     // at peerAckedTick + 1).
     const uint32_t firstTick = kDelay;
-    const uint32_t lastTick  = kDelay + kTicks - 1;
+    const uint32_t lastTick = kDelay + kTicks - 1;
     for (uint32_t t = firstTick; t <= lastTick; t++) {
         InputFrame hf, cf;
         hf.buttons = uint8_t(t + 1);
@@ -92,8 +91,8 @@ int main() {
     for (uint32_t t = firstTick; t <= lastTick; t++) {
         REQUIRE(host.HasInputs(t));
         REQUIRE(client.HasInputs(t));
-        REQUIRE(host.GetInput(1, t).buttons == uint8_t(t + 101));   // client's inputs
-        REQUIRE(client.GetInput(0, t).buttons == uint8_t(t + 1));   // host's inputs
+        REQUIRE(host.GetInput(1, t).buttons == uint8_t(t + 101));// client's inputs
+        REQUIRE(client.GetInput(0, t).buttons == uint8_t(t + 1));// host's inputs
     }
     std::printf("input exchange ok (%d ticks, both directions)\n", kTicks);
 
@@ -102,7 +101,7 @@ int main() {
     // different source port. The relay must hand the slot over once the old
     // address has been silent past kPeerStaleMs.
     client.Shutdown();
-    relay.Process(float(UdpRelayServer::kPeerStaleMs) / 1000.0f + 1.0f); // fast-forward relay clock
+    relay.Process(float(UdpRelayServer::kPeerStaleMs) / 1000.0f + 1.0f);// fast-forward relay clock
     g_nowMs += UdpRelayServer::kPeerStaleMs + 1000;
     // The fast-forward made BOTH peers look stale to the relay. Let the host
     // pump a few steps (it keeps sending inputs/pings) so its lastSeen is

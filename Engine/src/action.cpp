@@ -322,25 +322,21 @@ void ScaleTo::Update(float t) {
 
 // --- Sequence ---
 
-Sequence::Sequence(const std::vector<FiniteTimeAction*>& actions) : ActionInterval(0), _actions(actions) {
+Sequence::Sequence(const std::vector<FiniteTimeAction*>& actions) : ActionInterval(0) {
+    _actions.reserve(actions.size());
     float totalDuration = 0;
-    for (auto action : _actions) {
+    for (auto* action : actions) {
         totalDuration += action->GetDuration();
+        _actions.emplace_back(action);
     }
     _duration = totalDuration;
-}
-
-Sequence::~Sequence() {
-    for (auto action : _actions) {
-        delete action;
-    }
 }
 
 void Sequence::StartWithTarget(GameObject* target) {
     ActionInterval::StartWithTarget(target);
     _currentActionIndex = 0;
     if (!_actions.empty()) {
-        _currentAction = _actions[0];
+        _currentAction = _actions[0].get();
         _currentAction->StartWithTarget(target);
     } else {
         _currentAction = nullptr;
@@ -352,8 +348,8 @@ void Sequence::Step(float dt) {
         _currentAction->Step(dt);
         if (_currentAction->IsDone()) {
             _currentActionIndex++;
-            if (_currentActionIndex < _actions.size()) {
-                _currentAction = _actions[_currentActionIndex];
+            if (_currentActionIndex < static_cast<int>(_actions.size())) {
+                _currentAction = _actions[_currentActionIndex].get();
                 _currentAction->StartWithTarget(_target);
             } else {
                 _currentAction = nullptr;
@@ -391,10 +387,6 @@ void CallFunc::Step(float dt) {
 RepeatForever::RepeatForever(ActionInterval* action) : _innerAction(action) {
 }
 
-RepeatForever::~RepeatForever() {
-    delete _innerAction;
-}
-
 void RepeatForever::StartWithTarget(GameObject* target) {
     Action::StartWithTarget(target);
     _innerAction->StartWithTarget(target);
@@ -409,7 +401,9 @@ void RepeatForever::Step(float dt) {
 
 // --- Animate ---
 
-Animate::Animate(const AnimationClip& clip) : ActionInterval(0), _clip(new AnimationClip(clip)) {
+Animate::~Animate() = default;
+
+Animate::Animate(const AnimationClip& clip) : ActionInterval(0), _clip(std::make_unique<AnimationClip>(clip)) {
     float totalDuration = 0;
     for (const auto& frame : _clip->frames) {
         totalDuration += frame.duration;
@@ -441,7 +435,7 @@ void Animate::Update(float t) {
             break;
         }
     }
-    if (t >= 1.0f) frameIndex = (int)_splitTimes.size() - 1;
+    if (t >= 1.0f) frameIndex = static_cast<int>(_splitTimes.size()) - 1;
 
     if (frameIndex != _currentFrame) {
         _currentFrame = frameIndex;

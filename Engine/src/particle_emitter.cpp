@@ -1,9 +1,9 @@
 #include "particle_emitter.hpp"
-#include "particle_server.hpp"
+#include "particle_subsystem.hpp"
 
 namespace Atmospheric {
     ParticleEmitterComponent::ParticleEmitterComponent(const ParticleEmitterProps& def, uint32_t maxParticles)
-      : server(ParticleServer::GetInstance()), max_particles(maxParticles) {
+      : server(ParticleSubsystem::GetInstance()), max_particles(maxParticles) {
     }
 
     ParticleEmitterComponent::~ParticleEmitterComponent() {

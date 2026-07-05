@@ -8,6 +8,9 @@
 using UIPageID = std::string;
 
 // UIPageManager owns all UIPage instances and drives their lifecycle.
+// It is itself owned by Application (declared after _rmlUi there, so it is
+// destroyed first and can still close its documents through RmlUiManager);
+// the static Get() is a non-owning locator into that instance.
 //
 // Two navigation models are supported:
 //   Overlay  – ShowPage/HidePage for HUDs, subtitles, and other always-on elements
@@ -21,6 +24,8 @@ public:
 
     UIPageManager();
     ~UIPageManager();
+    UIPageManager(const UIPageManager&) = delete;
+    UIPageManager& operator=(const UIPageManager&) = delete;
 
     // Register a page, eagerly load its RmlUi document, and call OnAttach.
     // Returns a raw (non-owning) pointer to the concrete page type.
@@ -36,8 +41,7 @@ public:
 
     // Retrieve a previously registered page, cast to the concrete type.
     // Returns nullptr if the id is unknown or the cast fails.
-    template<typename T>
-    T* GetPage(const UIPageID& id) const {
+    template<typename T> T* GetPage(const UIPageID& id) const {
         auto it = _pages.find(id);
         if (it == _pages.end()) return nullptr;
         return dynamic_cast<T*>(it->second.page.get());

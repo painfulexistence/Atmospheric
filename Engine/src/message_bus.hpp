@@ -4,8 +4,7 @@
 
 class Application;
 class Messagable;
-class MessageBus
-{
+class MessageBus {
 public:
     MessageBus(Application* supervisor);
     ~MessageBus();
@@ -13,6 +12,7 @@ public:
     void PostMessage(Message msg);
     void PostImmediateMessage(Message msg);
     void Process();
+
 private:
     const int MAX_PROCESSING_NUM_MSGS = 20;
     Application* _supervisor;

@@ -23,7 +23,7 @@ struct BatchVertex {
     glm::vec3 position;
     glm::vec4 color;
     glm::vec2 uv;
-    float texIndex;
+    float texIndex = 0.0f;
     float entityID;// For picking or other identification
 };
 
@@ -65,44 +65,44 @@ public:
     // Primitives
     void DrawQuad(const glm::vec2& position, const glm::vec2& size, const glm::vec4& color);
     void DrawQuad(
-      const glm::vec2& position, const glm::vec2& size, uint32_t textureID, const glm::vec4& color = glm::vec4(1.0f)
+        const glm::vec2& position, const glm::vec2& size, uint32_t textureID, const glm::vec4& color = glm::vec4(1.0f)
     );
     void DrawQuad(const glm::vec3& position, const glm::vec2& size, const glm::vec4& color);
     void DrawQuad(
-      const glm::vec3& position, const glm::vec2& size, uint32_t textureID, const glm::vec4& color = glm::vec4(1.0f)
+        const glm::vec3& position, const glm::vec2& size, uint32_t textureID, const glm::vec4& color = glm::vec4(1.0f)
     );
 
     // Rotated Primitives
     void DrawRotatedQuad(const glm::vec2& position, const glm::vec2& size, float rotation, const glm::vec4& color);
     void DrawRotatedQuad(
-      const glm::vec2& position,
-      const glm::vec2& size,
-      float rotation,
-      uint32_t textureID,
-      const glm::vec4& color = glm::vec4(1.0f)
+        const glm::vec2& position,
+        const glm::vec2& size,
+        float rotation,
+        uint32_t textureID,
+        const glm::vec4& color = glm::vec4(1.0f)
     );
     void DrawRotatedQuad(const glm::vec3& position, const glm::vec2& size, float rotation, const glm::vec4& color);
     void DrawRotatedQuad(
-      const glm::vec3& position,
-      const glm::vec2& size,
-      float rotation,
-      uint32_t textureID,
-      const glm::vec4& color = glm::vec4(1.0f)
+        const glm::vec3& position,
+        const glm::vec2& size,
+        float rotation,
+        uint32_t textureID,
+        const glm::vec4& color = glm::vec4(1.0f)
     );
 
     // Advanced
     void DrawQuad(const glm::mat4& transform, const glm::vec4& color, int entityID = -1);
     void DrawQuad(
-      const glm::mat4& transform, uint32_t textureID, const glm::vec4& color = glm::vec4(1.0f), int entityID = -1
+        const glm::mat4& transform, uint32_t textureID, const glm::vec4& color = glm::vec4(1.0f), int entityID = -1
     );
 
     // With UVs (for spritesheets)
     void DrawQuad(
-      const glm::mat4& transform,
-      uint32_t textureID,
-      const glm::vec2* texCoords,
-      const glm::vec4& color = glm::vec4(1.0f),
-      int entityID = -1
+        const glm::mat4& transform,
+        uint32_t textureID,
+        const glm::vec2* texCoords,
+        const glm::vec4& color = glm::vec4(1.0f),
+        int entityID = -1
     );
 
     // ===== Shape Drawing API =====
@@ -135,15 +135,20 @@ public:
 
     // Arbitrary Geometry (for RmlUi)
     void DrawGeometry(
-      const std::vector<BatchVertex>& vertices,
-      const std::vector<uint32_t>& indices,
-      uint32_t textureID,
-      const glm::mat4& transform
+        const std::vector<BatchVertex>& vertices,
+        const std::vector<uint32_t>& indices,
+        uint32_t textureID,
+        const glm::mat4& transform
     );
 
 
     BatchStats GetStats();
     void ResetStats();
+
+    // Drain the current CPU vertex/index buffer into backend-agnostic BatchDrawCommands
+    // without executing any GL calls. Vertices are grouped by texture ID. Resets the buffer.
+    // Used by the WebGPU CanvasPass to collect drawable geometry without GL side-effects.
+    std::vector<BatchDrawCommand> DrainToCommands();
 
 private:
     // Called by RenderPasses only (friend classes)

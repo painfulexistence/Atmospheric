@@ -1,8 +1,6 @@
 #pragma once
 #include "globals.hpp"
 
-class Keyboard
-{
+class Keyboard {
 public:
-
 };

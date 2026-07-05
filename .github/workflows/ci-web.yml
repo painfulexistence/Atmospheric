@@ -1,12 +1,5 @@
-name: Build (WebAssembly)
+name: CI (WebAssembly)
 
-# Validates that AtmosLua links successfully as a WebAssembly module.
-# A successful link catches the majority of WebGL-specific failures:
-#   - Missing -sUSE_GLFW / -sFETCH / -sFULL_ES3 flags
-#   - GLSL version mismatches discovered at shader-compile time (runtime)
-#   - WASM-incompatible dependencies (x86 archives, system glad, etc.)
-#   - Emscripten-incompatible C++ (non-portable intrinsics, POSIX-only APIs)
-#
 # The build artifact (.html + .wasm + .js + .data) is uploaded so that
 # manual smoke-testing in a browser is possible without a local emsdk install.
 
@@ -17,12 +10,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Keep in sync with scripts/check-emscripten-version.sh
-env:
-  EMSDK_VERSION: "4.0.18"
-
 jobs:
   build-wasm-webgl:
+    name: WebAssembly WebGL, MinSizeRel
     runs-on: ubuntu-latest
 
     steps:
@@ -34,9 +24,14 @@ jobs:
             cmake
             triplets
             Examples
+            scripts
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json
+
+      - name: Detect required Emscripten version
+        id: emsdk-version
+        run: echo "version=$(./scripts/checkEmscriptenVersion.sh --print-primary-version)" >> "$GITHUB_OUTPUT"
 
       # ── Emscripten SDK ─────────────────────────────────────────────────────
       # EMSDK env var is exported automatically and is read by CMakeLists.txt:
@@ -44,8 +39,8 @@ jobs:
       - name: Set up Emscripten SDK
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: ${{ env.EMSDK_VERSION }}
-          actions-cache-folder: emsdk-${{ env.EMSDK_VERSION }}
+          version: ${{ steps.emsdk-version.outputs.version }}
+          actions-cache-folder: emsdk-${{ steps.emsdk-version.outputs.version }}
 
       # ── System tools ───────────────────────────────────────────────────────
       - name: Install system dependencies
@@ -100,17 +95,17 @@ jobs:
       - name: Upload WebAssembly artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: helloworld-wasm-${{ github.sha }}
-          path: ${{ github.workspace }}/build/HelloWorld/
+          name: 3dbasics-wasm-${{ github.sha }}
+          path: ${{ github.workspace }}/build/3DBasics/
           if-no-files-found: error
           retention-days: 30
 
   # ── WebGPU compile check (non-blocking) ──────────────────────────────────
   # Verifies that AE_USE_WEBGPU=ON compiles cleanly with emdawnwebgpu.
   # The WebGPU backend is still WIP so failures here do not block merging.
-  build-wam-webgpu:
+  build-wasm-webgpu:
+    name: WebAssembly WebGPU, MinSizeRel
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4
@@ -121,15 +116,20 @@ jobs:
             cmake
             triplets
             Examples
+            scripts
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json
 
+      - name: Detect required Emscripten version
+        id: emsdk-version
+        run: echo "version=$(./scripts/checkEmscriptenVersion.sh --print-primary-version)" >> "$GITHUB_OUTPUT"
+
       - name: Set up Emscripten SDK
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: ${{ env.EMSDK_VERSION }}
-          actions-cache-folder: emsdk-${{ env.EMSDK_VERSION }}
+          version: ${{ steps.emsdk-version.outputs.version }}
+          actions-cache-folder: emsdk-${{ steps.emsdk-version.outputs.version }}
 
       - name: Install system dependencies
         run: |

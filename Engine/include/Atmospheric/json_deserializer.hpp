@@ -1,7 +1,7 @@
 #pragma once
 #include "deserializer.hpp"
-#include <nlohmann/json.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <nlohmann/json.hpp>
 
 // ── JSONDeserializer ──────────────────────────────────────────────────────────
 //
@@ -27,7 +27,8 @@
 
 class JSONDeserializer : public Deserializer {
 public:
-    explicit JSONDeserializer(const nlohmann::json& j) : _j(j) {}
+    explicit JSONDeserializer(const nlohmann::json& j) : _j(j) {
+    }
 
     // ── Scalar reads ─────────────────────────────────────────────────────────
 
@@ -93,8 +94,7 @@ public:
     // ── Structural reads ──────────────────────────────────────────────────────
 
     std::unique_ptr<Deserializer> ReadObject(const char* name) override {
-        if (_j.contains(name) && _j[name].is_object())
-            return std::make_unique<JSONDeserializer>(_j[name]);
+        if (_j.contains(name) && _j[name].is_object()) return std::make_unique<JSONDeserializer>(_j[name]);
         return nullptr;
     }
 

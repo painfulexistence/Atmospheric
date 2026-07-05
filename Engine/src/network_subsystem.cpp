@@ -4,7 +4,7 @@
 #include <spdlog/spdlog.h>
 
 void NetworkSubsystem::Init(Application* app) {
-    Server::Init(app);
+    Subsystem::Init(app);
     spdlog::info("NetworkSubsystem: initialized");
 }
 

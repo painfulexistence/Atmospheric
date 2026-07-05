@@ -1,5 +1,6 @@
 {
   "name": "main",
   "textures": [],
-  "shaders": []
+  "shaders": {},
+  "entities": []
 }

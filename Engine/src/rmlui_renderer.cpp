@@ -1,4 +1,5 @@
 #include "rmlui_renderer.hpp"
+#include "gfx_factory.hpp"
 #include "renderer.hpp"
 #include <RmlUi/Core.h>
 #include <spdlog/spdlog.h>
@@ -20,7 +21,7 @@ void RmlUiRenderer::Shutdown() {
 }
 
 Rml::CompiledGeometryHandle
-  RmlUiRenderer::CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) {
+    RmlUiRenderer::CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) {
     CompiledGeometry geom;
     geom.vertices.reserve(vertices.size());
     geom.indices.reserve(indices.size());
@@ -32,7 +33,7 @@ Rml::CompiledGeometryHandle
         // Wait, BatchVertex color is glm::vec4.
         // Rml::Colourb is 4 bytes.
         bv.color =
-          glm::vec4(v.colour.red / 255.0f, v.colour.green / 255.0f, v.colour.blue / 255.0f, v.colour.alpha / 255.0f);
+            glm::vec4(v.colour.red / 255.0f, v.colour.green / 255.0f, v.colour.blue / 255.0f, v.colour.alpha / 255.0f);
         bv.uv = glm::vec2(v.tex_coord.x, v.tex_coord.y);
         bv.texIndex = 0.0f;// Set later
         bv.entityID = -1.0f;
@@ -40,7 +41,7 @@ Rml::CompiledGeometryHandle
     }
 
     for (int i : indices) {
-        geom.indices.push_back((uint32_t)i);
+        geom.indices.push_back(static_cast<uint32_t>(i));
     }
 
     Rml::CompiledGeometryHandle handle = m_next_geometry_handle++;
@@ -50,7 +51,7 @@ Rml::CompiledGeometryHandle
 }
 
 void RmlUiRenderer::RenderGeometry(
-  Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, Rml::TextureHandle texture
+    Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, Rml::TextureHandle texture
 ) {
     auto it = m_geometry.find(geometry);
     if (it == m_geometry.end()) return;
@@ -65,7 +66,7 @@ void RmlUiRenderer::RenderGeometry(
         BatchDrawCommand cmd;
         cmd.vertices = geom.vertices;
         cmd.indices = geom.indices;
-        cmd.textureID = (uint32_t)texture;
+        cmd.textureID = static_cast<uint32_t>(texture);
         cmd.transform = transform;
         m_Renderer->SubmitUICommand(cmd);
     }
@@ -99,17 +100,32 @@ Rml::TextureHandle RmlUiRenderer::LoadTexture(Rml::Vector2i& texture_dimensions,
 }
 
 Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions) {
-    // We need to create an OpenGL texture and return its ID
-    // But we shouldn't call OpenGL directly here ideally?
-    // Well, creating resources is fine, drawing is the issue.
-    // Or we can ask Renderer to create it.
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        uint32_t texture_id = GfxFactory::UploadTexture2D(
+            reinterpret_cast<const uint8_t*>(source.data()), source_dimensions.x, source_dimensions.y
+        );
+        return (Rml::TextureHandle)texture_id;
+    }
+#endif
 
-    GLuint texture_id;
-    glGenTextures(1, &texture_id);
-    glBindTexture(GL_TEXTURE_2D, texture_id);
+    // OpenGL path: GfxFactory::UploadTexture2D's GL fallback uses GL_NEAREST,
+    // which would regress RmlUi's text/UI rendering quality — upload directly
+    // with GL_LINEAR filtering instead, as before.
+    GLuint textureId;
+    glGenTextures(1, &textureId);
+    glBindTexture(GL_TEXTURE_2D, textureId);
 
     glTexImage2D(
-      GL_TEXTURE_2D, 0, GL_RGBA8, source_dimensions.x, source_dimensions.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, source.data()
+        GL_TEXTURE_2D,
+        0,
+        GL_RGBA8,
+        source_dimensions.x,
+        source_dimensions.y,
+        0,
+        GL_RGBA,
+        GL_UNSIGNED_BYTE,
+        source.data()
     );
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -119,16 +135,11 @@ Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> sou
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    Rml::TextureHandle texture_handle = (Rml::TextureHandle)texture_id;
-    // We don't need to store it in m_textures if we just cast ID to handle
-    // But RmlUi expects us to manage handles.
-    // Let's just return the GL ID as handle for simplicity with BatchRenderer
-    return texture_handle;
+    return static_cast<Rml::TextureHandle>(textureId);
 }
 
 void RmlUiRenderer::ReleaseTexture(Rml::TextureHandle texture_handle) {
-    GLuint id = (GLuint)texture_handle;
-    glDeleteTextures(1, &id);
+    GfxFactory::ReleaseTexture(static_cast<uint32_t>(texture_handle));
 }
 
 void RmlUiRenderer::SetTransform(const Rml::Matrix4f* transform) {

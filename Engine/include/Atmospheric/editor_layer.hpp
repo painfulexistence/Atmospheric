@@ -3,6 +3,9 @@
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
 #include <glad/glad.h>
 #endif
+#include <memory>
+#include <unordered_map>
+#include <vector>
 
 // Forward declarations
 class Application;
@@ -18,17 +21,23 @@ public:
     EditorLayer(Application* app, bool showImGui = true);
     ~EditorLayer() = default;
 
-    void OnAttach() override {}
-    void OnDetach() override {}
+    void OnAttach() override {
+    }
+    void OnDetach() override {
+    }
     void OnUpdate(float dt) override;
     void OnRender(float dt) override;
 
-    bool IsVisible() const { return _showImGui; }
-    void SetVisible(bool show) { _showImGui = show; }
+    bool IsVisible() const {
+        return _showImGui;
+    }
+    void SetVisible(bool show) {
+        _showImGui = show;
+    }
 
 private:
-    Application* _app;
-    bool _showImGui;
+    Application* _app = nullptr;
+    bool _showImGui = true;
     bool _showSystemInfo = false;
     bool _showAppView = true;
     bool _showEngineView = true;
@@ -36,6 +45,7 @@ private:
 
     void DrawSystemInfo();
     void DrawAppView();
+    void DrawEntityNode(GameObject* entity, const std::vector<std::unique_ptr<GameObject>>& all);
     void DrawEntityInspector(GameObject* entity);
     void DrawEngineView();
     void ToggleRecording();

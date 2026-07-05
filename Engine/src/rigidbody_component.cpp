@@ -4,32 +4,32 @@
 #include "game_object.hpp"
 #include "imgui.h"
 
-static glm::mat4 convertToGLMatrix(const btTransform& trans) {
+static glm::mat4 ConvertToGlMatrix(const btTransform& trans) {
     btScalar mat[16] = { 0.0f };
     trans.getOpenGLMatrix(mat);
 
     return glm::mat4(
-      mat[0],
-      mat[1],
-      mat[2],
-      mat[3],
-      mat[4],
-      mat[5],
-      mat[6],
-      mat[7],
-      mat[8],
-      mat[9],
-      mat[10],
-      mat[11],
-      mat[12],
-      mat[13],
-      mat[14],
-      mat[15]
+        mat[0],
+        mat[1],
+        mat[2],
+        mat[3],
+        mat[4],
+        mat[5],
+        mat[6],
+        mat[7],
+        mat[8],
+        mat[9],
+        mat[10],
+        mat[11],
+        mat[12],
+        mat[13],
+        mat[14],
+        mat[15]
     );
 }
 
 RigidbodyComponent::RigidbodyComponent(
-  GameObject* gameObject, btCollisionShape* shape, float mass, glm::vec3 linearFactor, glm::vec3 angularFactor
+    GameObject* gameObject, btCollisionShape* shape, float mass, glm::vec3 linearFactor, glm::vec3 angularFactor
 ) {
     glm::vec3 position = gameObject->GetPosition();
     glm::vec3 rotation = gameObject->GetRotation();
@@ -39,8 +39,9 @@ RigidbodyComponent::RigidbodyComponent(
     t.setOrigin(btVector3(position.x, position.y, position.z));
     t.setRotation(btQuaternion(rotation.x, rotation.y, rotation.z, 1.0f));
 
-    auto motionState = new btDefaultMotionState(t);
-    _rigidbody = new btRigidBody(btScalar(mass), motionState, shape, btVector3(1, 1, 1));
+    _motionState = std::make_unique<btDefaultMotionState>(t);
+    _rigidbody =
+        std::make_unique<btRigidBody>(static_cast<btScalar>(mass), _motionState.get(), shape, btVector3(1, 1, 1));
     _rigidbody->setLinearFactor(btVector3(linearFactor.x, linearFactor.y, linearFactor.z));
     _rigidbody->setAngularFactor(btVector3(angularFactor.x, angularFactor.y, angularFactor.z));
     _rigidbody->setFriction(2.0f);
@@ -60,8 +61,10 @@ RigidbodyComponent::RigidbodyComponent(GameObject* gameObject, const RigidbodyPr
     t.setOrigin(btVector3(position.x, position.y, position.z));
     t.setRotation(btQuaternion(rotation.x, rotation.y, rotation.z, 1.0f));
 
-    auto motionState = new btDefaultMotionState(t);
-    _rigidbody = new btRigidBody(btScalar(props.mass), motionState, props.shape, btVector3(1, 1, 1));
+    _motionState = std::make_unique<btDefaultMotionState>(t);
+    _rigidbody = std::make_unique<btRigidBody>(
+        static_cast<btScalar>(props.mass), _motionState.get(), props.shape, btVector3(1, 1, 1)
+    );
     _rigidbody->setLinearFactor(btVector3(props.linearFactor.x, props.linearFactor.y, props.linearFactor.z));
     _rigidbody->setAngularFactor(btVector3(props.angularFactor.x, props.angularFactor.y, props.angularFactor.z));
     if (!props.useGravity) {
@@ -81,10 +84,7 @@ RigidbodyComponent::RigidbodyComponent(GameObject* gameObject, const RigidbodyPr
     _rigidbody->setUserPointer(gameObject);
 }
 
-RigidbodyComponent::~RigidbodyComponent(){
-    // TODO: Check if bullet objects are destoryed by the destructor in btDynamicsWorld class
-    // delete this->_rigidbody;
-};
+RigidbodyComponent::~RigidbodyComponent() = default;
 
 std::string RigidbodyComponent::GetName() const {
     return std::string("Physics");
@@ -96,14 +96,14 @@ void RigidbodyComponent::DrawImGui() {
 }
 
 void RigidbodyComponent::OnAttach() {
-    if (gameObject->GetApp()->GetPhysicsServer()) {
-        gameObject->GetApp()->GetPhysicsServer()->AddRigidbody(this);
+    if (Physics3DSubsystem::Get()) {
+        Physics3DSubsystem::Get()->AddRigidbody(this);
     }
 }
 
 void RigidbodyComponent::OnDetach() {
-    if (gameObject->GetApp()->GetPhysicsServer()) {
-        gameObject->GetApp()->GetPhysicsServer()->RemoveRigidbody(this);
+    if (Physics3DSubsystem::Get()) {
+        Physics3DSubsystem::Get()->RemoveRigidbody(this);
     }
 }
 
@@ -118,7 +118,7 @@ void RigidbodyComponent::SetMass(float mass) {
 glm::mat4 RigidbodyComponent::GetWorldTransform() {
     btTransform t;
     _rigidbody->getMotionState()->getWorldTransform(t);
-    return convertToGLMatrix(t);
+    return ConvertToGlMatrix(t);
 };
 
 void RigidbodyComponent::SetWorldTransform(const glm::vec3& position, const glm::vec3& rotation) {

@@ -15,8 +15,8 @@ struct LightProps {
     glm::vec3 specular;
     glm::vec3 direction;
     glm::vec3 attenuation;
-    float intensity;
-    bool castShadow;
+    float intensity = 1.0f;
+    bool castShadow = false;
 };
 
 class LightComponent : public Component {
@@ -27,8 +27,8 @@ public:
     glm::vec3 ambient;
     glm::vec3 diffuse;
     glm::vec3 specular;
-    float intensity;
-    bool castShadow;
+    float intensity = 1.0f;
+    bool castShadow = false;
 
     LightComponent(GameObject* gameObject, LightProps props);
 

@@ -21,14 +21,13 @@
 #include <thread>
 
 namespace {
-std::atomic<bool> g_stop{false};
+    std::atomic<bool> g_stop{ false };
 }
 
 int main(int argc, char* argv[]) {
     uint16_t port = 9000;
     for (int i = 1; i < argc; i++) {
-        if (std::strcmp(argv[i], "--port") == 0 && i + 1 < argc)
-            port = uint16_t(std::atoi(argv[++i]));
+        if (std::strcmp(argv[i], "--port") == 0 && i + 1 < argc) port = uint16_t(std::atoi(argv[++i]));
     }
 
     std::signal(SIGINT, [](int) { g_stop = true; });
@@ -43,12 +42,12 @@ int main(int argc, char* argv[]) {
     }
     spdlog::info("RelayServer: relaying on UDP :{} (Ctrl+C to stop)", relay.BoundPort());
 
-    auto last      = std::chrono::steady_clock::now();
+    auto last = std::chrono::steady_clock::now();
     auto lastStats = last;
-    int  lastRooms = 0;
+    int lastRooms = 0;
     while (!g_stop) {
-        const auto  now = std::chrono::steady_clock::now();
-        const float dt  = std::chrono::duration<float>(now - last).count();
+        const auto now = std::chrono::steady_clock::now();
+        const float dt = std::chrono::duration<float>(now - last).count();
         last = now;
 
         relay.Process(dt);

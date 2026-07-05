@@ -22,29 +22,35 @@ public:
     void Initialize(VertexFormat format, BufferUsage usage = BufferUsage::Static) override;
     void Upload(const void* vertexData, size_t vertexCount, size_t vertexSize) override;
     void Upload(
-        const void* vertexData, size_t vertexCount, size_t vertexSize,
-        const uint16_t* indexData, size_t indexCount) override;
-    void Draw(
-        CommandEncoder* enc = nullptr,
-        PrimitiveTopology topology = PrimitiveTopology::Triangles) const override;
+        const void* vertexData, size_t vertexCount, size_t vertexSize, const uint16_t* indexData, size_t indexCount
+    ) override;
+    void Draw(CommandEncoder* enc = nullptr, PrimitiveTopology topology = PrimitiveTopology::Triangles) const override;
 
-    bool IsInitialized() const override { return _initialized; }
-    size_t GetVertexCount() const override { return _vertexCount; }
-    size_t GetIndexCount() const override { return _indexCount; }
-    VertexFormat GetFormat() const override { return _format; }
+    bool IsInitialized() const override {
+        return _initialized;
+    }
+    size_t GetVertexCount() const override {
+        return _vertexCount;
+    }
+    size_t GetIndexCount() const override {
+        return _indexCount;
+    }
+    VertexFormat GetFormat() const override {
+        return _format;
+    }
 
 private:
     WGPUBuffer AllocAndUpload(const void* data, size_t bytes, WGPUBufferUsage usage);
 
-    WGPUDevice _device       = nullptr;
-    WGPUQueue  _queue        = nullptr;
+    WGPUDevice _device = nullptr;
+    WGPUQueue _queue = nullptr;
     WGPUBuffer _vertexBuffer = nullptr;
-    WGPUBuffer _indexBuffer  = nullptr;
+    WGPUBuffer _indexBuffer = nullptr;
 
     VertexFormat _format = VertexFormat::Standard;
-    size_t _vertexCount  = 0;
-    size_t _indexCount   = 0;
-    bool _initialized    = false;
-    bool _hasIndices     = false;
+    size_t _vertexCount = 0;
+    size_t _indexCount = 0;
+    bool _initialized = false;
+    bool _hasIndices = false;
 };
-#endif // AE_USE_WEBGPU && __EMSCRIPTEN__
+#endif// AE_USE_WEBGPU && __EMSCRIPTEN__

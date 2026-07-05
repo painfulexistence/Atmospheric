@@ -1,10 +1,10 @@
 #include "camera_component.hpp"
-#include "game_object.hpp"
 #include "application.hpp"
-#include "graphics_server.hpp"
+#include "game_object.hpp"
+#include "graphics_subsystem.hpp"
 
-static const float maxVAngle = PI / 2.0f - 0.01f;
-static const float minVAngle = -PI / 2.0f + 0.01f;
+static const float gmaxVAngle = PI / 2.0f - 0.01f;
+static const float gminVAngle = -PI / 2.0f + 0.01f;
 
 CameraComponent::CameraComponent(GameObject* gameObject, const CameraProps& props) {
     this->gameObject = gameObject;
@@ -15,12 +15,12 @@ CameraComponent::CameraComponent(GameObject* gameObject, const CameraProps& prop
         _nearZ = props.orthographic.nearClip;
         _farZ = props.orthographic.farClip;
         _projectionMatrix = glm::ortho(
-          -props.orthographic.width * .5f,
-          props.orthographic.width * .5f,
-          -props.orthographic.height * .5f,
-          props.orthographic.height * .5f,
-          props.orthographic.nearClip,
-          props.orthographic.farClip
+            -props.orthographic.width * .5f,
+            props.orthographic.width * .5f,
+            -props.orthographic.height * .5f,
+            props.orthographic.height * .5f,
+            props.orthographic.nearClip,
+            props.orthographic.farClip
         );
     } else {
         _isOrthographic = false;
@@ -29,10 +29,10 @@ CameraComponent::CameraComponent(GameObject* gameObject, const CameraProps& prop
         _nearZ = props.perspective.nearClip;
         _farZ = props.perspective.farClip;
         _projectionMatrix = glm::perspective(
-          props.perspective.fieldOfView,
-          props.perspective.aspectRatio,
-          props.perspective.nearClip,
-          props.perspective.farClip
+            props.perspective.fieldOfView,
+            props.perspective.aspectRatio,
+            props.perspective.nearClip,
+            props.perspective.farClip
         );
     }
     _eyeOffset = props.eyeOffset;
@@ -47,14 +47,14 @@ void CameraComponent::DrawImGui() {
 }
 
 void CameraComponent::OnAttach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
-        gameObject->GetApp()->GetGraphicsServer()->RegisterCamera(this);
+    if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->RegisterCamera(this);
     }
 }
 
 void CameraComponent::OnDetach() {
-    if (gameObject && gameObject->GetApp() && gameObject->GetApp()->GetGraphicsServer()) {
-        gameObject->GetApp()->GetGraphicsServer()->UnregisterCamera(this);
+    if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
+        GraphicsSubsystem::Get()->UnregisterCamera(this);
     }
 }
 
@@ -94,14 +94,14 @@ glm::mat4 CameraComponent::GetProjectionMatrix() {
 glm::vec3 CameraComponent::GetMoveVector(Axis axis) {
     glm::vec3 dir = GetEyeDirection();
     switch (axis) {
-    case BACK:
-    case FRONT:
+    case Axis::BACK:
+    case Axis::FRONT:
         return glm::normalize(glm::vec3(dir.x, 0, dir.z));
-    case RIGHT:
-    case LEFT:
+    case Axis::RIGHT:
+    case Axis::LEFT:
         return glm::normalize(glm::cross(dir, glm::vec3(0, 1, 0)));
-    case UP:
-    case DOWN:
+    case Axis::UP:
+    case Axis::DOWN:
         return glm::vec3(0, 1, 0);
     default:
         throw std::runtime_error("Invalid camera move axis");
@@ -113,7 +113,7 @@ void CameraComponent::Yaw(float angleOffset) {
 }
 
 void CameraComponent::Pitch(float angleOffset) {
-    _vhAngle.x = std::max(minVAngle, std::min(maxVAngle, _vhAngle.x + angleOffset));
+    _vhAngle.x = std::max(gminVAngle, std::min(gmaxVAngle, _vhAngle.x + angleOffset));
 }
 
 void CameraComponent::SetSize(float size) {
@@ -122,6 +122,6 @@ void CameraComponent::SetSize(float size) {
         _orthoHeight = size;
         _orthoWidth = size * aspectRatio;
         _projectionMatrix =
-          glm::ortho(-_orthoWidth * .5f, _orthoWidth * .5f, -_orthoHeight * .5f, _orthoHeight * .5f, _nearZ, _farZ);
+            glm::ortho(-_orthoWidth * .5f, _orthoWidth * .5f, -_orthoHeight * .5f, _orthoHeight * .5f, _nearZ, _farZ);
     }
 }

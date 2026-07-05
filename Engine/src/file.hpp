@@ -1,8 +1,7 @@
 #pragma once
 #include "globals.hpp"
 
-class File
-{
+class File {
 private:
     std::string _filename;
     std::optional<std::string> _cached;

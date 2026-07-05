@@ -44,6 +44,9 @@ if(EMSCRIPTEN)
             -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts
             -Ddst=${EM_PRELOAD_STAGING_DIR}/fonts
             -P ${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/ui
+            ${EM_PRELOAD_STAGING_DIR}/ui
         COMMENT "Staging Emscripten preload assets for ${GAME_NAME}"
     )
     add_dependencies(${GAME_NAME} stage_${GAME_NAME}_em_preload)
@@ -54,6 +57,7 @@ if(EMSCRIPTEN)
         -sEXPORTED_FUNCTIONS=["_main"]
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/ui@assets/ui"
     )
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         list(APPEND RPG_EM_LINK_OPTIONS -g -sASSERTIONS=2)

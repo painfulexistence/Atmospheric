@@ -4,10 +4,13 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 class Mesh;
 class Material;
+class WaterMaterial;
+class TerrainMaterial;
 class ShaderProgram;
 struct ShaderProgramProps;
 struct MaterialProps;
@@ -26,33 +29,50 @@ public:
 };
 
 
-
 struct Texture2D {
-    GLuint   glID   = 0;
-    uint32_t width  = 0;
+    GLuint glID = 0;
+    uint32_t width = 0;
     uint32_t height = 0;
-    size_t   bytes  = 0;
+    size_t bytes = 0;
 };
 
+// Owned by Application (see Application's service members); Get() is a
+// non-owning locator into that instance. Construction order relative to the
+// Window matters: the destructor releases GL textures, so Application declares
+// its AssetManager member after _window (destroyed while the context lives).
 class AssetManager {
 public:
-    static AssetManager& Get();
+    AssetManager();
+    ~AssetManager();
+    AssetManager(const AssetManager&) = delete;
+    AssetManager& operator=(const AssetManager&) = delete;
 
-    void Init();
-    void Shutdown();
+    static AssetManager& Get();
 
     // ========== CPU Resource Management ==========
     std::shared_ptr<Image> LoadImage(const std::string& path);
 
     Material* CreateMaterial(const std::string& name, const MaterialProps& props);
     Material* CreateMaterial(const MaterialProps& props);
+    WaterMaterial* CreateWaterMaterial();
+    TerrainMaterial* CreateTerrainMaterial();
     Material* GetMaterial(const std::string& name) const;
     Material* GetMaterialByID(uint32_t id) const;
+    // Handle-based access: handles are stable references that survive scene
+    // unloads (they resolve to nullptr instead of dangling).
+    [[nodiscard]] MaterialHandle GetMaterialHandle(const std::string& name) const;// INVALID if absent
+    [[nodiscard]] MaterialHandle GetMaterialHandle(const Material* material) const;// INVALID if absent
+    [[nodiscard]] Material* ResolveMaterial(MaterialHandle handle) const;// nullptr if invalid or unloaded
     void LoadMaterials(const std::vector<MaterialProps>& materialDefs);
 
     ShaderProgram* CreateShader(const std::string& name, const ShaderProgramProps& props);
     ShaderProgram* GetShader(const std::string& name) const;
     ShaderProgram* GetShaderByID(uint32_t id) const;
+    // Handle-based access for references held across frames: handles survive
+    // scene unloads (they resolve to nullptr instead of dangling). Transient
+    // per-pass lookups can keep using GetShader.
+    [[nodiscard]] ShaderHandle GetShaderHandle(const std::string& name) const;// INVALID if absent
+    [[nodiscard]] ShaderProgram* ResolveShader(ShaderHandle handle) const;// nullptr if invalid or unloaded
     void LoadDefaultShaders();
     void LoadShaders(const std::unordered_map<std::string, ShaderProgramProps>& shaderDefs);
     void ReloadShaders();
@@ -65,20 +85,31 @@ public:
     std::string GetTexturePath(GLuint id) const;
     void LoadDefaultTextures();
     void LoadTextures(const std::vector<std::string>& paths);
-    Mesh* CreateMesh(Mesh* mesh = nullptr);
-    Mesh* CreateMesh(const std::string& name, Mesh* mesh = nullptr);
-    Mesh* CreateCubeMesh(const std::string& name, float size = 1.0f);
-    Mesh* CreatePlaneMesh(const std::string& name, float width, float height);
-    Mesh* CreatePlaneMeshSubdivided(const std::string& name, float width, float height, int subdivisions);
-    Mesh* CreateSphereMesh(const std::string& name, float radius = 0.5f, int division = 18);
-    Mesh* CreateCapsuleMesh(const std::string& name, float radius = 0.5f, float height = 3.0f);
-    Mesh* CreateTerrainMesh(const std::string& name, float worldSize = 1024.f, int resolution = 10);
-    Mesh* GetMesh(const std::string& name) const;
+    MeshHandle CreateMesh(Mesh* mesh = nullptr);
+    MeshHandle CreateMesh(const std::string& name, Mesh* mesh = nullptr);
+    MeshHandle CreateCubeMesh(const std::string& name, float size = 1.0f);
+    MeshHandle CreatePlaneMesh(const std::string& name, float width, float height);
+    MeshHandle CreatePlaneMeshSubdivided(const std::string& name, float width, float height, int subdivisions);
+    MeshHandle CreateSphereMesh(const std::string& name, float radius = 0.5f, int division = 18);
+    MeshHandle CreateCapsuleMesh(const std::string& name, float radius = 0.5f, float height = 3.0f);
+    MeshHandle CreateTerrainMesh(const std::string& name, float worldSize = 1024.f, int resolution = 10);
+    MeshHandle GetMesh(const std::string& name) const;
+    Mesh* GetMeshPtr(MeshHandle handle) const;
+    // Registers an externally-owned mesh (e.g. a unique_ptr<Mesh> held by a
+    // voxel chunk) so it gets a handle usable in RenderCommand/queue sorting.
+    // AssetManager does NOT take ownership; call UnregisterMesh before the
+    // owner destroys the mesh.
+    MeshHandle RegisterMesh(Mesh* mesh);
+    void UnregisterMesh(MeshHandle handle);
     // Upload a normalized [0,1] float grid as a GL_R8 grayscale texture.
     // Returns the scene-texture index usable as Material::heightMap.
-    TextureHandle CreateHeightmapTexture(const std::string& name, const std::vector<float>& grid, int width, int height);
+    TextureHandle
+        CreateHeightmapTexture(const std::string& name, const std::vector<float>& grid, int width, int height);
+    // Re-upload the pixel data of a heightmap texture previously created with
+    // CreateHeightmapTexture (e.g. after regenerating a NoiseHeightField).
+    void UpdateHeightmapTexture(TextureHandle handle, const std::vector<float>& grid, int width, int height);
     std::shared_ptr<Mesh> LoadOBJ(const std::string& path);
-    std::shared_ptr<Mesh> LoadGLTF(const std::string& path);
+    MeshHandle LoadGLTF(const std::string& path);
 
     // ========== Resource Access ==========
     const std::vector<GLuint>& GetTextures() const {
@@ -87,33 +118,47 @@ public:
     const std::vector<GLuint>& GetDefaultTextures() const {
         return defaultTextures;
     }
-    const std::vector<Material*>& GetMaterials() const {
+    const std::vector<std::unique_ptr<Material>>& GetMaterials() const {
         return materials;
     }
 
     size_t getTotalTextureBytes() const;
 
+    // ========== Component-owned asset cleanup ==========
+    // Null the slot in the flat vector, erase from the name cache, and delete
+    // the object.  Index stability is preserved (no vector compaction).
+    void RemoveMaterial(Material* mat);
+    void RemoveTexture(const std::string& path);
+
+    // ========== Per-scene asset ownership ==========
+    // Store the raw scene JSON so UnloadSceneAssets can re-parse it to free
+    // every asset type declared by that scene.  Adding new asset types to the
+    // JSON format (fonts, sounds, ui, …) is automatically handled — no struct
+    // changes needed here.
+    //
+    // Invariant: correct when simultaneously-loaded scenes do not share asset
+    // paths.  Namespace each demo's assets under its own subdirectory.
+    void StoreSceneJson(const std::string& sceneName, const std::string& json);
+    void UnloadSceneAssets(const std::string& sceneName);
+
     // ========== Cleanup ==========
     void Clear();
-    void ClearSceneAssets();  // Clears scene assets only, preserving defaults.
+    void ClearSceneAssets();// Clears scene assets only, preserving defaults.
 
 private:
-    AssetManager() = default;
-    ~AssetManager();
-
     static AssetManager* instance;
 
     // Images
     std::unordered_map<std::string, std::shared_ptr<Image>> _imageCache;
 
     // Shaders
-    std::vector<ShaderProgram*> shaders;
+    std::vector<std::unique_ptr<ShaderProgram>> shaders;
     std::unordered_map<std::string, uint32_t> _shaderCache;
     uint32_t _nextShaderID = 0;
     uint32_t _defaultShaderCount = 0;
 
     // Materials
-    std::vector<Material*> materials;
+    std::vector<std::unique_ptr<Material>> materials;
     std::unordered_map<std::string, uint32_t> _materialCache;
     uint32_t _nextMaterialID = 0;
 
@@ -124,9 +169,13 @@ private:
     uint32_t _nextTextureID = 0;
 
     // Meshes
-    std::vector<Mesh*> meshes;
-    std::unordered_map<std::string, Mesh*> _meshCache;
-    uint32_t _nextMeshID = 0;
+    std::unordered_map<uint32_t, Mesh*> _meshByID;
+    std::unordered_map<std::string, uint32_t> _meshCache;
+    std::unordered_set<uint32_t> _ownedMeshIDs;// IDs AssetManager must delete; excludes RegisterMesh entries
+    uint32_t _nextMeshID = 1;
+
+    // Raw JSON strings keyed by scene name — re-parsed on unload.
+    std::unordered_map<std::string, std::string> _sceneJsons;
 
 #ifdef AE_USE_BASIS_UNIVERSAL
     // KTX2 / Basis Universal GPU-compressed texture loader.

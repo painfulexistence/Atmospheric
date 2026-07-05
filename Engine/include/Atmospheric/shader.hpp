@@ -1,22 +1,17 @@
 #pragma once
 #include "globals.hpp"
+#include <array>
 #include <glm/mat4x4.hpp>
 #include <optional>
-#include <unordered_map>
 #include <string>
+#include <unordered_map>
 #include <vector>
-#include <array>
 
-enum class ShaderType {
-    Vertex,
-    Fragment,
-    TessControl,
-    TessEvaluation
-};
+enum class ShaderType { Vertex, Fragment, TessControl, TessEvaluation };
 
 struct Shader {
     Shader(const std::string& path, ShaderType type);
-    uint32_t shader; // Store as raw uint32_t instead of GLuint
+    uint32_t shader;// Store as raw uint32_t instead of GLuint
 };
 
 struct ShaderProgramProps {
@@ -31,10 +26,10 @@ struct ShaderProgramProps {
 class ShaderProgram {
 public:
     virtual ~ShaderProgram() = default;
-    
+
     virtual void Activate() = 0;
     virtual void Deactivate() = 0;
-    
+
     virtual void SetUniform(const std::string& uniform, const glm::mat4& val) = 0;
     virtual void SetUniform(const std::string& uniform, const glm::vec2& val) = 0;
     virtual void SetUniform(const std::string& uniform, const glm::vec3& val) = 0;
@@ -48,10 +43,10 @@ public:
     GLShaderProgram() = default;
     GLShaderProgram(const ShaderProgramProps& props);
     GLShaderProgram(
-      std::string vert,
-      std::string frag,
-      std::optional<std::string> tesc = std::nullopt,
-      std::optional<std::string> tese = std::nullopt
+        std::string vert,
+        std::string frag,
+        std::optional<std::string> tesc = std::nullopt,
+        std::optional<std::string> tese = std::nullopt
     );
     ~GLShaderProgram() override;
 

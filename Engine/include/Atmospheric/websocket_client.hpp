@@ -28,8 +28,7 @@ public:
     ~WebSocketClient();
 
     // url must be ws:// or wss://
-    WsConnectionID Connect(const std::string& url, WsCallbacks callbacks,
-                            const WsOptions& options = {});
+    WsConnectionID Connect(const std::string& url, WsCallbacks callbacks, const WsOptions& options = {});
     void Send(WsConnectionID id, const std::vector<uint8_t>& data);
     void SendText(WsConnectionID id, const std::string& text);
     void Close(WsConnectionID id);

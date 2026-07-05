@@ -34,22 +34,21 @@ public:
     State state = State::Idle;
     uint32_t seed = 1;
     int inputDelay = 3;
-    int localPlayer = 0; // host = player 0, client = player 1
+    int localPlayer = 0;// host = player 0, client = player 1
     int rttMs = -1;
     bool desync = false;
     std::string error;
 
     // Relay mode: set by StartRelayHost/StartRelayClient.
     // SendRaw prepends [roomId: uint32_t LE] when useRelay is true.
-    bool     useRelay    = false;
+    bool useRelay = false;
     uint32_t relayRoomId = 0;
 
     void StartSolo(uint32_t seed);
     bool StartHost(uint16_t port, uint32_t seed, int delay);
     bool StartClient(const std::string& ip, uint16_t port);
     // Relay variants: both peers point at the relay server; roomId identifies the session.
-    bool StartRelayHost(const std::string& relayIp, uint16_t relayPort,
-                        uint32_t roomId, uint32_t seed, int delay);
+    bool StartRelayHost(const std::string& relayIp, uint16_t relayPort, uint32_t roomId, uint32_t seed, int delay);
     bool StartRelayClient(const std::string& relayIp, uint16_t relayPort, uint32_t roomId);
     void Shutdown();
 
