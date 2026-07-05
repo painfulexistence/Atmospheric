@@ -495,13 +495,10 @@
         var _preGather   = null;  // Promise<{pc,ch}|null> — host ICE gathered in background
 
         // Detect invite URL on load; processing runs in parallel with WASM download.
-        // Use a manual regex + decodeURIComponent (not URLSearchParams) so that a
-        // bare '+' in the raw query string is NOT decoded as a space — URLSearchParams
-        // uses application/x-www-form-urlencoded rules where '+' means space.
-        var _joinParam = (function() {
-            var m = location.search.match(/[?&]join=([^&]*)/);
-            return m ? decodeURIComponent(m[1]) : null;
-        })();
+        // URLSearchParams is the correct standard API: it handles %XX decoding and
+        // & boundary parsing. Any stray characters that survive (trailing '/', etc.)
+        // are stripped downstream by _fromB64url's base64url allowlist.
+        var _joinParam = new URLSearchParams(location.search).get('join');
 
         function setStatus(msg, isError) {
             var el = document.getElementById('lobby-status');
