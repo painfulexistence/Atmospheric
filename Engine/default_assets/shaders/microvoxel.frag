@@ -1,0 +1,208 @@
+#version 410 core
+
+// ============================================================================
+// Micro Voxel Raymarch (experimental) — GL 4.1 / WebGL2 path
+// ============================================================================
+// Two-level DDA over a dense voxel volume stored in a 3D texture:
+//   - coarse pass strides one brick (BRICK_DIM voxels) at a time, skipping
+//     empty bricks in a single step via the coarse occupancy texture;
+//   - fine pass walks individual voxels inside occupied bricks.
+// Hits write gl_FragDepth so voxels depth-composite with the rasterized scene
+// (this pass runs after ForwardOpaque, before the sky fills remaining pixels).
+//
+// Storage (all CPU-built, uploaded once; edits re-upload affected regions):
+//   u_volume    usampler3D  R8UI, gridDim^3, per-voxel palette index (0 = air)
+//   u_occupancy usampler3D  R8UI, (gridDim/BRICK_DIM)^3, nonzero = brick solid
+//   u_palette   sampler2D   256x1 RGBA8, albedo per material index
+
+in vec2 v_uv;
+
+uniform usampler3D u_volume;
+uniform usampler3D u_occupancy;
+uniform sampler2D  u_palette;
+
+uniform mat4  u_invViewProj;   // clip -> world
+uniform mat4  u_viewProj;      // world -> clip (for depth output)
+uniform vec3  u_cameraPos;
+uniform vec3  u_volumeOrigin;  // world-space min corner
+uniform float u_voxelSize;     // world edge length of one voxel
+uniform ivec3 u_gridDim;       // voxels per volume edge
+uniform int   u_brickDim;      // voxels per brick edge (8)
+uniform int   u_maxRaySteps;   // cap on coarse DDA iterations
+uniform vec3  u_sunDir;        // normalized, toward the sun
+uniform vec3  u_sunColor;
+uniform float u_sunIntensity;
+uniform float u_ambient;
+uniform int   u_shadowEnabled;
+
+out vec4 fragColor;
+
+const float PI = 3.1415927;
+
+// Per-voxel value hash for subtle albedo variation (keeps micro voxels legible).
+float voxelHash(ivec3 c) {
+    uint h = uint(c.x) * 374761393u + uint(c.y) * 668265263u + uint(c.z) * 2246822519u;
+    h = (h ^ (h >> 13u)) * 1274126177u;
+    return float(h & 0xFFFFu) / 65535.0;
+}
+
+struct Hit {
+    float t;
+    vec3  normal;
+    uint  material;
+    bool  hit;
+};
+
+// Fine DDA over individual voxels inside one brick cell [lo, lo+B-1].
+Hit traverseBrick(vec3 ro, vec3 rd, vec3 invDir, float tStart, ivec3 brickCell, vec3 enterNormal) {
+    Hit r;
+    r.hit = false; r.t = tStart; r.normal = enterNormal; r.material = 0u;
+
+    int bd = u_brickDim;
+    ivec3 lo = brickCell * bd;
+    ivec3 hi = lo + bd - 1;
+
+    float eps = u_voxelSize * 1e-3;
+    vec3 p = ro + rd * (tStart + eps);
+    ivec3 cell = clamp(ivec3(floor((p - u_volumeOrigin) / u_voxelSize)), lo, hi);
+
+    ivec3 stepDir = ivec3(sign(rd));
+    vec3 tDelta = abs(vec3(u_voxelSize) * invDir);
+    vec3 stepPos = vec3(greaterThan(rd, vec3(0.0)));
+    vec3 boundary = u_volumeOrigin + (vec3(cell) + stepPos) * u_voxelSize;
+    vec3 tMax = mix(vec3(1e30), (boundary - ro) * invDir, notEqual(rd, vec3(0.0)));
+
+    float t = tStart;
+    vec3 normal = enterNormal;
+
+    for (int i = 0; i < 3 * bd + 1; i++) {
+        uint mat = texelFetch(u_volume, cell, 0).r;
+        if (mat != 0u) {
+            r.hit = true; r.t = t; r.normal = normal; r.material = mat;
+            return r;
+        }
+        if (tMax.x < tMax.y && tMax.x < tMax.z) {
+            t = tMax.x; tMax.x += tDelta.x; cell.x += stepDir.x;
+            normal = vec3(-float(stepDir.x), 0.0, 0.0);
+            if (cell.x < lo.x || cell.x > hi.x) break;
+        } else if (tMax.y < tMax.z) {
+            t = tMax.y; tMax.y += tDelta.y; cell.y += stepDir.y;
+            normal = vec3(0.0, -float(stepDir.y), 0.0);
+            if (cell.y < lo.y || cell.y > hi.y) break;
+        } else {
+            t = tMax.z; tMax.z += tDelta.z; cell.z += stepDir.z;
+            normal = vec3(0.0, 0.0, -float(stepDir.z));
+            if (cell.z < lo.z || cell.z > hi.z) break;
+        }
+    }
+    return r;
+}
+
+// Coarse DDA over bricks; descends into occupied bricks.
+Hit raycast(vec3 ro, vec3 rd) {
+    Hit r;
+    r.hit = false; r.t = 0.0; r.normal = vec3(0.0); r.material = 0u;
+
+    vec3 invDir = mix(vec3(1e30), 1.0 / rd, notEqual(rd, vec3(0.0)));
+    vec3 bmin = u_volumeOrigin;
+    vec3 bmax = bmin + vec3(u_gridDim) * u_voxelSize;
+
+    vec3 tA = (bmin - ro) * invDir;
+    vec3 tB = (bmax - ro) * invDir;
+    vec3 tNear = min(tA, tB);
+    vec3 tFar  = max(tA, tB);
+    float tEnter = max(max(tNear.x, tNear.y), tNear.z);
+    float tExit  = min(min(tFar.x, tFar.y), tFar.z);
+    if (tExit <= max(tEnter, 0.0)) return r;
+
+    // Entry face normal (used when the first cell tested is already solid).
+    vec3 enterNormal;
+    if (tEnter > 0.0) {
+        if (tNear.x > tNear.y && tNear.x > tNear.z)      enterNormal = vec3(-sign(rd.x), 0.0, 0.0);
+        else if (tNear.y > tNear.z)                      enterNormal = vec3(0.0, -sign(rd.y), 0.0);
+        else                                             enterNormal = vec3(0.0, 0.0, -sign(rd.z));
+    } else {
+        vec3 a = abs(rd);
+        if (a.x > a.y && a.x > a.z)      enterNormal = vec3(-sign(rd.x), 0.0, 0.0);
+        else if (a.y > a.z)              enterNormal = vec3(0.0, -sign(rd.y), 0.0);
+        else                             enterNormal = vec3(0.0, 0.0, -sign(rd.z));
+    }
+
+    float brickSize = u_voxelSize * float(u_brickDim);
+    ivec3 brickGrid = u_gridDim / u_brickDim;
+
+    float t = max(tEnter, 0.0);
+    float eps = u_voxelSize * 1e-3;
+    vec3 p = ro + rd * (t + eps);
+    ivec3 cell = clamp(ivec3(floor((p - bmin) / brickSize)), ivec3(0), brickGrid - 1);
+
+    ivec3 stepDir = ivec3(sign(rd));
+    vec3 tDelta = abs(vec3(brickSize) * invDir);
+    vec3 stepPos = vec3(greaterThan(rd, vec3(0.0)));
+    vec3 boundary = bmin + (vec3(cell) + stepPos) * brickSize;
+    vec3 tMax = mix(vec3(1e30), (boundary - ro) * invDir, notEqual(rd, vec3(0.0)));
+
+    vec3 normal = enterNormal;
+
+    for (int i = 0; i < u_maxRaySteps; i++) {
+        if (texelFetch(u_occupancy, cell, 0).r != 0u) {
+            Hit h = traverseBrick(ro, rd, invDir, t, cell, normal);
+            if (h.hit) return h;
+        }
+        if (tMax.x < tMax.y && tMax.x < tMax.z) {
+            t = tMax.x; tMax.x += tDelta.x; cell.x += stepDir.x;
+            normal = vec3(-float(stepDir.x), 0.0, 0.0);
+            if (cell.x < 0 || cell.x >= brickGrid.x) break;
+        } else if (tMax.y < tMax.z) {
+            t = tMax.y; tMax.y += tDelta.y; cell.y += stepDir.y;
+            normal = vec3(0.0, -float(stepDir.y), 0.0);
+            if (cell.y < 0 || cell.y >= brickGrid.y) break;
+        } else {
+            t = tMax.z; tMax.z += tDelta.z; cell.z += stepDir.z;
+            normal = vec3(0.0, 0.0, -float(stepDir.z));
+            if (cell.z < 0 || cell.z >= brickGrid.z) break;
+        }
+        if (t > tExit) break;
+    }
+    return r;
+}
+
+void main() {
+    // Reconstruct the world-space ray for this pixel from clip space.
+    vec2 ndc = v_uv * 2.0 - 1.0;    // v_uv is 0..2; *2-1 gives -1..3 spanning the tri
+    vec4 farH = u_invViewProj * vec4(ndc, 1.0, 1.0);
+    vec3 ro = u_cameraPos;
+    vec3 rd = normalize(farH.xyz / farH.w - ro);
+
+    Hit h = raycast(ro, rd);
+    if (!h.hit) {
+        discard;
+    }
+
+    vec3 hitPos = ro + rd * h.t;
+    ivec3 cell = clamp(ivec3(floor((hitPos + rd * u_voxelSize * 0.01 - u_volumeOrigin) / u_voxelSize)),
+                       ivec3(0), u_gridDim - 1);
+
+    vec3 albedo = texelFetch(u_palette, ivec2(int(h.material), 0), 0).rgb;
+    albedo *= 0.85 + 0.3 * voxelHash(cell);
+
+    vec3 L = normalize(u_sunDir);
+    float ndl = max(dot(h.normal, L), 0.0);
+
+    float shadow = 1.0;
+    if (u_shadowEnabled != 0 && ndl > 0.0) {
+        vec3 so = hitPos + h.normal * u_voxelSize * 0.51;
+        Hit sh = raycast(so, L);
+        if (sh.hit) shadow = 0.0;
+    }
+
+    vec3 skyAmbient = mix(vec3(0.20, 0.22, 0.28), vec3(0.45, 0.55, 0.75), h.normal.y * 0.5 + 0.5);
+    vec3 direct = u_sunColor * u_sunIntensity * (1.0 / PI) * ndl * shadow;
+    vec3 color = albedo * (direct + skyAmbient * u_ambient);
+
+    fragColor = vec4(color, 1.0);
+
+    vec4 clip = u_viewProj * vec4(hitPos, 1.0);
+    float ndcDepth = clip.z / clip.w;           // GL clip space: -1..1
+    gl_FragDepth = clamp(ndcDepth * 0.5 + 0.5, 0.0, 0.999999);
+}
