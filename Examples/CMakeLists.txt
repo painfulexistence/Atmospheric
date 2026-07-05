@@ -22,6 +22,7 @@ add_subdirectory(Terrain)            # procedural / heightmap terrain, RmlUi HUD
 add_subdirectory(MultiplayerSandbox) # deterministic lockstep netplay
 if(NOT EMSCRIPTEN)
     add_subdirectory(RelayServer)    # headless UDP relay (server deployment shape)
+    add_subdirectory(HiddenTag)      # server-authoritative asymmetric PvP netcode
 endif()
 
 # ── Scripting frontend ───────────────────────────────────────────────────────
