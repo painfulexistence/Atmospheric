@@ -1,6 +1,5 @@
 #pragma once
 #include "globals.hpp"
-#include "scene.hpp"
 #include "subsystem.hpp"
 
 // #define SOL_ALL_SAFETIES_ON 1

@@ -25,7 +25,6 @@
 #include "rigidbody_2d_component.hpp"
 #include "rigidbody_component.hpp"
 #include "rmlui_manager.hpp"
-#include "scene.hpp"
 #include "scene_transition.hpp"
 #include "shape_renderer_component.hpp"
 #include "sprite_3d_component.hpp"

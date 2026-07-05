@@ -194,7 +194,6 @@ set(SOURCES
     src/physics_subsystem_3d.cpp
     src/physics_debug_drawer.cpp
     src/input_subsystem.cpp
-    src/scene.cpp
     src/action.cpp
     src/action_manager.cpp
     src/animator_2d.cpp

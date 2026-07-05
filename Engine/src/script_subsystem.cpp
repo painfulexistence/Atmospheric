@@ -7,7 +7,7 @@
 #include "light_component.hpp"
 #include "log.hpp"
 #include "material.hpp"
-#include "scene.hpp"
+#include "shader.hpp"
 #include <string>
 
 ScriptSubsystem* ScriptSubsystem::_instance = nullptr;
