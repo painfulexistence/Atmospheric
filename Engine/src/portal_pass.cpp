@@ -179,6 +179,16 @@ void PortalPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             }
         }
 
+        // Mark active BEFORE rendering the chain: the recursion draws nested
+        // portal surfaces (below) that sample this same view's deeper RTs, and
+        // DrawPortalSurfaces gates content on v.active. Because levels render
+        // deepest-first, rts[i+1] is always already rendered when level i draws
+        // its nested surface — so the whole corridor fills, not just level 0.
+        // (Setting it after the loop was the "only two rings" bug: every nested
+        // level saw active == false and fell back to the void.)
+        v.active = true;
+        _anyActive = true;
+
         // Deepest level first: rts[i] draws portal surfaces sampling rts[i+1],
         // so the deeper image must exist before the shallower one renders.
         for (int i = recursionDepth - 1; i >= 0; --i) {
@@ -208,8 +218,6 @@ void PortalPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             renderer.viewOverride = nullptr;
         }
 
-        v.active = true;
-        _anyActive = true;
         replayIndex += static_cast<size_t>(recursionDepth);
     }
 }
