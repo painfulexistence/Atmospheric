@@ -108,6 +108,10 @@ public:
     // Re-upload the pixel data of a heightmap texture previously created with
     // CreateHeightmapTexture (e.g. after regenerating a NoiseHeightField).
     void UpdateHeightmapTexture(TextureHandle handle, const std::vector<float>& grid, int width, int height);
+    // Create (or re-upload, when a texture with this name already exists) a
+    // tightly-packed RGBA8 texture from raw pixels. Used by TerrainStreamer to
+    // recycle per-tile splat-map textures without growing the texture cache.
+    TextureHandle CreateOrUpdateTextureRGBA8(const std::string& name, const unsigned char* data, int width, int height);
     std::shared_ptr<Mesh> LoadOBJ(const std::string& path);
     MeshHandle LoadGLTF(const std::string& path);
 

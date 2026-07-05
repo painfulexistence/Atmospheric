@@ -14,5 +14,6 @@
 - 2025/01/09 - unable to resolve "fatal error LNK1104: cannot open file 'm.lib'" on Windows
 - 2025/05/25 - realized that LNK1104 might be caused by raudio or lua, solved by removing raudio
 - 2026/06/01 - completed major engine port to WebAssembly and resolved critical WebGL2 rendering bugs
+- 2026/07/05 - added TerrainStreamer: 10km x 10km open-world terrain streaming (tiled ring LOD, JobSystem async generation, gutter+skirt seam handling, collider ring, splat hooks) + TerrainStreaming example
 - TODO: use std::filesystem to get the correct asset loading path
 

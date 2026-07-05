@@ -137,24 +137,34 @@ vec4 LayerWeights(vec3 n, float h)
     return vec4(wBase, wRock, wSnow, 0.0);
 }
 
+// Detail layers tile in world space (frag_pos.xz / world_size wraps every
+// world_size metres) so the pattern phase is continuous across streamed
+// terrain tiles instead of restarting at each tile's UV origin.
+vec2 LayerUV()
+{
+    return frag_pos.xz / world_size;
+}
+
 vec3 BlendLayerAlbedo(vec4 w)
 {
+    vec2 uv = LayerUV();
     vec3 c = vec3(0.0);
-    if (layer_count > 0) c += w.r * pow(texture(layer0_albedo_unit, frag_uv * layer_tiling[0]).rgb, vec3(gamma));
-    if (layer_count > 1) c += w.g * pow(texture(layer1_albedo_unit, frag_uv * layer_tiling[1]).rgb, vec3(gamma));
-    if (layer_count > 2) c += w.b * pow(texture(layer2_albedo_unit, frag_uv * layer_tiling[2]).rgb, vec3(gamma));
-    if (layer_count > 3) c += w.a * pow(texture(layer3_albedo_unit, frag_uv * layer_tiling[3]).rgb, vec3(gamma));
+    if (layer_count > 0) c += w.r * pow(texture(layer0_albedo_unit, uv * layer_tiling[0]).rgb, vec3(gamma));
+    if (layer_count > 1) c += w.g * pow(texture(layer1_albedo_unit, uv * layer_tiling[1]).rgb, vec3(gamma));
+    if (layer_count > 2) c += w.b * pow(texture(layer2_albedo_unit, uv * layer_tiling[2]).rgb, vec3(gamma));
+    if (layer_count > 3) c += w.a * pow(texture(layer3_albedo_unit, uv * layer_tiling[3]).rgb, vec3(gamma));
     return c;
 }
 
 vec3 BlendLayerNormal(vec4 w)
 {
+    vec2 uv = LayerUV();
     vec3 flat_n = vec3(0.0, 0.0, 1.0);
     vec3 n = vec3(0.0);
-    if (layer_count > 0) n += w.r * (layer_has_normal[0] > 0.5 ? texture(layer0_normal_unit, frag_uv * layer_tiling[0]).rgb * 2.0 - 1.0 : flat_n);
-    if (layer_count > 1) n += w.g * (layer_has_normal[1] > 0.5 ? texture(layer1_normal_unit, frag_uv * layer_tiling[1]).rgb * 2.0 - 1.0 : flat_n);
-    if (layer_count > 2) n += w.b * (layer_has_normal[2] > 0.5 ? texture(layer2_normal_unit, frag_uv * layer_tiling[2]).rgb * 2.0 - 1.0 : flat_n);
-    if (layer_count > 3) n += w.a * (layer_has_normal[3] > 0.5 ? texture(layer3_normal_unit, frag_uv * layer_tiling[3]).rgb * 2.0 - 1.0 : flat_n);
+    if (layer_count > 0) n += w.r * (layer_has_normal[0] > 0.5 ? texture(layer0_normal_unit, uv * layer_tiling[0]).rgb * 2.0 - 1.0 : flat_n);
+    if (layer_count > 1) n += w.g * (layer_has_normal[1] > 0.5 ? texture(layer1_normal_unit, uv * layer_tiling[1]).rgb * 2.0 - 1.0 : flat_n);
+    if (layer_count > 2) n += w.b * (layer_has_normal[2] > 0.5 ? texture(layer2_normal_unit, uv * layer_tiling[2]).rgb * 2.0 - 1.0 : flat_n);
+    if (layer_count > 3) n += w.a * (layer_has_normal[3] > 0.5 ? texture(layer3_normal_unit, uv * layer_tiling[3]).rgb * 2.0 - 1.0 : flat_n);
     return normalize(n + vec3(0.0, 0.0, 1e-4));
 }
 

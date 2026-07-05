@@ -25,6 +25,13 @@ public:
 
     static Mesh* CreateTerrain(const float& size = 1024.f, const int& resolution = 10);
 
+    // Terrain tile for streamed worlds (see TerrainStreamer): a patch grid of
+    // meshResolution^2 cells whose UVs address the interior of a heightmap
+    // with a 1-texel gutter (texture is heightResolution+3 texels per edge),
+    // plus a perimeter skirt dropping skirtDepth metres to hide cracks
+    // between neighboring tiles of different LODs.
+    static Mesh* CreateTerrainTile(float size, int meshResolution, int heightResolution, float skirtDepth);
+
     static Mesh* CreateCubeWithPhysics(const float& size = 1.0f);
 
     static Mesh* CreateSphereWithPhysics(const float& radius = 0.5f, const int& division = 18);

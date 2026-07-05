@@ -17,6 +17,7 @@ add_subdirectory(VideoPlayer)        # FFmpeg decode → texture
 add_subdirectory(3DBasics)           # scene JSON + components, PBR, 2D+3D basics
 add_subdirectory(VoxelWorld)         # voxel streaming, fly camera, bloom
 add_subdirectory(Terrain)            # procedural / heightmap terrain, RmlUi HUD
+add_subdirectory(TerrainStreaming)   # 10km x 10km streamed open-world terrain (TerrainStreamer)
 
 # ── Networking ───────────────────────────────────────────────────────────────
 add_subdirectory(MultiplayerSandbox) # deterministic lockstep netplay
