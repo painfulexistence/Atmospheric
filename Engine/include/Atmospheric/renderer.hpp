@@ -31,6 +31,7 @@ using PixelReadbackCallback = std::function<void(const GpuImageData&)>;
 class GraphicsSubsystem;
 class ShaderProgram;
 class Renderer;
+class CameraComponent;
 
 struct RenderCommand {
     MeshHandle mesh;
@@ -52,6 +53,21 @@ struct RenderViewOverride {
     glm::vec4 clipPlane{ 0.0f };
     bool flipCull = false;// mirrored views reverse triangle winding
 };
+
+// The view a scene pass should actually render with: either the main camera +
+// sceneRT, or PlanarReflectionPass's mirrored override. Resolved once at the
+// top of each scene pass (Skybox, Sun, VoxelChunk, ForwardOpaque, WorldCanvas)
+// via ResolveView so the main-view and reflection-view paths stay identical.
+struct ResolvedView {
+    glm::mat4 view;
+    glm::mat4 proj;
+    glm::vec3 eye;
+    RenderTarget* target;
+    glm::vec4 clipPlane;
+    bool flipCull;
+};
+
+ResolvedView ResolveView(const Renderer& renderer, CameraComponent* camera);
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "gpu_canvas_pass.hpp"
@@ -112,6 +128,10 @@ private:
     // Heightmap-displacement terrain (TERRAIN_WGSL); shares group 0/1 layouts
     // with _pipeline so _uniformBG and the texture BG cache are reused.
     WGPURenderPipeline _terrainPipeline = nullptr;
+    // PRIM variant with cull=None, used when PlanarReflectionPass drives this
+    // pass with a mirrored (winding-reversed) camera. Terrain already culls
+    // None, so it reuses _terrainPipeline for both views.
+    WGPURenderPipeline _reflPipeline = nullptr;
     WGPUBindGroupLayout _uniformBGL = nullptr;
     WGPUBindGroupLayout _texBGL = nullptr;
     WGPUBindGroup _uniformBG = nullptr;
@@ -384,9 +404,11 @@ private:
     // both views observe only the last-written uniforms. Separate instances
     // own separate buffers (and, for VoxelChunkPass, a front-face-culling
     // pipeline for the mirrored winding).
+    std::unique_ptr<ForwardOpaquePass> _forward;
     std::unique_ptr<SkyboxPass> _skybox;
     std::unique_ptr<SunPass> _sun;
     std::unique_ptr<VoxelChunkPass> _voxel;
+    std::unique_ptr<WorldCanvasPass> _worldCanvas;
 };
 
 // Pyramid bloom: threshold → downsample → upsample → composite.

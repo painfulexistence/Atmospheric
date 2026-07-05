@@ -29,19 +29,11 @@ static void DrawScreenQuadVAO(GLuint vao) {
 
 // ---- Helper: resolve the active view for scene passes -------------------------
 // PlanarReflectionPass installs renderer.viewOverride while re-rendering the
-// world from a mirrored camera into its own RT; the scene passes (Skybox, Sun,
-// VoxelChunk) resolve their camera matrices and destination target through
-// this instead of reading the main camera / sceneRT directly.
-struct ResolvedView {
-    glm::mat4 view;
-    glm::mat4 proj;
-    glm::vec3 eye;
-    RenderTarget* target;
-    glm::vec4 clipPlane;
-    bool flipCull;
-};
-
-static ResolvedView ResolveView(const Renderer& renderer, CameraComponent* camera) {
+// world from a mirrored camera into its own RT; the scene passes resolve their
+// camera matrices and destination target through this instead of reading the
+// main camera / sceneRT directly. Declared in renderer.hpp so ForwardOpaquePass
+// / WorldCanvasPass (renderer.cpp) resolve the view identically.
+ResolvedView ResolveView(const Renderer& renderer, CameraComponent* camera) {
     if (const RenderViewOverride* ov = renderer.viewOverride) {
         return { ov->view,      ov->proj,    ov->eyePos, ov->target ? ov->target : renderer.sceneRT.get(),
                  ov->clipPlane, ov->flipCull };
@@ -945,8 +937,9 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
 //  PlanarReflectionPass
 // ============================================================================
 PlanarReflectionPass::PlanarReflectionPass()
-  : _skybox(std::make_unique<SkyboxPass>()), _sun(std::make_unique<SunPass>()),
-    _voxel(std::make_unique<VoxelChunkPass>()) {
+  : _forward(std::make_unique<ForwardOpaquePass>()), _skybox(std::make_unique<SkyboxPass>()),
+    _sun(std::make_unique<SunPass>()), _voxel(std::make_unique<VoxelChunkPass>()),
+    _worldCanvas(std::make_unique<WorldCanvasPass>()) {
 }
 
 PlanarReflectionPass::~PlanarReflectionPass() = default;
@@ -984,8 +977,14 @@ void PlanarReflectionPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
     if (eyeDist <= 0.0f) return;// camera behind/on the plane — nothing to mirror
 
     // (Re)create the reflection RT at a fraction of the window size. HDR to
-    // match sceneRT's shading range; single-sampled since it's only ever
-    // sampled as a texture (and WebGL2 MSAA RTs can't be sampled at all).
+    // match sceneRT's shading range.
+    // Sample count: single-sampled on GL (a desktop MSAA texture can't be read
+    // through a plain sampler2D, and WebGL2 MSAA RTs can't be sampled at all).
+    // On WebGPU it matches sceneRT's sample count instead — an MSAA RT resolves
+    // to a sampleable single-sample texture, and matching keeps the shared
+    // GPUCanvasPass (WorldCanvasPass) on one pipeline sample count across the
+    // reflection and main views.
+    int rtSamples = (GfxFactory::GetBackend() == GfxBackend::WebGPU) ? renderer.sceneRT->GetNumSamples() : 1;
     auto [pw, ph] = Window::Get()->GetPhysicalSize();
     int rw = std::max(1, static_cast<int>(static_cast<float>(pw) * resolutionScale));
     int rh = std::max(1, static_cast<int>(static_cast<float>(ph) * resolutionScale));
@@ -995,7 +994,7 @@ void PlanarReflectionPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
         p.height = rh;
         p.withDepth = true;
         p.hdr = true;
-        p.numSamples = 1;
+        p.numSamples = rtSamples;
         _rt = GfxFactory::CreateRenderTarget(p);
     } else if (_rt->GetWidth() != rw || _rt->GetHeight() != rh) {
         _rt->Resize(rw, rh);
@@ -1039,11 +1038,17 @@ void PlanarReflectionPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
     }
     if (auto* mainVoxel = renderer.GetPass<VoxelChunkPass>()) _voxel->paletteIndex = mainVoxel->paletteIndex;
 
+    // Mirror the main render graph's world order so the reflection contains the
+    // same content: opaque terrain/meshes first (ForwardOpaquePass also clears
+    // the RT), then sky/sun/voxels, then world sprites. Anything that reads
+    // renderer.viewOverride draws from the mirrored camera into _rt.
     renderer.viewOverride = &ov;
     _rt->Clear(glm::vec4(_skybox->skyColor, 1.0f));
+    _forward->Execute(ctx, renderer, enc);
     _skybox->Execute(ctx, renderer, enc);
     _sun->Execute(ctx, renderer, enc);
     _voxel->Execute(ctx, renderer, enc);
+    _worldCanvas->Execute(ctx, renderer, enc);
     renderer.viewOverride = nullptr;
 
     _active = true;

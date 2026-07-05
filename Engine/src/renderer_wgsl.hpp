@@ -27,7 +27,7 @@ fn vs(@location(0) aPos: vec3<f32>) -> @builtin(position) vec4<f32> {
 // ── ForwardOpaquePass ────────────────────────────────────────────────────────
 constexpr uint32_t FWD_DRAW_SLOT_STRIDE = 256;
 constexpr uint64_t FWD_FRAME_UNIFORM_SIZE =
-    192;// viewProj(64) + lightVP(64) + cameraPos(16) + lightDir(16) + lightColor(16) + ambient(16)
+    208;// viewProj(64) + lightVP(64) + cameraPos(16) + lightDir(16) + lightColor(16) + ambient(16) + clipPlane(16)
 constexpr uint64_t FWD_DRAW_UNIFORM_SIZE =
     128;// model(64) + diffuse(16) + specular(16) + materialAmbient(16) + shininess+pad(16)
 
@@ -44,6 +44,9 @@ struct FrameUniforms {
     lightDir:   vec4<f32>,
     lightColor: vec4<f32>,
     ambient:    vec4<f32>,
+    // World-space clip plane (n, d) used by PlanarReflectionPass to cut away
+    // geometry below the mirror plane; all-zero disables (dot == 0 is kept).
+    clipPlane:  vec4<f32>,
 };
 struct DrawUniforms {
     model:           mat4x4<f32>,
@@ -132,6 +135,9 @@ fn smithsSchlickGGX(nv: f32, nl: f32, r: f32) -> f32 {
 
 @fragment
 fn fs(in: VSOut) -> @location(0) vec4<f32> {
+    if (dot(frame.clipPlane.xyz, in.worldPos) + frame.clipPlane.w < 0.0) {
+        discard;
+    }
     let norm     = normalize(in.normal);
     let lightDir = normalize(frame.lightDir.xyz);
     let viewDir  = normalize(frame.cameraPos.xyz - in.worldPos);
@@ -183,6 +189,9 @@ struct FrameUniforms {
     lightDir:   vec4<f32>,
     lightColor: vec4<f32>,
     ambient:    vec4<f32>,
+    // World-space clip plane (n, d) used by PlanarReflectionPass to cut away
+    // geometry below the mirror plane; all-zero disables (dot == 0 is kept).
+    clipPlane:  vec4<f32>,
 };
 struct DrawUniforms {
     model:  mat4x4<f32>,
@@ -271,6 +280,9 @@ fn heightmapNormal(uv: vec2<f32>, heightScale: f32, worldSize: f32) -> vec3<f32>
 
 @fragment
 fn fs(in: VSOut) -> @location(0) vec4<f32> {
+    if (dot(frame.clipPlane.xyz, in.worldPos) + frame.clipPlane.w < 0.0) {
+        discard;
+    }
     let n        = heightmapNormal(in.uv, draw.params.x, draw.params.y);
     // The cosine palette can dip below zero per channel; clamp it or the
     // pow() below is NaN, and one NaN pixel poisons the whole frame through
