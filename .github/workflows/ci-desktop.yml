@@ -96,3 +96,13 @@ jobs:
 
       - name: CTest
         run: ctest --test-dir ${{ steps.strings.outputs.build-dir }} --output-on-failure --timeout 120
+
+      # TEMPORARY: diagnose the HeadlessSmoke segfault with a backtrace.
+      # Remove once the crash is fixed.
+      - name: Backtrace HeadlessSmoke (temporary)
+        if: failure() && matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get install -y gdb
+          stdbuf -o0 -e0 ${{ steps.strings.outputs.build-dir }}/HeadlessSmokeTest || true
+          gdb -batch -ex run -ex bt -ex 'thread apply all bt' \
+            --args ${{ steps.strings.outputs.build-dir }}/HeadlessSmokeTest || true
