@@ -67,12 +67,13 @@ public:
     // `filter` records how the texture should be sampled (see TextureFilter):
     // on GL it's applied via glTexParameteri; on WebGPU it's remembered so
     // GPUCanvasPass can bind a matching sampler. Defaults to Linear.
-    static uint32_t UploadTexture2D(const uint8_t* pixels, int w, int h, TextureFilter filter = TextureFilter::Linear);
+    static TextureHandle
+        UploadTexture2D(const uint8_t* pixels, int w, int h, TextureFilter filter = TextureFilter::Linear);
 
     // Filter hint recorded for a texture at upload time. Returns Linear for
     // unknown IDs. Consulted by GPUCanvasPass to pick its sampler; on GL the
     // filter is already baked into the texture, so callers rarely need this.
-    static TextureFilter GetTextureFilter(uint32_t id);
+    static TextureFilter GetTextureFilter(TextureHandle id);
 
     // Cross-backend update of an existing texture's pixel contents. id must
     // have come from UploadTexture2D(). pixels must be RGBA8 (4 bytes per
@@ -84,13 +85,13 @@ public:
     //                 handle same-size updates and resizes uniformly).
     //   WebGPU  path: wgpuQueueWriteTexture, recreating the WGPUTexture
     //                 first if the size changed.
-    static void UpdateTexture2D(uint32_t id, const uint8_t* pixels, int w, int h);
+    static void UpdateTexture2D(TextureHandle id, const uint8_t* pixels, int w, int h);
 
     // Cross-backend texture release. id must have come from UploadTexture2D()
     // or UploadCompressedTexture2D().
     //   OpenGL path: glDeleteTextures.
     //   WebGPU path: releases the WGPUTexture and erases it from the registry.
-    static void ReleaseTexture(uint32_t id);
+    static void ReleaseTexture(TextureHandle id);
 
     // Block-compressed texture format negotiated with the WebGPU adapter/device
     // at Init() time (queried via wgpuAdapterHasFeature, not just requested).
@@ -104,15 +105,15 @@ public:
     // Returns the WGPUTexture previously registered via UploadTexture2D()
     // or UploadCompressedTexture2D().
     // Returns nullptr if the ID is unknown.
-    static WGPUTexture GetWGPUTexture(uint32_t id);
+    static WGPUTexture GetWGPUTexture(TextureHandle id);
 
     // WebGPU-only: uploads pre-transcoded block-compressed texture data.
     // `format` must match GetSupportedCompressionFormat() (caller transcodes
     // accordingly); `w`/`h` must be multiples of 4 (the block size for all of
     // BC7/ETC2/ASTC4x4). Returns a synthetic ID usable with GetWGPUTexture()
-    // and ReleaseTexture(), or 0 if format is None or the device lacks the
-    // feature.
-    static uint32_t
+    // and ReleaseTexture(), or an invalid handle if format is None or the
+    // device lacks the feature.
+    static TextureHandle
         UploadCompressedTexture2D(TextureCompressionFormat format, const uint8_t* data, size_t dataSize, int w, int h);
 
     // WebGPU-only: single-channel half-float texture from float data (heights,
@@ -121,11 +122,11 @@ public:
     // other sampled texture. float→f16 conversion happens internally.
     // Returns a synthetic ID usable with GetWGPUTexture()/ReleaseTexture()/
     // UpdateTextureR16F().
-    static uint32_t UploadTextureR16F(const float* texels, int w, int h);
+    static TextureHandle UploadTextureR16F(const float* texels, int w, int h);
 
     // Update (and resize, same semantics as UpdateTexture2D) an r16float
     // texture created by UploadTextureR16F().
-    static void UpdateTextureR16F(uint32_t id, const float* texels, int w, int h);
+    static void UpdateTextureR16F(TextureHandle id, const float* texels, int w, int h);
 #endif
 
 private:

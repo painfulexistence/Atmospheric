@@ -107,8 +107,8 @@ if [ "$CLEAN_BUILD" = "ON" ] && [ -d "$BUILD_DIR" ]; then
     DO_CLEAN="ON"
     # 互動式終端機才詢問確認；非互動式 (CI/自動化) 直接執行，避免卡住流程。
     if [ -t 0 ]; then
-        echo -e "${YELLOW}🧹 Clean build 將清除 (vcpkg_installed 除外)：${NC}$BUILD_DIR"
-        read -p "確定要清除嗎？(y/N): " CONFIRM
+        echo -e "${YELLOW}🧹 Clean build 將清除 $BUILD_DIR 底下所有現有 artifacts（vcpkg_installed 除外），繼續嗎？(y/N)${NC}"
+        read -p "> " CONFIRM
         if [[ ! "$CONFIRM" =~ ^[yY]$ ]]; then
             DO_CLEAN="OFF"
             echo -e "${BLUE}已略過清理，改用 incremental build。${NC}"

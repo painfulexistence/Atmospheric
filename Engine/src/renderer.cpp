@@ -813,9 +813,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
         const bool shadowsOn = light && light->castShadow;
         glm::mat4 lightVP;
         if (shadowsOn) {
-            const glm::mat4 z01 = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.5f))
-                                  * glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 0.5f));
-            lightVP = z01 * light->GetProjectionMatrix(0) * light->GetViewMatrix();
+            lightVP = GpuProjectionZ01() * light->GetProjectionMatrix(0) * light->GetViewMatrix();
         } else {
             // Shadowing off: push everything past far so the WGSL guard reads
             // "outside the frustum" → fully lit.
