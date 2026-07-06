@@ -32,6 +32,11 @@ struct BatchDrawCommand {
     std::vector<uint32_t> indices;
     uint32_t textureID = 0;
     glm::mat4 transform = glm::mat4(1.0f);
+    // Blend mode captured at Flush()/DrainToCommands() time so the WebGPU
+    // canvas pass can pick the right pipeline variant per command. The GL
+    // path applies blend via glBlendFunc state; on WebGPU the whole state
+    // lives in the pipeline object, so it has to travel with the command.
+    BlendMode blendMode = BlendMode::Alpha;
 };
 
 struct BatchStats {

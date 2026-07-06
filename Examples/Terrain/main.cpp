@@ -1,4 +1,5 @@
 #include "Atmospheric.hpp"
+#include "Atmospheric/camera_controller_3d.hpp"
 #include "Atmospheric/rmlui_manager.hpp"
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Elements/ElementFormControlSelect.h>
@@ -25,9 +26,6 @@ class TerrainDemo : public Application {
 
     CameraComponent* _cam = nullptr;
     GameObject* _camGO = nullptr;
-    float _moveSpeed = 20.0f;
-    float _slowSpeed = 4.0f;
-    bool _slow = false;
     bool _wireframe = false;
 
     GameObject* _proceduralTerrain = nullptr;
@@ -151,6 +149,7 @@ class TerrainDemo : public Application {
         _cam = mainCamera;
         _camGO = _cam->gameObject;
         _camGO->SetPosition(glm::vec3(0.0f, 64.0f, 0.0f));
+        _camGO->AddComponent<CameraController3D>(/*moveSpeed=*/20.0f, /*lookSpeed=*/1.5f);
 
         // Procedural Noise HeightField
         _proceduralTerrain = CreateTerrain(
@@ -207,33 +206,13 @@ class TerrainDemo : public Application {
         ApplyPalette(_paletteIndex);
 
         ConsoleSubsystem::Get()->Info(
-            "Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, ESC "
-            "quit."
+            "Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, "
+            "ESC quit."
         );
     }
 
-    void OnUpdate(float dt, float /*time*/) override {
-        _slow = InputSubsystem::Get()->IsKeyDown(Key::Z);
-
-        if (InputSubsystem::Get()->IsKeyDown(Key::UP)) _cam->Pitch(CAMERA_ANGULAR_OFFSET);
-        if (InputSubsystem::Get()->IsKeyDown(Key::DOWN)) _cam->Pitch(-CAMERA_ANGULAR_OFFSET);
-        if (InputSubsystem::Get()->IsKeyDown(Key::RIGHT)) _cam->Yaw(CAMERA_ANGULAR_OFFSET);
-        if (InputSubsystem::Get()->IsKeyDown(Key::LEFT)) _cam->Yaw(-CAMERA_ANGULAR_OFFSET);
-
-        const float speed = (_slow ? _slowSpeed : _moveSpeed) * dt;
-        glm::vec3 pos = _camGO->GetPosition();
-        glm::vec3 fwd = _cam->GetEyeDirection();
-
-        if (InputSubsystem::Get()->IsKeyDown(Key::W)) pos += fwd * speed;
-        if (InputSubsystem::Get()->IsKeyDown(Key::S)) pos -= fwd * speed;
-        if (InputSubsystem::Get()->IsKeyDown(Key::A))
-            pos -= glm::normalize(glm::cross(fwd, glm::vec3(0, 1, 0))) * speed;
-        if (InputSubsystem::Get()->IsKeyDown(Key::D))
-            pos += glm::normalize(glm::cross(fwd, glm::vec3(0, 1, 0))) * speed;
-        if (InputSubsystem::Get()->IsKeyDown(Key::R)) pos.y += speed;
-        if (InputSubsystem::Get()->IsKeyDown(Key::F)) pos.y -= speed;
-        _camGO->SetPosition(pos);
-
+    void OnUpdate(float /*dt*/, float /*time*/) override {
+        // Camera movement/look is handled by CameraController3D on _camGO.
         // LMB switches terrain only when not clicking the HUD (the HUD handles
         // its own clicks via RmlUi event listeners).
         bool worldClick = InputSubsystem::Get()->IsMouseButtonPressed() && !InputSubsystem::Get()->IsMouseOverUI();

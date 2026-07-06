@@ -2,6 +2,7 @@
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "batch_renderer_2d.hpp"
 #include "command_encoder.hpp"
+#include "gpu_pipeline.hpp"
 #include <glm/glm.hpp>
 #include <unordered_map>
 #include <vector>
@@ -58,7 +59,9 @@ public:
     );
 
     bool IsReady() const {
-        return _pipeline != nullptr;
+        // BGLs get created together with the first (Canvas, Alpha) pipeline
+        // in _init; both are the earliest signal that _init has run.
+        return _uniformBGL != nullptr;
     }
 
 private:
@@ -99,16 +102,37 @@ struct VOut {
     void _init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format, uint32_t sceneSampleCount);
     WGPUBindGroup _getOrCreateTexBG(uint32_t texID);
 
+    // Pipelines are keyed by (variant, blend). Variant selects the
+    // color-target format / depth state; blend selects the color-blend factors
+    // (matches the GL BatchRenderer2D::Flush switch). Built lazily on first
+    // use so a scene that only ever draws Alpha doesn't pay for the other 4.
+    enum class Variant : uint32_t {
+        Canvas = 0,// depth-transparent (Always), sceneRT format
+        WorldCanvas = 1,// depth-tested read-only (LessEqual), sceneRT format
+        UI = 2,// no depth, swapchain format
+    };
+    struct PipelineKey {
+        Variant variant;
+        GpuPipelineBuilder::Blend blend;
+        bool operator==(const PipelineKey& o) const {
+            return variant == o.variant && blend == o.blend;
+        }
+    };
+    struct PipelineKeyHash {
+        size_t operator()(const PipelineKey& k) const {
+            return (static_cast<size_t>(k.variant) << 8) | static_cast<size_t>(k.blend);
+        }
+    };
+    WGPURenderPipeline _getOrCreatePipeline(Variant v, GpuPipelineBuilder::Blend b);
+    static GpuPipelineBuilder::Blend _mapBlend(BlendMode m);
+    static const std::vector<GpuVertexAttr>& _quadAttrs();
+
     WGPUDevice _device = nullptr;
     WGPUQueue _queue = nullptr;
+    WGPUTextureFormat _sceneFormat = WGPUTextureFormat_Undefined;
+    uint32_t _sceneSampleCount = 1;
 
-    WGPURenderPipeline _pipeline = nullptr;
-    // Depth-tested variant (read-only, no write) used by WorldCanvasPass so
-    // world-space sprites are occluded by 3D geometry already in sceneRT's
-    // depth buffer. Shares BGLs and the texture cache with the pipeline above.
-    WGPURenderPipeline _pipelineDepthTest = nullptr;
-    // Swapchain-format variant used by UIPass (see Render() doc above).
-    WGPURenderPipeline _pipelineSwapchain = nullptr;
+    std::unordered_map<PipelineKey, WGPURenderPipeline, PipelineKeyHash> _pipelines;
     WGPUBindGroupLayout _uniformBGL = nullptr;
     WGPUBindGroupLayout _texBGL = nullptr;
     // Per-variant geometry buffers. All three Render() invocations record

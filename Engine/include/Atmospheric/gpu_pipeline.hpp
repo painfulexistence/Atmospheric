@@ -1,9 +1,25 @@
 #pragma once
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include <cstdint>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <string>
 #include <vector>
 #include <webgpu/webgpu.h>
+
+// GL → WebGPU NDC-z remap. GL's clip-space z is [-1, 1]; WebGPU's is [0, 1].
+// Multiply this into any projection matrix that came from a GL-conventioned
+// source (glm::ortho / perspective / hand-rolled ortho pre-computed for the
+// GL backend) before writing it to a WGPU uniform buffer, or geometry outside
+// [0, 1] gets clipped by WebGPU that GL happily rendered. Idempotent per call,
+// so wrap the projection once per pipeline path — do NOT stack.
+//
+//   lightVP = GpuProjectionZ01() * light->GetProjectionMatrix(0) * light->GetViewMatrix();
+//   canvasVP = GpuProjectionZ01() * viewProj;
+inline glm::mat4 GpuProjectionZ01() {
+    return glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.5f))
+           * glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 0.5f));
+}
 
 // ── Visibility aliases ────────────────────────────────────────────────────────
 namespace wgsl_stage {
@@ -218,9 +234,28 @@ public:
         return *this;
     }
 
-    // Enable standard src-alpha / one-minus-src-alpha blending.
+    // Blend mode selector — mirrors BlendMode from batch_renderer_2d.hpp.
+    // Kept as its own local enum so this header stays self-contained and
+    // the RHI abstraction doesn't need to include the 2D-renderer types.
+    // The mapping between the two is done at the caller (GPUCanvasPass).
+    enum class Blend {
+        None,// blend disabled (opaque)
+        Alpha,// src.a, 1-src.a  (default 2D blend)
+        Additive,// src.a, 1
+        Multiply,// dst, 0
+        Screen,// 1,     1-src
+        Premultiplied,// 1,     1-src.a
+    };
+
+    // Enable standard src-alpha / one-minus-src-alpha blending (kept for
+    // callers that don't care which mode). Prefer the enum overload below
+    // when the caller has a specific mode in mind.
     GpuPipelineBuilder& blend() {
-        _blend = true;
+        _blend = Blend::Alpha;
+        return *this;
+    }
+    GpuPipelineBuilder& blend(Blend mode) {
+        _blend = mode;
         return *this;
     }
 
@@ -240,6 +275,12 @@ public:
         return *this;
     }
 
+    // Default is None (double-sided). Front/Back must be requested explicitly.
+    // This differs from OpenGL's default glCullFace(GL_BACK) — 3D world passes
+    // that expect back-face culling must call .cull(WGPUCullMode_Back) or
+    // risk overdraw and z-fighting on inward-facing triangles. Passes that
+    // legitimately need double-sided rendering (2D canvas, skybox, full-screen
+    // quads, shadow map) can just rely on the default.
     GpuPipelineBuilder& cull(WGPUCullMode mode) {
         _cullMode = mode;
         return *this;
@@ -275,8 +316,7 @@ private:
     uint64_t _stride = 0;
     std::vector<GpuVertexAttr> _vertexAttrs;
     WGPUTextureFormat _colorFmt = WGPUTextureFormat_RGBA16Float;
-    bool _blend = false;
-    bool _additiveBlend = false;
+    Blend _blend = Blend::None;
     bool _depthEnabled = false;
     bool _depthWrite = false;
     WGPUCompareFunction _depthCompare = WGPUCompareFunction_Less;
