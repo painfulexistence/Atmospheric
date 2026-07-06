@@ -257,6 +257,11 @@ endif()
 #   Native : synchronous fread + JobSystem-parallel Prefetch.
 # Compiled on all platforms (not just Emscripten).
 list(APPEND SOURCES src/file_system.cpp)
+# UdpSocket: shared non-blocking UDP socket primitive (open/bind/send/recv/
+# close + platform shim) underlying UdpRelay, UdpRelayClient, and every
+# example's own net code. Same zero-extra-dependency reasoning. Empty TU on
+# Emscripten.
+list(APPEND SOURCES src/udp_socket.cpp)
 # UdpRelay: OS sockets only, no third-party deps — compiled always so server
 # builds and the relay loopback test don't require AE_USE_NETWORKING (which
 # drags in curl/libwebsockets/OpenSSL). Empty TU on Emscripten.

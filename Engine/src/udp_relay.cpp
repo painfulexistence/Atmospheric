@@ -5,54 +5,7 @@
 #include <cstring>
 #include <spdlog/spdlog.h>
 
-#if defined(_WIN32)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#pragma comment(lib, "ws2_32.lib")
-#else
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#endif
-
 namespace {
-
-#if defined(_WIN32)
-    using SockH = uintptr_t;
-    inline bool EnsureSocketLib() {
-        static bool ok = [] {
-            WSADATA w;
-            return WSAStartup(MAKEWORD(2, 2), &w) == 0;
-        }();
-        return ok;
-    }
-    inline void SetNonBlocking(SockH s) {
-        u_long m = 1;
-        ::ioctlsocket(s, FIONBIO, &m);
-    }
-    inline void CloseSocket(SockH s) {
-        ::closesocket(s);
-    }
-#else
-    using SockH = int;
-    inline bool EnsureSocketLib() {
-        return true;
-    }
-    inline void SetNonBlocking(SockH s) {
-        ::fcntl(s, F_SETFL, ::fcntl(s, F_GETFL, 0) | O_NONBLOCK);
-    }
-    inline void CloseSocket(SockH s) {
-        ::close(s);
-    }
-#endif
 
     inline uint32_t GetU32LE(const uint8_t* p) {
         return uint32_t(p[0]) | uint32_t(p[1]) << 8 | uint32_t(p[2]) << 16 | uint32_t(p[3]) << 24;
@@ -62,47 +15,16 @@ namespace {
 
 bool UdpRelay::Start(uint16_t port) {
     if (_running) Stop();
-    if (!EnsureSocketLib()) {
-        spdlog::error("UdpRelay: socket subsystem init failed");
-        return false;
-    }
-    _sock = static_cast<SocketHandle>(::socket(AF_INET, SOCK_DGRAM, 0));
-    if (_sock == kInvalidSocket) {
-        spdlog::error("UdpRelay: socket() failed");
-        return false;
-    }
-    SetNonBlocking(static_cast<SockH>(_sock));
-
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port = htons(port);
-    if (::bind(_sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-        spdlog::error("UdpRelay: bind() failed on port {} (port in use?)", port);
-        CloseSocket(static_cast<SockH>(_sock));
-        _sock = kInvalidSocket;
-        return false;
-    }
-    if (port == 0) {
-        // Ephemeral bind — ask the OS which port it picked.
-        sockaddr_in bound{};
-        socklen_t boundLen = sizeof(bound);
-        if (::getsockname(_sock, reinterpret_cast<sockaddr*>(&bound), &boundLen) == 0) port = ntohs(bound.sin_port);
-    }
-    _boundPort = port;
+    if (!_socket.Open(port)) return false;
     _running = true;
-    spdlog::info("UdpRelay: listening on UDP port {}", _boundPort);
+    spdlog::info("UdpRelay: listening on UDP port {}", _socket.BoundPort());
     return true;
 }
 
 void UdpRelay::Stop() {
-    if (_sock != kInvalidSocket) {
-        CloseSocket(static_cast<SockH>(_sock));
-        _sock = kInvalidSocket;
-    }
+    _socket.Close();
     _rooms.clear();
     _running = false;
-    _boundPort = 0;
     spdlog::info("UdpRelay: stopped");
 }
 
@@ -123,20 +45,15 @@ void UdpRelay::_pump() {
     // Minimum meaningful packet: 4 (roomId) + 1 (any payload byte) = 5 bytes.
     uint8_t buf[1504];// 4-byte header + 1500-byte max UDP payload
     for (;;) {
-        sockaddr_in from{};
-        socklen_t fromLen = sizeof(from);
-        int n = ::recvfrom(
-            _sock, reinterpret_cast<char*>(buf), int(sizeof(buf)), 0, reinterpret_cast<sockaddr*>(&from), &fromLen
-        );
+        uint32_t senderAddr = 0;
+        uint16_t senderPort = 0;
+        int n = _socket.RecvFrom(buf, int(sizeof(buf)), senderAddr, senderPort);
         if (n <= 0) break;
         if (n < 5) continue;// too short: no payload after roomId
 
         const uint32_t roomId = GetU32LE(buf);
         const uint8_t* payload = buf + 4;
         const int payloadLen = n - 4;
-
-        const uint32_t senderAddr = from.sin_addr.s_addr;
-        const uint16_t senderPort = from.sin_port;// already network-byte-order
 
         auto roomIt = _rooms.find(roomId);
         if (roomIt == _rooms.end()) {
@@ -233,12 +150,8 @@ void UdpRelay::_evictStaleIpBudgets() {
 }
 
 void UdpRelay::_forwardTo(const Peer& dst, const uint8_t* payload, int len) {
-    if (!dst.valid || _sock == kInvalidSocket) return;
-    sockaddr_in to{};
-    to.sin_family = AF_INET;
-    to.sin_addr.s_addr = dst.addr;
-    to.sin_port = dst.port;
-    ::sendto(_sock, reinterpret_cast<const char*>(payload), len, 0, reinterpret_cast<sockaddr*>(&to), sizeof(to));
+    if (!dst.valid) return;
+    _socket.SendTo(dst.addr, dst.port, payload, len);
 }
 
 #endif// !__EMSCRIPTEN__

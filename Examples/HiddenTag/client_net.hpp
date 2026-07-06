@@ -1,20 +1,10 @@
 #pragma once
 #include "protocol.hpp"
 #include "sim_common.hpp"
+#include <Atmospheric/udp_socket.hpp>
 
 #include <cstdint>
 #include <string>
-
-// Platform-neutral UDP socket handle — same rationale as
-// MultiplayerSandbox/net_lockstep.hpp: a Windows SOCKET is a 64-bit UINT_PTR
-// whose invalid value is ~0, not -1.
-#if defined(_WIN32)
-using SocketHandle = uintptr_t;
-static constexpr SocketHandle kInvalidSocket = SocketHandle(~uintptr_t(0));
-#else
-using SocketHandle = int;
-static constexpr SocketHandle kInvalidSocket = SocketHandle(-1);
-#endif
 
 // ClientNet — client side of the HiddenTag protocol.
 //
@@ -60,7 +50,7 @@ public:
     sim::Vec2 GetRemotePos(uint32_t nowMs) const;
 
 private:
-    SocketHandle _sock = kInvalidSocket;
+    UdpSocket _socket;
     uint32_t _serverAddr = 0;
     uint16_t _serverPort = 0;
     proto::Role _role = proto::Role::Seeker;

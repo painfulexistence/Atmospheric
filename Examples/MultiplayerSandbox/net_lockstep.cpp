@@ -1,60 +1,11 @@
 #include "net_lockstep.hpp"
 #include <cstring>
 
-#ifndef __EMSCRIPTEN__
-#if defined(_WIN32)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#pragma comment(lib, "ws2_32.lib")
-#else
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#endif
-#else
+#ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
 #endif
 
 namespace {
-// ── Platform shims (POSIX sockets vs. Winsock2) ───────────────────────────
-#ifndef __EMSCRIPTEN__
-#if defined(_WIN32)
-    inline bool EnsureSocketLib() {
-        static bool ok = [] {
-            WSADATA wsa;
-            return WSAStartup(MAKEWORD(2, 2), &wsa) == 0;
-        }();
-        return ok;
-    }
-    inline void SetNonBlocking(SocketHandle s) {
-        u_long mode = 1;
-        ::ioctlsocket(s, FIONBIO, &mode);
-    }
-    inline void CloseSocket(SocketHandle s) {
-        ::closesocket(s);
-    }
-#else
-    inline bool EnsureSocketLib() {
-        return true;
-    }
-    inline void SetNonBlocking(SocketHandle s) {
-        int flags = ::fcntl(s, F_GETFL, 0);
-        ::fcntl(s, F_SETFL, flags | O_NONBLOCK);
-    }
-    inline void CloseSocket(SocketHandle s) {
-        ::close(s);
-    }
-#endif
-#endif
-
     constexpr uint32_t gmagic = 0x4e4c4b31;// "NLK1"
     constexpr uint8_t gpktHello = 1;
     constexpr uint8_t gpktWelcome = 2;
@@ -91,25 +42,8 @@ void LockstepNet::StartSolo(uint32_t s) {
 #ifndef __EMSCRIPTEN__
 
 bool LockstepNet::OpenSocket(uint16_t bindPort) {
-    if (!EnsureSocketLib()) {
-        error = "socket subsystem init failed";
-        return false;
-    }
-    sock = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock == kInvalidSocket) {
-        error = "socket() failed";
-        return false;
-    }
-    SetNonBlocking(sock);
-
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port = htons(bindPort);
-    if (::bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-        error = "bind() failed (port in use?)";
-        CloseSocket(sock);
-        sock = kInvalidSocket;
+    if (!_socket.Open(bindPort)) {
+        error = "socket open/bind failed (port in use?)";
         return false;
     }
     return true;
@@ -133,8 +67,7 @@ bool LockstepNet::StartClient(const std::string& ip, uint16_t port) {
         state = State::Failed;
         return false;
     }
-    in_addr a{};
-    if (inet_pton(AF_INET, ip.c_str(), &a) != 1) {
+    if (!UdpSocket::Resolve(ip, port, peerAddr, peerPort)) {
         error = "invalid host address: " + ip;
         state = State::Failed;
         return false;
@@ -142,17 +75,12 @@ bool LockstepNet::StartClient(const std::string& ip, uint16_t port) {
     mode = Mode::Client;
     state = State::Connecting;
     localPlayer = 1;
-    peerAddr = a.s_addr;
-    peerPort = htons(port);
     havePeer = true;
     return true;
 }
 
 void LockstepNet::Shutdown() {
-    if (sock != kInvalidSocket) {
-        CloseSocket(sock);
-        sock = kInvalidSocket;
-    }
+    _socket.Close();
     state = State::Idle;
     havePeer = false;
     peerAddr = 0;
@@ -205,35 +133,24 @@ bool LockstepNet::StartRelayClient(const std::string& relayIp, uint16_t relayPor
 }
 
 void LockstepNet::SendRaw(const uint8_t* data, int len) {
-    if (sock == kInvalidSocket || !havePeer) return;
+    if (!_socket.IsOpen() || !havePeer) return;
     if (useRelay) {
-        _relayClient.Send(sock, data, len);
+        _relayClient.Send(_socket, data, len);
         return;
     }
-    sockaddr_in to{};
-    to.sin_family = AF_INET;
-    to.sin_addr.s_addr = peerAddr;
-    to.sin_port = peerPort;
-    ::sendto(sock, reinterpret_cast<const char*>(data), len, 0, reinterpret_cast<sockaddr*>(&to), sizeof(to));
+    _socket.SendTo(peerAddr, peerPort, data, len);
 }
 
 void LockstepNet::Pump(uint32_t nowMs) {
-    if (mode == Mode::Solo || sock == kInvalidSocket) return;
+    if (mode == Mode::Solo || !_socket.IsOpen()) return;
 
     uint8_t buf[1500];
     for (;;) {
-        sockaddr_in from{};
-        socklen_t fromLen = sizeof(from);
-        int n = ::recvfrom(
-            sock,
-            reinterpret_cast<char*>(buf),
-            static_cast<int>(sizeof(buf)),
-            0,
-            reinterpret_cast<sockaddr*>(&from),
-            &fromLen
-        );
+        uint32_t fromAddr = 0;
+        uint16_t fromPort = 0;
+        int n = _socket.RecvFrom(buf, static_cast<int>(sizeof(buf)), fromAddr, fromPort);
         if (n <= 0) break;
-        HandlePacket(buf, n, from.sin_addr.s_addr, from.sin_port, nowMs);
+        HandlePacket(buf, n, fromAddr, fromPort, nowMs);
     }
 
     // Client always sends HELLOs while connecting.

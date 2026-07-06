@@ -1,6 +1,7 @@
 #pragma once
 #include "protocol.hpp"
 #include "sim_common.hpp"
+#include <Atmospheric/udp_socket.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -60,21 +61,13 @@ public:
     void Pump();
 
     bool IsBound() const {
-        return _sock != kInvalidSocket;
+        return _socket.IsOpen();
     }
     uint16_t BoundPort() const {
-        return _port;
+        return _socket.BoundPort();
     }
 
 private:
-#if defined(_WIN32)
-    using SocketHandle = uintptr_t;
-    static constexpr SocketHandle kInvalidSocket = SocketHandle(~uintptr_t(0));
-#else
-    using SocketHandle = int;
-    static constexpr SocketHandle kInvalidSocket = SocketHandle(-1);
-#endif
-
     struct ClientSlot {
         bool connected = false;
         uint32_t addr = 0;
@@ -84,8 +77,7 @@ private:
         uint32_t lastInputTick = 0;
     };
 
-    SocketHandle _sock = kInvalidSocket;
-    uint16_t _port = 0;
+    UdpSocket _socket;
     ClientSlot _slots[2];// indexed by proto::Role
     uint32_t _serverTick = 0;
     std::chrono::steady_clock::time_point _nextTick{};

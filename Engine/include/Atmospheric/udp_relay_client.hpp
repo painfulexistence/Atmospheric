@@ -1,4 +1,5 @@
 #pragma once
+#include "udp_socket.hpp"
 #include <cstdint>
 #include <string>
 
@@ -26,12 +27,6 @@
 
 class UdpRelayClient {
 public:
-#if defined(_WIN32)
-    using SocketHandle = uintptr_t;
-#else
-    using SocketHandle = int;
-#endif
-
     // Resolves relayIp and remembers roomId; call once before Send().
     // Returns false if relayIp isn't a parseable IPv4 address.
     bool Connect(const std::string& relayIp, uint16_t relayPort, uint32_t roomId);
@@ -40,7 +35,7 @@ public:
     // with the room header. `sock` is whatever UDP socket the caller already
     // has open for its own use; this never creates, binds, or closes a
     // socket itself.
-    bool Send(SocketHandle sock, const uint8_t* data, int len) const;
+    bool Send(UdpSocket& sock, const uint8_t* data, int len) const;
 
     bool IsConnected() const {
         return _connected;

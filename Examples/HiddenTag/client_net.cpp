@@ -2,90 +2,33 @@
 
 #include <spdlog/spdlog.h>
 
-#if defined(_WIN32)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#pragma comment(lib, "ws2_32.lib")
-#else
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#endif
-
 namespace {
-#if defined(_WIN32)
-    bool EnsureSocketLib() {
-        static bool ok = [] {
-            WSADATA w;
-            return WSAStartup(MAKEWORD(2, 2), &w) == 0;
-        }();
-        return ok;
-    }
-    void SetNonBlocking(SocketHandle s) {
-        u_long m = 1;
-        ::ioctlsocket(s, FIONBIO, &m);
-    }
-    void CloseSocketHandle(SocketHandle s) {
-        ::closesocket(s);
-    }
-#else
-    bool EnsureSocketLib() {
-        return true;
-    }
-    void SetNonBlocking(SocketHandle s) {
-        ::fcntl(s, F_SETFL, ::fcntl(s, F_GETFL, 0) | O_NONBLOCK);
-    }
-    void CloseSocketHandle(SocketHandle s) {
-        ::close(s);
-    }
-#endif
-
     float Lerp(float a, float b, float t) {
         return a + (b - a) * t;
     }
 }// namespace
 
-ClientNet::~ClientNet() {
-    if (_sock != kInvalidSocket) CloseSocketHandle(_sock);
-}
+ClientNet::~ClientNet() = default;
 
 bool ClientNet::Connect(const std::string& serverIp, uint16_t serverPort, proto::Role role) {
-    if (!EnsureSocketLib()) return false;
-    _sock = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (_sock == kInvalidSocket) return false;
-    SetNonBlocking(_sock);
+    if (!_socket.Open(0)) return false;
 
-    in_addr a{};
-    if (inet_pton(AF_INET, serverIp.c_str(), &a) != 1) {
+    if (!UdpSocket::Resolve(serverIp, serverPort, _serverAddr, _serverPort)) {
         spdlog::error("ClientNet: invalid server address: {}", serverIp);
         return false;
     }
-    _serverAddr = a.s_addr;
-    _serverPort = htons(serverPort);
     _role = role;
 
     uint8_t buf[proto::kClientHelloLen];
     proto::PutU32(buf, proto::kMagic);
     buf[4] = static_cast<uint8_t>(proto::PacketType::ClientHello);
     buf[5] = static_cast<uint8_t>(role);
-    sockaddr_in to{};
-    to.sin_family = AF_INET;
-    to.sin_addr.s_addr = _serverAddr;
-    to.sin_port = _serverPort;
-    ::sendto(_sock, reinterpret_cast<const char*>(buf), sizeof(buf), 0, reinterpret_cast<sockaddr*>(&to), sizeof(to));
+    _socket.SendTo(_serverAddr, _serverPort, buf, sizeof(buf));
     return true;
 }
 
 void ClientNet::SubmitInput(uint32_t tick, float dx, float dy) {
-    if (_sock == kInvalidSocket) return;
+    if (!_socket.IsOpen()) return;
 
     _predictedPos = sim::Step(_predictedPos, dx, dy);
 
@@ -95,29 +38,18 @@ void ClientNet::SubmitInput(uint32_t tick, float dx, float dy) {
     proto::PutU32(buf + 5, tick);
     buf[9] = static_cast<uint8_t>(proto::QuantizeAxis(dx));
     buf[10] = static_cast<uint8_t>(proto::QuantizeAxis(dy));
-    sockaddr_in to{};
-    to.sin_family = AF_INET;
-    to.sin_addr.s_addr = _serverAddr;
-    to.sin_port = _serverPort;
-    ::sendto(_sock, reinterpret_cast<const char*>(buf), sizeof(buf), 0, reinterpret_cast<sockaddr*>(&to), sizeof(to));
+    _socket.SendTo(_serverAddr, _serverPort, buf, sizeof(buf));
 }
 
 void ClientNet::Pump(uint32_t nowMs) {
-    if (_sock == kInvalidSocket) return;
+    if (!_socket.IsOpen()) return;
     uint8_t buf[256];
     for (;;) {
-        sockaddr_in from{};
-        socklen_t fromLen = sizeof(from);
-        int n = ::recvfrom(
-            _sock,
-            reinterpret_cast<char*>(buf),
-            static_cast<int>(sizeof(buf)),
-            0,
-            reinterpret_cast<sockaddr*>(&from),
-            &fromLen
-        );
+        uint32_t fromAddr = 0;
+        uint16_t fromPort = 0;
+        int n = _socket.RecvFrom(buf, static_cast<int>(sizeof(buf)), fromAddr, fromPort);
         if (n <= 0) break;
-        if (from.sin_addr.s_addr != _serverAddr || from.sin_port != _serverPort) continue;
+        if (fromAddr != _serverAddr || fromPort != _serverPort) continue;
         if (n < 5 || proto::GetU32(buf) != proto::kMagic) continue;
         auto type = static_cast<proto::PacketType>(buf[4]);
 

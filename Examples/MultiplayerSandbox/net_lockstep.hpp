@@ -1,21 +1,10 @@
 #pragma once
 #include "game_sim.hpp"
 #include <Atmospheric/udp_relay_client.hpp>
+#include <Atmospheric/udp_socket.hpp>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
-
-// Platform-neutral UDP socket handle. On Windows a SOCKET is a UINT_PTR
-// (64-bit) whose invalid value is INVALID_SOCKET (~0), not -1, so we cannot
-// store it in a plain int. We mirror those types here without dragging
-// <winsock2.h> into every translation unit that includes this header.
-#if defined(_WIN32)
-using SocketHandle = uintptr_t;
-static constexpr SocketHandle kInvalidSocket = SocketHandle(~uintptr_t(0));
-#else
-using SocketHandle = int;
-static constexpr SocketHandle kInvalidSocket = SocketHandle(-1);
-#endif
 
 // Deterministic-lockstep UDP session for exactly two peers.
 //
@@ -70,7 +59,7 @@ public:
     void PruneBelow(uint32_t tick);
 
 private:
-    SocketHandle sock = kInvalidSocket;
+    UdpSocket _socket;
     bool havePeer = false;
     uint32_t peerAddr = 0;
     uint16_t peerPort = 0;

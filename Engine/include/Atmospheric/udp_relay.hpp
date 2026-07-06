@@ -1,4 +1,5 @@
 #pragma once
+#include "udp_socket.hpp"
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -74,7 +75,7 @@ public:
         return _running;
     }
     uint16_t BoundPort() const {
-        return _boundPort;
+        return _socket.BoundPort();
     }
     int RoomCount() const {
         return static_cast<int>(_rooms.size());
@@ -96,16 +97,7 @@ private:
         int roomsThisWindow = 0;
     };
 
-#if defined(_WIN32)
-    using SocketHandle = uintptr_t;
-    static constexpr SocketHandle kInvalidSocket = SocketHandle(~uintptr_t(0));
-#else
-    using SocketHandle = int;
-    static constexpr SocketHandle kInvalidSocket = SocketHandle(-1);
-#endif
-
-    SocketHandle _sock = kInvalidSocket;
-    uint16_t _boundPort = 0;
+    UdpSocket _socket;
     bool _running = false;
     uint32_t _totalMs = 0;// accumulated from Process(dt)
 

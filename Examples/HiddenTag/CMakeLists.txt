@@ -17,13 +17,21 @@ find_package(spdlog CONFIG REQUIRED)
 if(NOT EMSCRIPTEN)
     # ── HiddenTagDedicatedServer: HiddenTagAuthority, no attached player ─────
     # No AtmosphericEngine dependency at all — no GameObject/Scene/rendering,
-    # just its own UDP socket (own platform shim, mirroring
-    # MultiplayerSandbox/net_lockstep.cpp's) and spdlog for logging. Not an
+    # just UdpSocket (Engine/src/udp_socket.cpp, compiled directly into this
+    # executable rather than pulling in the AtmosphericEngine target — it has
+    # zero third-party deps of its own) and spdlog for logging. Not an
     # Application: this has no window/GameObject needs, same reasoning as
     # UdpRelay staying a plain class (see Engine/include/Atmospheric/udp_relay.hpp).
-    add_executable(HiddenTagDedicatedServer dedicated_server_main.cpp authority.cpp)
+    add_executable(HiddenTagDedicatedServer
+        dedicated_server_main.cpp
+        authority.cpp
+        ${CMAKE_SOURCE_DIR}/Engine/src/udp_socket.cpp
+    )
     set_target_properties(HiddenTagDedicatedServer PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/HiddenTagDedicatedServer
+    )
+    target_include_directories(HiddenTagDedicatedServer PRIVATE
+        ${CMAKE_SOURCE_DIR}/Engine/include
     )
     target_link_libraries(HiddenTagDedicatedServer PRIVATE spdlog::spdlog)
     if(WIN32)
