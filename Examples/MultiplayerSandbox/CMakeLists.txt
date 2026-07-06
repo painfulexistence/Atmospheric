@@ -93,6 +93,24 @@ else()
     if(WIN32)
         target_link_libraries(${GAME_NAME} PRIVATE ws2_32)
     endif()
+
+    # ── Relay loopback integration test (runs in CI via ctest) ──────────────
+    # One process: UdpRelay (engine) + two LockstepNet peers over
+    # 127.0.0.1. Exercises the relay handshake, input exchange, and
+    # stale-peer rebind without any real network.
+    add_executable(RelayLoopbackTest
+        relay_loopback_test.cpp
+        net_lockstep.cpp
+    )
+    target_include_directories(RelayLoopbackTest PRIVATE
+        ${CMAKE_SOURCE_DIR}/Engine/include
+    )
+    target_link_libraries(RelayLoopbackTest PRIVATE AtmosphericEngine)
+    if(WIN32)
+        target_link_libraries(RelayLoopbackTest PRIVATE ws2_32)
+    endif()
+    add_test(NAME RelayLoopback COMMAND RelayLoopbackTest)
+    set_tests_properties(RelayLoopback PROPERTIES TIMEOUT 60)
 endif()
 
 # ── Asset sync ──
