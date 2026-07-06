@@ -84,15 +84,13 @@
         @keyframes spin { to { transform: rotate(360deg); } }
 
         /* ── Lobby overlay ──────────────────────────────────────────
-           Positioned by JS to match the canvas rect (see ResizeObserver
-           at the end of the script block). Content is fixed-size — if the
-           canvas is smaller than the content needs, the overlay scrolls
-           rather than trying to shrink everything. flex-start + overflow-y
-           auto keeps the header visible even when the panel is tall. */
+           Fills the whole #stage. Content is fixed-size; tall panels
+           (host/join) scroll vertically instead of clipping — flex-start
+           + overflow-y: auto keeps the header visible on narrow iframes
+           without any JS-driven sizing. */
         #lobby {
             display: none;
             position: absolute;
-            /* top/left/width/height are set by JS to mirror the canvas. */
             top: 0; left: 0;
             width: 100%; height: 100%;
             background: rgba(9, 8, 20, 0.96);
@@ -915,45 +913,6 @@
         });
     })();
 
-    // ── Lobby overlay tracks canvas rect ───────────────────────────────────
-    // Canvas uses max-width/max-height: 100% (aspect-preserving) so its actual
-    // rect is smaller than #stage on odd viewport ratios. Mirror it onto the
-    // lobby overlay so the overlay only covers the game area, not the
-    // letterboxed background. Runs on canvas + stage resize, plus once at
-    // load in case observation fires before layout settles.
-    (function() {
-        var canvas = document.getElementById('canvas');
-        var stage  = document.getElementById('stage');
-        var lobby  = document.getElementById('lobby');
-        if (!canvas || !stage || !lobby) return;
-
-        function sync() {
-            var cRect = canvas.getBoundingClientRect();
-            var sRect = stage.getBoundingClientRect();
-            // getBoundingClientRect can return 0×0 while the canvas is still
-            // hidden by the loading overlay; fall back to the stage rect so
-            // the lobby is at least visible and centered.
-            var w = cRect.width  || sRect.width;
-            var h = cRect.height || sRect.height;
-            var top  = (cRect.top  - sRect.top)  || 0;
-            var left = (cRect.left - sRect.left) || 0;
-            lobby.style.top    = top  + 'px';
-            lobby.style.left   = left + 'px';
-            lobby.style.width  = w    + 'px';
-            lobby.style.height = h    + 'px';
-        }
-
-        if (typeof ResizeObserver !== 'undefined') {
-            var ro = new ResizeObserver(sync);
-            ro.observe(canvas);
-            ro.observe(stage);
-        }
-        window.addEventListener('resize', sync);
-        // Initial sync (and again on next frame, in case canvas size is
-        // finalized only after emscripten sets its width/height attributes).
-        sync();
-        requestAnimationFrame(sync);
-    })();
     </script>
     {{{ SCRIPT }}}
 </body>
