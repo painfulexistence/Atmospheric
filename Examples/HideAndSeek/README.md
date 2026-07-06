@@ -101,11 +101,11 @@ publicly reachable, so there's normally nothing for a relay to solve there —
 but a listen server's host is typically an ordinary player behind a home
 router, which is exactly `UdpRelay`'s scenario. It isn't wired in here to
 keep this example focused, but `UdpRelayClient` would slot in without
-changing the protocol (it only needs a `UdpSocket` to send through, and
-doesn't care what bytes it's carrying) — the one real limitation is that
-`UdpRelay`'s rooms are hardcoded to exactly 2 peer slots, which happens to
-match this game's 2 players today but wouldn't scale to a listen server with
-more than one guest.
+changing the protocol — it only needs a `UdpSocket` to send through, and
+doesn't care what bytes it's carrying. `UdpRelay`'s rooms aren't fixed at 2
+peers (`maxPeersPerRoom` bounds it, forwarding fans out to every other peer
+in the room), so this would scale to a listen server with more than one
+guest too.
 
 ## Known limitations (v1)
 

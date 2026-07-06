@@ -67,47 +67,46 @@ void UdpRelay::_pump() {
         Room& room = roomIt->second;
         room.lastActivityMs = _totalMs;
 
-        // Find which slot this sender occupies (or assign one).
+        // Find which peer this sender is (or register a new one).
         int senderIdx = -1;
-        for (int i = 0; i < 2; i++) {
-            if (room.peers[i].valid && room.peers[i].addr == senderAddr && room.peers[i].port == senderPort) {
-                senderIdx = i;
+        for (size_t i = 0; i < room.peers.size(); i++) {
+            if (room.peers[i].addr == senderAddr && room.peers[i].port == senderPort) {
+                senderIdx = static_cast<int>(i);
                 break;
             }
         }
         if (senderIdx < 0) {
-            // New sender — take the first empty slot.
-            for (int i = 0; i < 2; i++) {
-                if (!room.peers[i].valid) {
-                    senderIdx = i;
-                    break;
-                }
-            }
-        }
-        if (senderIdx < 0) {
-            // Room full. A mobile client that switched networks re-appears as a
-            // new address while its old slot is still registered — allow the
-            // newcomer to replace a peer that has gone silent, but never a
-            // live one (that would let a roomId-guesser hijack the session).
-            int staleIdx = -1;
-            uint32_t oldestSeen = UINT32_MAX;
-            for (int i = 0; i < 2; i++) {
-                if (room.peers[i].lastSeenMs < oldestSeen) {
-                    oldestSeen = room.peers[i].lastSeenMs;
-                    staleIdx = i;
-                }
-            }
-            if (staleIdx >= 0 && _totalMs - oldestSeen > kPeerStaleMs) {
-                senderIdx = staleIdx;
+            if (static_cast<int>(room.peers.size()) < maxPeersPerRoom) {
+                senderIdx = static_cast<int>(room.peers.size());
+                room.peers.push_back(Peer{});
             } else {
-                continue;// both peers live — drop the unknown sender
+                // Room full. A mobile client that switched networks re-appears
+                // as a new address while its old slot is still registered —
+                // allow the newcomer to replace a peer that has gone silent,
+                // but never a live one (that would let a roomId-guesser
+                // hijack the session).
+                int staleIdx = -1;
+                uint32_t oldestSeen = UINT32_MAX;
+                for (size_t i = 0; i < room.peers.size(); i++) {
+                    if (room.peers[i].lastSeenMs < oldestSeen) {
+                        oldestSeen = room.peers[i].lastSeenMs;
+                        staleIdx = static_cast<int>(i);
+                    }
+                }
+                if (staleIdx >= 0 && _totalMs - oldestSeen > kPeerStaleMs) {
+                    senderIdx = staleIdx;
+                } else {
+                    continue;// every peer is live — drop the unknown sender
+                }
             }
         }
 
-        room.peers[senderIdx] = { senderAddr, senderPort, true, _totalMs };
+        room.peers[static_cast<size_t>(senderIdx)] = { senderAddr, senderPort, _totalMs };
 
-        const int otherIdx = 1 - senderIdx;
-        if (room.peers[otherIdx].valid) _forwardTo(room.peers[otherIdx], payload, payloadLen);
+        for (size_t i = 0; i < room.peers.size(); i++) {
+            if (static_cast<int>(i) == senderIdx) continue;
+            _forwardTo(room.peers[i], payload, payloadLen);
+        }
     }
 }
 
@@ -150,7 +149,6 @@ void UdpRelay::_evictStaleIpBudgets() {
 }
 
 void UdpRelay::_forwardTo(const Peer& dst, const uint8_t* payload, int len) {
-    if (!dst.valid) return;
     _socket.SendTo(dst.addr, dst.port, payload, len);
 }
 

@@ -3,26 +3,30 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 // UdpRelay
 //
-// Forwards UDP packets between two peers identified by a shared roomId.
-// Intended for server builds where direct peer-to-peer NAT traversal has
-// failed.
+// Forwards UDP packets between peers identified by a shared roomId. Intended
+// for server builds where direct peer-to-peer NAT traversal has failed.
 //
 // Packet wire format (client → relay):
 //   [roomId: uint32_t LE][...LockstepNet payload...]
 //
-// The relay strips the roomId header and forwards the bare payload to the
-// other peer in the same room.  From LockstepNet's perspective the packets
-// look exactly as if they arrived directly from the peer.
+// The relay strips the roomId header and fans the bare payload out to every
+// other peer currently registered in the same room. From a sender's
+// perspective the packets look exactly as if they arrived directly from
+// whichever peer(s) are on the other end.
 //
 // Room lifecycle:
 //   - A room is created automatically on the first packet received for a roomId.
-//   - The first sender is registered as peer A; the second distinct sender as peer B.
-//   - Once both peers are registered, packets flow bidirectionally.
+//   - Each distinct sender address is registered as a peer, up to maxPeersPerRoom.
+//   - A packet from any registered peer is forwarded to every OTHER peer
+//     currently in the room (broadcast fan-out; for the common 2-peer case
+//     this is just point-to-point forwarding).
 //   - A peer that has been silent for kPeerStaleMs can be replaced by a new
-//     sender address (handles mobile clients rebinding after a network switch).
+//     sender address once the room is full (handles mobile clients rebinding
+//     after a network switch).
 //   - Rooms with no activity for kRoomTimeoutMs milliseconds are removed.
 //
 // Abuse mitigation: UDP has no handshake, so anyone can send a datagram
@@ -64,6 +68,11 @@ public:
     int maxNewRoomsPerIpPerWindow = 5;
     uint32_t rateLimitWindowMs = 60'000;// 1 minute
 
+    // Cap on distinct peer addresses per room. Not a protocol constant — a
+    // 2-player game and an N-player one both just set this to match; the
+    // relay itself has no opinion on room size beyond bounding memory.
+    int maxPeersPerRoom = 8;
+
     // port 0 binds an OS-assigned ephemeral port; BoundPort() reports it.
     bool Start(uint16_t port);
     void Stop();
@@ -85,11 +94,10 @@ private:
     struct Peer {
         uint32_t addr = 0;
         uint16_t port = 0;
-        bool valid = false;
         uint32_t lastSeenMs = 0;
     };
     struct Room {
-        Peer peers[2];
+        std::vector<Peer> peers;// every entry is a registered, live peer
         uint32_t lastActivityMs = 0;
     };
     struct IpBudget {
