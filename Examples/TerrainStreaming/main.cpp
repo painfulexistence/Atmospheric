@@ -117,7 +117,12 @@ class TerrainStreamingDemo : public Application {
             TerrainStreamerProps{
                 .worldSize = 10240.0f,
                 .tileSize = 512.0f,
-                .heightScale = 900.0f,
+                // Balanced against the noise frequency below: perceived
+                // steepness is heightScale * frequency, so halving the
+                // wavelength (0.00035 -> 0.0007) must roughly halve the
+                // amplitude or every slope doubles (and the tree-scatter
+                // slope rules stop matching).
+                .heightScale = 500.0f,
                 .tileHeightRes = 512,// 1 m/texel in the LOD0 ring
                 .tileMeshRes = 64,
                 .lodCount = 4,
