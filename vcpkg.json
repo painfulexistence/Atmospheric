@@ -18,5 +18,21 @@
     "rmlui",
     "box2d",
     "flatbuffers"
-  ]
+  ],
+  "features": {
+    "networking": {
+      "description": "HTTP/2 and WebSocket networking (libcurl + libwebsockets, OpenSSL)",
+      "dependencies": [
+        {
+          "name": "curl",
+          "features": ["http2", "openssl"],
+          "platform": "!emscripten"
+        },
+        {
+          "name": "libwebsockets",
+          "platform": "!emscripten"
+        }
+      ]
+    }
+  }
 }

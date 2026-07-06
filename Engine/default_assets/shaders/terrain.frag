@@ -59,6 +59,10 @@ uniform int layer_count;
 uniform float layer_tiling[4];
 uniform float layer_has_normal[4];
 
+// World-space clip plane (n, d) used by PlanarReflectionPass to cut away
+// geometry below the mirror plane; all-zero disables (dot == 0 is kept).
+uniform vec4 u_clipPlane;
+
 in vec2 frag_uv;
 in vec3 frag_pos;
 in float height;
@@ -178,6 +182,10 @@ vec3 PerturbNormal(vec3 N, vec3 detail)
 
 void main()
 {
+    if (dot(u_clipPlane.xyz, frag_pos) + u_clipPlane.w < 0.0) {
+        discard;
+    }
+
     vec3 N = TerrainBaseNormal();
 
     vec3 albedo;

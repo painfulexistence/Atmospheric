@@ -33,6 +33,7 @@ public:
     virtual void SetUniform(const std::string& uniform, const glm::mat4& val) = 0;
     virtual void SetUniform(const std::string& uniform, const glm::vec2& val) = 0;
     virtual void SetUniform(const std::string& uniform, const glm::vec3& val) = 0;
+    virtual void SetUniform(const std::string& uniform, const glm::vec4& val) = 0;
     virtual void SetUniform(const std::string& uniform, int val) = 0;
     virtual void SetUniform(const std::string& uniform, float val) = 0;
 };
@@ -56,6 +57,7 @@ public:
     void SetUniform(const std::string& uniform, const glm::mat4& val) override;
     void SetUniform(const std::string& uniform, const glm::vec2& val) override;
     void SetUniform(const std::string& uniform, const glm::vec3& val) override;
+    void SetUniform(const std::string& uniform, const glm::vec4& val) override;
     void SetUniform(const std::string& uniform, int val) override;
     void SetUniform(const std::string& uniform, float val) override;
 

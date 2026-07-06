@@ -193,10 +193,13 @@ void Renderer::Init(int width, int height) {
 
     _renderGraph = std::make_unique<RenderGraph>();
     _renderGraph->AddPass(std::make_unique<ShadowPass>());
+    _renderGraph->AddPass(std::make_unique<PlanarReflectionPass>());// mirrored world RT for WaterPass
+    _renderGraph->AddPass(std::make_unique<PortalPass>());// recursive portal-view RTs
     _renderGraph->AddPass(std::make_unique<ForwardOpaquePass>());
     _renderGraph->AddPass(std::make_unique<SkyboxPass>());// after clear, fills empty sky pixels
     _renderGraph->AddPass(std::make_unique<SunPass>());
     _renderGraph->AddPass(std::make_unique<VoxelChunkPass>());
+    _renderGraph->AddPass(std::make_unique<PortalSurfacePass>());// portal windows in the main view
     _renderGraph->AddPass(std::make_unique<MSAAResolvePass>());
     _renderGraph->AddPass(std::make_unique<WaterPass>());
     _renderGraph->AddPass(std::make_unique<WorldCanvasPass>());// World sprites with depth testing
@@ -234,6 +237,21 @@ void Renderer::Resize(int width, int height) {
 
 void Renderer::SubmitCommand(const RenderCommand& cmd) {
     _commandList.push_back(cmd);
+}
+
+std::vector<glm::mat4> Renderer::GetAuxViewProjs() {
+    // Last frame's aux views (submission runs before the passes). Portal
+    // recursion levels plus the water reflection, so the submission side can
+    // union-cull against them instead of disabling culling entirely.
+    std::vector<glm::mat4> out;
+    if (auto* portals = GetPass<PortalPass>()) {
+        const auto& vps = portals->ActiveViewProjs();
+        out.insert(out.end(), vps.begin(), vps.end());
+    }
+    if (auto* refl = GetPass<PlanarReflectionPass>()) {
+        if (refl->IsActive()) out.push_back(refl->GetReflectionViewProj());
+    }
+    return out;
 }
 
 void Renderer::BeginTransformFeedbackPass() {
@@ -812,9 +830,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
         const bool shadowsOn = light && light->castShadow;
         glm::mat4 lightVP;
         if (shadowsOn) {
-            const glm::mat4 z01 = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.5f))
-                                  * glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 0.5f));
-            lightVP = z01 * light->GetProjectionMatrix(0) * light->GetViewMatrix();
+            lightVP = GpuProjectionZ01() * light->GetProjectionMatrix(0) * light->GetViewMatrix();
         } else {
             // Shadowing off: push everything past far so the WGSL guard reads
             // "outside the frustum" → fully lit.
@@ -1035,6 +1051,7 @@ ForwardOpaquePass::~ForwardOpaquePass() {
     if (_texBGL) wgpuBindGroupLayoutRelease(_texBGL);
     if (_pipeline) wgpuRenderPipelineRelease(_pipeline);
     if (_terrainPipeline) wgpuRenderPipelineRelease(_terrainPipeline);
+    if (_reflPipeline) wgpuRenderPipelineRelease(_reflPipeline);
     if (_frameUniformBuf) wgpuBufferRelease(_frameUniformBuf);
     if (_drawUniformBuf) wgpuBufferRelease(_drawUniformBuf);
     if (_whiteTex) wgpuTextureRelease(_whiteTex);
@@ -1143,6 +1160,27 @@ void ForwardOpaquePass::_initGPU(
                   .multisample(sampleCount)
                   .build();
     _terrainPipeline = tp.pipeline;
+
+    // Reflection variant of the PRIM pipeline: identical except cull=None, so
+    // mirrored (winding-reversed) geometry keeps all its surfaces. Borrows the
+    // main pipeline's bind-group layouts.
+    auto rp = GpuPipelineBuilder(device)
+                  .wgsl(FORWARD_OPAQUE_WGSL)
+                  .bgl(_uniformBGL)
+                  .bgl(_texBGL)
+                  .bgl(_shadowBGL)
+                  .vertex(
+                      56,
+                      { { WGPUVertexFormat_Float32x3, 0, 0 },
+                        { WGPUVertexFormat_Float32x2, 12, 1 },
+                        { WGPUVertexFormat_Float32x3, 20, 2 } }
+                  )
+                  .colorFormat(colorFormat)
+                  .depth(true, WGPUCompareFunction_Less)
+                  .cull(WGPUCullMode_None)
+                  .multisample(sampleCount)
+                  .build();
+    _reflPipeline = rp.pipeline;
 }
 
 void ForwardOpaquePass::_ensureDrawCapacity(uint32_t drawCount) {
@@ -1201,11 +1239,12 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
         if (!camera) return;
         LightComponent* light = ctx->GetMainLight();
 
+        ResolvedView rv = ResolveView(renderer, camera);
         if (!_pipeline) {
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue q = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)renderer.sceneRT->GetNumSamples());
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)rv.target->GetNumSamples());
         }
 
         struct DrawItem {
@@ -1235,7 +1274,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
         glm::vec3 lightDir = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);
         glm::vec3 lightColor = light ? light->diffuse : glm::vec3(1.0f);
         glm::vec3 ambient = light ? light->ambient : glm::vec3(0.1f);
-        glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+        glm::mat4 viewProj = rv.proj * rv.view;
 
         struct {
             glm::mat4 viewProj;
@@ -1244,13 +1283,15 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             glm::vec4 lightDir;
             glm::vec4 lightColor;
             glm::vec4 ambient;
+            glm::vec4 clipPlane;
         } frameUniforms{
             viewProj,
             renderer.wgpuShadowLightVP,// published by ShadowPass earlier this frame
-            glm::vec4(camera->GetEyePosition(), 1.0f),
+            glm::vec4(rv.eye, 1.0f),
             glm::vec4(lightDir, 0.0f),
             glm::vec4(lightColor, 0.0f),
             glm::vec4(ambient, 0.0f),
+            rv.clipPlane,
         };
         wgpuQueueWriteBuffer(_gpuQueue, _frameUniformBuf, 0, &frameUniforms, sizeof(frameUniforms));
 
@@ -1308,14 +1349,18 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
         const auto& defaults = AssetManager::Get().GetDefaultTextures();
         uint32_t defaultDiffuse = defaults.empty() ? 0 : static_cast<uint32_t>(defaults[0]);
 
-        renderer.sceneRT->Begin(enc);
+        // Mirrored (reflection) view reverses winding, so PRIM draws use the
+        // cull=None variant; terrain already culls None, so it is shared.
+        WGPURenderPipeline primPipeline = rv.flipCull ? _reflPipeline : _pipeline;
+
+        rv.target->Begin(enc);
         MeshType boundType = MeshType::PRIM;
-        wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _pipeline);
+        wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, primPipeline);
         for (size_t i = 0; i < draws.size(); ++i) {
             if (draws[i].type != boundType) {
                 boundType = draws[i].type;
                 wgpuRenderPassEncoderSetPipeline(
-                    gpuEnc->pass, boundType == MeshType::TERRAIN ? _terrainPipeline : _pipeline
+                    gpuEnc->pass, boundType == MeshType::TERRAIN ? _terrainPipeline : primPipeline
                 );
             }
 
@@ -1339,16 +1384,16 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 2, _shadowBG, 0, nullptr);
             draws[i].buf->Draw(enc, PrimitiveTopology::Triangles);
         }
-        renderer.sceneRT->End();
+        rv.target->End();
         return;
     }
 #endif
     ZoneScopedN("ForwardOpaquePass");
     AE_GL_PROBE(renderer, "Opaque pass: entry");
-    auto [width, height] = Window::Get()->GetPhysicalSize();
-    glViewport(0, 0, width, height);
+    ResolvedView rv = ResolveView(renderer, ctx->GetMainCamera());
+    glViewport(0, 0, rv.target->GetWidth(), rv.target->GetHeight());
 
-    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(rv.target)->GetNativeFBOID());
     AE_GL_PROBE(renderer, "Opaque pass: after bind sceneRT");
     // Bind textures
     auto& assetManager = AssetManager::Get();
@@ -1364,8 +1409,8 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
     // Global static binding removed; textures are now dynamically bound per draw call
 
     auto mainLight = ctx->GetMainLight();
-    glm::vec3 eyePos = ctx->GetMainCamera()->GetEyePosition();
-    glm::mat4 projectionView = ctx->GetMainCamera()->GetProjectionMatrix() * ctx->GetMainCamera()->GetViewMatrix();
+    glm::vec3 eyePos = rv.eye;
+    glm::mat4 projectionView = rv.proj * rv.view;
 
     glClearColor(renderer.clearColor.x, renderer.clearColor.y, renderer.clearColor.z, renderer.clearColor.w);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1401,15 +1446,19 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 #endif
 
-        if (material->cullFaceEnabled)
-            glEnable(GL_CULL_FACE);
-        else
+        // Mirrored (reflection) view reverses winding — disable culling so no
+        // surface is wrongly removed (terrain is single-sided; a flipped
+        // back-face cull would erase it from the reflection entirely).
+        if (rv.flipCull || !material->cullFaceEnabled)
             glDisable(GL_CULL_FACE);
+        else
+            glEnable(GL_CULL_FACE);
 
         switch (mesh->type) {
 
         case MeshType::TERRAIN: {
             terrainShader->Activate();
+            terrainShader->SetUniform(std::string("u_clipPlane"), rv.clipPlane);
             terrainShader->SetUniform(std::string("cam_pos"), eyePos);
             terrainShader->SetUniform(std::string("main_light.direction"), mainLight->direction);
             terrainShader->SetUniform(std::string("main_light.ambient"), mainLight->ambient);
@@ -1516,6 +1565,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
         case MeshType::PRIM:
         default:
             colorShader->Activate();
+            colorShader->SetUniform(std::string("u_clipPlane"), rv.clipPlane);
             colorShader->SetUniform(std::string("cam_pos"), eyePos);
             colorShader->SetUniform(std::string("time"), 0);
             colorShader->SetUniform(std::string("main_light.direction"), mainLight->direction);
@@ -1660,6 +1710,13 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             glBindVertexArray(0);
             break;
         }
+    }
+
+    // Debug lines belong to the main view only — aux-view replays (reflection,
+    // portals) run before the main pass and must not consume-and-clear them.
+    if (renderer.viewOverride) {
+        renderer.CheckErrors("Opaque pass");
+        return;
     }
 
     ctx->_debugLineCount = ctx->debugLines.size() / 2;
@@ -1930,9 +1987,11 @@ void WorldCanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
 
         CameraComponent* camera = ctx->GetMainCamera();
         if (!camera) return;
-        glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+        // Mirrored camera + reflection RT while PlanarReflectionPass drives us.
+        ResolvedView rv = ResolveView(renderer, camera);
+        glm::mat4 viewProj = rv.proj * rv.view;
 
-        glm::vec3 camPos = camera->GetEyePosition();
+        glm::vec3 camPos = rv.eye;
         std::sort(worldDrawables.begin(), worldDrawables.end(), [&camPos](CanvasDrawable* a, CanvasDrawable* b) {
             if (a->GetLayer() != b->GetLayer()) return a->GetLayer() < b->GetLayer();
             float distA = glm::length(a->gameObject->GetPosition() - camPos);
@@ -1949,18 +2008,18 @@ void WorldCanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
         allCommands = br->DrainToCommands();
         if (allCommands.empty()) return;
 
-        // Render into the already-open sceneRT pass (depth-tested, read-only)
+        // Render into the already-open target pass (depth-tested, read-only)
         // so world sprites are occluded by — but never occlude — 3D geometry.
-        renderer.sceneRT->Begin(enc);
+        rv.target->Begin(enc);
         gpuPass->Render(
             enc,
             viewProj,
             allCommands,
             /*depthTest=*/true,
             /*toSwapchain=*/false,
-            (uint32_t)renderer.sceneRT->GetNumSamples()
+            (uint32_t)rv.target->GetNumSamples()
         );
-        renderer.sceneRT->End();
+        rv.target->End();
         return;
     }
 #endif
@@ -1977,15 +2036,20 @@ void WorldCanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
 
     if (worldDrawables.empty()) return;
 
-    auto [width, height] = Window::Get()->GetPhysicalSize();
-    glViewport(0, 0, width, height);
-    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID());
-
-    // Get camera for projection
+    // Get camera for projection; PlanarReflectionPass redirects us to the
+    // reflection RT via the view override. Without an override the main path
+    // targets msaaResolveRT (post-resolve, so sprites go through bloom input),
+    // which ResolveView's sceneRT default would not match — so pick the target
+    // explicitly here.
     CameraComponent* camera = ctx->GetMainCamera();
     if (!camera) return;
+    ResolvedView rv = ResolveView(renderer, camera);
+    RenderTarget* target = renderer.viewOverride ? rv.target : renderer.msaaResolveRT.get();
 
-    glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+    glViewport(0, 0, target->GetWidth(), target->GetHeight());
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(target)->GetNativeFBOID());
+
+    glm::mat4 viewProj = rv.proj * rv.view;
 
     // Enable depth test (read only, don't write) so sprites are occluded by 3D geometry
     glEnable(GL_DEPTH_TEST);
@@ -1998,7 +2062,7 @@ void WorldCanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
 #endif
 
     // Sort by layer first, then by distance (back to front for transparency)
-    glm::vec3 camPos = camera->GetEyePosition();
+    glm::vec3 camPos = rv.eye;
     std::sort(worldDrawables.begin(), worldDrawables.end(), [&camPos](CanvasDrawable* a, CanvasDrawable* b) {
         if (a->GetLayer() != b->GetLayer()) {
             return a->GetLayer() < b->GetLayer();

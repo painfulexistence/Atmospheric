@@ -51,6 +51,14 @@ struct AppConfig {
     bool useDefaultTextures = false;
     bool useDefaultShaders = true;
     std::string preset = "3D";// "2D" | "3D"
+    // Headless (server) mode: no window, no GL context, no ImGui/RmlUi, no
+    // rendering. Run() drives Update() on a fixed tick (fixedTimeStep) until
+    // Quit(). Simulation subsystems (physics, entity Tick, AddSubsystem<T>
+    // subsystems) run as usual, so client and server share one Application.
+    // Scenes loaded headless must not declare GPU resources. Window::Get()
+    // returns nullptr — input is inert and window-dependent components are
+    // the game's responsibility to avoid. Not supported on Emscripten.
+    bool headless = false;
 };
 
 // Drives an automated "warm up → capture → quit" sequence so every example can
@@ -263,6 +271,12 @@ private:
         const FrameData& frame
     );// TODO: Properly separate rendering and drawing logic if the backend supports command buffering
     void SyncTransformWithPhysics();
+
+    // ─── Headless (server) mode ─────────────────────────────────────────
+    // Fixed-tick Update()-only loop used by Run() when _config.headless.
+    void HeadlessLoop();
+    bool _headlessRunning = false;
+    float _headlessTime = 0.0f;// seconds since Run(); GetWindowTime() fallback
 
     // ─── Loading screen / transition ────────────────────────────────────
     SceneTransition _transition;

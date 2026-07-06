@@ -1,5 +1,6 @@
 #include "asset_manager.hpp"
 #include "camera_component.hpp"
+#include "frustum.hpp"
 #include "gfx_factory.hpp"
 #include "gl_buffer.hpp"
 #include "gl_render_target.hpp"
@@ -8,6 +9,7 @@
 #include "mesh.hpp"
 #include "renderer.hpp"
 #include "sun_component.hpp"
+#include "voxel_chunk_component.hpp"
 #include "window.hpp"
 
 #include <cstring>
@@ -25,6 +27,35 @@ static void DrawScreenQuadVAO(GLuint vao) {
     glBindVertexArray(vao);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
+}
+
+// ---- Helper: resolve the active view for scene passes -------------------------
+// PlanarReflectionPass installs renderer.viewOverride while re-rendering the
+// world from a mirrored camera into its own RT; the scene passes resolve their
+// camera matrices and destination target through this instead of reading the
+// main camera / sceneRT directly. Declared in renderer.hpp so ForwardOpaquePass
+// / WorldCanvasPass (renderer.cpp) resolve the view identically.
+ResolvedView ResolveView(const Renderer& renderer, CameraComponent* camera) {
+    if (const RenderViewOverride* ov = renderer.viewOverride) {
+        return { ov->view,      ov->proj,    ov->eyePos, ov->target ? ov->target : renderer.sceneRT.get(),
+                 ov->clipPlane, ov->flipCull };
+    }
+    return { camera->GetViewMatrix(),  camera->GetProjectionMatrix(),
+             camera->GetEyePosition(), renderer.sceneRT.get(),
+             glm::vec4(0.0f),          false };
+}
+
+// Per-draw frustum cull for voxel chunks. Chunk submission (voxel_world.cpp)
+// keeps every chunk visible in the main OR any aux (portal recursion / water
+// reflection) frustum, so the shared opaque queue is the union across all
+// views. Each pass invocation must re-cull to its own active view — otherwise a
+// chunk pulled in only for a portal's recursion frustum leaks into the main
+// view as a stray floating block near the horizon. The transform for a voxel
+// chunk is a pure translation to its world origin, so the bounding sphere is
+// reconstructed the same way VoxelChunkComponent does.
+static bool ChunkInFrustum(const Frustum& f, const glm::mat4& transform) {
+    const glm::vec3 center = glm::vec3(transform[3]) + glm::vec3(VoxelChunkComponent::SIZE * 0.5f);
+    return f.IntersectsSphere(center, VoxelChunkComponent::BSPHERE_RADIUS);
 }
 
 
@@ -73,12 +104,6 @@ void SunPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat col
 void SunPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
-        if (!_pipeline) {
-            WGPUDevice dev = GfxFactory::GetWebGPUDevice();
-            WGPUQueue q = GfxFactory::GetWebGPUQueue();
-            if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)renderer.sceneRT->GetNumSamples());
-        }
         if (!renderer.sceneRT) return;
 
         CameraComponent* camera = ctx->GetMainCamera();
@@ -86,6 +111,14 @@ void SunPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder
         LightComponent* light = ctx->GetMainLight();
         SunComponent* sun = ctx->GetMainSun();
         if (!sun) return;
+
+        ResolvedView rv = ResolveView(renderer, camera);
+        if (!_pipeline) {
+            WGPUDevice dev = GfxFactory::GetWebGPUDevice();
+            WGPUQueue q = GfxFactory::GetWebGPUQueue();
+            if (!dev) return;
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)rv.target->GetNumSamples());
+        }
 
         glm::vec3 lightDir = light ? glm::normalize(light->direction) : glm::normalize(glm::vec3(0.0f, -1.0f, 0.5f));
         const float CHUNK_SIZE = 32.0f;
@@ -112,7 +145,7 @@ void SunPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder
                 sunPos.y = sun->height * 2.0f;
         }
 
-        glm::vec3 camPos = camera->GetEyePosition();
+        glm::vec3 camPos = rv.eye;
         glm::vec3 toCamera = glm::normalize(camPos - sunPos);
         glm::vec3 right = glm::normalize(glm::cross(toCamera, glm::vec3(0, 1, 0)));
         glm::vec3 up = glm::cross(right, toCamera);
@@ -123,7 +156,7 @@ void SunPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder
         model[2] = glm::vec4(toCamera, 0);
         model[3] = glm::vec4(sunPos, 1);
 
-        glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+        glm::mat4 viewProj = rv.proj * rv.view;
 
         struct {
             glm::mat4 model;
@@ -143,7 +176,7 @@ void SunPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder
         wgpuQueueWriteBuffer(_gpuQueue, _uniformBuf, 0, &u, sizeof(u));
 
         auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
-        auto* rt = static_cast<GPURenderTarget*>(renderer.sceneRT.get());
+        auto* rt = static_cast<GPURenderTarget*>(rv.target);
         rt->Begin(enc);
         wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _pipeline);
         wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 0, _uniformBG, 0, nullptr);
@@ -164,10 +197,10 @@ void SunPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder
     SunComponent* sun = ctx->GetMainSun();
     if (!sun) return;
 
-    auto [width, height] = Window::Get()->GetPhysicalSize();
-    glViewport(0, 0, width, height);
+    ResolvedView rv = ResolveView(renderer, camera);
+    glViewport(0, 0, rv.target->GetWidth(), rv.target->GetHeight());
 
-    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(rv.target)->GetNativeFBOID());
 
     // Mirror VX sun.py get_model_matrix(): push sun to world edge along light direction
     glm::vec3 lightDir = light ? glm::normalize(light->direction) : glm::normalize(glm::vec3(0.0f, -1.0f, 0.5f));
@@ -195,8 +228,8 @@ void SunPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder
             sunPos.y = sun->height * 2.0f;
     }
 
-    // Billboard: orient quad to face the camera
-    glm::vec3 camPos = camera->GetEyePosition();
+    // Billboard: orient quad to face the (possibly mirrored) camera
+    glm::vec3 camPos = rv.eye;
     glm::vec3 toCamera = glm::normalize(camPos - sunPos);
     glm::vec3 right = glm::normalize(glm::cross(toCamera, glm::vec3(0, 1, 0)));
     glm::vec3 up = glm::cross(right, toCamera);
@@ -207,7 +240,7 @@ void SunPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder
     model[2] = glm::vec4(toCamera, 0);
     model[3] = glm::vec4(sunPos, 1);
 
-    glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+    glm::mat4 viewProj = rv.proj * rv.view;
 
     shader->Activate();
     shader->SetUniform("u_model", model);
@@ -291,19 +324,21 @@ void SkyboxPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
 void SkyboxPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
-        if (!_pipeline) {
-            WGPUDevice dev = GfxFactory::GetWebGPUDevice();
-            WGPUQueue q = GfxFactory::GetWebGPUQueue();
-            if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)renderer.sceneRT->GetNumSamples());
-        }
         if (!renderer.sceneRT) return;
 
         CameraComponent* camera = ctx->GetMainCamera();
         if (!camera) return;
 
-        glm::mat4 viewNoTranslation = glm::mat4(glm::mat3(camera->GetViewMatrix()));
-        glm::mat4 viewProj = camera->GetProjectionMatrix() * viewNoTranslation;
+        ResolvedView rv = ResolveView(renderer, camera);
+        if (!_pipeline) {
+            WGPUDevice dev = GfxFactory::GetWebGPUDevice();
+            WGPUQueue q = GfxFactory::GetWebGPUQueue();
+            if (!dev) return;
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)rv.target->GetNumSamples());
+        }
+
+        glm::mat4 viewNoTranslation = glm::mat4(glm::mat3(rv.view));
+        glm::mat4 viewProj = rv.proj * viewNoTranslation;
 
         struct {
             glm::mat4 viewProj;
@@ -313,7 +348,7 @@ void SkyboxPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
         wgpuQueueWriteBuffer(_gpuQueue, _uniformBuf, 0, &u, sizeof(u));
 
         auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
-        auto* rt = static_cast<GPURenderTarget*>(renderer.sceneRT.get());
+        auto* rt = static_cast<GPURenderTarget*>(rv.target);
         rt->Begin(enc);
         wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _pipeline);
         wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 0, _uniformBG, 0, nullptr);
@@ -331,16 +366,16 @@ void SkyboxPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
     CameraComponent* camera = ctx->GetMainCamera();
     if (!camera) return;
 
-    auto [width, height] = Window::Get()->GetPhysicalSize();
-    glViewport(0, 0, width, height);
+    ResolvedView rv = ResolveView(renderer, camera);
+    glViewport(0, 0, rv.target->GetWidth(), rv.target->GetHeight());
 
-    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(rv.target)->GetNativeFBOID());
 
     shader->Activate();
 
     // Strip translation from view matrix so sky doesn't move with camera
-    glm::mat4 viewNoTranslation = glm::mat4(glm::mat3(camera->GetViewMatrix()));
-    shader->SetUniform("u_proj", camera->GetProjectionMatrix());
+    glm::mat4 viewNoTranslation = glm::mat4(glm::mat3(rv.view));
+    shader->SetUniform("u_proj", rv.proj);
     shader->SetUniform("u_view", viewNoTranslation);
     shader->SetUniform("u_skyColor", skyColor);
     shader->SetUniform("u_horizonColor", horizonColor);
@@ -375,7 +410,9 @@ VoxelChunkPass::~VoxelChunkPass() {
     if (_drawUniformBuf) wgpuBufferRelease(_drawUniformBuf);
 }
 
-void VoxelChunkPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount) {
+void VoxelChunkPass::_initGPU(
+    WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount, WGPUCullMode cullMode
+) {
     _gpuDevice = device;
     _gpuQueue = queue;
     {
@@ -386,6 +423,8 @@ void VoxelChunkPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFor
     }
     // VoxelVertex: x,y,z,voxel_id + face_id,pad[3] — two Uint8x4 attrs since
     // WebGPU has no Uint8x3 / plain uint8 format.
+    // cullMode is Front instead of Back when this instance renders
+    // PlanarReflectionPass's mirrored view (reversed triangle winding).
     auto p = GpuPipelineBuilder(device)
                  .wgsl(VOXEL_WGSL)
                  .bgl(
@@ -395,7 +434,7 @@ void VoxelChunkPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFor
                  .vertex(8, { { WGPUVertexFormat_Uint8x4, 0, 0 }, { WGPUVertexFormat_Uint8x4, 4, 1 } })
                  .colorFormat(colorFormat)
                  .depth(true, WGPUCompareFunction_Less)
-                 .cull(WGPUCullMode_Back)
+                 .cull(cullMode)
                  .multisample(sampleCount)
                  .build();
     _pipeline = p.pipeline;
@@ -440,13 +479,21 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         if (!camera) return;
         LightComponent* light = ctx->GetMainLight();
 
+        ResolvedView rv = ResolveView(renderer, camera);
         if (!_pipeline) {
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue q = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)renderer.sceneRT->GetNumSamples());
+            _initGPU(
+                dev,
+                q,
+                WGPUTextureFormat_RGBA16Float,
+                (uint32_t)rv.target->GetNumSamples(),
+                rv.flipCull ? WGPUCullMode_Front : WGPUCullMode_Back
+            );
         }
 
+        const Frustum viewFrustum(rv.proj * rv.view);
         struct DrawItem {
             Buffer* buf;
             glm::mat4 model;
@@ -458,6 +505,7 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
             if (!mesh || mesh->type != MeshType::VOXEL) continue;
             if (!mesh->UsesRenderMesh()) continue;
+            if (!ChunkInFrustum(viewFrustum, cmd.transform)) continue;
             Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
             if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
             draws.push_back({ buf, cmd.transform });
@@ -469,7 +517,7 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         glm::vec3 lightDir = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);
         glm::vec3 lightColor = light ? light->diffuse : glm::vec3(1.0f);
         glm::vec3 ambient = light ? light->ambient * 0.15f : glm::vec3(0.1f);
-        glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+        glm::mat4 viewProj = rv.proj * rv.view;
 
         struct {
             glm::mat4 viewProj;
@@ -479,14 +527,16 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             glm::vec4 ambient;
             glm::vec4 fogColor;
             glm::vec4 fogDensity;
+            glm::vec4 clipPlane;
         } frameUniforms{
             viewProj,
-            glm::vec4(camera->GetEyePosition(), 1.0f),
+            glm::vec4(rv.eye, 1.0f),
             glm::vec4(lightDir, 0.0f),
             glm::vec4(lightColor, 0.0f),
             glm::vec4(ambient, 0.0f),
             glm::vec4(0.55f, 0.65f, 0.75f, 1.0f),
             glm::vec4(0.003f, 0.0f, 0.0f, 0.0f),
+            rv.clipPlane,
         };
         wgpuQueueWriteBuffer(_gpuQueue, _frameUniformBuf, 0, &frameUniforms, sizeof(frameUniforms));
 
@@ -499,7 +549,7 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         wgpuQueueWriteBuffer(_gpuQueue, _drawUniformBuf, 0, drawData.data(), drawData.size());
 
         auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
-        auto* rt = static_cast<GPURenderTarget*>(renderer.sceneRT.get());
+        auto* rt = static_cast<GPURenderTarget*>(rv.target);
         rt->Begin(enc);
         wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _pipeline);
         for (size_t i = 0; i < draws.size(); ++i) {
@@ -521,17 +571,18 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     if (!camera) return;
     LightComponent* light = ctx->GetMainLight();
 
-    auto [width, height] = Window::Get()->GetPhysicalSize();
-    glViewport(0, 0, width, height);
+    ResolvedView rv = ResolveView(renderer, camera);
+    glViewport(0, 0, rv.target->GetWidth(), rv.target->GetHeight());
 
     // Render into the same target as ForwardOpaquePass (no clear — already done)
-    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(rv.target)->GetNativeFBOID());
 
     shader->Activate();
 
-    glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+    glm::mat4 viewProj = rv.proj * rv.view;
     shader->SetUniform("u_viewProj", viewProj);
-    shader->SetUniform("u_cameraPos", camera->GetEyePosition());
+    shader->SetUniform("u_cameraPos", rv.eye);
+    shader->SetUniform("u_clipPlane", rv.clipPlane);
 
     glm::vec3 lightDir = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);
     glm::vec3 lightColor = light ? light->diffuse : glm::vec3(1.0f);
@@ -547,19 +598,22 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
+    // Mirrored views reverse triangle winding, so cull front faces instead.
+    glCullFace(rv.flipCull ? GL_FRONT : GL_BACK);
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
     // Opt into wireframe explicitly; don't rely on GL_LINE leaking from
     // ForwardOpaquePass, since upstream passes now reset polygon mode themselves.
     glPolygonMode(GL_FRONT_AND_BACK, renderer.wireframeEnabled ? GL_LINE : GL_FILL);
 #endif
 
+    const Frustum viewFrustum(viewProj);
     for (const auto& sortable : queue) {
         const auto& cmd = sortable.cmd;
         Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
 
         if (!mesh || mesh->type != MeshType::VOXEL) continue;
         if (!mesh->UsesRenderMesh()) continue;
+        if (!ChunkInFrustum(viewFrustum, cmd.transform)) continue;
 
         shader->SetUniform("u_model", cmd.transform);
 
@@ -569,6 +623,7 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         }
     }
 
+    if (rv.flipCull) glCullFace(GL_BACK);// don't leak the mirrored cull state
     shader->Deactivate();
 }
 
@@ -582,6 +637,10 @@ WaterPass::~WaterPass() {
     if (_pipeline) wgpuRenderPipelineRelease(_pipeline);
     if (_frameUniformBuf) wgpuBufferRelease(_frameUniformBuf);
     if (_drawUniformBuf) wgpuBufferRelease(_drawUniformBuf);
+    if (_reflBG) wgpuBindGroupRelease(_reflBG);
+    if (_reflBGL) wgpuBindGroupLayoutRelease(_reflBGL);
+    if (_reflFallbackTex) wgpuTextureRelease(_reflFallbackTex);
+    if (_reflSampler) wgpuSamplerRelease(_reflSampler);
 }
 
 void WaterPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount) {
@@ -595,12 +654,14 @@ void WaterPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat c
     }
     // Depth-tested, no depth write — water is occluded by opaque geometry but
     // never occludes itself/other transparents (mirrors GL glDepthMask(GL_FALSE)).
+    // Group 1 holds the planar-reflection texture written by PlanarReflectionPass.
     auto p = GpuPipelineBuilder(device)
                  .wgsl(WATER_WGSL)
                  .bgl(
                      { gpuUniform(0, wgsl_stage::both, WATER_FRAME_UNIFORM_SIZE),
                        gpuDynUniform(1, wgsl_stage::both, WATER_DRAW_UNIFORM_SIZE) }
                  )
+                 .bgl({ gpuTexture(0), gpuSampler(1) })
                  .vertex(
                      56,
                      { { WGPUVertexFormat_Float32x3, 0, 0 },
@@ -614,6 +675,37 @@ void WaterPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat c
                  .build();
     _pipeline = p.pipeline;
     _uniformBGL = p.bgl(0);
+    _reflBGL = p.bgl(1);
+
+    {
+        WGPUSamplerDescriptor d = gpuSamplerDesc();
+        d.minFilter = WGPUFilterMode_Linear;
+        d.magFilter = WGPUFilterMode_Linear;
+        _reflSampler = wgpuDeviceCreateSampler(device, &d);
+    }
+    // 1x1 black fallback bound while PlanarReflectionPass is inactive; the
+    // per-draw reflection strength is zeroed then, so it's never visible —
+    // it only satisfies the pipeline's group-1 layout.
+    {
+        WGPUTextureDescriptor d{};
+        d.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+        d.dimension = WGPUTextureDimension_2D;
+        d.size = { 1, 1, 1 };
+        d.format = WGPUTextureFormat_RGBA16Float;
+        d.mipLevelCount = 1;
+        d.sampleCount = 1;
+        _reflFallbackTex = wgpuDeviceCreateTexture(device, &d);
+
+        const uint16_t black[4] = { 0, 0, 0, 0 };// f16 zero bits
+        WGPUTexelCopyTextureInfo dst{};
+        dst.texture = _reflFallbackTex;
+        dst.aspect = WGPUTextureAspect_All;
+        WGPUTexelCopyBufferLayout layout{};
+        layout.bytesPerRow = sizeof(black);
+        layout.rowsPerImage = 1;
+        WGPUExtent3D extent{ 1, 1, 1 };
+        wgpuQueueWriteTexture(queue, &dst, black, sizeof(black), &layout, &extent);
+    }
 }
 
 void WaterPass::_ensureDrawCapacity(uint32_t drawCount) {
@@ -654,11 +746,17 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
         if (!camera) return;
         LightComponent* light = ctx->GetMainLight();
 
+        // Auxiliary views (portal recursion) drive us via viewOverride: render
+        // into the aux RT, reflection off (it was computed for the main camera).
+        // The WGSL water is already depth-less, so no per-view depth is needed.
+        ResolvedView rv = ResolveView(renderer, camera);
+        bool auxView = renderer.viewOverride != nullptr;
+
         if (!_pipeline) {
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue q = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)renderer.sceneRT->GetNumSamples());
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)rv.target->GetNumSamples());
         }
 
         // Water params now live on WaterMaterial (mesh/material decoupling);
@@ -677,11 +775,21 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
             if (!mesh || mesh->type != MeshType::PRIM) continue;
             Material* mat = AssetManager::Get().ResolveMaterial(mesh->GetMaterial());
             if (!mat || mat->renderQueue != RenderQueue::Transparent) continue;
+            if (dynamic_cast<PortalMaterial*>(mat)) continue;// drawn by PortalSurfacePass
             if (!mesh->UsesRenderMesh()) continue;
             Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
             if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
             auto* wm = dynamic_cast<WaterMaterial*>(mat);
-            draws.push_back({ buf, cmd.transform, wm ? *wm : WaterMaterial{} });
+            WaterMaterial wd = wm ? *wm : WaterMaterial{};
+            if (!wm) {
+                // Reflection opt-in lives on the base Material; don't let the
+                // WaterMaterial fallback's default-on override a plain
+                // Material's choice.
+                wd.planarReflection = mat->planarReflection;
+                wd.reflectionStrength = mat->reflectionStrength;
+                wd.reflectionDistortion = mat->reflectionDistortion;
+            }
+            draws.push_back({ buf, cmd.transform, wd });
         }
         if (draws.empty()) return;
 
@@ -689,22 +797,41 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
 
         glm::vec3 lightDir = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);
         glm::vec3 lightColor = light ? light->diffuse : glm::vec3(1.0f);
-        glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
+        glm::mat4 viewProj = rv.proj * rv.view;
+
+        // Planar reflection RT, rendered earlier by PlanarReflectionPass. Off in
+        // aux views (that reflection is the main camera's).
+        auto* refl = renderer.GetPass<PlanarReflectionPass>();
+        bool reflActive = refl && refl->IsActive() && refl->GetReflectionRT() && !auxView;
+        glm::mat4 reflViewProj = reflActive ? refl->GetReflectionViewProj() : glm::mat4(1.0f);
 
         struct {
             glm::mat4 viewProj;
+            glm::mat4 reflViewProj;
             glm::vec4 cameraPos;
             glm::vec4 lightDir;
             glm::vec4 lightColor;
             glm::vec4 time;
         } frameUniforms{
             viewProj,
+            reflViewProj,
             glm::vec4(camera->GetEyePosition(), 1.0f),
             glm::vec4(lightDir, 0.0f),
             glm::vec4(lightColor, 0.0f),
             glm::vec4(renderer.frameTime, 0.0f, 0.0f, 0.0f),
         };
         wgpuQueueWriteBuffer(_gpuQueue, _frameUniformBuf, 0, &frameUniforms, sizeof(frameUniforms));
+
+        // Bind group 1: reflection RT color texture (or the 1x1 fallback).
+        // Rebuilt only when the underlying WGPUTexture changes (RT resize /
+        // active-state flip), mirroring ForwardOpaquePass's CachedTexBG.
+        WGPUTexture reflTex =
+            reflActive ? static_cast<GPURenderTarget*>(refl->GetReflectionRT())->GetNativeTexture() : _reflFallbackTex;
+        if (!_reflBG || _reflBGSource != reflTex) {
+            if (_reflBG) wgpuBindGroupRelease(_reflBG);
+            _reflBG = GpuBindGroupBuilder(_gpuDevice, _reflBGL).texture(0, reflTex).sampler(1, _reflSampler).build();
+            _reflBGSource = reflTex;
+        }
 
         // Fog color is no longer stored on WaterMaterial — read it live from
         // SkyboxPass::skyColor each frame, mirroring the GL path below.
@@ -718,20 +845,25 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
             std::memcpy(slot, &draws[i].model, sizeof(glm::mat4));
             glm::vec4 params0(wd.waterLine, wd.waveStrength, wd.waveSpeed, wd.waterFogDensity);
             glm::vec4 fogColor(skyFogColor, 0.0f);
+            glm::vec4 params1(
+                wd.reflectionStrength, wd.reflectionDistortion, (reflActive && wd.planarReflection) ? 1.0f : 0.0f, 0.0f
+            );
             std::memcpy(slot + 64, &params0, sizeof(glm::vec4));
             std::memcpy(slot + 80, &fogColor, sizeof(glm::vec4));
+            std::memcpy(slot + 96, &params1, sizeof(glm::vec4));
         }
         wgpuQueueWriteBuffer(_gpuQueue, _drawUniformBuf, 0, drawData.data(), drawData.size());
 
         auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
-        renderer.sceneRT->Begin(enc);
+        rv.target->Begin(enc);
         wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _pipeline);
+        wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 1, _reflBG, 0, nullptr);
         for (size_t i = 0; i < draws.size(); ++i) {
             uint32_t dynamicOffset = static_cast<uint32_t>(i * WATER_DRAW_SLOT_STRIDE);
             wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 0, _uniformBG, 1, &dynamicOffset);
             draws[i].buf->Draw(enc, PrimitiveTopology::Triangles);
         }
-        renderer.sceneRT->End();
+        rv.target->End();
         return;
     }
 #endif
@@ -745,27 +877,47 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
     if (!camera) return;
     LightComponent* light = ctx->GetMainLight();
 
-    auto [width, height] = Window::Get()->GetPhysicalSize();
-    glViewport(0, 0, width, height);
+    // Auxiliary views (portal recursion) drive us via viewOverride: render into
+    // the aux RT with reflection off (it was computed for the main camera). The
+    // main view still renders into msaaResolveRT (post-resolve, through bloom).
+    ResolvedView rv = ResolveView(renderer, camera);
+    bool auxView = renderer.viewOverride != nullptr;
+    RenderTarget* target = auxView ? rv.target : renderer.msaaResolveRT.get();
 
-    // Render into msaaResolveRT so water goes through bloom + tonemapping
-    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.msaaResolveRT.get())->GetNativeFBOID());
+    glViewport(0, 0, target->GetWidth(), target->GetHeight());
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(target)->GetNativeFBOID());
 
-    // WaterPass runs after MSAAResolvePass so the resolved depth is ready
+    // Beer-Lambert needs the opaque scene depth. Main view: the resolved depth.
+    // Aux view: the aux RT's own depth attachment, which desktop GL permits
+    // sampling read-only while the same target is bound (exactly what the main
+    // view does with msaaResolveRT). This gives portal water the same depth
+    // gradient as the main view instead of a flat fresnel fallback. GLES/WebGL
+    // forbid that feedback loop, so they keep the fresnel fallback there.
     GLuint depthTex = renderer.GetResolvedDepthTexture();
+    float useDepth = auxView ? 0.0f : 1.0f;
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
+    if (auxView) {
+        GLuint auxDepth = static_cast<GLuint>(rv.target->GetDepthTextureID());
+        if (auxDepth != 0) {
+            depthTex = auxDepth;
+            useDepth = 1.0f;
+        }
+    }
+#endif
 
     shader->Activate();
 
-    glm::mat4 proj = camera->GetProjectionMatrix();
-    glm::mat4 view = camera->GetViewMatrix();
+    glm::mat4 proj = rv.proj;
+    glm::mat4 view = rv.view;
     glm::mat4 viewProj = proj * view;
     shader->SetUniform("u_viewProj", viewProj);
-    shader->SetUniform("u_cameraPos", camera->GetEyePosition());
+    shader->SetUniform("u_cameraPos", rv.eye);
     shader->SetUniform("u_time", renderer.frameTime);
     shader->SetUniform("u_invProj", glm::inverse(proj));
     shader->SetUniform("u_invView", glm::inverse(view));
-    shader->SetUniform("u_screenSize", glm::vec2(static_cast<float>(width), static_cast<float>(height)));
+    shader->SetUniform("u_screenSize", glm::vec2((float)target->GetWidth(), (float)target->GetHeight()));
     shader->SetUniform("u_depthTexture", 1);
+    shader->SetUniform("u_useDepth", useDepth);
 
     glm::vec3 lightDir = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);
     glm::vec3 lightColor = light ? light->diffuse : glm::vec3(1.0f);
@@ -775,6 +927,18 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
     // VX ties terrain/water fog color to the skybox's sky gradient color every frame.
     auto* skybox = renderer.GetPass<SkyboxPass>();
     glm::vec3 skyFogColor = skybox ? skybox->skyColor : glm::vec3(0.686f, 0.933f, 0.933f);
+
+    // Planar reflection RT, rendered earlier by PlanarReflectionPass. Off in
+    // aux views: that reflection was computed for the main camera, so sampling
+    // it from a portal camera would show the wrong scene.
+    auto* refl = renderer.GetPass<PlanarReflectionPass>();
+    bool reflActive = refl && refl->IsActive() && refl->GetReflectionRT() && !auxView;
+    shader->SetUniform("u_reflectionTex", 2);
+    if (reflActive) {
+        shader->SetUniform("u_reflViewProj", refl->GetReflectionViewProj());
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(refl->GetReflectionRT()->GetTextureID()));
+    }
 
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, depthTex);
@@ -795,6 +959,7 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
 
         Material* mat = AssetManager::Get().ResolveMaterial(mesh->GetMaterial());
         if (!mat || mat->renderQueue != RenderQueue::Transparent) continue;
+        if (dynamic_cast<PortalMaterial*>(mat)) continue;// drawn by PortalSurfacePass
 
         auto* wm = dynamic_cast<WaterMaterial*>(AssetManager::Get().ResolveMaterial(mesh->GetMaterial()));
         shader->SetUniform("u_waterLine", wm ? wm->waterLine : 32.0f);
@@ -805,6 +970,11 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
         shader->SetUniform("u_deepColor", wm ? wm->deepColor : glm::vec3{ 0.05f, 0.1f, 0.25f });
         shader->SetUniform("u_shallowColor", wm ? wm->shallowColor : glm::vec3{ 0.686f, 0.933f, 0.933f });
         shader->SetUniform("u_beerCoef", wm ? wm->beerCoef : 0.095f);
+        // Reflection opt-in lives on the base Material, so a plain Material
+        // water surface can still request it.
+        bool wantsRefl = reflActive && mat->planarReflection;
+        shader->SetUniform("u_reflStrength", wantsRefl ? mat->reflectionStrength : 0.0f);
+        shader->SetUniform("u_reflDistortion", mat->reflectionDistortion);
         shader->SetUniform("u_model", cmd.transform);
 
         glBindVertexArray(mesh->vao);
@@ -818,41 +988,163 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
 }
 
 // ============================================================================
+//  PlanarReflectionPass
+// ============================================================================
+PlanarReflectionPass::PlanarReflectionPass()
+  : _forward(std::make_unique<ForwardOpaquePass>()), _skybox(std::make_unique<SkyboxPass>()),
+    _sun(std::make_unique<SunPass>()), _voxel(std::make_unique<VoxelChunkPass>()),
+    _worldCanvas(std::make_unique<WorldCanvasPass>()) {
+}
+
+PlanarReflectionPass::~PlanarReflectionPass() = default;
+
+void PlanarReflectionPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
+    _active = false;
+
+    CameraComponent* camera = ctx->GetMainCamera();
+    if (!camera) return;
+
+    // Find the first draw whose material opts in; its transform defines the
+    // mirror plane (position + up axis). Water sits in the transparent queue,
+    // so scan that first; a future opaque mirror is found via the opaque queue.
+    glm::mat4 reflTransform(1.0f);
+    auto scan = [&](const auto& queue) {
+        for (const auto& s : queue) {
+            Mesh* mesh = AssetManager::Get().GetMeshPtr(s.cmd.mesh);
+            if (!mesh) continue;
+            Material* mat = AssetManager::Get().ResolveMaterial(mesh->GetMaterial());
+            if (mat && mat->planarReflection) {
+                reflTransform = s.cmd.transform;
+                return true;
+            }
+        }
+        return false;
+    };
+    if (!scan(renderer.GetTransparentQueue()) && !scan(renderer.GetOpaqueQueue())) return;
+
+    glm::vec3 planeN = glm::normalize(glm::vec3(reflTransform[1]));
+    glm::vec3 planeP = glm::vec3(reflTransform[3]);
+    float planeD = -glm::dot(planeN, planeP);
+
+    glm::vec3 eye = camera->GetEyePosition();
+    float eyeDist = glm::dot(planeN, eye) + planeD;
+    if (eyeDist <= 0.0f) return;// camera behind/on the plane — nothing to mirror
+
+    // (Re)create the reflection RT at a fraction of the window size. HDR to
+    // match sceneRT's shading range.
+    // Sample count: single-sampled on GL (a desktop MSAA texture can't be read
+    // through a plain sampler2D, and WebGL2 MSAA RTs can't be sampled at all).
+    // On WebGPU it matches sceneRT's sample count instead — an MSAA RT resolves
+    // to a sampleable single-sample texture, and matching keeps the shared
+    // GPUCanvasPass (WorldCanvasPass) on one pipeline sample count across the
+    // reflection and main views.
+    int rtSamples = (GfxFactory::GetBackend() == GfxBackend::WebGPU) ? renderer.sceneRT->GetNumSamples() : 1;
+    auto [pw, ph] = Window::Get()->GetPhysicalSize();
+    int rw = std::max(1, static_cast<int>(static_cast<float>(pw) * resolutionScale));
+    int rh = std::max(1, static_cast<int>(static_cast<float>(ph) * resolutionScale));
+    if (!_rt) {
+        RenderTarget::Props p;
+        p.width = rw;
+        p.height = rh;
+        p.withDepth = true;
+        p.hdr = true;
+        p.numSamples = rtSamples;
+        _rt = GfxFactory::CreateRenderTarget(p);
+    } else if (_rt->GetWidth() != rw || _rt->GetHeight() != rh) {
+        _rt->Resize(rw, rh);
+    }
+    if (!_rt || !_rt->IsValid()) return;
+
+    // Householder reflection about the plane: linear part I - 2*n*n^T,
+    // translation -2*d*n. view * R renders the world as seen by the eye
+    // mirrored to the other side of the plane.
+    glm::mat4 R(1.0f);
+    R[0][0] = 1.0f - 2.0f * planeN.x * planeN.x;
+    R[0][1] = -2.0f * planeN.x * planeN.y;
+    R[0][2] = -2.0f * planeN.x * planeN.z;
+    R[1][0] = -2.0f * planeN.y * planeN.x;
+    R[1][1] = 1.0f - 2.0f * planeN.y * planeN.y;
+    R[1][2] = -2.0f * planeN.y * planeN.z;
+    R[2][0] = -2.0f * planeN.z * planeN.x;
+    R[2][1] = -2.0f * planeN.z * planeN.y;
+    R[2][2] = 1.0f - 2.0f * planeN.z * planeN.z;
+    R[3][0] = -2.0f * planeD * planeN.x;
+    R[3][1] = -2.0f * planeD * planeN.y;
+    R[3][2] = -2.0f * planeD * planeN.z;
+
+    RenderViewOverride ov;
+    ov.view = camera->GetViewMatrix() * R;
+    ov.proj = camera->GetProjectionMatrix();
+    ov.eyePos = eye - 2.0f * eyeDist * planeN;
+    ov.target = _rt.get();
+    // Keep only geometry on the reflective side. The slack keeps fragments up
+    // to 0.05 below the plane so wave displacement doesn't open seams at the
+    // shoreline.
+    ov.clipPlane = glm::vec4(planeN, planeD + 0.05f);
+    ov.flipCull = true;
+    _reflViewProj = ov.proj * ov.view;
+
+    // The private sub-pass instances mirror the graph instances' tunables.
+    auto* mainSky = renderer.GetPass<SkyboxPass>();
+    if (mainSky) {
+        _skybox->skyColor = mainSky->skyColor;
+        _skybox->horizonColor = mainSky->horizonColor;
+    }
+    if (auto* mainVoxel = renderer.GetPass<VoxelChunkPass>()) _voxel->paletteIndex = mainVoxel->paletteIndex;
+
+    // Mirror the main render graph's world order so the reflection contains the
+    // same content: opaque terrain/meshes first (ForwardOpaquePass also clears
+    // the RT), then sky/sun/voxels, then world sprites. Anything that reads
+    // renderer.viewOverride draws from the mirrored camera into _rt.
+    renderer.viewOverride = &ov;
+    _rt->Clear(glm::vec4(_skybox->skyColor, 1.0f));
+    _forward->Execute(ctx, renderer, enc);
+    _skybox->Execute(ctx, renderer, enc);
+    _sun->Execute(ctx, renderer, enc);
+    _voxel->Execute(ctx, renderer, enc);
+    _worldCanvas->Execute(ctx, renderer, enc);
+    renderer.viewOverride = nullptr;
+
+    _active = true;
+}
+
+// ============================================================================
 //  BloomPass  (pyramid downsample + upsample + ACES composite)
 // ============================================================================
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 void BloomPass::_destroyGPUTextures() {
-    if (_blurHBG) {
-        wgpuBindGroupRelease(_blurHBG);
-        _blurHBG = nullptr;
+    // Bind groups first — they reference the mip views / snapshot below.
+    if (_threshBG) {
+        wgpuBindGroupRelease(_threshBG);
+        _threshBG = nullptr;
     }
-    if (_blurVBG) {
-        wgpuBindGroupRelease(_blurVBG);
-        _blurVBG = nullptr;
+    for (int i = 0; i < MIP_LEVELS; ++i) {
+        if (_downBG[i]) {
+            wgpuBindGroupRelease(_downBG[i]);
+            _downBG[i] = nullptr;
+        }
+        if (_upBG[i]) {
+            wgpuBindGroupRelease(_upBG[i]);
+            _upBG[i] = nullptr;
+        }
     }
     if (_compBG) {
         wgpuBindGroupRelease(_compBG);
         _compBG = nullptr;
     }
-    if (_brightAView) {
-        wgpuTextureViewRelease(_brightAView);
-        _brightAView = nullptr;
-    }
-    if (_brightBView) {
-        wgpuTextureViewRelease(_brightBView);
-        _brightBView = nullptr;
+    for (int i = 0; i < MIP_LEVELS; ++i) {
+        if (_gpuMips[i].view) {
+            wgpuTextureViewRelease(_gpuMips[i].view);
+            _gpuMips[i].view = nullptr;
+        }
+        if (_gpuMips[i].tex) {
+            wgpuTextureRelease(_gpuMips[i].tex);
+            _gpuMips[i].tex = nullptr;
+        }
     }
     if (_snapshotView) {
         wgpuTextureViewRelease(_snapshotView);
         _snapshotView = nullptr;
-    }
-    if (_brightA) {
-        wgpuTextureRelease(_brightA);
-        _brightA = nullptr;
-    }
-    if (_brightB) {
-        wgpuTextureRelease(_brightB);
-        _brightB = nullptr;
     }
     if (_snapshotTex) {
         wgpuTextureRelease(_snapshotTex);
@@ -878,11 +1170,16 @@ void BloomPass::_initGPU(WGPUDevice device, WGPUQueue queue, uint32_t sceneSampl
         return wgpuDeviceCreateBuffer(device, &d);
     };
     _threshUniformBuf = makeUniformBuf(16);
-    _blurHUniformBuf = makeUniformBuf(16);
-    _blurVUniformBuf = makeUniformBuf(16);
     _compUniformBuf = makeUniformBuf(16);
+    // One texelSize uniform per down/up step (indices 1..MIP_LEVELS-1); content
+    // is resolution-dependent and written in _resizeGPU, not per frame.
+    for (int i = 1; i < MIP_LEVELS; ++i) {
+        _downUniformBuf[i] = makeUniformBuf(16);
+        _upUniformBuf[i] = makeUniformBuf(16);
+    }
 
-    // Thresh and blur share the same BGL shape: 1 uniform + 1 texture + 1 sampler.
+    // Thresh, downsample and upsample all share the same BGL shape:
+    // 1 uniform + 1 texture + 1 sampler.
     std::vector<GpuBGLEntry> singleTexBGL = {
         gpuUniform(0, wgsl_stage::frag, 16),
         gpuTexture(1),
@@ -899,18 +1196,33 @@ void BloomPass::_initGPU(WGPUDevice device, WGPUQueue queue, uint32_t sceneSampl
     }
     {
         auto p = GpuPipelineBuilder(device)
-                     .wgsl(BLOOM_BLUR_WGSL)
+                     .wgsl(BLOOM_DOWN_WGSL)
                      .bgl(singleTexBGL)
                      .colorFormat(WGPUTextureFormat_RGBA16Float)
                      .build();
-        _blurPipeline = p.pipeline;
-        _blurBGL = p.bgl(0);
+        _downPipeline = p.pipeline;
+        _downBGL = p.bgl(0);
+    }
+    {
+        // Additive blend (one/one) so the upsample accumulates onto the
+        // destination mip's existing downsampled content — the WebGPU
+        // equivalent of GL's upsample glBlendFunc(GL_ONE, GL_ONE).
+        // Bloom's up shader outputs alpha 1.0, so Blend::Additive (src.a·src +
+        // 1·dst) is exactly the one/one accumulation GL uses.
+        auto p = GpuPipelineBuilder(device)
+                     .wgsl(BLOOM_UP_WGSL)
+                     .bgl(singleTexBGL)
+                     .colorFormat(WGPUTextureFormat_RGBA16Float)
+                     .blend(GpuPipelineBuilder::Blend::Additive)
+                     .build();
+        _upPipeline = p.pipeline;
+        _upBGL = p.bgl(0);
     }
     {
         // Composite renders back into sceneRT, whose pass carries a depth
         // attachment — declare a matching depth-transparent state (write=false,
-        // Always) so the attachment states are compatible. Threshold/blur
-        // stay depthless: they target the standalone half-res bright textures.
+        // Always) so the attachment states are compatible. Threshold/down/up
+        // stay depthless: they target the standalone mip textures.
         auto p = GpuPipelineBuilder(device)
                      .wgsl(BLOOM_COMP_WGSL)
                      .bgl({ gpuUniform(0, wgsl_stage::frag, 16), gpuTexture(1), gpuTexture(2), gpuSampler(3) })
@@ -924,14 +1236,12 @@ void BloomPass::_initGPU(WGPUDevice device, WGPUQueue queue, uint32_t sceneSampl
 }
 
 void BloomPass::_resizeGPU(int width, int height) {
-    if (width == _gpuWidth && height == _gpuHeight && _brightA) return;
+    if (width == _gpuWidth && height == _gpuHeight && _gpuMips[0].tex) return;
 
     _destroyGPUTextures();
 
     _gpuWidth = width;
     _gpuHeight = height;
-    _gpuHalfW = std::max(1, width / 2);
-    _gpuHalfH = std::max(1, height / 2);
 
     auto makeTex = [this](int w, int h, WGPUTextureUsage usage) {
         WGPUTextureDescriptor d{};
@@ -943,23 +1253,33 @@ void BloomPass::_resizeGPU(int width, int height) {
         d.sampleCount = 1;
         return wgpuDeviceCreateTexture(_gpuDevice, &d);
     };
-    _brightA = makeTex(_gpuHalfW, _gpuHalfH, WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding);
-    _brightB = makeTex(_gpuHalfW, _gpuHalfH, WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding);
-    _snapshotTex = makeTex(_gpuWidth, _gpuHeight, WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst);
 
-    _brightAView = wgpuTextureCreateView(_brightA, nullptr);
-    _brightBView = wgpuTextureCreateView(_brightB, nullptr);
+    // Mip chain: level 0 is half-res, each subsequent level halves again —
+    // the exact sizing of GL's InitMips loop.
+    int w = width, h = height;
+    for (int i = 0; i < MIP_LEVELS; ++i) {
+        w = std::max(1, w / 2);
+        h = std::max(1, h / 2);
+        _gpuMips[i].w = w;
+        _gpuMips[i].h = h;
+        _gpuMips[i].tex = makeTex(w, h, WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding);
+        _gpuMips[i].view = wgpuTextureCreateView(_gpuMips[i].tex, nullptr);
+    }
+
+    _snapshotTex = makeTex(width, height, WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst);
     _snapshotView = wgpuTextureCreateView(_snapshotTex, nullptr);
 
-    // Direction+texelSize are fixed for this resolution — written once here,
-    // not every frame (see header comment).
-    struct BlurUniforms {
-        float dx, dy, tx, ty;
+    // texelSize per step is fixed for this resolution — written once here, not
+    // every frame. Down step i samples mip[i-1]; up step i samples mip[i].
+    struct StepUniforms {
+        float tx, ty, filterRadius, pad;
     };
-    BlurUniforms hU{ 1.0f, 0.0f, 1.0f / (float)_gpuHalfW, 1.0f / (float)_gpuHalfH };
-    BlurUniforms vU{ 0.0f, 1.0f, 1.0f / (float)_gpuHalfW, 1.0f / (float)_gpuHalfH };
-    wgpuQueueWriteBuffer(_gpuQueue, _blurHUniformBuf, 0, &hU, sizeof(hU));
-    wgpuQueueWriteBuffer(_gpuQueue, _blurVUniformBuf, 0, &vU, sizeof(vU));
+    for (int i = 1; i < MIP_LEVELS; ++i) {
+        StepUniforms du{ 1.0f / (float)_gpuMips[i - 1].w, 1.0f / (float)_gpuMips[i - 1].h, 0.0f, 0.0f };
+        wgpuQueueWriteBuffer(_gpuQueue, _downUniformBuf[i], 0, &du, sizeof(du));
+        StepUniforms uu{ 1.0f / (float)_gpuMips[i].w, 1.0f / (float)_gpuMips[i].h, 1.0f, 0.0f };
+        wgpuQueueWriteBuffer(_gpuQueue, _upUniformBuf[i], 0, &uu, sizeof(uu));
+    }
 
     auto makeSingleTexBG = [this](WGPUBindGroupLayout bgl, WGPUBuffer uniformBuf, WGPUTextureView view) {
         return GpuBindGroupBuilder(_gpuDevice, bgl)
@@ -968,15 +1288,17 @@ void BloomPass::_resizeGPU(int width, int height) {
             .sampler(2, _sampler)
             .build();
     };
-    _blurHBG = makeSingleTexBG(_blurBGL, _blurHUniformBuf, _brightAView);// thresholded -> blurred-H
-    _blurVBG = makeSingleTexBG(
-        _blurBGL, _blurVUniformBuf, _brightBView
-    );// blurred-H   -> blurred-HV (final, lands in _brightA)
+    // Threshold samples the scene snapshot -> mip[0].
+    _threshBG = makeSingleTexBG(_threshBGL, _threshUniformBuf, _snapshotView);
+    for (int i = 1; i < MIP_LEVELS; ++i) {
+        _downBG[i] = makeSingleTexBG(_downBGL, _downUniformBuf[i], _gpuMips[i - 1].view);// mip[i-1] -> mip[i]
+        _upBG[i] = makeSingleTexBG(_upBGL, _upUniformBuf[i], _gpuMips[i].view);// mip[i]   -> mip[i-1]
+    }
 
     _compBG = GpuBindGroupBuilder(_gpuDevice, _compBGL)
                   .buffer(0, _compUniformBuf, 16)
                   .textureView(1, _snapshotView)
-                  .textureView(2, _brightAView)// final blurred bloom (H then V both land here)
+                  .textureView(2, _gpuMips[0].view)// final accumulated bloom lands in mip[0]
                   .sampler(3, _sampler)
                   .build();
 }
@@ -993,14 +1315,18 @@ BloomPass::~BloomPass() {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     _destroyGPUTextures();
     if (_threshUniformBuf) wgpuBufferRelease(_threshUniformBuf);
-    if (_blurHUniformBuf) wgpuBufferRelease(_blurHUniformBuf);
-    if (_blurVUniformBuf) wgpuBufferRelease(_blurVUniformBuf);
     if (_compUniformBuf) wgpuBufferRelease(_compUniformBuf);
+    for (int i = 0; i < MIP_LEVELS; ++i) {
+        if (_downUniformBuf[i]) wgpuBufferRelease(_downUniformBuf[i]);
+        if (_upUniformBuf[i]) wgpuBufferRelease(_upUniformBuf[i]);
+    }
     if (_threshPipeline) wgpuRenderPipelineRelease(_threshPipeline);
-    if (_blurPipeline) wgpuRenderPipelineRelease(_blurPipeline);
+    if (_downPipeline) wgpuRenderPipelineRelease(_downPipeline);
+    if (_upPipeline) wgpuRenderPipelineRelease(_upPipeline);
     if (_compPipeline) wgpuRenderPipelineRelease(_compPipeline);
     if (_threshBGL) wgpuBindGroupLayoutRelease(_threshBGL);
-    if (_blurBGL) wgpuBindGroupLayoutRelease(_blurBGL);
+    if (_downBGL) wgpuBindGroupLayoutRelease(_downBGL);
+    if (_upBGL) wgpuBindGroupLayoutRelease(_upBGL);
     if (_compBGL) wgpuBindGroupLayoutRelease(_compBGL);
     if (_sampler) wgpuSamplerRelease(_sampler);
 #endif
@@ -1096,46 +1422,44 @@ void BloomPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
         } compU{ bloomStrength, 0.0f, 0.0f, 0.0f };
         wgpuQueueWriteBuffer(_gpuQueue, _compUniformBuf, 0, &compU, sizeof(compU));
 
-        // Threshold pass's source bind group reads sceneRT's live texture, so
-        // it is rebuilt fresh each frame (uncached) rather than stored as a
-        // class member.
-        WGPUBindGroup threshBG = GpuBindGroupBuilder(_gpuDevice, _threshBGL)
-                                     .buffer(0, _threshUniformBuf, 16)
-                                     .texture(1, sceneTex)
-                                     .sampler(2, _sampler)
-                                     .build();
+        // loadOp=Clear for threshold/downsample (they own their whole target);
+        // loadOp=Load for the additive upsample so the destination mip's
+        // downsampled content is preserved and accumulated onto.
+        auto runFullscreenPass =
+            [&](WGPUTextureView target, WGPURenderPipeline pipeline, WGPUBindGroup bg, WGPULoadOp loadOp) {
+                WGPURenderPassColorAttachment ca{};
+                ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;// required for non-3D attachments
+                ca.view = target;
+                ca.loadOp = loadOp;
+                ca.storeOp = WGPUStoreOp_Store;
+                ca.clearValue = { 0.0, 0.0, 0.0, 1.0 };
+                WGPURenderPassDescriptor rpDesc{};
+                rpDesc.colorAttachmentCount = 1;
+                rpDesc.colorAttachments = &ca;
+                WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &rpDesc);
+                wgpuRenderPassEncoderSetPipeline(pass, pipeline);
+                wgpuRenderPassEncoderSetBindGroup(pass, 0, bg, 0, nullptr);
+                wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+                wgpuRenderPassEncoderEnd(pass);
+                wgpuRenderPassEncoderRelease(pass);
+            };
 
-        auto runFullscreenPass = [&](WGPUTextureView target, WGPURenderPipeline pipeline, WGPUBindGroup bg) {
-            WGPURenderPassColorAttachment ca{};
-            ca.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;// required for non-3D attachments
-            ca.view = target;
-            ca.loadOp = WGPULoadOp_Clear;
-            ca.storeOp = WGPUStoreOp_Store;
-            ca.clearValue = { 0.0, 0.0, 0.0, 1.0 };
-            WGPURenderPassDescriptor rpDesc{};
-            rpDesc.colorAttachmentCount = 1;
-            rpDesc.colorAttachments = &ca;
-            WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &rpDesc);
-            wgpuRenderPassEncoderSetPipeline(pass, pipeline);
-            wgpuRenderPassEncoderSetBindGroup(pass, 0, bg, 0, nullptr);
-            wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
-            wgpuRenderPassEncoderEnd(pass);
-            wgpuRenderPassEncoderRelease(pass);
-        };
+        // 1. Threshold: snapshot -> mip[0].
+        runFullscreenPass(_gpuMips[0].view, _threshPipeline, _threshBG, WGPULoadOp_Clear);
+        // 2. Downsample chain: mip[i-1] -> mip[i].
+        for (int i = 1; i < MIP_LEVELS; ++i)
+            runFullscreenPass(_gpuMips[i].view, _downPipeline, _downBG[i], WGPULoadOp_Clear);
+        // 3. Upsample chain (additive): mip[i] -> mip[i-1], accumulating.
+        for (int i = MIP_LEVELS - 1; i >= 1; --i)
+            runFullscreenPass(_gpuMips[i - 1].view, _upPipeline, _upBG[i], WGPULoadOp_Load);
 
-        runFullscreenPass(_brightAView, _threshPipeline, threshBG);// threshold -> _brightA
-        runFullscreenPass(_brightBView, _blurPipeline, _blurHBG);// blur H: _brightA -> _brightB
-        runFullscreenPass(_brightAView, _blurPipeline, _blurVBG);// blur V: _brightB -> _brightA (final)
-
-        // Composite: snapshot + final blurred bloom -> sceneRT (loadOp=Load,
+        // 4. Composite: snapshot + final bloom (mip[0]) -> sceneRT (loadOp=Load,
         // since earlier passes this frame have already drawn into sceneRT).
         renderer.sceneRT->Begin(enc);
         wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _compPipeline);
         wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 0, _compBG, 0, nullptr);
         wgpuRenderPassEncoderDraw(gpuEnc->pass, 3, 1, 0, 0);
         renderer.sceneRT->End();
-
-        wgpuBindGroupRelease(threshBG);
         return;
     }
 #endif

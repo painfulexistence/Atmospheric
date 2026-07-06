@@ -219,7 +219,7 @@ void GfxFactory::Shutdown() {
 }
 
 // ── Cross-backend texture upload ─────────────────────────────────────────────
-uint32_t GfxFactory::UploadTexture2D(const uint8_t* pixels, int w, int h, TextureFilter filter) {
+TextureHandle GfxFactory::UploadTexture2D(const uint8_t* pixels, int w, int h, TextureFilter filter) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (_backend == GfxBackend::WebGPU && _wgpuDevice) {
         uint32_t id = _nextTexID++;
@@ -243,7 +243,7 @@ uint32_t GfxFactory::UploadTexture2D(const uint8_t* pixels, int w, int h, Textur
         wgpuQueueWriteTexture(_wgpuQueue, &dst, pixels, static_cast<size_t>(w) * h * 4, &layout, &extent);
 
         _gpuTextures[id] = { tex, filter };
-        return id;
+        return TextureHandle{ id };
     }
 #endif
     // OpenGL / WebGL path — filter is baked into the texture object.
@@ -257,21 +257,23 @@ uint32_t GfxFactory::UploadTexture2D(const uint8_t* pixels, int w, int h, Textur
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
     glBindTexture(GL_TEXTURE_2D, 0);
-    return static_cast<uint32_t>(texID);
+    return TextureHandle{ static_cast<uint32_t>(texID) };
 }
 
-TextureFilter GfxFactory::GetTextureFilter(uint32_t id) {
+TextureFilter GfxFactory::GetTextureFilter(TextureHandle id) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    auto it = _gpuTextures.find(id);
+    auto it = _gpuTextures.find(id.id);
     if (it != _gpuTextures.end()) return it->second.filter;
+#else
+    (void)id;
 #endif
     return TextureFilter::Linear;
 }
 
-void GfxFactory::UpdateTexture2D(uint32_t id, const uint8_t* pixels, int w, int h) {
+void GfxFactory::UpdateTexture2D(TextureHandle id, const uint8_t* pixels, int w, int h) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (_backend == GfxBackend::WebGPU && _wgpuDevice) {
-        auto it = _gpuTextures.find(id);
+        auto it = _gpuTextures.find(id.id);
         if (it == _gpuTextures.end()) return;
 
         WGPUTexture tex = it->second.tex;
@@ -308,15 +310,15 @@ void GfxFactory::UpdateTexture2D(uint32_t id, const uint8_t* pixels, int w, int 
     }
 #endif
     // OpenGL / WebGL path
-    auto texID = static_cast<GLuint>(id);
+    auto texID = static_cast<GLuint>(id.id);
     glBindTexture(GL_TEXTURE_2D, texID);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-WGPUTexture GfxFactory::GetWGPUTexture(uint32_t id) {
-    auto it = _gpuTextures.find(id);
+WGPUTexture GfxFactory::GetWGPUTexture(TextureHandle id) {
+    auto it = _gpuTextures.find(id.id);
     return (it != _gpuTextures.end()) ? it->second.tex : nullptr;
 }
 
@@ -358,16 +360,16 @@ static WGPUTexture CreateR16FTexture(WGPUDevice device, WGPUQueue queue, const f
     return tex;
 }
 
-uint32_t GfxFactory::UploadTextureR16F(const float* texels, int w, int h) {
-    if (!_wgpuDevice) return 0;
+TextureHandle GfxFactory::UploadTextureR16F(const float* texels, int w, int h) {
+    if (!_wgpuDevice) return {};
     uint32_t id = _nextTexID++;
     _gpuTextures[id] = { CreateR16FTexture(_wgpuDevice, _wgpuQueue, texels, w, h), TextureFilter::Linear };
-    return id;
+    return TextureHandle{ id };
 }
 
-void GfxFactory::UpdateTextureR16F(uint32_t id, const float* texels, int w, int h) {
+void GfxFactory::UpdateTextureR16F(TextureHandle id, const float* texels, int w, int h) {
     if (!_wgpuDevice) return;
-    auto it = _gpuTextures.find(id);
+    auto it = _gpuTextures.find(id.id);
     if (it == _gpuTextures.end()) return;
 
     WGPUTexture tex = it->second.tex;
@@ -394,10 +396,10 @@ void GfxFactory::UpdateTextureR16F(uint32_t id, const float* texels, int w, int 
     wgpuQueueWriteTexture(_wgpuQueue, &dst, halves.data(), halves.size() * 2, &layout, &extent);
 }
 
-uint32_t GfxFactory::UploadCompressedTexture2D(
+TextureHandle GfxFactory::UploadCompressedTexture2D(
     TextureCompressionFormat format, const uint8_t* data, size_t dataSize, int w, int h
 ) {
-    if (format == TextureCompressionFormat::None || !_wgpuDevice) return 0;
+    if (format == TextureCompressionFormat::None || !_wgpuDevice) return {};
 
     WGPUTextureFormat wgpuFormat;
     switch (format) {
@@ -411,7 +413,7 @@ uint32_t GfxFactory::UploadCompressedTexture2D(
         wgpuFormat = WGPUTextureFormat_ASTC4x4Unorm;
         break;
     default:
-        return 0;
+        return {};
     }
 
     uint32_t id = _nextTexID++;
@@ -439,14 +441,14 @@ uint32_t GfxFactory::UploadCompressedTexture2D(
 
     // Compressed textures are photographic/material maps → Linear.
     _gpuTextures[id] = { tex, TextureFilter::Linear };
-    return id;
+    return TextureHandle{ id };
 }
 #endif
 
-void GfxFactory::ReleaseTexture(uint32_t id) {
+void GfxFactory::ReleaseTexture(TextureHandle id) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (_backend == GfxBackend::WebGPU) {
-        auto it = _gpuTextures.find(id);
+        auto it = _gpuTextures.find(id.id);
         if (it != _gpuTextures.end()) {
             wgpuTextureRelease(it->second.tex);
             _gpuTextures.erase(it);
@@ -454,7 +456,7 @@ void GfxFactory::ReleaseTexture(uint32_t id) {
         return;
     }
 #endif
-    auto texID = static_cast<GLuint>(id);
+    auto texID = static_cast<GLuint>(id.id);
     glDeleteTextures(1, &texID);
 }
 

@@ -109,6 +109,50 @@ Mesh* MeshBuilder::CreatePlane(float width, float height) {
     return plane;
 }
 
+Mesh* MeshBuilder::CreateDisc(float radius, int segments) {
+    if (segments < 3) segments = 3;
+    constexpr float TWO_PI = 6.28318530718f;
+
+    std::vector<Vertex> verts;
+    verts.reserve(segments + 1);
+    // Center first, then the rim ring. Concentric UVs: rim distance in the
+    // shader is length(uv - 0.5) * 2 (0 center, 1 at the edge).
+    verts.emplace_back(glm::vec3(0.0f), glm::vec2(0.5f, 0.5f), glm::vec3(0.0f, 0.0f, 1.0f));
+    for (int i = 0; i < segments; ++i) {
+        float a = static_cast<float>(i) / static_cast<float>(segments) * TWO_PI;
+        float c = std::cos(a), s = std::sin(a);
+        verts.emplace_back(
+            glm::vec3(c * radius, s * radius, 0.0f),
+            glm::vec2(0.5f + 0.5f * c, 0.5f + 0.5f * s),
+            glm::vec3(0.0f, 0.0f, 1.0f)
+        );
+    }
+
+    // Fan winding CCW as seen from +Z (the portal's facing side).
+    std::vector<uint16_t> tris;
+    tris.reserve(static_cast<size_t>(segments) * 3);
+    for (int i = 0; i < segments; ++i) {
+        tris.push_back(0);
+        tris.push_back(static_cast<uint16_t>(1 + i));
+        tris.push_back(static_cast<uint16_t>(1 + (i + 1) % segments));
+    }
+    CalculateNormalsAndTangents(verts, tris);
+
+    auto disc = new Mesh(MeshType::PRIM);
+    disc->Initialize(verts, tris);
+    disc->SetBoundingBox(
+        { { glm::vec3(radius, radius, 0.01f),
+            glm::vec3(-radius, radius, 0.01f),
+            glm::vec3(-radius, -radius, 0.01f),
+            glm::vec3(radius, -radius, 0.01f),
+            glm::vec3(radius, radius, -0.01f),
+            glm::vec3(-radius, radius, -0.01f),
+            glm::vec3(-radius, -radius, -0.01f),
+            glm::vec3(radius, -radius, -0.01f) } }
+    );
+    return disc;
+}
+
 Mesh* MeshBuilder::CreateSphere(const float& radius, const int& division) {
     float delta = static_cast<float>(PI) / static_cast<float>(division);
 

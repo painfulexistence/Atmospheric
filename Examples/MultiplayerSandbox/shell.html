@@ -83,7 +83,11 @@
 
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* ── Lobby overlay ────────────────────────────────────────── */
+        /* ── Lobby overlay ──────────────────────────────────────────
+           Fills the whole #stage. Content is fixed-size; tall panels
+           (host/join) scroll vertically instead of clipping — flex-start
+           + overflow-y: auto keeps the header visible on narrow iframes
+           without any JS-driven sizing. */
         #lobby {
             display: none;
             position: absolute;
@@ -93,8 +97,12 @@
             z-index: 200;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
             color: #f3f4f6;
+            overflow-x: hidden;
+            overflow-y: auto;
+            box-sizing: border-box;
+            padding: 24px;
         }
 
         #lobby h1 {
@@ -221,7 +229,12 @@
 
         /* ── On-screen touch controls (mobile-browser demo) ────────────────
            Buttons synthesize the same keyboard events the game already reads,
-           so no engine-side input changes are needed. See the script below. */
+           so no engine-side input changes are needed. See the script below.
+           Hidden on devices with a fine hover-capable pointer (desktops with
+           a mouse), shown on touch/coarse-pointer devices (phones, tablets). */
+        @media (hover: hover) and (pointer: fine) {
+            #touch-controls { display: none !important; }
+        }
         #touch-controls {
             flex: 0 0 auto;
             display: flex;
@@ -899,6 +912,7 @@
             window.addEventListener('blur', function () { release(); });
         });
     })();
+
     </script>
     {{{ SCRIPT }}}
 </body>

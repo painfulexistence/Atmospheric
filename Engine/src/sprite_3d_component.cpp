@@ -443,7 +443,9 @@ void Sprite3DComponent::Draw(BatchRenderer2D* renderer) {
     glm::mat4 transform;
 
     if (_billboardMode != BillboardMode::None && camera) {
-        glm::vec3 cameraPos = camera->GetEyePosition();
+        // Active eye = mirrored camera while rendering the reflection RT, so
+        // billboards face correctly there too (not just the main view).
+        glm::vec3 cameraPos = graphics->GetActiveEyePosition();
         transform = CalculateBillboardMatrix(pos, cameraPos);
     } else {
         glm::vec3 rot = gameObject->GetRotation();

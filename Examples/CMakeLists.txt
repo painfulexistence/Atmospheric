@@ -21,6 +21,10 @@ add_subdirectory(TerrainStreaming)   # 10km x 10km streamed open-world terrain (
 
 # ── Networking ───────────────────────────────────────────────────────────────
 add_subdirectory(MultiplayerSandbox) # deterministic lockstep netplay
+if(NOT EMSCRIPTEN)
+    add_subdirectory(RelayServer)    # headless UDP relay (server deployment shape)
+    add_subdirectory(HideAndSeek)    # server-authoritative asymmetric PvP netcode
+endif()
 
 # ── Scripting frontend ───────────────────────────────────────────────────────
 add_subdirectory(LuaScripting)       # Löve2D-style Lua scripting frontend

@@ -60,6 +60,10 @@ public:
 
     void Pitch(float);
 
+    // Set the view direction directly (world space); yaw/pitch are derived.
+    // Used by portal teleports to carry the camera's facing through a portal.
+    void SetEyeDirection(const glm::vec3& dir);
+
     void SetSize(float size);
 
 private:

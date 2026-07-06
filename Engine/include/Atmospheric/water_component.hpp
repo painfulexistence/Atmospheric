@@ -18,6 +18,11 @@ struct WaterProps {
     glm::vec3 deepColor = { 0.05f, 0.1f, 0.25f };// VX COLOR_INDIGO
     glm::vec3 shallowColor = { 0.686f, 0.933f, 0.933f };// VX COLOR_MINT_GREEN
     float beerCoef = 0.095f;
+    // Planar reflection of the sky/terrain, rendered by PlanarReflectionPass
+    // about the plane at the water's height.
+    bool reflections = true;
+    float reflectionStrength = 0.6f;
+    float reflectionDistortion = 0.02f;// wave-normal-driven UV wobble
     // waterLine defaults to the owner's Y position at attach time.
     // Set explicitly to override (e.g., to account for a wave offset).
     float waterLine = -1e30f;// sentinel: use owner->GetPosition().y
