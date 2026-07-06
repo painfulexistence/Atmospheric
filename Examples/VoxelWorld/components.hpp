@@ -62,6 +62,15 @@ public:
         }));
 
         PortalComponent::Link(blue, orange);
+
+        // Hidden by default so the example carries no portal render budget until
+        // asked for: an inactive GameObject is neither ticked nor submitted, so
+        // PortalPass finds no PortalMaterial in the queue and returns before
+        // allocating any recursion RT or publishing aux frusta. Toggle both ends
+        // "Active" in the entity inspector to switch the corridor on (both must
+        // be active — each end needs its partner's draw).
+        blueGO->SetActive(false);
+        orangeGO->SetActive(false);
     }
     void OnTick(float dt) override {
         if (!_camera) return;
