@@ -1,21 +1,24 @@
-// HiddenTagClient — 1 Seeker vs 1 Hider, server-authoritative hide-and-tag.
+// HiddenTagListenServer — one player's own process hosts the authoritative
+// simulation (HiddenTagAuthority) *and* plays as a normal client against it,
+// contrasted with HiddenTagDedicatedServer, which has no attached player.
 //
-//   ./HiddenTagClient --role seeker --connect <ip> [port]
-//   ./HiddenTagClient --role hider  --connect <ip> [port]
-//   (default port 9100; run HiddenTagDedicatedServer or HiddenTagListenServer
-//   separately — this client doesn't care which kind of authority it's
-//   talking to, see authority.hpp)
+//   ./HiddenTagListenServer --role seeker [--port <n>]     (default 9100)
+//   ./HiddenTagListenServer --role hider  [--port <n>]
 //
-// Unlike MultiplayerSandbox's peer-symmetric lockstep, this client does not
-// simulate the other player at all — it has no information to simulate with
-// beyond what the server chooses to send (see protocol.hpp / authority.hpp
-// for the visibility rule). Its own movement is predicted locally
-// (ClientNet::SubmitInput) and reconciled against the server's authoritative
-// position as snapshots arrive; the other entity, when visible, is rendered
-// via ClientNet's interpolated position (see render_view.hpp).
+// The other player connects normally with HiddenTagClient, pointed at
+// whatever address reaches this process (see Examples/RelayServer if that
+// address is behind NAT — the transport doesn't care whether the far end is
+// a dedicated server or a listen server).
+//
+// This process's own local player talks to its embedded authority exactly
+// like a remote client would: over loopback UDP via a normal ClientNet
+// connected to 127.0.0.1. That's a deliberate simplicity tradeoff — see
+// authority.hpp's header comment for why — rather than a special
+// zero-latency path for the host.
 //
 // Controls: WASD / arrows move · ESC quit
 #include "Atmospheric.hpp"
+#include "authority.hpp"
 #include "client_net.hpp"
 #include "render_view.hpp"
 #include "sim_common.hpp"
@@ -25,9 +28,8 @@
 
 namespace {
     struct CliOptions {
-        std::string serverIp = "127.0.0.1";
-        uint16_t serverPort = 9100;
-        proto::Role role = proto::Role::Hider;
+        uint16_t port = 9100;
+        proto::Role role = proto::Role::Seeker;
     } gcli;
 
     uint32_t NowMs() {
@@ -37,9 +39,10 @@ namespace {
     }
 }// namespace
 
-class HiddenTagGame : public Application {
+class HiddenTagListenServerGame : public Application {
     using Application::Application;
 
+    HiddenTagAuthority _authority;
     ClientNet _net;
     FontHandle _fontID = 0;
     float _accum = 0.0f;
@@ -51,12 +54,23 @@ class HiddenTagGame : public Application {
 
     void OnLoad() override {
         _fontID = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
-        if (!_net.Connect(gcli.serverIp, gcli.serverPort, gcli.role)) {
-            ConsoleSubsystem::Get()->Error(fmt::format("Failed to connect to {}:{}", gcli.serverIp, gcli.serverPort));
+
+        if (!_authority.Bind(gcli.port)) {
+            ConsoleSubsystem::Get()->Error(fmt::format("Failed to bind authority on UDP port {}", gcli.port));
+            return;
+        }
+        ConsoleSubsystem::Get()->Info(fmt::format("Hosting on UDP :{}", _authority.BoundPort()));
+
+        if (!_net.Connect("127.0.0.1", _authority.BoundPort(), gcli.role)) {
+            ConsoleSubsystem::Get()->Error("Failed to connect local client to the embedded authority");
         }
     }
 
     void OnUpdate(float dt, float /*time*/) override {
+        // Drive the authority first so this tick's own snapshot (received
+        // below via _net.Pump) is already fresh.
+        _authority.Pump();
+
         uint32_t nowMs = NowMs();
         _net.Pump(nowMs);
 
@@ -80,17 +94,16 @@ class HiddenTagGame : public Application {
 
 int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; i++) {
-        if (std::strcmp(argv[i], "--connect") == 0 && i + 1 < argc) {
-            gcli.serverIp = argv[++i];
-            if (i + 1 < argc && argv[i + 1][0] != '-') gcli.serverPort = static_cast<uint16_t>(std::atoi(argv[++i]));
+        if (std::strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
+            gcli.port = static_cast<uint16_t>(std::atoi(argv[++i]));
         } else if (std::strcmp(argv[i], "--role") == 0 && i + 1 < argc) {
             std::string r = argv[++i];
-            gcli.role = (r == "seeker") ? proto::Role::Seeker : proto::Role::Hider;
+            gcli.role = (r == "hider") ? proto::Role::Hider : proto::Role::Seeker;
         }
     }
 
-    HiddenTagGame game(
-        { .windowTitle = "HiddenTag",
+    HiddenTagListenServerGame game(
+        { .windowTitle = "HiddenTag (Listen Server)",
           .windowWidth = 800,
           .windowHeight = 600,
           .enableAudio = false,

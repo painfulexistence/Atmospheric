@@ -3,15 +3,23 @@
 A server-authoritative 1 Seeker vs 1 Hider hide-and-tag game — the
 architecture asymmetric, hidden-information PvP needs, in contrast to
 [MultiplayerSandbox](../MultiplayerSandbox)'s peer-symmetric deterministic
-lockstep. See `server_main.cpp`'s header comment for exactly why lockstep
+lockstep. See `authority.hpp`'s header comment for exactly why lockstep
 doesn't fit this genre (short version: lockstep replicates the *entire* game
 state onto every peer, so there is no way to keep one player's position
 secret from the other; a server-authoritative model can simply never send it).
 
 ## Running
 
+Two ways to host, one way to join — `HiddenTagClient` connects to either
+identically, since the protocol doesn't distinguish deployment shape:
+
 ```sh
-./HiddenTagServer [--port <n>]                       # default 9100
+# Dedicated: standalone process, no attached player
+./HiddenTagDedicatedServer [--port <n>]                       # default 9100
+
+# Listen server: one player's own process hosts *and* plays
+./HiddenTagListenServer --role seeker [--port <n>]
+# (the other player joins as HiddenTagClient below, same as against a dedicated server)
 
 ./HiddenTagClient --role seeker --connect <ip> [port]
 ./HiddenTagClient --role hider  --connect <ip> [port]
@@ -21,6 +29,34 @@ Controls: WASD / arrows move, Esc quit. The Seeker sees a faint circle
 showing their vision radius; the Hider is only sent to the Seeker's client
 when inside it. The Hider always sees the Seeker (asymmetric information —
 not "both sides have partial info about each other", genuinely one-directional).
+
+## Dedicated server vs. listen server
+
+Both wrap the same `HiddenTagAuthority` (`authority.hpp`/`.cpp`) — the
+authoritative simulation + networking core — so there is exactly one
+implementation of "who's allowed to know what" to keep correct, not two:
+
+- **`HiddenTagDedicatedServer`** (`dedicated_server_main.cpp`): a plain loop,
+  not an `Application` — no GameObject/Scene/rendering needs, so the
+  `AddSubsystem<T>`/headless `Application` machinery would only add an
+  unproven dependency (same reasoning as [RelayServer vs.
+  RelayServerApp](../RelayServer)).
+- **`HiddenTagListenServer`** (`listen_server_main.cpp`): a windowed
+  `Application` that embeds `HiddenTagAuthority` *and* plays as a normal
+  client against it. Its own local player talks to the embedded authority
+  exactly like a remote client would — over loopback UDP via an ordinary
+  `ClientNet` connected to `127.0.0.1` — rather than a special zero-latency
+  path for the host. That's a deliberate simplicity tradeoff: the host pays
+  a trivial bit of loopback round-trip latency a "real" listen-server
+  implementation would usually special-case away, in exchange for the host
+  exercising the exact same prediction/reconciliation code path as everyone
+  else (one less thing to get subtly wrong twice).
+
+`HiddenTagClient` and the rendering it shares with `HiddenTagListenServer`
+(`render_view.hpp`) have no idea which kind of authority is on the other end
+of the socket — that not-knowing is the point: authority (who decides what's
+true) is a simulation-layer concern, deployment (standalone process vs.
+embedded in a player's game) is a separate choice layered on top.
 
 ## What this demonstrates that lockstep can't
 
@@ -60,12 +96,16 @@ rewind-replay instead.
 ## Why no relay here
 
 [UdpRelay](../RelayServer) solves NAT traversal between two peers who might
-both be behind home routers. In a client-server architecture the server is
-already expected to be the one publicly reachable endpoint, so there's
-normally nothing for a relay to solve — `UdpRelayClient` remains reusable
-here in principle (it only needs a socket handle to send through, and
-doesn't care what protocol it's carrying), it just isn't wired into this
-example because the scenario it exists for doesn't apply.
+both be behind home routers. A dedicated server is already expected to be
+publicly reachable, so there's normally nothing for a relay to solve there —
+but a listen server's host is typically an ordinary player behind a home
+router, which is exactly `UdpRelay`'s scenario. It isn't wired in here to
+keep this example focused, but `UdpRelayClient` would slot in without
+changing the protocol (it only needs a socket handle to send through, and
+doesn't care what bytes it's carrying) — the one real limitation is that
+`UdpRelay`'s rooms are hardcoded to exactly 2 peer slots, which happens to
+match this game's 2 players today but wouldn't scale to a listen server with
+more than one guest.
 
 ## Known limitations (v1)
 
