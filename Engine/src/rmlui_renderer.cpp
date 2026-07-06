@@ -105,10 +105,7 @@ Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> sou
     // default already matches, but pass it explicitly so future default
     // changes here don't silently regress UI quality.
     TextureHandle texture = GfxFactory::UploadTexture2D(
-        reinterpret_cast<const uint8_t*>(source.data()),
-        source_dimensions.x,
-        source_dimensions.y,
-        TextureFilter::Linear
+        reinterpret_cast<const uint8_t*>(source.data()), source_dimensions.x, source_dimensions.y, TextureFilter::Linear
     );
     return static_cast<Rml::TextureHandle>(texture.id);
 }
