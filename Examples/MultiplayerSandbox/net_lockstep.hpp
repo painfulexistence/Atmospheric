@@ -59,11 +59,18 @@ public:
     void PruneBelow(uint32_t tick);
 
 private:
+    // Native only: UdpSocket/UdpRelayClient don't exist on Emscripten (no raw
+    // UDP sockets in the browser — see their header comments). The web build
+    // uses RTCDataChannel instead (see net_lockstep.cpp's __EMSCRIPTEN__
+    // branch), so these members would sit unused there even if they could be
+    // declared.
+#ifndef __EMSCRIPTEN__
     UdpSocket _socket;
+    UdpRelayClient _relayClient;// only touched when useRelay is true
+#endif
     bool havePeer = false;
     uint32_t peerAddr = 0;
     uint16_t peerPort = 0;
-    UdpRelayClient _relayClient;// only touched when useRelay is true
 
     std::unordered_map<uint32_t, InputFrame> localInputs;
     std::unordered_map<uint32_t, InputFrame> remoteInputs;
