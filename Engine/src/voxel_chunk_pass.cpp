@@ -1,5 +1,6 @@
 #include "asset_manager.hpp"
 #include "camera_component.hpp"
+#include "frustum.hpp"
 #include "gfx_factory.hpp"
 #include "gl_buffer.hpp"
 #include "gl_render_target.hpp"
@@ -8,6 +9,7 @@
 #include "mesh.hpp"
 #include "renderer.hpp"
 #include "sun_component.hpp"
+#include "voxel_chunk_component.hpp"
 #include "window.hpp"
 
 #include <cstring>
@@ -41,6 +43,19 @@ ResolvedView ResolveView(const Renderer& renderer, CameraComponent* camera) {
     return { camera->GetViewMatrix(),  camera->GetProjectionMatrix(),
              camera->GetEyePosition(), renderer.sceneRT.get(),
              glm::vec4(0.0f),          false };
+}
+
+// Per-draw frustum cull for voxel chunks. Chunk submission (voxel_world.cpp)
+// keeps every chunk visible in the main OR any aux (portal recursion / water
+// reflection) frustum, so the shared opaque queue is the union across all
+// views. Each pass invocation must re-cull to its own active view — otherwise a
+// chunk pulled in only for a portal's recursion frustum leaks into the main
+// view as a stray floating block near the horizon. The transform for a voxel
+// chunk is a pure translation to its world origin, so the bounding sphere is
+// reconstructed the same way VoxelChunkComponent does.
+static bool ChunkInFrustum(const Frustum& f, const glm::mat4& transform) {
+    const glm::vec3 center = glm::vec3(transform[3]) + glm::vec3(VoxelChunkComponent::SIZE * 0.5f);
+    return f.IntersectsSphere(center, VoxelChunkComponent::BSPHERE_RADIUS);
 }
 
 
@@ -478,6 +493,7 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             );
         }
 
+        const Frustum viewFrustum(rv.proj * rv.view);
         struct DrawItem {
             Buffer* buf;
             glm::mat4 model;
@@ -489,6 +505,7 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
             if (!mesh || mesh->type != MeshType::VOXEL) continue;
             if (!mesh->UsesRenderMesh()) continue;
+            if (!ChunkInFrustum(viewFrustum, cmd.transform)) continue;
             Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
             if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
             draws.push_back({ buf, cmd.transform });
@@ -589,12 +606,14 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     glPolygonMode(GL_FRONT_AND_BACK, renderer.wireframeEnabled ? GL_LINE : GL_FILL);
 #endif
 
+    const Frustum viewFrustum(viewProj);
     for (const auto& sortable : queue) {
         const auto& cmd = sortable.cmd;
         Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
 
         if (!mesh || mesh->type != MeshType::VOXEL) continue;
         if (!mesh->UsesRenderMesh()) continue;
+        if (!ChunkInFrustum(viewFrustum, cmd.transform)) continue;
 
         shader->SetUniform("u_model", cmd.transform);
 
