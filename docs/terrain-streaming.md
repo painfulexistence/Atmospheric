@@ -133,11 +133,15 @@ scale:
 
 ## Phase 2 — streaming robustness & scale
 
-- **Disk-backed tile cache**: bake generated tiles (LZ4-compressed R16) to a
-  cache dir; load beats generate. This is also the Gaea import path: a
-  pre-tiled pyramid (like a web-map quadtree) exported from Gaea's tiled
-  build, streamed by the same requests. → true GoT loading (pure IO, no
-  synthesis) with `memcpy`-speed decompress.
+- **Disk-backed tile cache — implemented** (`TerrainTileCache`, enabled via
+  `TerrainStreamerProps::cacheDir`): tiles bake to 16-bit delta+varint
+  compressed files keyed by a parameter hash; cache hits replace synthesis
+  entirely, so the second boot is pure IO — the Ghost-of-Tsushima load path.
+  Dependency-free C++ file IO (all desktop platforms; on Emscripten point it
+  at a preloaded read-only pyramid or a mounted IDBFS dir). A Gaea tiled
+  build imports by pre-filling this cache with the same file format.
+  Remaining: swap the codec for LZ4/Kraken-class if IO becomes the
+  bottleneck, and an HTTP tile-server backend for web builds.
 - **Larger worlds / origin shifting**: >20km needs camera-relative rendering
   (float precision dies ~16km) and a sparse tile map instead of
   always-resident (drop far tiles to disk, keep a low-res "world mip").

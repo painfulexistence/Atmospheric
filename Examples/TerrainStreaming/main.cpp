@@ -126,6 +126,13 @@ class TerrainStreamingDemo : public Application {
                 // ~1.4km feature wavelength: enough distinct ridges/valleys
                 // across 10km that traversal reads as covering ground.
                 .noise = { .resolution = 0, .seed = 20260705, .frequency = 0.0007f, .octaves = 9 },
+                // Baked-tile cache: first run generates + stores, every run
+                // after boots from pure IO (watch "cache" in the stats line).
+                // Emscripten's default FS is RAM-backed, so skip it there and
+                // keep generating (ship a preloaded pyramid instead).
+#if !defined(__EMSCRIPTEN__)
+                .cacheDir = "cache/terrain",
+#endif
                 // .layers / .splatFn: plug Gaea-style splat + detail textures here.
                 .colliderRadiusTiles = 1,
                 // Deterministic scatter: slope/height rules decide trees vs
@@ -256,7 +263,8 @@ class TerrainStreamingDemo : public Application {
                 "cam (" + std::to_string(static_cast<int>(pos.x)) + ", " + std::to_string(static_cast<int>(pos.z))
                 + (inside ? ") " : ") OUTSIDE WORLD ") + "tiles " + std::to_string(stats.loadedTiles) + " visible "
                 + std::to_string(stats.visibleTiles) + " pending " + std::to_string(stats.pendingJobs) + " entities "
-                + std::to_string(stats.activeEntities) + " heightmapMB "
+                + std::to_string(stats.activeEntities) + " cache " + std::to_string(stats.cacheHits) + "/"
+                + std::to_string(stats.cacheHits + stats.cacheMisses) + " heightmapMB "
                 + std::to_string(stats.gpuHeightmapBytes / (1024 * 1024))
             );
         }

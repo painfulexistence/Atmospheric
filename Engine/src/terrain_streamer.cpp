@@ -11,6 +11,7 @@
 #include "mesh_builder.hpp"
 #include "mesh_component.hpp"
 #include "rigidbody_component.hpp"
+#include "terrain_tile_cache.hpp"
 
 #include "FastNoiseLite.h"
 
@@ -93,6 +94,24 @@ void TerrainStreamer::Init(Application* app, const TerrainStreamerProps& props, 
         _heightFn = [noise](float wx, float wz) { return noise->GetNoise(wx, wz) * 0.5f + 0.5f; };
     } else {
         _heightFn = _props.heightFn;
+    }
+
+    // Disk tile cache: hash every input that shapes the generated heights so
+    // stale bakes can never be replayed after a parameter change.
+    if (!_props.cacheDir.empty()) {
+        _cache = std::make_shared<TerrainTileCache>(_props.cacheDir);
+        uint32_t h = 0;
+        h = TerrainTileCache::HashCombine(h, &_props.noise.seed, sizeof(_props.noise.seed));
+        h = TerrainTileCache::HashCombine(h, &_props.noise.frequency, sizeof(_props.noise.frequency));
+        h = TerrainTileCache::HashCombine(h, &_props.noise.octaves, sizeof(_props.noise.octaves));
+        h = TerrainTileCache::HashCombine(h, &_props.noise.lacunarity, sizeof(_props.noise.lacunarity));
+        h = TerrainTileCache::HashCombine(h, &_props.noise.gain, sizeof(_props.noise.gain));
+        h = TerrainTileCache::HashCombine(h, &_props.tileSize, sizeof(_props.tileSize));
+        h = TerrainTileCache::HashCombine(h, &_props.tileHeightRes, sizeof(_props.tileHeightRes));
+        h = TerrainTileCache::HashCombine(h, &_props.cacheVersion, sizeof(_props.cacheVersion));
+        const bool customFn = static_cast<bool>(_props.heightFn);
+        h = TerrainTileCache::HashCombine(h, &customFn, sizeof(customFn));
+        _cacheHash = h;
     }
 
     // Resolve shared layer textures once; tile materials reference the same
@@ -178,6 +197,8 @@ void TerrainStreamer::Update(const glm::vec3& cameraPos, const glm::mat4& viewPr
     _stats.loadedTiles = static_cast<int>(_tiles.size());
     _stats.pendingJobs = static_cast<int>(_inFlight.size());
     _stats.activeEntities = _activeEntities;
+    _stats.cacheHits = _cacheHits.load(std::memory_order_relaxed);
+    _stats.cacheMisses = _cacheMisses.load(std::memory_order_relaxed);
 }
 
 float TerrainStreamer::GetHeight(float wx, float wz) const {
@@ -211,16 +232,29 @@ void TerrainStreamer::RequestTile(glm::ivec2 coord, int lod) {
     const int splatRes = _props.splatRes;
     const bool wantSplat = static_cast<bool>(splatFn) && !_layers.empty();
 
-    JobSystem::Get()->Execute([job, heightFn, splatFn, wantSplat, splatRes, n, w, step, origin, gutterMin,
-                               gutterMax](int /*threadIndex*/) {
-        job->heights.resize(static_cast<size_t>(w) * w);
-        for (int j = 0; j < w; ++j) {
-            const float wz = origin.y + (j - 1) * step;
-            for (int i = 0; i < w; ++i) {
-                const float wx = origin.x + (i - 1) * step;
-                job->heights[static_cast<size_t>(j) * w + i] = std::clamp(heightFn(wx, wz), 0.0f, 1.0f);
+    auto cache = _cache;
+    const uint32_t cacheHash = _cacheHash;
+    auto* hits = &_cacheHits;
+    auto* misses = &_cacheMisses;
+
+    JobSystem::Get()->Execute([job, heightFn, splatFn, wantSplat, splatRes, n, w, step, origin, gutterMin, gutterMax,
+                               cache, cacheHash, hits, misses](int /*threadIndex*/) {
+        // Cache first (pure IO, Ghost-of-Tsushima path); synthesize on miss
+        // and bake the result so the next boot never generates this tile.
+        const bool cached =
+            cache && cache->Load(job->coord.x, job->coord.y, job->lod, cacheHash, w, job->heights);
+        if (!cached) {
+            job->heights.resize(static_cast<size_t>(w) * w);
+            for (int j = 0; j < w; ++j) {
+                const float wz = origin.y + (j - 1) * step;
+                for (int i = 0; i < w; ++i) {
+                    const float wx = origin.x + (i - 1) * step;
+                    job->heights[static_cast<size_t>(j) * w + i] = std::clamp(heightFn(wx, wz), 0.0f, 1.0f);
+                }
             }
+            if (cache) cache->Store(job->coord.x, job->coord.y, job->lod, cacheHash, w, job->heights);
         }
+        if (cache) (cached ? hits : misses)->fetch_add(1, std::memory_order_relaxed);
         if (wantSplat) job->splat = splatFn(gutterMin, gutterMax, splatRes);
         job->done.store(true, std::memory_order_release);
     });

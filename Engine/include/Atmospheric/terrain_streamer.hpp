@@ -17,6 +17,7 @@ class GameObject;
 class HeightFieldColliderComponent;
 class RigidbodyComponent;
 class TerrainMaterial;
+class TerrainTileCache;
 
 // Mutable HeightField backed by a plain grid — the collider ring re-fills it
 // as tiles are (re)assigned, then calls SyncFromHeightField on the collider.
@@ -102,6 +103,18 @@ struct TerrainStreamerProps {
     std::function<float(float wx, float wz)> heightFn;
     NoiseHeightFieldParams noise{ .resolution = 0, .seed = 1337, .frequency = 0.0004f, .octaves = 9 };
 
+    // ── Disk tile cache (Ghost-of-Tsushima-style pure-IO loading) ──────────
+    // Directory for baked tile heightmaps; empty disables. On a hit the
+    // worker reads + decompresses instead of synthesizing; misses generate
+    // then store, so the second boot streams entirely from disk. Plain C++
+    // file IO — works on every desktop platform; on Emscripten the default
+    // FS is in-memory, so point this at a preloaded read-only pyramid or a
+    // mounted IDBFS directory (or leave empty to keep generating).
+    // The cache key hashes tile geometry + `noise`; when using a custom
+    // heightFn, bump cacheVersion whenever the function's output changes.
+    std::string cacheDir;
+    uint32_t cacheVersion = 0;
+
     // ── Surface maps (splat space, reserved for texturing passes) ──────────
     // Tiled detail layers shared by every tile. `tiling` here means texture
     // repeats per tile edge (world period = tileSize / tiling), continuous
@@ -175,6 +188,8 @@ public:
         int pendingJobs = 0;
         int tilesPerSide = 0;
         int activeEntities = 0;
+        int cacheHits = 0;
+        int cacheMisses = 0;// counts generation runs; 0 misses = pure-IO boot
         size_t gpuHeightmapBytes = 0;
         bool initialLoadDone = false;// every tile is at its desired LOD
     };
@@ -242,6 +257,10 @@ private:
     int _maxInFlight = 8;
 
     std::function<float(float, float)> _heightFn;
+    std::shared_ptr<TerrainTileCache> _cache;// shared with worker jobs
+    uint32_t _cacheHash = 0;
+    std::atomic<int> _cacheHits{ 0 };
+    std::atomic<int> _cacheMisses{ 0 };
     std::unordered_map<glm::ivec2, TileSlot*, IVec2Hash> _tiles;// loaded tiles
     std::unordered_map<glm::ivec2, std::shared_ptr<GenJob>, IVec2Hash> _inFlight;
     std::vector<std::vector<TileSlot*>> _pool;// recycled slots, per LOD
