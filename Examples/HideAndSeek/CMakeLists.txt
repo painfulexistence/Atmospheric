@@ -32,6 +32,10 @@ if(NOT EMSCRIPTEN)
     )
     target_include_directories(HideAndSeekServer PRIVATE
         ${CMAKE_SOURCE_DIR}/Engine/include
+        # udp_socket.cpp uses a quoted #include "udp_socket.hpp" (matching every
+        # other Engine/src/*.cpp), which needs this directory directly on the
+        # include path — same reason AtmosphericEngine's own target has it.
+        ${CMAKE_SOURCE_DIR}/Engine/include/Atmospheric
     )
     target_link_libraries(HideAndSeekServer PRIVATE spdlog::spdlog)
     if(WIN32)
