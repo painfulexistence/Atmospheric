@@ -56,6 +56,8 @@ uniform int has_normal_map;
 uniform int has_ao_map;
 uniform int has_splat_map;
 uniform int layer_count;
+uniform vec3 fog_color;    // linear-space aerial perspective color
+uniform float fog_density; // 0 = off
 uniform float layer_tiling[4];
 uniform float layer_has_normal[4];
 
@@ -205,6 +207,13 @@ void main()
     float ndl = clamp(dot(N, lightDir), 0.0, 1.0);
     vec3 lit = albedo * main_light.diffuse * ndl;
     lit += vec3(0.2) * ao * albedo;  // fixed ambient term, matching pbr.frag
+
+    // Aerial perspective: exponential fade toward the horizon color. Reads
+    // distance as distance — without it far mountains look like near hills.
+    if (fog_density > 0.0) {
+        float fogF = 1.0 - exp(-fog_density * distance(frag_pos, cam_pos));
+        lit = mix(lit, fog_color, fogF);
+    }
 
     Color = vec4(pow(lit, vec3(1.0 / gamma)), 1.0);
 }

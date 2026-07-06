@@ -16,7 +16,7 @@
 // you fly — no hitches, no pop-in holes, Bullet colliders following the
 // camera tile.
 //
-// Controls: WASD move, arrows look, X sprint (x20), Z slow, R/F up/down,
+// Controls: WASD move, arrows look, X sprint (x50), Z slow, R/F up/down,
 //           G toggle ground-clamp, T teleport +2km (streaming stress test),
 //           L LOD tint (colors each detail ring — watch tiles refine),
 //           I wireframe, ESC quit.
@@ -123,7 +123,9 @@ class TerrainStreamingDemo : public Application {
                 .lodCount = 4,
                 .lod0RadiusTiles = 2,
                 .paletteIndex = 3,// forest
-                .noise = { .resolution = 0, .seed = 20260705, .frequency = 0.00035f, .octaves = 9 },
+                // ~1.4km feature wavelength: enough distinct ridges/valleys
+                // across 10km that traversal reads as covering ground.
+                .noise = { .resolution = 0, .seed = 20260705, .frequency = 0.0007f, .octaves = 9 },
                 // .layers / .splatFn: plug Gaea-style splat + detail textures here.
                 .colliderRadiusTiles = 1,
                 // Deterministic scatter: slope/height rules decide trees vs
@@ -178,10 +180,12 @@ class TerrainStreamingDemo : public Application {
         const float groundY = _terrain.GetHeight(0.0f, 0.0f);
         _camGO->SetPosition(glm::vec3(0.0f, groundY + 200.0f, 0.0f));
 
-        // Unified fly camera (X sprint crosses the world at ~1.2 km/s), then
-        // the ground clamp — added second so it ticks after the movement.
+        // Unified fly camera. 12 m/s base ~ a sprinting character (crossing
+        // the world takes ~14 min, BotW-like), X sprint = 600 m/s for
+        // streaming stress tests. Added before the ground clamp so the clamp
+        // ticks after the movement.
         _camGO->AddComponent<CameraController3D>(
-            /*moveSpeed=*/60.0f, /*lookSpeed=*/1.5f, /*slowMultiplier=*/0.1f, /*fastMultiplier=*/20.0f
+            /*moveSpeed=*/12.0f, /*lookSpeed=*/1.5f, /*slowMultiplier=*/0.2f, /*fastMultiplier=*/50.0f
         );
         _groundClamp =
             static_cast<GroundClampComponent*>(_camGO->AddComponent<GroundClampComponent>(&_terrain));

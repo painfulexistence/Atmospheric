@@ -1481,6 +1481,8 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             terrainShader->SetUniform(std::string("height_scale"), tm ? tm->heightScale : 32.0f);
             terrainShader->SetUniform(std::string("world_size"), tm ? tm->worldSize : 1024.0f);
             terrainShader->SetUniform(std::string("palette_index"), tm ? tm->paletteIndex : 0);
+            terrainShader->SetUniform(std::string("fog_color"), tm ? tm->fogColor : glm::vec3(0.0f));
+            terrainShader->SetUniform(std::string("fog_density"), tm ? tm->fogDensity : 0.0f);
             glActiveTexture(GL_TEXTURE7);
             TextureHandle heightMap = material->heightMap;
             if (heightMap.IsValid() && static_cast<uint32_t>(heightMap) != 0) {

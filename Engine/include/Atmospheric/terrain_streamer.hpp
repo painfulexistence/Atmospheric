@@ -89,6 +89,10 @@ struct TerrainStreamerProps {
     int uploadsPerFrame = 4;// finished tiles integrated (GPU-uploaded) per Update()
     float tessellationFactor = 16.0f;
     int paletteIndex = 0;// fallback height-palette when no layers are set
+    // Aerial perspective over the streamed terrain (see TerrainMaterial):
+    // essential for reading a 10km world as 10km. 0 disables.
+    float fogDensity = 0.00018f;
+    glm::vec3 fogColor{ 0.62f, 0.71f, 0.85f };
 
     // Height source, sampled in world metres on worker threads (must be
     // thread-safe). Returns normalized height in [0,1]. When null, an
