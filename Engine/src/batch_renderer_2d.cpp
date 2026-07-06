@@ -733,6 +733,7 @@ std::vector<BatchDrawCommand> BatchRenderer2D::DrainToCommands() {
         cmd.transform = glm::mat4(1.0f);// vertices are already in world/screen space
         cmd.vertices = std::move(tb.verts);
         cmd.indices = std::move(tb.idxs);
+        cmd.blendMode = m_Data->currentBlendMode;
         result.push_back(std::move(cmd));
     }
 
