@@ -6,7 +6,7 @@ struct CameraProps {
     bool isOrthographic = false;
     union {
         struct {
-            float fieldOfView = 45.0f;
+            float fieldOfView = 45.0f;// vertical fov in degrees
             float aspectRatio = 1.333f;
             float nearClip = 0.1f;
             float farClip = 500.0f;
@@ -38,6 +38,8 @@ public:
     void OnDetach() override;
     void DrawImGui() override;
 
+    // fov is the vertical field of view in degrees (converted to radians
+    // internally, like CameraProps::perspective::fieldOfView).
     void SetPerspective(float fov, float aspectRatio, float nearClip, float farClip);
 
     void SetOrthographic(float width, float height, float nearClip, float farClip);

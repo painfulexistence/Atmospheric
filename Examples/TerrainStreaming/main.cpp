@@ -72,13 +72,10 @@ class TerrainStreamingDemo : public Application {
     void OnLoad() override {
         _cam = mainCamera;
         _camGO = _cam->gameObject;
-        // glm::perspective expects the fov in radians. Passing degrees here
-        // flips tan(fov/2) negative and renders the scene upside down (the
-        // engine's default CameraProps value of 45.0f only *looks* right
-        // because 45 rad happens to wrap to a positive ~58-degree fov).
+        // Wide fov + far plane past the world diagonal (14.5km) so the whole
+        // streamed horizon is in view. fov is in degrees.
         _cam->SetPerspective(
-            glm::radians(55.0f), static_cast<float>(INIT_SCREEN_WIDTH) / static_cast<float>(INIT_SCREEN_HEIGHT), 0.5f,
-            30000.0f
+            55.0f, static_cast<float>(INIT_SCREEN_WIDTH) / static_cast<float>(INIT_SCREEN_HEIGHT), 0.5f, 30000.0f
         );
 
         // Sun
