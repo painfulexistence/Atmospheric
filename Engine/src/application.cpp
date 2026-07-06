@@ -11,6 +11,7 @@
 #include "animator_2d.hpp"
 #include "asset_manager.hpp"
 #include "camera_component.hpp"
+#include "camera_controller_3d.hpp"
 #include "component_factory.hpp"
 #include "deserializer.hpp"
 #include "file_system.hpp"
@@ -453,6 +454,15 @@ void Application::RegisterComponents() {
             d.Read("farClip", props.perspective.farClip, 500.0f);
         }
         return new CameraComponent(o, props);
+    });
+
+    // ── CameraController3D ────────────────────────────────────────────────────
+    ComponentFactory::Register("CameraController3D", [](GameObject* o, Deserializer& d) -> Component* {
+        float moveSpeed = 20.0f, lookSpeed = 1.5f, slowMultiplier = 0.2f;
+        d.Read("moveSpeed", moveSpeed, 20.0f);
+        d.Read("lookSpeed", lookSpeed, 1.5f);
+        d.Read("slowMultiplier", slowMultiplier, 0.2f);
+        return new CameraController3D(o, moveSpeed, lookSpeed, slowMultiplier);
     });
 
     // ── LightComponent ────────────────────────────────────────────────────────

@@ -3,7 +3,9 @@
 Code quality script for Atmospheric.
 
 Default mode  : run clang-tidy (fix) then clang-format (fix in-place).
---check mode  : run clang-format --dry-run only; exits non-zero if any file
+--tidy        : only run clang-tidy (skip clang-format).
+--format      : only run clang-format (skip clang-tidy).
+--check       : run clang-format --dry-run only; exits non-zero if any file
                 would be reformatted.  Used by CI (no build required).
 """
 import argparse
@@ -126,7 +128,18 @@ def run_clang_format(source_files, check_only=False):
 
 def main():
     parser = argparse.ArgumentParser(description="Atmospheric code quality checks.")
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        '--tidy',
+        action='store_true',
+        help='Only run clang-tidy (skip clang-format).',
+    )
+    mode.add_argument(
+        '--format',
+        action='store_true',
+        help='Only run clang-format (skip clang-tidy).',
+    )
+    mode.add_argument(
         '--check',
         action='store_true',
         help='Format-check only (clang-format --dry-run). No tidy, no file modifications. Used by CI.',
@@ -137,9 +150,15 @@ def main():
     project_root = os.path.dirname(script_dir)
     os.chdir(project_root)
 
-    # --check runs only clang-format; don't demand clang-tidy on CI runners
-    # that intentionally skip the tidy install.
-    check_clang_version(script_dir, tools=['clang-format'] if args.check else None)
+    # Validate only the tools we're going to invoke: CI runners may skip the
+    # clang-tidy install, and format-only local runs shouldn't fail on it.
+    if args.check or args.format:
+        tools = ['clang-format']
+    elif args.tidy:
+        tools = ['clang-tidy']
+    else:
+        tools = None
+    check_clang_version(script_dir, tools=tools)
 
     source_files = find_source_files(project_root)
     if not source_files:
@@ -151,6 +170,12 @@ def main():
     if args.check:
         run_clang_format(source_files, check_only=True)
         print("Format check passed.")
+    elif args.tidy:
+        run_clang_tidy(project_root, source_files)
+        print("clang-tidy pass completed.")
+    elif args.format:
+        run_clang_format(source_files, check_only=False)
+        print("clang-format pass completed.")
     else:
         run_clang_tidy(project_root, source_files)
         run_clang_format(source_files, check_only=False)
