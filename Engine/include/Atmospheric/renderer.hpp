@@ -339,8 +339,8 @@ public:
     void GenerateDemoVolume(uint32_t seed = 1337u);
 
     bool enabled = false;
-    glm::vec3 volumeOrigin = glm::vec3(-12.8f, 0.0f, -12.8f);
-    float voxelSize = 0.1f;// 10 cm voxels
+    glm::vec3 volumeOrigin = glm::vec3(-6.4f, 0.0f, -6.4f);
+    float voxelSize = 0.05f;// 5 cm voxels (256^3 => a 12.8m diorama)
     int gridDim = 256;// voxels per edge (cubic; must be a multiple of brickDim)
     int brickDim = 8;
     int maxRaySteps = 256;

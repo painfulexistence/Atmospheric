@@ -8,6 +8,7 @@
 #include "renderer.hpp"
 #include "window.hpp"
 
+#include <cmath>
 #include <cstring>
 #include <fmt/format.h>
 #include <glm/glm.hpp>
@@ -76,6 +77,46 @@ static float MvFbm3(glm::vec3 p, int octaves, uint32_t seed) {
     return sum;// ~[0, 1)
 }
 
+// Gradient (Perlin-style) noise for the terrain heightfield — value noise has
+// axis-aligned plateaus that read as fake terrain; hashed unit gradients with
+// a quintic fade give the classic smooth rolling look.
+static float MvGradDot(int xi, int yi, int zi, glm::vec3 offset, uint32_t seed) {
+    glm::vec3 g(
+        MvHashNoise(xi, yi, zi, seed) - 0.5f,
+        MvHashNoise(xi, yi, zi, seed ^ 0x9E3779B9u) - 0.5f,
+        MvHashNoise(xi, yi, zi, seed ^ 0x85EBCA6Bu) - 0.5f
+    );
+    float len = glm::length(g);
+    if (len < 1e-6f) return offset.x;
+    return glm::dot(g / len, offset);
+}
+
+static float MvGradNoise3(glm::vec3 p, uint32_t seed) {
+    glm::vec3 pf = glm::floor(p);
+    glm::vec3 f = p - pf;
+    glm::vec3 u = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);// quintic fade
+    int xi = static_cast<int>(pf.x), yi = static_cast<int>(pf.y), zi = static_cast<int>(pf.z);
+
+    auto corner = [&](int dx, int dy, int dz) {
+        return MvGradDot(xi + dx, yi + dy, zi + dz, f - glm::vec3(dx, dy, dz), seed);
+    };
+    float x00 = glm::mix(corner(0, 0, 0), corner(1, 0, 0), u.x);
+    float x10 = glm::mix(corner(0, 1, 0), corner(1, 1, 0), u.x);
+    float x01 = glm::mix(corner(0, 0, 1), corner(1, 0, 1), u.x);
+    float x11 = glm::mix(corner(0, 1, 1), corner(1, 1, 1), u.x);
+    return glm::mix(glm::mix(x00, x10, u.y), glm::mix(x01, x11, u.y), u.z);// ~[-0.7, 0.7]
+}
+
+static float MvGradFbm01(glm::vec3 p, int octaves, uint32_t seed) {
+    float sum = 0.0f, amp = 0.5f;
+    for (int i = 0; i < octaves; i++) {
+        sum += amp * MvGradNoise3(p, seed + static_cast<uint32_t>(i) * 101u);
+        p *= 2.0f;
+        amp *= 0.5f;
+    }
+    return glm::clamp(0.5f + sum * 1.2f, 0.0f, 1.0f);
+}
+
 // Fills the volume with a procedural terrain (heightfield + caves + ore
 // speckles + floating crystal spheres), rebuilds the brick occupancy grid,
 // marks everything for GPU upload and enables the pass.
@@ -109,14 +150,19 @@ void MicroVoxelPass::GenerateDemoVolume(uint32_t seed) {
     setPalette(MatOre, 242, 191, 64);
     setPalette(MatCrystal, 115, 191, 242);
 
-    // Terrain heightfield
+    // Terrain heightfield: gradient-noise fbm with gentle amplitude (~0.28
+    // height/width ratio) so the terrain reads as rolling hills rather than
+    // the 1:1-aspect spikes the first value-noise recipe produced.
+    const float baseH = 0.10f * static_cast<float>(N);
+    const float varH = 0.34f * static_cast<float>(N);
+    const float snowLine = baseH + 0.75f * varH;
+    const float sandLine = baseH + 0.12f * varH;
     std::vector<float> heights(static_cast<size_t>(N) * N);
     for (uint32_t z = 0; z < N; z++) {
         for (uint32_t x = 0; x < N; x++) {
-            glm::vec3 p = glm::vec3(x, 0.0f, z) * 0.013f;
-            float h = MvFbm3(p, 5, seed);
-            h = h * h * 1.4f;// Sharpen peaks
-            heights[z * N + x] = glm::clamp(0.12f + h, 0.0f, 0.92f) * static_cast<float>(N);
+            float h01 = MvGradFbm01(glm::vec3(x, 0.0f, z) * 0.010f, 5, seed);
+            h01 = std::pow(h01, 1.6f);// Bias toward valleys with occasional peaks
+            heights[z * N + x] = baseH + h01 * varH;
         }
     }
 
@@ -142,9 +188,9 @@ void MicroVoxelPass::GenerateDemoVolume(uint32_t seed) {
                             uint8_t mat = MatStone;
                             const uint32_t depth = top - y;
                             if (depth == 0) {
-                                mat = (h > 0.62f * N) ? MatSnow : ((h < 0.22f * N) ? MatSand : MatGrass);
+                                mat = (h > snowLine) ? MatSnow : ((h < sandLine) ? MatSand : MatGrass);
                             } else if (depth <= 3) {
-                                mat = (h < 0.22f * N) ? MatSand : MatDirt;
+                                mat = (h < sandLine) ? MatSand : MatDirt;
                             } else if (MvHashNoise(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z), seed + 13u) > 0.995f) {
                                 mat = MatOre;
                             }

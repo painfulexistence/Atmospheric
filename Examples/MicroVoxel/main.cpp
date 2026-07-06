@@ -1,7 +1,7 @@
 #include "Atmospheric.hpp"
 #include "Atmospheric/camera_controller_3d.hpp"
 
-// Micro voxel rendering demo: a raymarched 25.6m volume of 10cm voxels
+// Micro voxel rendering demo: a raymarched 12.8m diorama of 5cm voxels
 // (procedural terrain + caves + ore + floating crystals), depth-composited
 // with the rasterized scene by MicroVoxelPass. Contrast with the VoxelWorld
 // example, which greedy-meshes 1m macro voxels into triangles — here no
@@ -15,10 +15,10 @@ class MicroVoxelApp : public Application {
     }
 
     void OnLoad() override {
-        // The demo volume spans x,z in [-12.8, 12.8] and y in [0, 25.6].
-        mainCamera->gameObject->SetPosition(glm::vec3(0.0f, 24.0f, 44.0f));
-        mainCamera->Pitch(glm::radians(-16.0f));
-        mainCamera->gameObject->AddComponent<CameraController3D>(/*moveSpeed=*/12.0f, /*lookSpeed=*/1.5f);
+        // The demo volume spans x,z in [-6.4, 6.4]; terrain tops out near y=5.6.
+        mainCamera->gameObject->SetPosition(glm::vec3(0.0f, 9.0f, 20.0f));
+        mainCamera->Pitch(glm::radians(-14.0f));
+        mainCamera->gameObject->AddComponent<CameraController3D>(/*moveSpeed=*/6.0f, /*lookSpeed=*/1.5f);
 
         Renderer* renderer = GraphicsSubsystem::Get()->renderer.get();
         if (auto* microVoxel = renderer->GetPass<MicroVoxelPass>()) {
