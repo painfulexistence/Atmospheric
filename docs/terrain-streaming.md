@@ -79,6 +79,17 @@ Bullet `btHeightfieldTerrainShape` colliders follows the camera tile
 per-move shape allocation. `TerrainStreamer::GetHeight()` gives exact CPU
 height queries anywhere (used by the demo's ground clamp).
 
+**Entity streaming (props/vegetation).** Tiles inside `entityRadiusTiles`
+of the camera get entities: `placeEntitiesFn` produces deterministic
+per-tile placements (seeded by tile coord, heights sampled from the *exact*
+source via `ctx.HeightAt`, so feet match LOD0 ground), `spawnEntityFn`
+builds the GameObjects. Tiles leaving the ring return their objects to
+per-type pools — the live entity count is bounded by the ring area, and
+revisiting a tile reproduces the identical scatter. Population is budgeted
+(`entityTilesPerFrame`) and nearest-first. This is the Phase-3 seed: the
+same per-tile placement lists later drive impostors and HLOD proxies for
+the rings beyond `entityRadiusTiles`.
+
 **Gaea-grade sources, reserved splat space.** The height source is a
 pluggable `heightFn(wx, wz) → [0,1]` called in world metres on worker
 threads — the default is OpenSimplex2 FBm, but a Gaea tiled-export sampler or
@@ -141,11 +152,13 @@ scale:
 
 ## Phase 3 — the world on top (HLOD)
 
-- Deterministic per-tile scatter (trees/rocks/grass from splat weights +
-  noise, seeded by tile coord) streamed with the tile.
-- Near ring: real instanced meshes; mid ring: impostor billboards; far ring:
-  baked **HLOD proxy** per tile (one merged mesh + one baked atlas texture),
-  generated offline or on first visit. Tile grid = HLOD cluster grid.
+- Deterministic per-tile scatter is **implemented** (`placeEntitiesFn` /
+  `spawnEntityFn`, pooled ring streaming); next: drive it from splat weights
+  instead of raw slope/height rules.
+- Near ring: real instanced meshes (today); mid ring: impostor billboards;
+  far ring: baked **HLOD proxy** per tile (one merged mesh + one baked atlas
+  texture), generated offline or on first visit — the per-tile placement
+  lists are exactly the HLOD build input. Tile grid = HLOD cluster grid.
 - GPU instance culling for vegetation (compute frustum + hi-z).
 
 ## Phase 4 — texture pipeline end-game

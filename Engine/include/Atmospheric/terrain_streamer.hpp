@@ -45,6 +45,27 @@ private:
     std::vector<float> _grid;
 };
 
+// One streamed entity on the terrain (see TerrainStreamerProps::placeEntitiesFn).
+struct TerrainEntityPlacement {
+    glm::vec3 position{ 0.0f };// world space (set y from ctx.HeightAt)
+    float yaw = 0.0f;// radians around world Y
+    float scale = 1.0f;// uniform scale, applied by the streamer
+    int type = 0;// user-defined kind; also the recycling-pool key
+};
+
+// Per-tile view handed to placeEntitiesFn. HeightAt samples the exact height
+// source (not the LOD'd heightmap), so entity feet match LOD0 ground.
+struct TerrainTileContext {
+    glm::ivec2 coord{ 0, 0 };
+    glm::vec2 worldMin{ 0.0f }, worldMax{ 0.0f };// tile rect, no gutter
+    float heightScale = 0.0f;
+    int seed = 0;// world seed — combine with coord for deterministic scatter
+    const std::function<float(float, float)>* height01 = nullptr;
+    float HeightAt(float wx, float wz) const {
+        return (*height01)(wx, wz) * heightScale;
+    }
+};
+
 // Open-world streaming terrain: a fixed worldSize x worldSize procedural
 // terrain split into square tiles, all resident at some LOD (full view
 // distance, no horizon pop-out) with concentric rings of increasing detail
@@ -94,6 +115,20 @@ struct TerrainStreamerProps {
     // radius of the camera tile (-1 disables physics entirely).
     int colliderRadiusTiles = 1;
     int colliderResolution = 129;// collider grid per tile (decimated from the LOD0 heightmap)
+
+    // ── Entities (props/vegetation scatter, streamed with the tiles) ───────
+    // Deterministic per-tile placements (called on the main thread; keep it
+    // cheap — a few hundred HeightAt samples per tile). Entities exist for
+    // tiles within entityRadiusTiles of the camera tile; tiles leaving the
+    // ring return their GameObjects to per-type pools for reuse, so the
+    // world-wide entity count is bounded by the ring area.
+    std::function<std::vector<TerrainEntityPlacement>(const TerrainTileContext&)> placeEntitiesFn;
+    // Build a fresh GameObject for a placement (mesh/components only — the
+    // streamer applies position/yaw/scale/active and re-applies them when a
+    // pooled object of the same type is recycled for a new placement).
+    std::function<GameObject*(Application*, const TerrainEntityPlacement&)> spawnEntityFn;
+    int entityRadiusTiles = 3;
+    int entityTilesPerFrame = 1;// tiles populated per Update()
 };
 
 struct IVec2Hash {
@@ -127,6 +162,7 @@ public:
         int visibleTiles = 0;
         int pendingJobs = 0;
         int tilesPerSide = 0;
+        int activeEntities = 0;
         size_t gpuHeightmapBytes = 0;
         bool initialLoadDone = false;// every tile is at its desired LOD
     };
@@ -184,6 +220,7 @@ private:
     void ReleaseSlot(TileSlot* slot);
     void UpdateColliders(glm::ivec2 camTile);
     void AssignCollider(ColliderSlot& slot, TileSlot* tile);
+    void UpdateEntities(glm::ivec2 camTile);
     void CullTiles(const glm::mat4& viewProj);
 
     TerrainStreamerProps _props;
@@ -198,6 +235,15 @@ private:
     std::vector<std::vector<TileSlot*>> _pool;// recycled slots, per LOD
     std::vector<std::unique_ptr<TileSlot>> _allSlots;
     std::vector<ColliderSlot> _colliders;
+
+    // Entity streaming: live per-tile spawn lists plus per-type recycle pools.
+    struct SpawnedEntity {
+        int type = 0;
+        GameObject* go = nullptr;
+    };
+    std::unordered_map<glm::ivec2, std::vector<SpawnedEntity>, IVec2Hash> _entityTiles;
+    std::unordered_map<int, std::vector<GameObject*>> _entityPool;
+    int _activeEntities = 0;
 
     // Layer textures resolved once in Init and shared by every tile material.
     struct ResolvedLayer {

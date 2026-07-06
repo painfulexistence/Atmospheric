@@ -1,4 +1,8 @@
 #include "Atmospheric.hpp"
+#include "Atmospheric/material.hpp"
+#include "Atmospheric/mesh.hpp"
+#include "Atmospheric/mesh_builder.hpp"
+#include "Atmospheric/mesh_component.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -21,6 +25,8 @@ class TerrainStreamingDemo : public Application {
     CameraComponent* _cam = nullptr;
     GameObject* _camGO = nullptr;
     GameObject* _terrainRoot = nullptr;
+    MeshHandle _treeMesh;
+    MeshHandle _rockMesh;
 
     float _moveSpeed = 60.0f;
     bool _clampToGround = true;
@@ -60,6 +66,20 @@ class TerrainStreamingDemo : public Application {
         _terrainRoot = CreateGameObject(glm::vec3(0.0f));
         _terrainRoot->SetName("TerrainRoot");
 
+        // Shared entity meshes: one mesh + material per type, so every spawned
+        // instance batches into the same draw.
+        auto& am = AssetManager::Get();
+        Mesh* tree = MeshBuilder::CreateCube(1.0f);
+        tree->SetMaterial(am.GetMaterialHandle(
+            am.CreateMaterial("ent_tree_mat", MaterialProps{ .diffuse = glm::vec3(0.16f, 0.42f, 0.18f) })
+        ));
+        _treeMesh = am.CreateMesh("ent_tree", tree);
+        Mesh* rock = MeshBuilder::CreateSphere(0.5f, 10);
+        rock->SetMaterial(am.GetMaterialHandle(
+            am.CreateMaterial("ent_rock_mat", MaterialProps{ .diffuse = glm::vec3(0.45f, 0.44f, 0.42f) })
+        ));
+        _rockMesh = am.CreateMesh("ent_rock", rock);
+
         _terrain.Init(
             this,
             TerrainStreamerProps{
@@ -74,6 +94,42 @@ class TerrainStreamingDemo : public Application {
                 .noise = { .resolution = 0, .seed = 20260705, .frequency = 0.00035f, .octaves = 9 },
                 // .layers / .splatFn: plug Gaea-style splat + detail textures here.
                 .colliderRadiusTiles = 1,
+                // Deterministic scatter: slope/height rules decide trees vs
+                // rocks; the streamer spawns/pools them as the ring moves.
+                .placeEntitiesFn =
+                    [](const TerrainTileContext& ctx) {
+                        std::vector<TerrainEntityPlacement> out;
+                        uint32_t rng = static_cast<uint32_t>(ctx.coord.x * 73856093 ^ ctx.coord.y * 19349663 ^ ctx.seed);
+                        auto rand01 = [&rng] {
+                            rng = rng * 1664525u + 1013904223u;
+                            return static_cast<float>(rng >> 8) * (1.0f / 16777216.0f);
+                        };
+                        for (int i = 0; i < 90; ++i) {
+                            const float wx = ctx.worldMin.x + rand01() * (ctx.worldMax.x - ctx.worldMin.x);
+                            const float wz = ctx.worldMin.y + rand01() * (ctx.worldMax.y - ctx.worldMin.y);
+                            const float y = ctx.HeightAt(wx, wz);
+                            const float dhdx = (ctx.HeightAt(wx + 4.0f, wz) - ctx.HeightAt(wx - 4.0f, wz)) / 8.0f;
+                            const float dhdz = (ctx.HeightAt(wx, wz + 4.0f) - ctx.HeightAt(wx, wz - 4.0f)) / 8.0f;
+                            const float slope = std::sqrt(dhdx * dhdx + dhdz * dhdz);
+                            const float hn = y / ctx.heightScale;
+                            if (slope < 0.35f && hn > 0.25f && hn < 0.62f) {
+                                const float s = 3.0f + rand01() * 5.0f;// tree
+                                out.push_back({ { wx, y + 0.5f * s, wz }, rand01() * 6.2832f, s, 0 });
+                            } else if (slope >= 0.35f && slope < 1.1f && rand01() < 0.35f) {
+                                const float s = 1.0f + rand01() * 3.0f;// rock
+                                out.push_back({ { wx, y + 0.2f * s, wz }, rand01() * 6.2832f, s, 1 });
+                            }
+                        }
+                        return out;
+                    },
+                .spawnEntityFn =
+                    [this](Application* app, const TerrainEntityPlacement& p) {
+                        auto* go = app->CreateGameObject(glm::vec3(0.0f));
+                        go->SetName(p.type == 0 ? "tree" : "rock");
+                        go->AddComponent<MeshComponent>(p.type == 0 ? _treeMesh : _rockMesh);
+                        return go;
+                    },
+                .entityRadiusTiles = 3,
             },
             _terrainRoot
         );
@@ -150,7 +206,8 @@ class TerrainStreamingDemo : public Application {
             _statsTimer = 0.0f;
             ConsoleSubsystem::Get()->Info(
                 "tiles " + std::to_string(stats.loadedTiles) + " visible " + std::to_string(stats.visibleTiles)
-                + " pending " + std::to_string(stats.pendingJobs) + " heightmapMB "
+                + " pending " + std::to_string(stats.pendingJobs) + " entities "
+                + std::to_string(stats.activeEntities) + " heightmapMB "
                 + std::to_string(stats.gpuHeightmapBytes / (1024 * 1024))
             );
         }

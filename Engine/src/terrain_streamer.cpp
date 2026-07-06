@@ -173,9 +173,11 @@ void TerrainStreamer::Update(const glm::vec3& cameraPos, const glm::mat4& viewPr
 
     CullTiles(viewProj);
     UpdateColliders(camTile);
+    UpdateEntities(camTile);
 
     _stats.loadedTiles = static_cast<int>(_tiles.size());
     _stats.pendingJobs = static_cast<int>(_inFlight.size());
+    _stats.activeEntities = _activeEntities;
 }
 
 float TerrainStreamer::GetHeight(float wx, float wz) const {
@@ -372,6 +374,80 @@ void TerrainStreamer::UpdateColliders(glm::ivec2 camTile) {
             }
             AssignCollider(*free, it->second);
         }
+    }
+}
+
+// ── entity streaming ─────────────────────────────────────────────────────────
+
+void TerrainStreamer::UpdateEntities(glm::ivec2 camTile) {
+    if (!_props.placeEntitiesFn || !_props.spawnEntityFn || _props.entityRadiusTiles < 0) return;
+    const int r = _props.entityRadiusTiles;
+
+    // Release tiles that left the ring (+1 hysteresis) back into the pools.
+    std::vector<glm::ivec2> departed;
+    for (auto& [coord, spawned] : _entityTiles) {
+        if (std::max(std::abs(coord.x - camTile.x), std::abs(coord.y - camTile.y)) > r + 1) departed.push_back(coord);
+    }
+    for (const auto& coord : departed) {
+        for (auto& entity : _entityTiles[coord]) {
+            entity.go->SetActive(false);
+            _entityPool[entity.type].push_back(entity.go);
+            --_activeEntities;
+        }
+        _entityTiles.erase(coord);
+    }
+
+    // Populate tiles inside the ring, nearest first, budgeted per frame.
+    struct Missing {
+        glm::ivec2 coord;
+        int cheb;
+    };
+    std::vector<Missing> missing;
+    for (int dz = -r; dz <= r; ++dz) {
+        for (int dx = -r; dx <= r; ++dx) {
+            const glm::ivec2 coord{ camTile.x + dx, camTile.y + dz };
+            if (coord.x < 0 || coord.y < 0 || coord.x >= _tilesPerSide || coord.y >= _tilesPerSide) continue;
+            if (_entityTiles.find(coord) != _entityTiles.end()) continue;
+            missing.push_back({ coord, std::max(std::abs(dx), std::abs(dz)) });
+        }
+    }
+    std::sort(missing.begin(), missing.end(), [](const Missing& a, const Missing& b) { return a.cheb < b.cheb; });
+
+    int populated = 0;
+    for (const auto& m : missing) {
+        if (populated >= std::max(1, _props.entityTilesPerFrame)) break;
+        ++populated;
+
+        const glm::vec2 origin = TileOrigin(m.coord);
+        TerrainTileContext ctx;
+        ctx.coord = m.coord;
+        ctx.worldMin = origin;
+        ctx.worldMax = origin + glm::vec2(_props.tileSize);
+        ctx.heightScale = _props.heightScale;
+        ctx.seed = _props.noise.seed;
+        ctx.height01 = &_heightFn;
+
+        std::vector<SpawnedEntity> spawned;
+        for (const auto& placement : _props.placeEntitiesFn(ctx)) {
+            GameObject* go = nullptr;
+            auto& pool = _entityPool[placement.type];
+            if (!pool.empty()) {
+                go = pool.back();
+                pool.pop_back();
+            } else {
+                go = _props.spawnEntityFn(_app, placement);
+                if (!go) continue;
+                go->parent = _root;
+            }
+            go->SetPosition(placement.position);
+            go->SetRotation(glm::vec3(0.0f, placement.yaw, 0.0f));
+            go->SetScale(glm::vec3(placement.scale));
+            go->SetActive(true);
+            spawned.push_back({ placement.type, go });
+            ++_activeEntities;
+        }
+        // Record even when empty so barren tiles aren't re-scattered per frame.
+        _entityTiles[m.coord] = std::move(spawned);
     }
 }
 
