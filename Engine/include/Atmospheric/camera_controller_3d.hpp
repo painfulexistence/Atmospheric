@@ -7,11 +7,20 @@
 
 // View-relative fly camera. WASD moves along the camera's facing direction,
 // R/F lifts/drops along world Y, arrow keys pitch/yaw, Z held slows movement
-// by `slowMultiplier`. No-ops if the owning GameObject has no CameraComponent.
+// by `slowMultiplier`, X held speeds it by `fastMultiplier` (sprint — handy
+// for crossing streamed open worlds). No-ops if the owning GameObject has no
+// CameraComponent.
 class CameraController3D : public Component {
 public:
-    CameraController3D(GameObject* owner, float moveSpeed = 20.0f, float lookSpeed = 1.5f, float slowMultiplier = 0.2f)
-      : _moveSpeed(moveSpeed), _lookSpeed(lookSpeed), _slowMultiplier(slowMultiplier) {
+    CameraController3D(
+        GameObject* owner,
+        float moveSpeed = 20.0f,
+        float lookSpeed = 1.5f,
+        float slowMultiplier = 0.2f,
+        float fastMultiplier = 5.0f
+    )
+      : _moveSpeed(moveSpeed), _lookSpeed(lookSpeed), _slowMultiplier(slowMultiplier),
+        _fastMultiplier(fastMultiplier) {
         gameObject = owner;
     }
 
@@ -34,7 +43,10 @@ public:
         if (input->IsKeyDown(Key::RIGHT)) _camera->Yaw(look);
         if (input->IsKeyDown(Key::LEFT)) _camera->Yaw(-look);
 
-        const float speed = _moveSpeed * (input->IsKeyDown(Key::Z) ? _slowMultiplier : 1.0f) * dt;
+        float multiplier = 1.0f;
+        if (input->IsKeyDown(Key::Z)) multiplier = _slowMultiplier;
+        else if (input->IsKeyDown(Key::X)) multiplier = _fastMultiplier;
+        const float speed = _moveSpeed * multiplier * dt;
         const glm::vec3 fwd = _camera->GetEyeDirection();
         const glm::vec3 right = glm::normalize(glm::cross(fwd, glm::vec3(0.0f, 1.0f, 0.0f)));
 
@@ -53,4 +65,5 @@ private:
     float _moveSpeed;
     float _lookSpeed;
     float _slowMultiplier;
+    float _fastMultiplier;
 };

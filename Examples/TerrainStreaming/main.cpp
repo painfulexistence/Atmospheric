@@ -1,4 +1,5 @@
 #include "Atmospheric.hpp"
+#include "Atmospheric/camera_controller_3d.hpp"
 #include "Atmospheric/material.hpp"
 #include "Atmospheric/mesh.hpp"
 #include "Atmospheric/mesh_builder.hpp"
@@ -15,9 +16,38 @@
 // you fly — no hitches, no pop-in holes, Bullet colliders following the
 // camera tile.
 //
-// Controls: WASD move, arrows look, E sprint (x20), Z slow, R/F up/down,
+// Controls: WASD move, arrows look, X sprint (x20), Z slow, R/F up/down,
 //           G toggle ground-clamp, T teleport +2km (streaming stress test),
 //           I wireframe (shows the LOD rings), ESC quit.
+
+// Keeps the fly camera above the streamed terrain. Ticks after the
+// CameraController3D on the same GameObject (components tick in add order),
+// so the clamp applies to this frame's movement.
+class GroundClampComponent : public Component {
+public:
+    GroundClampComponent(GameObject* owner, TerrainStreamer* terrain) : _terrain(terrain) {
+        gameObject = owner;
+    }
+    std::string GetName() const override {
+        return "GroundClamp";
+    }
+    void OnAttach() override {
+    }
+    void OnDetach() override {
+    }
+    void OnTick(float /*dt*/) override {
+        if (!enabled) return;
+        glm::vec3 pos = gameObject->GetPosition();
+        pos.y = std::max(pos.y, _terrain->GetHeight(pos.x, pos.z) + 2.0f);
+        gameObject->SetPosition(pos);
+    }
+
+    bool enabled = true;
+
+private:
+    TerrainStreamer* _terrain;
+};
+
 class TerrainStreamingDemo : public Application {
     using Application::Application;
 
@@ -25,11 +55,10 @@ class TerrainStreamingDemo : public Application {
     CameraComponent* _cam = nullptr;
     GameObject* _camGO = nullptr;
     GameObject* _terrainRoot = nullptr;
+    GroundClampComponent* _groundClamp = nullptr;
     MeshHandle _treeMesh;
     MeshHandle _rockMesh;
 
-    float _moveSpeed = 60.0f;
-    bool _clampToGround = true;
     bool _wireframe = false;
     float _statsTimer = 0.0f;
     std::chrono::steady_clock::time_point _bootTime;
@@ -144,8 +173,16 @@ class TerrainStreamingDemo : public Application {
         const float groundY = _terrain.GetHeight(0.0f, 0.0f);
         _camGO->SetPosition(glm::vec3(0.0f, groundY + 40.0f, 0.0f));
 
+        // Unified fly camera (X sprint crosses the world at ~1.2 km/s), then
+        // the ground clamp — added second so it ticks after the movement.
+        _camGO->AddComponent<CameraController3D>(
+            /*moveSpeed=*/60.0f, /*lookSpeed=*/1.5f, /*slowMultiplier=*/0.1f, /*fastMultiplier=*/20.0f
+        );
+        _groundClamp =
+            static_cast<GroundClampComponent*>(_camGO->AddComponent<GroundClampComponent>(&_terrain));
+
         ConsoleSubsystem::Get()->Info(
-            "WASD move, arrows look, E sprint, Z slow, R/F up/down, G ground-clamp, T teleport, I wireframe, ESC "
+            "WASD move, arrows look, X sprint, Z slow, R/F up/down, G ground-clamp, T teleport, I wireframe, ESC "
             "quit."
         );
     }
@@ -154,42 +191,20 @@ class TerrainStreamingDemo : public Application {
         if (!_cam) return;
         auto* input = InputSubsystem::Get();
 
-        if (input->IsKeyDown(Key::UP)) _cam->Pitch(CAMERA_ANGULAR_OFFSET);
-        if (input->IsKeyDown(Key::DOWN)) _cam->Pitch(-CAMERA_ANGULAR_OFFSET);
-        if (input->IsKeyDown(Key::RIGHT)) _cam->Yaw(CAMERA_ANGULAR_OFFSET);
-        if (input->IsKeyDown(Key::LEFT)) _cam->Yaw(-CAMERA_ANGULAR_OFFSET);
-
-        float speed = _moveSpeed;
-        if (input->IsKeyDown(Key::E)) speed *= 20.0f;// ~1.2 km/s streaming stress test
-        if (input->IsKeyDown(Key::Z)) speed *= 0.1f;
-        const float step = speed * dt;
-
-        glm::vec3 pos = _camGO->GetPosition();
-        const glm::vec3 fwd = _cam->GetEyeDirection();
-        const glm::vec3 right = glm::normalize(glm::cross(fwd, glm::vec3(0, 1, 0)));
-        if (input->IsKeyDown(Key::W)) pos += fwd * step;
-        if (input->IsKeyDown(Key::S)) pos -= fwd * step;
-        if (input->IsKeyDown(Key::A)) pos -= right * step;
-        if (input->IsKeyDown(Key::D)) pos += right * step;
-        if (input->IsKeyDown(Key::R)) pos.y += step;
-        if (input->IsKeyDown(Key::F)) pos.y -= step;
-
-        if (input->IsKeyPressed(Key::T)) pos += glm::vec3(2000.0f, 0.0f, 0.0f);
-        if (input->IsKeyPressed(Key::G)) _clampToGround = !_clampToGround;
+        // Movement/look/sprint live in CameraController3D; the ground clamp in
+        // GroundClampComponent. Only demo-specific keys remain here.
+        if (input->IsKeyPressed(Key::T)) {
+            _camGO->SetPosition(_camGO->GetPosition() + glm::vec3(2000.0f, 0.0f, 0.0f));
+        }
+        if (input->IsKeyPressed(Key::G) && _groundClamp) _groundClamp->enabled = !_groundClamp->enabled;
         if (input->IsKeyPressed(Key::I)) {
             _wireframe = !_wireframe;
             GraphicsSubsystem::Get()->renderer->EnableWireframe(_wireframe);
         }
         if (input->IsKeyPressed(Key::ESCAPE)) Quit();
 
-        if (_clampToGround) {
-            const float ground = _terrain.GetHeight(pos.x, pos.z);
-            pos.y = std::max(pos.y, ground + 2.0f);
-        }
-        _camGO->SetPosition(pos);
-
         const glm::mat4 viewProj = _cam->GetProjectionMatrix() * _cam->GetViewMatrix();
-        _terrain.Update(pos, viewProj);
+        _terrain.Update(_camGO->GetPosition(), viewProj);
 
         const auto& stats = _terrain.GetStats();
         if (!_reportedStreamed && stats.initialLoadDone) {
