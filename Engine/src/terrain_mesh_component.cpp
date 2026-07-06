@@ -21,6 +21,18 @@ TerrainMeshComponent::TerrainMeshComponent(
     auto& am = AssetManager::Get();
     _mesh = am.CreateTerrainMesh("Terrain_" + owner->GetName(), props.worldSize, props.resolution);
     Mesh* meshPtr = am.GetMeshPtr(_mesh);
+    if (meshPtr) {
+        // The grid mesh is flat; displacement happens in the shader. Frustum
+        // culling only sees this bounding box, so it must span the displaced
+        // range or the terrain vanishes when the flat base leaves the frustum.
+        const float half = 0.5f * props.worldSize;
+        const float top = std::max(props.heightScale, 0.5f);
+        meshPtr->SetBoundingBox(
+            { { glm::vec3(half, top, half), glm::vec3(-half, top, half), glm::vec3(-half, -0.5f, half),
+                glm::vec3(half, -0.5f, half), glm::vec3(half, top, -half), glm::vec3(-half, top, -half),
+                glm::vec3(-half, -0.5f, -half), glm::vec3(half, -0.5f, -half) } }
+        );
+    }
 
     TerrainMaterial* terrainMat = am.CreateTerrainMaterial();
     terrainMat->heightScale = props.heightScale;

@@ -173,8 +173,10 @@ class TerrainStreamingDemo : public Application {
             "TerrainStreaming: full 10.24km x 10.24km horizon ready in " + std::to_string(bootMs) + "ms"
         );
 
+        // Spawn high enough for an establishing vista over the valley — at
+        // ground+40 you only see the local mountainside.
         const float groundY = _terrain.GetHeight(0.0f, 0.0f);
-        _camGO->SetPosition(glm::vec3(0.0f, groundY + 40.0f, 0.0f));
+        _camGO->SetPosition(glm::vec3(0.0f, groundY + 200.0f, 0.0f));
 
         // Unified fly camera (X sprint crosses the world at ~1.2 km/s), then
         // the ground clamp — added second so it ticks after the movement.

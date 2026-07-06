@@ -34,8 +34,12 @@ public:
     // meshResolution^2 cells whose UVs address the interior of a heightmap
     // with a 1-texel gutter (texture is heightResolution+3 texels per edge),
     // plus a perimeter skirt dropping skirtDepth metres to hide cracks
-    // between neighboring tiles of different LODs.
-    static Mesh* CreateTerrainTile(float size, int meshResolution, int heightResolution, float skirtDepth);
+    // between neighboring tiles of different LODs. maxDisplacement is the
+    // shader-side height displacement ceiling (heightScale) — the bounding
+    // box must cover it or the engine's frustum culling, which only sees the
+    // pre-displacement mesh, discards tiles whose mountains are on screen.
+    static Mesh*
+        CreateTerrainTile(float size, int meshResolution, int heightResolution, float skirtDepth, float maxDisplacement);
 
     static Mesh* CreateCubeWithPhysics(const float& size = 1.0f);
 

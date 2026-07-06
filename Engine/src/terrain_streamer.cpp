@@ -288,7 +288,9 @@ TerrainStreamer::TileSlot* TerrainStreamer::AcquireSlot(int lod) {
     go->parent = _root;
     slot->go = go;
 
-    Mesh* mesh = MeshBuilder::CreateTerrainTile(_props.tileSize, MeshRes(lod), HeightRes(lod), SkirtDepth(lod));
+    Mesh* mesh = MeshBuilder::CreateTerrainTile(
+        _props.tileSize, MeshRes(lod), HeightRes(lod), SkirtDepth(lod), _props.heightScale
+    );
     slot->mesh = am.CreateMesh(name, mesh);
 
     TerrainMaterial* mat = am.CreateTerrainMaterial();

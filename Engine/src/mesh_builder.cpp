@@ -314,7 +314,9 @@ Mesh* MeshBuilder::CreateTerrain(const float& worldSize, const int& resolution) 
     return terrain;
 }
 
-Mesh* MeshBuilder::CreateTerrainTile(float size, int meshResolution, int heightResolution, float skirtDepth) {
+Mesh* MeshBuilder::CreateTerrainTile(
+    float size, int meshResolution, int heightResolution, float skirtDepth, float maxDisplacement
+) {
     const int m = std::max(1, meshResolution);
     const float half = size / 2.f;
     const float cell = size / static_cast<float>(m);
@@ -380,11 +382,16 @@ Mesh* MeshBuilder::CreateTerrainTile(float size, int meshResolution, int heightR
 
     auto tile = new Mesh(MeshType::TERRAIN);
     tile->Initialize(verts);
+    // Cover the full displaced volume: the culling in GraphicsSubsystem tests
+    // this box (transformed by the GameObject only), so it must span from the
+    // skirt bottom up to the displacement ceiling, not the flat base grid.
+    const float yTop = std::max(maxDisplacement, 0.5f);
+    const float yBottom = -std::max(skirtDepth, 0.5f);
     tile->SetBoundingBox(
-        { { glm::vec3(.5f * size, .5f, .5f * size), glm::vec3(-.5f * size, .5f, .5f * size),
-            glm::vec3(-.5f * size, -.5f, .5f * size), glm::vec3(.5f * size, -.5f, .5f * size),
-            glm::vec3(.5f * size, .5f, .5f * size), glm::vec3(-.5f * size, .5f, .5f * size),
-            glm::vec3(-.5f * size, -.5f, .5f * size), glm::vec3(.5f * size, -.5f, .5f * size) } }
+        { { glm::vec3(.5f * size, yTop, .5f * size), glm::vec3(-.5f * size, yTop, .5f * size),
+            glm::vec3(-.5f * size, yBottom, .5f * size), glm::vec3(.5f * size, yBottom, .5f * size),
+            glm::vec3(.5f * size, yTop, -.5f * size), glm::vec3(-.5f * size, yTop, -.5f * size),
+            glm::vec3(-.5f * size, yBottom, -.5f * size), glm::vec3(.5f * size, yBottom, -.5f * size) } }
     );
     return tile;
 }
