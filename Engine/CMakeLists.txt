@@ -186,6 +186,8 @@ set(SOURCES
     src/terrain_mesh_component.cpp
     src/height_field_collider_component.cpp
     src/water_component.cpp
+    src/vat.cpp
+    src/vat_component.cpp
     src/shader.cpp
     src/graphics_subsystem.cpp
     src/graphics_subsystem_tile.cpp

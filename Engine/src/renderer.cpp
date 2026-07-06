@@ -10,6 +10,7 @@
 #include "graphics_subsystem.hpp"
 #include "particle_subsystem.hpp"
 #include "physics_subsystem_2d.hpp"
+#include "vat.hpp"
 #include "window.hpp"
 #include <algorithm>
 #include <cctype>
@@ -1515,57 +1516,65 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
         case MeshType::PRIM:
         default:
-            colorShader->Activate();
-            colorShader->SetUniform(std::string("cam_pos"), eyePos);
-            colorShader->SetUniform(std::string("time"), 0);
-            colorShader->SetUniform(std::string("main_light.direction"), mainLight->direction);
-            colorShader->SetUniform(std::string("main_light.ambient"), mainLight->ambient);
-            colorShader->SetUniform(std::string("main_light.diffuse"), mainLight->diffuse);
-            colorShader->SetUniform(std::string("main_light.specular"), mainLight->specular);
-            colorShader->SetUniform(std::string("main_light.intensity"), mainLight->intensity);
-            colorShader->SetUniform(std::string("main_light.cast_shadow"), mainLight->castShadow ? 1 : 0);
-            colorShader->SetUniform(std::string("main_light.ProjectionView"), mainLight->GetProjectionViewMatrix(0));
+            // VAT meshes share the opaque pass but swap in the "vat" vertex
+            // shader, which displaces vertices from the animation texture. The
+            // fragment stage and every uniform below are identical to "color",
+            // so only the shader handle and a few extra VAT uniforms differ.
+            // The lookup is lazy so scenes without VAT never require the shader.
+            VATMaterial* vatMat = dynamic_cast<VATMaterial*>(material);
+            ShaderProgram* meshShader = vatMat ? ctx->GetShader("vat") : colorShader;
+
+            meshShader->Activate();
+            meshShader->SetUniform(std::string("cam_pos"), eyePos);
+            meshShader->SetUniform(std::string("time"), 0);
+            meshShader->SetUniform(std::string("main_light.direction"), mainLight->direction);
+            meshShader->SetUniform(std::string("main_light.ambient"), mainLight->ambient);
+            meshShader->SetUniform(std::string("main_light.diffuse"), mainLight->diffuse);
+            meshShader->SetUniform(std::string("main_light.specular"), mainLight->specular);
+            meshShader->SetUniform(std::string("main_light.intensity"), mainLight->intensity);
+            meshShader->SetUniform(std::string("main_light.cast_shadow"), mainLight->castShadow ? 1 : 0);
+            meshShader->SetUniform(std::string("main_light.ProjectionView"), mainLight->GetProjectionViewMatrix(0));
             for (int i = 0; i < ctx->pointLights.size(); ++i) {
                 LightComponent* l = ctx->pointLights[i];
-                colorShader->SetUniform(
+                meshShader->SetUniform(
                     std::string("aux_lights[") + std::to_string(i) + std::string("].position"), l->GetPosition()
                 );
-                colorShader->SetUniform(
+                meshShader->SetUniform(
                     std::string("aux_lights[") + std::to_string(i) + std::string("].ambient"), l->ambient
                 );
-                colorShader->SetUniform(
+                meshShader->SetUniform(
                     std::string("aux_lights[") + std::to_string(i) + std::string("].diffuse"), l->diffuse
                 );
-                colorShader->SetUniform(
+                meshShader->SetUniform(
                     std::string("aux_lights[") + std::to_string(i) + std::string("].specular"), l->specular
                 );
-                colorShader->SetUniform(
+                meshShader->SetUniform(
                     std::string("aux_lights[") + std::to_string(i) + std::string("].attenuation"), l->attenuation
                 );
-                colorShader->SetUniform(
+                meshShader->SetUniform(
                     std::string("aux_lights[") + std::to_string(i) + std::string("].intensity"), l->intensity
                 );
-                colorShader->SetUniform(
+                meshShader->SetUniform(
                     std::string("aux_lights[") + std::to_string(i) + std::string("].cast_shadow"), l->castShadow ? 1 : 0
                 );
                 for (int f = 0; f < 6; ++f) {
                     GLenum face = GL_TEXTURE_CUBE_MAP_POSITIVE_X + f;
-                    colorShader->SetUniform(
+                    meshShader->SetUniform(
                         std::string("aux_lights[") + std::to_string(i) + std::string("].ProjectionViews[")
                             + std::to_string(f) + std::string("]"),
                         l->GetProjectionViewMatrix(0, face)
                     );
                 }
             }
-            colorShader->SetUniform(std::string("aux_light_count"), static_cast<int>(ctx->pointLights.size()));
-            colorShader->SetUniform(std::string("shadow_map_unit"), 0);
-            colorShader->SetUniform(std::string("omni_shadow_map_unit"), static_cast<int>(UNI_SHADOW_MAP_COUNT));
-            colorShader->SetUniform(std::string("ProjectionView"), projectionView);
+            meshShader->SetUniform(std::string("aux_light_count"), static_cast<int>(ctx->pointLights.size()));
+            meshShader->SetUniform(std::string("shadow_map_unit"), 0);
+            meshShader->SetUniform(std::string("omni_shadow_map_unit"), static_cast<int>(UNI_SHADOW_MAP_COUNT));
+            meshShader->SetUniform(std::string("ProjectionView"), projectionView);
             // Surface parameters
-            colorShader->SetUniform(std::string("surf_params.diffuse"), material->diffuse);
-            colorShader->SetUniform(std::string("surf_params.specular"), material->specular);
-            colorShader->SetUniform(std::string("surf_params.ambient"), material->ambient);
-            colorShader->SetUniform(std::string("surf_params.shininess"), material->shininess);
+            meshShader->SetUniform(std::string("surf_params.diffuse"), material->diffuse);
+            meshShader->SetUniform(std::string("surf_params.specular"), material->specular);
+            meshShader->SetUniform(std::string("surf_params.ambient"), material->ambient);
+            meshShader->SetUniform(std::string("surf_params.shininess"), material->shininess);
 
             // Material textures - dynamically bound to Units 2-6
             // Base Map (Unit 2)
@@ -1578,7 +1587,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             } else {
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
-            colorShader->SetUniform(std::string("base_map_unit"), 2);
+            meshShader->SetUniform(std::string("base_map_unit"), 2);
 
             // Normal Map (Unit 3)
             glActiveTexture(GL_TEXTURE3);
@@ -1590,7 +1599,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             } else {
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
-            colorShader->SetUniform(std::string("normal_map_unit"), 3);
+            meshShader->SetUniform(std::string("normal_map_unit"), 3);
 
             // AO Map (Unit 4)
             glActiveTexture(GL_TEXTURE4);
@@ -1602,7 +1611,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             } else {
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
-            colorShader->SetUniform(std::string("ao_map_unit"), 4);
+            meshShader->SetUniform(std::string("ao_map_unit"), 4);
 
             // Roughness Map (Unit 5)
             glActiveTexture(GL_TEXTURE5);
@@ -1614,7 +1623,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             } else {
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
-            colorShader->SetUniform(std::string("roughness_map_unit"), 5);
+            meshShader->SetUniform(std::string("roughness_map_unit"), 5);
 
             // Metallic Map (Unit 6)
             glActiveTexture(GL_TEXTURE6);
@@ -1626,7 +1635,30 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             } else {
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
-            colorShader->SetUniform(std::string("metallic_map_unit"), 6);
+            meshShader->SetUniform(std::string("metallic_map_unit"), 6);
+
+            // VAT animation textures (units 8-9) + playback uniforms. vat.vert
+            // treats vat_enabled == 0 as "use the static attributes", so a VAT
+            // material with a null/invalid clip degrades to a static mesh.
+            if (vatMat) {
+                VATClip* clip = vatMat->clip;
+                bool ready = clip && clip->GetVertCount() > 0 && clip->GetFrameCount() > 0;
+                glActiveTexture(GL_TEXTURE8);
+                glBindTexture(GL_TEXTURE_2D, ready ? clip->GetPositionTexture() : 0);
+                meshShader->SetUniform(std::string("vat_position_map"), 8);
+                glActiveTexture(GL_TEXTURE9);
+                glBindTexture(GL_TEXTURE_2D, ready ? clip->GetNormalTexture() : 0);
+                meshShader->SetUniform(std::string("vat_normal_map"), 9);
+
+                meshShader->SetUniform(std::string("vat_enabled"), ready ? 1 : 0);
+                meshShader->SetUniform(std::string("vat_vert_count"), ready ? static_cast<int>(clip->GetVertCount()) : 0);
+                meshShader->SetUniform(std::string("vat_frame_count"), ready ? static_cast<int>(clip->GetFrameCount()) : 0);
+                meshShader->SetUniform(std::string("vat_time"), vatMat->normalizedTime);
+                // Runtime/float bakes store raw object space; remap stays off.
+                meshShader->SetUniform(std::string("vat_remap"), 0);
+                meshShader->SetUniform(std::string("vat_bounds_min"), glm::vec3(0.0f));
+                meshShader->SetUniform(std::string("vat_bounds_max"), glm::vec3(1.0f));
+            }
 
             glBindVertexArray(mesh->vao);
             glBindBuffer(GL_ARRAY_BUFFER, mesh->ibo);
@@ -1635,7 +1667,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             // GLES 3 / WebGL 2.0 fallback: Non-instanced draw calls using World uniform
             AE_GL_PROBE(renderer, "Opaque pass: PRIM-GLES before non-instanced loop");
             for (const auto& inst : instances) {
-                colorShader->SetUniform(std::string("World"), inst.modelMatrix);
+                meshShader->SetUniform(std::string("World"), inst.modelMatrix);
                 glDrawElements(GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0);
                 AE_GL_PROBE(renderer, "Opaque pass: PRIM-GLES after glDrawElements");
             }

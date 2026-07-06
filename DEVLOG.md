@@ -14,5 +14,6 @@
 - 2025/01/09 - unable to resolve "fatal error LNK1104: cannot open file 'm.lib'" on Windows
 - 2025/05/25 - realized that LNK1104 might be caused by raudio or lua, solved by removing raudio
 - 2026/06/01 - completed major engine port to WebAssembly and resolved critical WebGL2 rendering bugs
+- 2026/07/06 - added Vertex Animation Texture (VAT) playback: vertices are displaced from baked position/normal textures in vat.vert (fetched by gl_VertexID), so cloth/soft-body/fluid clips play with no compute or CPU skinning; VATClip::Bake + VATComponent drive it, 3DBasics demos it with a runtime-baked blob. Follow-ups: VAT-aware depth/shadow pass (shadows currently cast the rest pose) and a WebGPU forward path (WebGPU renders the rest pose)
 - TODO: use std::filesystem to get the correct asset loading path
 

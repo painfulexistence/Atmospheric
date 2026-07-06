@@ -70,6 +70,19 @@ class HelloWorld : public Application {
             .color = glm::vec4(1.0f, 1.0f, 0.0f, 1.0f),
         });
 
+        // === VAT (Vertex Animation Texture) blob ===
+        // A procedurally-baked VAT clip drives a looping soft-body wobble entirely
+        // in the vertex shader — the same runtime path a Houdini VAT export uses.
+        // See BuildBlobVATAsset in components.hpp for how the clip is baked.
+        auto vatAsset = BuildBlobVATAsset("VATBlob", /*radius*/ 1.0f, /*division*/ 28, /*frames*/ 60, /*fps*/ 30.0f);
+        if (vatAsset.clip) {
+            // VATComponent creates and assigns the VAT material to the mesh itself.
+            auto* blob = CreateGameObject(glm::vec3(3.0f, 5.0f, 0.0f));
+            blob->AddComponent<VATComponent>(vatAsset.mesh, std::move(vatAsset.clip), VATProps{ .speed = 1.0f });
+            blob->AddComponent<RotatorComponent>(glm::vec3(0.0f, 0.6f, 0.0f));
+            blob->SetName("VAT Blob");
+        }
+
         ConsoleSubsystem::Get()->Info(fmt::format("Game fully loaded in {:.1f} seconds", GetWindowTime()));
         ConsoleSubsystem::Get()->Info("Press R to reload shaders, ESC to quit");
         ConsoleSubsystem::Get()->Info(

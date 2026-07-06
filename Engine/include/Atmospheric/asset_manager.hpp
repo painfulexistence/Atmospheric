@@ -11,6 +11,7 @@ class Mesh;
 class Material;
 class WaterMaterial;
 class TerrainMaterial;
+class VATMaterial;
 class ShaderProgram;
 struct ShaderProgramProps;
 struct MaterialProps;
@@ -56,6 +57,7 @@ public:
     Material* CreateMaterial(const MaterialProps& props);
     WaterMaterial* CreateWaterMaterial();
     TerrainMaterial* CreateTerrainMaterial();
+    VATMaterial* CreateVATMaterial();
     Material* GetMaterial(const std::string& name) const;
     Material* GetMaterialByID(uint32_t id) const;
     // Handle-based access: handles are stable references that survive scene

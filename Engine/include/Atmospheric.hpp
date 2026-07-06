@@ -31,6 +31,8 @@
 #include "Atmospheric/video_recorder.hpp"
 #include "Atmospheric/voxel_chunk_component.hpp"
 #include "Atmospheric/voxel_world.hpp"
+#include "Atmospheric/vat.hpp"
+#include "Atmospheric/vat_component.hpp"
 #include "Atmospheric/water_component.hpp"
 #include "Atmospheric/window.hpp"
 #include "imgui.h"

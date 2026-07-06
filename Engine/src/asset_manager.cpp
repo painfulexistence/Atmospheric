@@ -411,6 +411,9 @@ void AssetManager::LoadDefaultShaders() {
           { "sun", { .vert = "assets/shaders/sun.vert", .frag = "assets/shaders/sun.frag" } },
           { "voxel", { .vert = "assets/shaders/voxel.vert", .frag = "assets/shaders/voxel.frag" } },
           { "water", { .vert = "assets/shaders/water.vert", .frag = "assets/shaders/water.frag" } },
+          // Vertex Animation Texture playback: vat.vert displaces vertices from
+          // the animation texture, then reuses pbr.frag for identical shading.
+          { "vat", { .vert = "assets/shaders/vat.vert", .frag = "assets/shaders/pbr.frag" } },
           { "bloom_threshold", { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_threshold.frag" } },
           { "bloom_downsample",
             { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_downsample.frag" } },
@@ -523,6 +526,14 @@ TerrainMaterial* AssetManager::CreateTerrainMaterial() {
     auto* ptr = material.get();
     materials.push_back(std::move(material));
     _materialCache["terrain_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return ptr;
+}
+
+VATMaterial* AssetManager::CreateVATMaterial() {
+    auto material = std::make_unique<VATMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
+    _materialCache["vat_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
     return ptr;
 }
 
