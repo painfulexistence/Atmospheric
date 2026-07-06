@@ -199,7 +199,21 @@ class TerrainStreamingDemo : public Application {
         // Movement/look/sprint live in CameraController3D; the ground clamp in
         // GroundClampComponent. Only demo-specific keys remain here.
         if (input->IsKeyPressed(Key::T)) {
-            _camGO->SetPosition(_camGO->GetPosition() + glm::vec3(2000.0f, 0.0f, 0.0f));
+            // Teleport 2km along the view direction, kept inside the world —
+            // stepping past the edge leaves nothing but void in front of you.
+            const float bound = 0.5f * _terrain.Props().worldSize - _terrain.Props().tileSize;
+            glm::vec3 fwd = _cam->GetEyeDirection();
+            fwd.y = 0.0f;
+            fwd = glm::length(fwd) > 1e-3f ? glm::normalize(fwd) : glm::vec3(1, 0, 0);
+            glm::vec3 pos = _camGO->GetPosition() + fwd * 2000.0f;
+            pos.x = std::clamp(pos.x, -bound, bound);
+            pos.z = std::clamp(pos.z, -bound, bound);
+            pos.y = _terrain.GetHeight(pos.x, pos.z) + 200.0f;
+            _camGO->SetPosition(pos);
+            ConsoleSubsystem::Get()->Info(
+                "Teleported to (" + std::to_string(static_cast<int>(pos.x)) + ", "
+                + std::to_string(static_cast<int>(pos.z)) + ")"
+            );
         }
         if (input->IsKeyPressed(Key::G) && _groundClamp) _groundClamp->enabled = !_groundClamp->enabled;
         if (input->IsKeyPressed(Key::L)) {
@@ -231,9 +245,13 @@ class TerrainStreamingDemo : public Application {
         _statsTimer += dt;
         if (_statsTimer >= 5.0f) {
             _statsTimer = 0.0f;
+            const glm::vec3 pos = _camGO->GetPosition();
+            const float bound = 0.5f * _terrain.Props().worldSize;
+            const bool inside = std::abs(pos.x) <= bound && std::abs(pos.z) <= bound;
             ConsoleSubsystem::Get()->Info(
-                "tiles " + std::to_string(stats.loadedTiles) + " visible " + std::to_string(stats.visibleTiles)
-                + " pending " + std::to_string(stats.pendingJobs) + " entities "
+                "cam (" + std::to_string(static_cast<int>(pos.x)) + ", " + std::to_string(static_cast<int>(pos.z))
+                + (inside ? ") " : ") OUTSIDE WORLD ") + "tiles " + std::to_string(stats.loadedTiles) + " visible "
+                + std::to_string(stats.visibleTiles) + " pending " + std::to_string(stats.pendingJobs) + " entities "
                 + std::to_string(stats.activeEntities) + " heightmapMB "
                 + std::to_string(stats.gpuHeightmapBytes / (1024 * 1024))
             );
