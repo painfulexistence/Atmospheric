@@ -182,7 +182,17 @@ void LockstepNet::Pump(uint32_t nowMs) {
 EM_JS(void, js_rtc_send, (const uint8_t* data, int len), {
     var ch = window['_rtcChannel'];
     if (ch&& ch.readyState === 'open') {
-        ch.send(HEAPU8.buffer.slice(data, data + len));
+        // AtmosphericEngine builds with -sUSE_PTHREADS=1, so the wasm heap
+        // (and therefore HEAPU8.buffer) is a SharedArrayBuffer, not a plain
+        // ArrayBuffer. RTCDataChannel.send() rejects SharedArrayBuffer
+        // outright ("parameter 1 is not of type 'ArrayBuffer'") — and
+        // SharedArrayBuffer.prototype.slice() only ever returns another
+        // SharedArrayBuffer, so slicing it directly can never fix this.
+        // Copying into a fresh Uint8Array gives a genuine, non-shared
+        // ArrayBuffer that send() accepts.
+        var copy = new Uint8Array(len);
+        copy.set(HEAPU8.subarray(data, data + len));
+        ch.send(copy.buffer);
     }
 });
 // NOLINTEND
