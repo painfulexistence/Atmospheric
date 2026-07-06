@@ -184,6 +184,13 @@ float TerrainStreamer::GetHeight(float wx, float wz) const {
     return _heightFn ? _heightFn(wx, wz) * _props.heightScale : 0.0f;
 }
 
+void TerrainStreamer::SetLodTintDebug(bool enabled) {
+    _lodTintDebug = enabled;
+    for (auto& slot : _allSlots) {
+        if (slot->material) slot->material->paletteIndex = enabled ? slot->lod % 6 : _props.paletteIndex;
+    }
+}
+
 // ── streaming internals ──────────────────────────────────────────────────────
 
 void TerrainStreamer::RequestTile(glm::ivec2 coord, int lod) {
@@ -288,7 +295,7 @@ TerrainStreamer::TileSlot* TerrainStreamer::AcquireSlot(int lod) {
     mat->heightScale = _props.heightScale;
     mat->tessellationFactor = _props.tessellationFactor;
     mat->worldSize = GutterWorldSize(lod);
-    mat->paletteIndex = _props.paletteIndex;
+    mat->paletteIndex = _lodTintDebug ? lod % 6 : _props.paletteIndex;
     mat->cullFaceEnabled = false;// skirts must render from both sides
     mat->layerCount = static_cast<int>(_layers.size());
     for (size_t i = 0; i < _layers.size(); ++i) {

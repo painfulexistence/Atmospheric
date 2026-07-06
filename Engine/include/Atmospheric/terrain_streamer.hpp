@@ -157,6 +157,14 @@ public:
     // CPU height query in world metres (evaluates the height source directly).
     float GetHeight(float wx, float wz) const;
 
+    // Debug: tint every tile by its LOD (palette index = LOD) so the detail
+    // rings and their refinement become visible. Only affects tiles rendered
+    // with the palette fallback (no layers / base map).
+    void SetLodTintDebug(bool enabled);
+    bool GetLodTintDebug() const {
+        return _lodTintDebug;
+    }
+
     struct Stats {
         int loadedTiles = 0;
         int visibleTiles = 0;
@@ -244,6 +252,7 @@ private:
     std::unordered_map<glm::ivec2, std::vector<SpawnedEntity>, IVec2Hash> _entityTiles;
     std::unordered_map<int, std::vector<GameObject*>> _entityPool;
     int _activeEntities = 0;
+    bool _lodTintDebug = false;
 
     // Layer textures resolved once in Init and shared by every tile material.
     struct ResolvedLayer {

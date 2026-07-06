@@ -18,7 +18,8 @@
 //
 // Controls: WASD move, arrows look, X sprint (x20), Z slow, R/F up/down,
 //           G toggle ground-clamp, T teleport +2km (streaming stress test),
-//           I wireframe (shows the LOD rings), ESC quit.
+//           L LOD tint (colors each detail ring — watch tiles refine),
+//           I wireframe, ESC quit.
 
 // Keeps the fly camera above the streamed terrain. Ticks after the
 // CameraController3D on the same GameObject (components tick in add order),
@@ -184,8 +185,8 @@ class TerrainStreamingDemo : public Application {
             static_cast<GroundClampComponent*>(_camGO->AddComponent<GroundClampComponent>(&_terrain));
 
         ConsoleSubsystem::Get()->Info(
-            "WASD move, arrows look, X sprint, Z slow, R/F up/down, G ground-clamp, T teleport, I wireframe, ESC "
-            "quit."
+            "WASD move, arrows look, X sprint, Z slow, R/F up/down, G ground-clamp, T teleport, L LOD tint, I "
+            "wireframe, ESC quit."
         );
     }
 
@@ -199,6 +200,13 @@ class TerrainStreamingDemo : public Application {
             _camGO->SetPosition(_camGO->GetPosition() + glm::vec3(2000.0f, 0.0f, 0.0f));
         }
         if (input->IsKeyPressed(Key::G) && _groundClamp) _groundClamp->enabled = !_groundClamp->enabled;
+        if (input->IsKeyPressed(Key::L)) {
+            _terrain.SetLodTintDebug(!_terrain.GetLodTintDebug());
+            ConsoleSubsystem::Get()->Info(
+                _terrain.GetLodTintDebug() ? "LOD tint ON — each color is a detail ring; tiles recolor as they refine"
+                                           : "LOD tint OFF"
+            );
+        }
         if (input->IsKeyPressed(Key::I)) {
             _wireframe = !_wireframe;
             GraphicsSubsystem::Get()->renderer->EnableWireframe(_wireframe);
