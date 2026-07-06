@@ -2,7 +2,8 @@
 #include <cstdint>
 #include <cstring>
 
-// Wire protocol shared by HiddenTagServer and HiddenTagClient.
+// Wire protocol shared by HideAndSeekServer/HideAndSeekListenServer and
+// HideAndSeekClient.
 //
 // Unlike MultiplayerSandbox's lockstep protocol, this is client-server, not
 // peer-symmetric: clients send only their input, the server is the sole

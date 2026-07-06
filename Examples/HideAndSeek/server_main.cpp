@@ -1,14 +1,14 @@
-// HiddenTagDedicatedServer — HiddenTagAuthority (see authority.hpp for the
+// HideAndSeekServer — HideAndSeekAuthority (see authority.hpp for the
 // full rationale) run as a standalone process with no attached player.
 //
 // A plain loop, not an Application: this process has no GameObject/Scene/
 // rendering needs, so the AddSubsystem<T>/headless Application machinery
 // would only add an unproven dependency (see Examples/RelayServer's
 // RelayServer-vs-RelayServerApp split for the same reasoning applied there).
-// Contrast with HiddenTagListenServer, which embeds the same
-// HiddenTagAuthority inside a windowed Application instead.
+// Contrast with HideAndSeekListenServer, which embeds the same
+// HideAndSeekAuthority inside a windowed Application instead.
 //
-//   ./HiddenTagDedicatedServer [--port <n>]     (default 9100)
+//   ./HideAndSeekServer [--port <n>]     (default 9100)
 #include "authority.hpp"
 
 #include <spdlog/spdlog.h>
@@ -35,12 +35,12 @@ int main(int argc, char* argv[]) {
     std::signal(SIGTERM, [](int) { g_stopRequested = true; });
 #endif
 
-    HiddenTagAuthority authority;
+    HideAndSeekAuthority authority;
     if (!authority.Bind(port)) {
-        spdlog::error("HiddenTagDedicatedServer: failed to bind UDP port {}", port);
+        spdlog::error("HideAndSeekServer: failed to bind UDP port {}", port);
         return 1;
     }
-    spdlog::info("HiddenTagDedicatedServer: listening on UDP :{} (Ctrl+C to stop)", authority.BoundPort());
+    spdlog::info("HideAndSeekServer: listening on UDP :{} (Ctrl+C to stop)", authority.BoundPort());
 
     while (!g_stopRequested) {
         authority.Pump();
@@ -48,6 +48,6 @@ int main(int argc, char* argv[]) {
     }
 
     authority.Shutdown();
-    spdlog::info("HiddenTagDedicatedServer: shut down");
+    spdlog::info("HideAndSeekServer: shut down");
     return 0;
 }

@@ -2,40 +2,40 @@
 
 #include <spdlog/spdlog.h>
 
-HiddenTagAuthority::~HiddenTagAuthority() {
+HideAndSeekAuthority::~HideAndSeekAuthority() {
     Shutdown();
 }
 
-bool HiddenTagAuthority::Bind(uint16_t port) {
+bool HideAndSeekAuthority::Bind(uint16_t port) {
     if (_socket.IsOpen()) Shutdown();
     if (!_socket.Open(port)) {
-        spdlog::error("HiddenTagAuthority: bind() failed on port {} (port in use?)", port);
+        spdlog::error("HideAndSeekAuthority: bind() failed on port {} (port in use?)", port);
         return false;
     }
     _serverTick = 0;
     _tickScheduled = false;
     ResetRound();
-    spdlog::info("HiddenTagAuthority: bound on UDP :{}", _socket.BoundPort());
+    spdlog::info("HideAndSeekAuthority: bound on UDP :{}", _socket.BoundPort());
     return true;
 }
 
-void HiddenTagAuthority::Shutdown() {
+void HideAndSeekAuthority::Shutdown() {
     _socket.Close();
     _slots[0] = ClientSlot{};
     _slots[1] = ClientSlot{};
 }
 
-void HiddenTagAuthority::ResetRound() {
+void HideAndSeekAuthority::ResetRound() {
     _slots[static_cast<int>(proto::Role::Seeker)].pos = { 60.0f, 60.0f };
     _slots[static_cast<int>(proto::Role::Hider)].pos = { sim::kArenaW - 60.0f, sim::kArenaH - 60.0f };
-    spdlog::info("HiddenTagAuthority: round reset");
+    spdlog::info("HideAndSeekAuthority: round reset");
 }
 
-void HiddenTagAuthority::SendTo(uint32_t addr, uint16_t port, const uint8_t* data, int len) {
+void HideAndSeekAuthority::SendTo(uint32_t addr, uint16_t port, const uint8_t* data, int len) {
     _socket.SendTo(addr, port, data, len);
 }
 
-void HiddenTagAuthority::HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, uint16_t fromPort) {
+void HideAndSeekAuthority::HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, uint16_t fromPort) {
     if (len < 5 || proto::GetU32(data) != proto::kMagic) return;
     auto type = static_cast<proto::PacketType>(data[4]);
 
@@ -46,7 +46,7 @@ void HiddenTagAuthority::HandlePacket(const uint8_t* data, int len, uint32_t fro
         slot.connected = true;
         slot.addr = fromAddr;
         slot.port = fromPort;
-        spdlog::info("HiddenTagAuthority: {} connected", role == proto::Role::Seeker ? "Seeker" : "Hider");
+        spdlog::info("HideAndSeekAuthority: {} connected", role == proto::Role::Seeker ? "Seeker" : "Hider");
 
         uint8_t buf[proto::kServerWelcomeLen];
         proto::PutU32(buf, proto::kMagic);
@@ -70,7 +70,7 @@ void HiddenTagAuthority::HandlePacket(const uint8_t* data, int len, uint32_t fro
     }
 }
 
-void HiddenTagAuthority::Tick() {
+void HideAndSeekAuthority::Tick() {
     ClientSlot& seeker = _slots[static_cast<int>(proto::Role::Seeker)];
     ClientSlot& hider = _slots[static_cast<int>(proto::Role::Hider)];
 
@@ -78,7 +78,7 @@ void HiddenTagAuthority::Tick() {
     if (hider.connected) hider.pos = sim::Step(hider.pos, hider.dx, hider.dy);
 
     if (seeker.connected && hider.connected && sim::IsTagged(seeker.pos, hider.pos)) {
-        spdlog::info("HiddenTagAuthority: Seeker tagged Hider!");
+        spdlog::info("HideAndSeekAuthority: Seeker tagged Hider!");
         ResetRound();
     }
 
@@ -116,7 +116,7 @@ void HiddenTagAuthority::Tick() {
     }
 }
 
-void HiddenTagAuthority::Pump() {
+void HideAndSeekAuthority::Pump() {
     if (!_socket.IsOpen()) return;
 
     uint8_t buf[128];

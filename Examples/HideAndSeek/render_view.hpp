@@ -3,11 +3,11 @@
 #include "client_net.hpp"
 #include "sim_common.hpp"
 
-// Rendering shared by HiddenTagClient and HiddenTagListenServer — both are
-// just "a window showing what ClientNet currently knows", regardless of
+// Rendering shared by HideAndSeekClient and HideAndSeekListenServer — both
+// are just "a window showing what ClientNet currently knows", regardless of
 // whether the ClientNet on this process is talking to a separate dedicated
-// server or to a HiddenTagAuthority embedded in this same process.
-inline void RenderHiddenTagView(const ClientNet& net, FontHandle fontID, uint32_t nowMs) {
+// server or to a HideAndSeekAuthority embedded in this same process.
+inline void RenderHideAndSeekView(const ClientNet& net, FontHandle fontID, uint32_t nowMs) {
     auto* gfx = GraphicsSubsystem::Get();
     auto ws = Window::Get()->GetLogicalSize();
     float sx = static_cast<float>(ws.width) / sim::kArenaW;

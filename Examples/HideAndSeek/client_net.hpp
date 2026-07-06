@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <string>
 
-// ClientNet — client side of the HiddenTag protocol.
+// ClientNet — client side of the HideAndSeek protocol.
 //
 // Prediction + reconciliation, simplified: rather than replaying a precise
 // per-tick input history against the server's authoritative position (the

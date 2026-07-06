@@ -12,7 +12,7 @@
 //
 // Every UDP class in the engine and examples used to hand-roll a near-
 // identical copy of this (LockstepNet, UdpRelay, UdpRelayClient's caller,
-// HiddenTag's ClientNet and HiddenTagAuthority) before it was extracted
+// HideAndSeek's ClientNet and HideAndSeekAuthority) before it was extracted
 // here — four independent copies of the same ~30 lines of platform shim.
 //
 // Not available on Emscripten (no raw UDP sockets in the browser).

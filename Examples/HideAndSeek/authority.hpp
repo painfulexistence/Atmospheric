@@ -6,12 +6,12 @@
 #include <chrono>
 #include <cstdint>
 
-// HiddenTagAuthority — the authoritative simulation + networking core shared
+// HideAndSeekAuthority — the authoritative simulation + networking core shared
 // by both server deployment shapes:
 //
-//   - HiddenTagDedicatedServer (dedicated_server_main.cpp): a standalone
-//     process with no attached player, driven by a plain loop.
-//   - HiddenTagListenServer (listen_server_main.cpp): embedded inside one
+//   - HideAndSeekServer (server_main.cpp): a standalone process with no
+//     attached player, driven by a plain loop.
+//   - HideAndSeekListenServer (listen_server_main.cpp): embedded inside one
 //     player's own windowed client process, driven from Application::OnUpdate
 //     alongside that player's own rendering/input.
 //
@@ -46,9 +46,9 @@
 //
 // Owns its own UDP socket; platform socket handling is entirely internal
 // (see authority.cpp) so this header stays free of OS socket types.
-class HiddenTagAuthority {
+class HideAndSeekAuthority {
 public:
-    ~HiddenTagAuthority();
+    ~HideAndSeekAuthority();
 
     // port 0 binds an OS-assigned ephemeral port; BoundPort() reports it.
     bool Bind(uint16_t port);

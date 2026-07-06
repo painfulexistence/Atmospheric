@@ -1,8 +1,8 @@
-// HiddenTagClient — 1 Seeker vs 1 Hider, server-authoritative hide-and-tag.
+// HideAndSeekClient — 1 Seeker vs 1 Hider, server-authoritative hide-and-tag.
 //
-//   ./HiddenTagClient --role seeker --connect <ip> [port]
-//   ./HiddenTagClient --role hider  --connect <ip> [port]
-//   (default port 9100; run HiddenTagDedicatedServer or HiddenTagListenServer
+//   ./HideAndSeekClient --role seeker --connect <ip> [port]
+//   ./HideAndSeekClient --role hider  --connect <ip> [port]
+//   (default port 9100; run HideAndSeekServer or HideAndSeekListenServer
 //   separately — this client doesn't care which kind of authority it's
 //   talking to, see authority.hpp)
 //
@@ -37,7 +37,7 @@ namespace {
     }
 }// namespace
 
-class HiddenTagGame : public Application {
+class HideAndSeekGame : public Application {
     using Application::Application;
 
     ClientNet _net;
@@ -72,7 +72,7 @@ class HiddenTagGame : public Application {
             _net.SubmitInput(_tick++, dx, dy);
         }
 
-        RenderHiddenTagView(_net, _fontID, nowMs);
+        RenderHideAndSeekView(_net, _fontID, nowMs);
 
         if (InputSubsystem::Get()->IsKeyDown(Key::ESCAPE)) Quit();
     }
@@ -89,8 +89,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    HiddenTagGame game(
-        { .windowTitle = "HiddenTag",
+    HideAndSeekGame game(
+        { .windowTitle = "HideAndSeek",
           .windowWidth = 800,
           .windowHeight = 600,
           .enableAudio = false,

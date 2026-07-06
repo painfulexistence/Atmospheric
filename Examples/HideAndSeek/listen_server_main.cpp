@@ -1,11 +1,11 @@
-// HiddenTagListenServer — one player's own process hosts the authoritative
-// simulation (HiddenTagAuthority) *and* plays as a normal client against it,
-// contrasted with HiddenTagDedicatedServer, which has no attached player.
+// HideAndSeekListenServer — one player's own process hosts the authoritative
+// simulation (HideAndSeekAuthority) *and* plays as a normal client against it,
+// contrasted with HideAndSeekServer, which has no attached player.
 //
-//   ./HiddenTagListenServer --role seeker [--port <n>]     (default 9100)
-//   ./HiddenTagListenServer --role hider  [--port <n>]
+//   ./HideAndSeekListenServer --role seeker [--port <n>]     (default 9100)
+//   ./HideAndSeekListenServer --role hider  [--port <n>]
 //
-// The other player connects normally with HiddenTagClient, pointed at
+// The other player connects normally with HideAndSeekClient, pointed at
 // whatever address reaches this process (see Examples/RelayServer if that
 // address is behind NAT — the transport doesn't care whether the far end is
 // a dedicated server or a listen server).
@@ -39,10 +39,10 @@ namespace {
     }
 }// namespace
 
-class HiddenTagListenServerGame : public Application {
+class HideAndSeekListenServerGame : public Application {
     using Application::Application;
 
-    HiddenTagAuthority _authority;
+    HideAndSeekAuthority _authority;
     ClientNet _net;
     FontHandle _fontID = 0;
     float _accum = 0.0f;
@@ -86,7 +86,7 @@ class HiddenTagListenServerGame : public Application {
             _net.SubmitInput(_tick++, dx, dy);
         }
 
-        RenderHiddenTagView(_net, _fontID, nowMs);
+        RenderHideAndSeekView(_net, _fontID, nowMs);
 
         if (InputSubsystem::Get()->IsKeyDown(Key::ESCAPE)) Quit();
     }
@@ -102,8 +102,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    HiddenTagListenServerGame game(
-        { .windowTitle = "HiddenTag (Listen Server)",
+    HideAndSeekListenServerGame game(
+        { .windowTitle = "HideAndSeek (Listen Server)",
           .windowWidth = 800,
           .windowHeight = 600,
           .enableAudio = false,

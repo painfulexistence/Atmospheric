@@ -1,4 +1,4 @@
-# HiddenTag
+# HideAndSeek
 
 A server-authoritative 1 Seeker vs 1 Hider hide-and-tag game — the
 architecture asymmetric, hidden-information PvP needs, in contrast to
@@ -10,19 +10,19 @@ secret from the other; a server-authoritative model can simply never send it).
 
 ## Running
 
-Two ways to host, one way to join — `HiddenTagClient` connects to either
+Two ways to host, one way to join — `HideAndSeekClient` connects to either
 identically, since the protocol doesn't distinguish deployment shape:
 
 ```sh
 # Dedicated: standalone process, no attached player
-./HiddenTagDedicatedServer [--port <n>]                       # default 9100
+./HideAndSeekServer [--port <n>]                              # default 9100
 
 # Listen server: one player's own process hosts *and* plays
-./HiddenTagListenServer --role seeker [--port <n>]
-# (the other player joins as HiddenTagClient below, same as against a dedicated server)
+./HideAndSeekListenServer --role seeker [--port <n>]
+# (the other player joins as HideAndSeekClient below, same as against a dedicated server)
 
-./HiddenTagClient --role seeker --connect <ip> [port]
-./HiddenTagClient --role hider  --connect <ip> [port]
+./HideAndSeekClient --role seeker --connect <ip> [port]
+./HideAndSeekClient --role hider  --connect <ip> [port]
 ```
 
 Controls: WASD / arrows move, Esc quit. The Seeker sees a faint circle
@@ -32,17 +32,17 @@ not "both sides have partial info about each other", genuinely one-directional).
 
 ## Dedicated server vs. listen server
 
-Both wrap the same `HiddenTagAuthority` (`authority.hpp`/`.cpp`) — the
+Both wrap the same `HideAndSeekAuthority` (`authority.hpp`/`.cpp`) — the
 authoritative simulation + networking core — so there is exactly one
 implementation of "who's allowed to know what" to keep correct, not two:
 
-- **`HiddenTagDedicatedServer`** (`dedicated_server_main.cpp`): a plain loop,
-  not an `Application` — no GameObject/Scene/rendering needs, so the
+- **`HideAndSeekServer`** (`server_main.cpp`): a plain loop, not an
+  `Application` — no GameObject/Scene/rendering needs, so the
   `AddSubsystem<T>`/headless `Application` machinery would only add an
   unproven dependency (same reasoning as [RelayServer vs.
   RelayServerApp](../RelayServer)).
-- **`HiddenTagListenServer`** (`listen_server_main.cpp`): a windowed
-  `Application` that embeds `HiddenTagAuthority` *and* plays as a normal
+- **`HideAndSeekListenServer`** (`listen_server_main.cpp`): a windowed
+  `Application` that embeds `HideAndSeekAuthority` *and* plays as a normal
   client against it. Its own local player talks to the embedded authority
   exactly like a remote client would — over loopback UDP via an ordinary
   `ClientNet` connected to `127.0.0.1` — rather than a special zero-latency
@@ -52,7 +52,7 @@ implementation of "who's allowed to know what" to keep correct, not two:
   exercising the exact same prediction/reconciliation code path as everyone
   else (one less thing to get subtly wrong twice).
 
-`HiddenTagClient` and the rendering it shares with `HiddenTagListenServer`
+`HideAndSeekClient` and the rendering it shares with `HideAndSeekListenServer`
 (`render_view.hpp`) have no idea which kind of authority is on the other end
 of the socket — that not-knowing is the point: authority (who decides what's
 true) is a simulation-layer concern, deployment (standalone process vs.
@@ -101,7 +101,7 @@ publicly reachable, so there's normally nothing for a relay to solve there —
 but a listen server's host is typically an ordinary player behind a home
 router, which is exactly `UdpRelay`'s scenario. It isn't wired in here to
 keep this example focused, but `UdpRelayClient` would slot in without
-changing the protocol (it only needs a socket handle to send through, and
+changing the protocol (it only needs a `UdpSocket` to send through, and
 doesn't care what bytes it's carrying) — the one real limitation is that
 `UdpRelay`'s rooms are hardcoded to exactly 2 peer slots, which happens to
 match this game's 2 players today but wouldn't scale to a listen server with
