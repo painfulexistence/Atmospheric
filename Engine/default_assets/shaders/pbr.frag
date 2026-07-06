@@ -58,6 +58,10 @@ uniform sampler2D shadow_map_unit;
 uniform samplerCube omni_shadow_map_unit;
 uniform float time;
 
+// World-space clip plane (n, d) used by PlanarReflectionPass to cut away
+// geometry below the mirror plane; all-zero disables (dot == 0 is kept).
+uniform vec4 u_clipPlane;
+
 in vec3 frag_pos;
 in vec2 tex_uv;
 in mat3 TBN;
@@ -225,6 +229,10 @@ float PointShadow(vec3 shadowCoords, float bias) {
 }
 
 void main() {
+    if (dot(u_clipPlane.xyz, frag_pos) + u_clipPlane.w < 0.0) {
+        discard;
+    }
+
     vec3 texNorm = texture(normal_map_unit, tex_uv).rgb * 2.0 - 1.0;
     vec3 norm = normalize(TBN * texNorm);
     vec3 viewDir = normalize(cam_pos - frag_pos);

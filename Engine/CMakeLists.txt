@@ -216,6 +216,8 @@ set(SOURCES
     src/voxel_chunk_component.cpp
     src/voxel_world.cpp
     src/voxel_chunk_pass.cpp
+    src/portal_pass.cpp
+    src/portal_component.cpp
     src/sun_component.cpp
     src/scene_loader.cpp
     src/scene_transition.cpp

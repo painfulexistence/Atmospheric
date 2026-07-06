@@ -186,6 +186,10 @@ void GLShaderProgram::SetUniform(const std::string& uniform, const glm::vec3& va
     glUniform3fv(GetUniform(uniform), 1, &val[0]);
 }
 
+void GLShaderProgram::SetUniform(const std::string& uniform, const glm::vec4& val) {
+    glUniform4fv(GetUniform(uniform), 1, &val[0]);
+}
+
 void GLShaderProgram::SetUniform(const std::string& uniform, int val) {
     glUniform1i(GetUniform(uniform), val);
 }

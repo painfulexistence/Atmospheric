@@ -93,6 +93,13 @@ public:
         return cameras.size() > 0 ? cameras[0] : defaultCamera;
     }
 
+    // Eye position of the view currently being rendered: the mirrored camera
+    // while PlanarReflectionPass drives a reflection, otherwise the main
+    // camera. Billboards read this so they face the correct camera in the
+    // reflection RT as well as the main view. (Defined in the .cpp since it
+    // dereferences the Renderer's view override.)
+    glm::vec3 GetActiveEyePosition() const;
+
     LightComponent* GetMainLight() const {
         return directionalLights.size() > 0 ? directionalLights[0] : defaultLight;
     }
