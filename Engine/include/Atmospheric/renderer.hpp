@@ -442,7 +442,7 @@ public:
     // recursion level is a full offscreen scene re-render. Any scene using
     // portals inherits these — the per-platform choice lives here, not in the
     // examples. Override after construction for a per-scene budget.
-    int recursionDepth = 3;// portal-in-portal levels before the void floor
+    int recursionDepth = 4;// portal-in-portal levels before the void floor (desktop)
     float resolutionScale = 0.4f;// portal RT size relative to the window
 
     // viewProj of every portal recursion level rendered last frame. Published
