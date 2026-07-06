@@ -413,7 +413,11 @@ void AssetManager::LoadDefaultShaders() {
           { "water", { .vert = "assets/shaders/water.vert", .frag = "assets/shaders/water.frag" } },
           // Vertex Animation Texture playback: vat.vert displaces vertices from
           // the animation texture, then reuses pbr.frag for identical shading.
+          // The depth variants let VAT meshes cast animation-matching shadows.
           { "vat", { .vert = "assets/shaders/vat.vert", .frag = "assets/shaders/pbr.frag" } },
+          { "vat_depth", { .vert = "assets/shaders/vat_depth.vert", .frag = "assets/shaders/depth_simple.frag" } },
+          { "vat_depth_cubemap",
+            { .vert = "assets/shaders/vat_depth_cubemap.vert", .frag = "assets/shaders/depth_cubemap.frag" } },
           { "bloom_threshold", { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_threshold.frag" } },
           { "bloom_downsample",
             { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_downsample.frag" } },

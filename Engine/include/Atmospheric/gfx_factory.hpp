@@ -69,6 +69,17 @@ public:
     // GPUCanvasPass can bind a matching sampler. Defaults to Linear.
     static uint32_t UploadTexture2D(const uint8_t* pixels, int w, int h, TextureFilter filter = TextureFilter::Linear);
 
+    // Cross-backend RGBA float (32-bit) data texture, sampled unfiltered.
+    // Used for Vertex Animation Textures (position/normal per vertex/frame),
+    // where exact texel values matter and NEAREST/CLAMP is required.
+    //   OpenGL  path: RGBA32F GL texture (NEAREST, CLAMP_TO_EDGE); returns the
+    //                 GL handle, usable directly with glBindTexture.
+    //   WebGPU  path: rgba32float WGPUTexture (non-filterable — sample it with
+    //                 textureLoad, not a sampler); returns a synthetic ID usable
+    //                 with GetWGPUTexture()/ReleaseTexture().
+    // `rgba` holds w*h*4 floats, row-major.
+    static uint32_t UploadTextureRGBA32F(const float* rgba, int w, int h);
+
     // Filter hint recorded for a texture at upload time. Returns Linear for
     // unknown IDs. Consulted by GPUCanvasPass to pick its sampler; on GL the
     // filter is already baked into the texture, so callers rarely need this.

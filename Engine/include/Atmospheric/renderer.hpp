@@ -59,6 +59,7 @@ public:
 private:
     void _initGPU(WGPUDevice device, WGPUQueue queue);
     void _ensureDrawCapacity(uint32_t drawCount);
+    WGPUBindGroup _getOrCreateVATBG(uint32_t posTexID);
     WGPUDevice _gpuDevice = nullptr;
     WGPUQueue _gpuQueue = nullptr;
     WGPURenderPipeline _pipeline = nullptr;
@@ -71,6 +72,18 @@ private:
     // for ForwardOpaquePass to sample; this pass owns both handles.
     WGPUTexture _shadowTex = nullptr;
     WGPUTextureView _shadowView = nullptr;
+    // VAT casters: displacing depth pipeline (SHADOW_VAT_WGSL). Its draw slot is
+    // wider (model + vatParams), so it needs its own bind group over the shared
+    // draw buffer; group 1 binds the clip's position texture.
+    WGPURenderPipeline _vatPipeline = nullptr;
+    WGPUBindGroupLayout _vatUniformBGL = nullptr;
+    WGPUBindGroup _vatUniformBG = nullptr;
+    WGPUBindGroupLayout _vatTexBGL = nullptr;
+    struct CachedShadowVATBG {
+        WGPUBindGroup bg = nullptr;
+        WGPUTexture posTex = nullptr;
+    };
+    std::unordered_map<uint32_t, CachedShadowVATBG> _vatBGCache;
 #endif
 };
 
@@ -90,6 +103,9 @@ private:
     void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
     void _ensureDrawCapacity(uint32_t drawCount);
     WGPUBindGroup _getOrCreateTexBG(uint32_t texID);
+    // Group-3 bind group (VAT position+normal textures) for a clip, keyed by the
+    // position texture ID; rebuilt if GfxFactory recreates either texture.
+    WGPUBindGroup _getOrCreateVATBG(uint32_t posTexID, uint32_t normTexID);
 
     WGPUDevice _gpuDevice = nullptr;
     WGPUQueue _gpuQueue = nullptr;
@@ -97,6 +113,16 @@ private:
     // Heightmap-displacement terrain (TERRAIN_WGSL); shares group 0/1 layouts
     // with _pipeline so _uniformBG and the texture BG cache are reused.
     WGPURenderPipeline _terrainPipeline = nullptr;
+    // VAT displacement (VAT_WGSL); shares group 0/1/2 layouts with _pipeline and
+    // adds group 3 (_vatBGL) for the animation textures.
+    WGPURenderPipeline _vatPipeline = nullptr;
+    WGPUBindGroupLayout _vatBGL = nullptr;
+    struct CachedVATBG {
+        WGPUBindGroup bg = nullptr;
+        WGPUTexture posTex = nullptr;
+        WGPUTexture normTex = nullptr;
+    };
+    std::unordered_map<uint32_t, CachedVATBG> _vatBGCache;
     WGPUBindGroupLayout _uniformBGL = nullptr;
     WGPUBindGroupLayout _texBGL = nullptr;
     WGPUBindGroup _uniformBG = nullptr;

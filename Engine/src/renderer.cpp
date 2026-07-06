@@ -283,6 +283,23 @@ static Material* ResolveMaterialOrFallback(MaterialHandle handle) {
     return &gfallback;
 }
 
+// Binds a VAT clip's position texture (unit 8) and playback uniforms onto a
+// depth/shadow shader, so a VAT mesh casts a shadow matching its animation.
+// Falls back to vat_enabled=0 (rest pose) when the clip isn't ready. The forward
+// pass binds VAT state inline (it also needs the normal texture); this helper
+// covers the position-only depth shaders (vat_depth / vat_depth_cubemap).
+static void BindVATDepthUniforms(ShaderProgram* shader, VATMaterial* vatMat) {
+    VATClip* clip = vatMat ? vatMat->clip : nullptr;
+    bool ready = clip && clip->GetVertCount() > 0 && clip->GetFrameCount() > 0;
+    glActiveTexture(GL_TEXTURE8);
+    glBindTexture(GL_TEXTURE_2D, ready ? clip->GetPositionTexture() : 0);
+    shader->SetUniform(std::string("vat_position_map"), 8);
+    shader->SetUniform(std::string("vat_enabled"), ready ? 1 : 0);
+    shader->SetUniform(std::string("vat_vert_count"), ready ? static_cast<int>(clip->GetVertCount()) : 0);
+    shader->SetUniform(std::string("vat_frame_count"), ready ? static_cast<int>(clip->GetFrameCount()) : 0);
+    shader->SetUniform(std::string("vat_time"), vatMat ? vatMat->normalizedTime : 0.0f);
+}
+
 uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& cameraPos) {
     Mesh* meshPtr = AssetManager::Get().GetMeshPtr(cmd.mesh);
     Material* mat = meshPtr ? AssetManager::Get().ResolveMaterial(meshPtr->GetMaterial()) : nullptr;
@@ -703,6 +720,12 @@ ShadowPass::~ShadowPass() {
     if (_uniformBG) wgpuBindGroupRelease(_uniformBG);
     if (_uniformBGL) wgpuBindGroupLayoutRelease(_uniformBGL);
     if (_pipeline) wgpuRenderPipelineRelease(_pipeline);
+    for (auto& [id, entry] : _vatBGCache)
+        wgpuBindGroupRelease(entry.bg);
+    if (_vatUniformBG) wgpuBindGroupRelease(_vatUniformBG);
+    if (_vatUniformBGL) wgpuBindGroupLayoutRelease(_vatUniformBGL);
+    if (_vatTexBGL) wgpuBindGroupLayoutRelease(_vatTexBGL);
+    if (_vatPipeline) wgpuRenderPipelineRelease(_vatPipeline);
     if (_frameUniformBuf) wgpuBufferRelease(_frameUniformBuf);
     if (_drawUniformBuf) wgpuBufferRelease(_drawUniformBuf);
     if (_shadowView) wgpuTextureViewRelease(_shadowView);
@@ -747,6 +770,37 @@ void ShadowPass::_initGPU(WGPUDevice device, WGPUQueue queue) {
                  .build();
     _pipeline = p.pipeline;
     _uniformBGL = p.bgl(0);
+
+    // VAT caster pipeline: same depth-only target, wider draw slot (adds
+    // vatParams) and a group 1 for the animation's position texture.
+    auto vp = GpuPipelineBuilder(device)
+                  .wgsl(SHADOW_VAT_WGSL)
+                  .bgl(
+                      { gpuUniform(0, wgsl_stage::vert, SHADOW_FRAME_UNIFORM_SIZE),
+                        gpuDynUniform(1, wgsl_stage::vert, SHADOW_VAT_DRAW_UNIFORM_SIZE) }
+                  )
+                  .bgl({ gpuUnfilterableTexture(0, wgsl_stage::vert) })
+                  .vertex(56, { { WGPUVertexFormat_Float32x3, 0, 0 } })
+                  .depth(true, WGPUCompareFunction_Less)
+                  .depthOnly()
+                  .build();
+    _vatPipeline = vp.pipeline;
+    _vatUniformBGL = vp.bgl(0);
+    _vatTexBGL = vp.bgl(1);
+}
+
+WGPUBindGroup ShadowPass::_getOrCreateVATBG(uint32_t posTexID) {
+    WGPUTexture posTex = GfxFactory::GetWGPUTexture(posTexID);
+    if (!posTex) return nullptr;
+    auto it = _vatBGCache.find(posTexID);
+    if (it != _vatBGCache.end()) {
+        if (it->second.posTex == posTex) return it->second.bg;
+        wgpuBindGroupRelease(it->second.bg);
+        _vatBGCache.erase(it);
+    }
+    WGPUBindGroup bg = GpuBindGroupBuilder(_gpuDevice, _vatTexBGL).texture(0, posTex).build();
+    _vatBGCache[posTexID] = { bg, posTex };
+    return bg;
 }
 
 void ShadowPass::_ensureDrawCapacity(uint32_t drawCount) {
@@ -762,6 +816,10 @@ void ShadowPass::_ensureDrawCapacity(uint32_t drawCount) {
         wgpuBindGroupRelease(_uniformBG);
         _uniformBG = nullptr;
     }
+    if (_vatUniformBG) {
+        wgpuBindGroupRelease(_vatUniformBG);
+        _vatUniformBG = nullptr;
+    }
 
     WGPUBufferDescriptor d{};
     d.size = static_cast<uint64_t>(newCapacity) * SHADOW_DRAW_SLOT_STRIDE;
@@ -773,6 +831,12 @@ void ShadowPass::_ensureDrawCapacity(uint32_t drawCount) {
                      .buffer(0, _frameUniformBuf, SHADOW_FRAME_UNIFORM_SIZE)
                      .buffer(1, _drawUniformBuf, SHADOW_DRAW_UNIFORM_SIZE)
                      .build();
+    // VAT casters read the same buffer through a wider (model + vatParams) draw
+    // binding; slots are 256-byte strided so the extra 16 bytes fit.
+    _vatUniformBG = GpuBindGroupBuilder(_gpuDevice, _vatUniformBGL)
+                        .buffer(0, _frameUniformBuf, SHADOW_FRAME_UNIFORM_SIZE)
+                        .buffer(1, _drawUniformBuf, SHADOW_VAT_DRAW_UNIFORM_SIZE)
+                        .build();
 }
 #endif// AE_USE_WEBGPU && __EMSCRIPTEN__
 
@@ -784,9 +848,12 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
         if (!_pipeline) _initGPU(dev, GfxFactory::GetWebGPUQueue());
 
         // Collect casters: PRIM meshes from both queues, same as the GL path.
+        // vatMat is non-null (with a ready clip) for VAT casters, which use the
+        // displacing depth pipeline so their shadow matches the animation.
         struct DrawItem {
             Buffer* buf;
             glm::mat4 model;
+            VATMaterial* vatMat;
         };
         std::vector<DrawItem> draws;
         auto collect = [&](const std::vector<Renderer::SortableCommand>& queue) {
@@ -797,7 +864,8 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
                 if (!mesh->UsesRenderMesh()) continue;
                 Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
                 if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
-                draws.push_back({ buf, cmd.transform });
+                VATMaterial* vatMat = dynamic_cast<VATMaterial*>(ResolveMaterialOrFallback(mesh->GetMaterial()));
+                draws.push_back({ buf, cmd.transform, vatMat });
             }
         };
         collect(renderer.GetOpaqueQueue());
@@ -830,8 +898,22 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             _ensureDrawCapacity(static_cast<uint32_t>(draws.size()));
             wgpuQueueWriteBuffer(_gpuQueue, _frameUniformBuf, 0, &lightVP, sizeof(lightVP));
             std::vector<uint8_t> drawData(draws.size() * SHADOW_DRAW_SLOT_STRIDE, 0);
-            for (size_t i = 0; i < draws.size(); ++i)
-                std::memcpy(drawData.data() + i * SHADOW_DRAW_SLOT_STRIDE, &draws[i].model, sizeof(glm::mat4));
+            for (size_t i = 0; i < draws.size(); ++i) {
+                uint8_t* slot = drawData.data() + i * SHADOW_DRAW_SLOT_STRIDE;
+                std::memcpy(slot, &draws[i].model, sizeof(glm::mat4));
+                // vatParams (model + 64); harmless for non-VAT casters, which are
+                // drawn with the plain pipeline that never reads past model.
+                VATMaterial* vm = draws[i].vatMat;
+                VATClip* clip = vm ? vm->clip : nullptr;
+                bool ready = clip && clip->GetVertCount() > 0 && clip->GetFrameCount() > 0;
+                glm::vec4 vatParams(
+                    ready ? static_cast<float>(clip->GetVertCount()) : 0.0f,
+                    ready ? static_cast<float>(clip->GetFrameCount()) : 0.0f,
+                    vm ? vm->normalizedTime : 0.0f,
+                    ready ? 1.0f : 0.0f
+                );
+                std::memcpy(slot + 64, &vatParams, sizeof(glm::vec4));
+            }
             wgpuQueueWriteBuffer(_gpuQueue, _drawUniformBuf, 0, drawData.data(), drawData.size());
         }
 
@@ -850,13 +932,26 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
         WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(gpuEnc->encoder, &passDesc);
 
         if (!draws.empty()) {
-            wgpuRenderPassEncoderSetPipeline(pass, _pipeline);
             GPUCommandEncoder shadowEnc;
             shadowEnc.encoder = gpuEnc->encoder;
             shadowEnc.pass = pass;
+            WGPURenderPipeline boundPipeline = nullptr;
             for (size_t i = 0; i < draws.size(); ++i) {
+                VATMaterial* vm = draws[i].vatMat;
+                VATClip* clip = vm ? vm->clip : nullptr;
+                bool ready = clip && clip->GetVertCount() > 0 && clip->GetFrameCount() > 0;
+                WGPUBindGroup vatBG = ready ? _getOrCreateVATBG(clip->GetPositionTexture()) : nullptr;
+                if (!vatBG) ready = false;// texture not registered yet — draw rest pose
+
+                WGPURenderPipeline want = ready ? _vatPipeline : _pipeline;
+                if (want != boundPipeline) {
+                    boundPipeline = want;
+                    wgpuRenderPassEncoderSetPipeline(pass, want);
+                }
+
                 uint32_t dynamicOffset = static_cast<uint32_t>(i * SHADOW_DRAW_SLOT_STRIDE);
-                wgpuRenderPassEncoderSetBindGroup(pass, 0, _uniformBG, 1, &dynamicOffset);
+                wgpuRenderPassEncoderSetBindGroup(pass, 0, ready ? _vatUniformBG : _uniformBG, 1, &dynamicOffset);
+                if (ready) wgpuRenderPassEncoderSetBindGroup(pass, 1, vatBG, 0, nullptr);
                 draws[i].buf->Draw(&shadowEnc, PrimitiveTopology::Triangles);
             }
         }
@@ -897,11 +992,10 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
     glDrawBuffers(1, drawBuffers);
 #endif
     glClear(GL_DEPTH_BUFFER_BIT);
+    const glm::mat4 lightPV = mainLight->GetProjectionMatrix(0) * mainLight->GetViewMatrix();
     auto depthShader = ctx->GetShader("depth");
     depthShader->Activate();
-    depthShader->SetUniform(
-        std::string("ProjectionView"), mainLight->GetProjectionMatrix(0) * mainLight->GetViewMatrix()
-    );
+    depthShader->SetUniform(std::string("ProjectionView"), lightPV);
 
     for (const auto& batch : batches) {
         Mesh* mesh = AssetManager::Get().GetMeshPtr(batch.mesh);
@@ -921,12 +1015,27 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             glDisable(GL_CULL_FACE);
 
         if (mesh->type == MeshType::PRIM) {
+            // VAT casters displace in a dedicated depth shader so their shadow
+            // tracks the animation; every other mesh keeps the plain "depth"
+            // path untouched. The per-program ProjectionView persists across
+            // Activate(), so non-VAT batches need no re-set.
+            VATMaterial* vatMat = dynamic_cast<VATMaterial*>(material);
+            ShaderProgram* active = depthShader;
+            if (vatMat) {
+                active = ctx->GetShader("vat_depth");
+                active->Activate();
+                active->SetUniform(std::string("ProjectionView"), lightPV);
+                BindVATDepthUniforms(active, vatMat);
+            } else {
+                depthShader->Activate();
+            }
+
             glBindVertexArray(mesh->vao);
 
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
             // WebGL 2.0 Fallback: Non-instanced draw calls using World uniform
             for (const auto& inst : instances) {
-                depthShader->SetUniform(std::string("World"), inst.modelMatrix);
+                active->SetUniform(std::string("World"), inst.modelMatrix);
                 glDrawElements(GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0);
             }
 #else
@@ -970,10 +1079,13 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             glDrawBuffers(1, drawBuffers);
 #endif
             glClear(GL_DEPTH_BUFFER_BIT);
+            const glm::mat4 facePV = l->GetProjectionMatrix(0) * l->GetViewMatrix(face);
+            // Re-activate before setting per-face uniforms: a VAT batch in the
+            // previous face may have left vat_depth_cubemap bound, and SetUniform
+            // applies to the active program.
+            depthCubemapShader->Activate();
             depthCubemapShader->SetUniform(std::string("LightPosition"), l->GetPosition());
-            depthCubemapShader->SetUniform(
-                std::string("ProjectionView"), l->GetProjectionMatrix(0) * l->GetViewMatrix(face)
-            );
+            depthCubemapShader->SetUniform(std::string("ProjectionView"), facePV);
 
             for (const auto& batch : batches) {
                 Mesh* mesh = AssetManager::Get().GetMeshPtr(batch.mesh);
@@ -992,12 +1104,28 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
                     glDisable(GL_CULL_FACE);
 
                 if (mesh->type == MeshType::PRIM) {
+                    // VAT casters use the displacing cubemap depth shader; other
+                    // meshes keep the plain "depth_cubemap" path. Per-program
+                    // uniforms don't carry across programs, so the VAT shader
+                    // gets its own LightPosition/ProjectionView set here.
+                    VATMaterial* vatMat = dynamic_cast<VATMaterial*>(material);
+                    ShaderProgram* active = depthCubemapShader;
+                    if (vatMat) {
+                        active = ctx->GetShader("vat_depth_cubemap");
+                        active->Activate();
+                        active->SetUniform(std::string("LightPosition"), l->GetPosition());
+                        active->SetUniform(std::string("ProjectionView"), facePV);
+                        BindVATDepthUniforms(active, vatMat);
+                    } else {
+                        depthCubemapShader->Activate();
+                    }
+
                     glBindVertexArray(mesh->vao);
 
 #if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
                     // WebGL 2.0 Fallback: Non-instanced draw calls using World uniform
                     for (const auto& inst : instances) {
-                        depthCubemapShader->SetUniform(std::string("World"), inst.modelMatrix);
+                        active->SetUniform(std::string("World"), inst.modelMatrix);
                         glDrawElements(
                             GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
                         );
@@ -1036,6 +1164,10 @@ ForwardOpaquePass::~ForwardOpaquePass() {
     if (_texBGL) wgpuBindGroupLayoutRelease(_texBGL);
     if (_pipeline) wgpuRenderPipelineRelease(_pipeline);
     if (_terrainPipeline) wgpuRenderPipelineRelease(_terrainPipeline);
+    for (auto& [id, entry] : _vatBGCache)
+        wgpuBindGroupRelease(entry.bg);
+    if (_vatPipeline) wgpuRenderPipelineRelease(_vatPipeline);
+    if (_vatBGL) wgpuBindGroupLayoutRelease(_vatBGL);
     if (_frameUniformBuf) wgpuBufferRelease(_frameUniformBuf);
     if (_drawUniformBuf) wgpuBufferRelease(_drawUniformBuf);
     if (_whiteTex) wgpuTextureRelease(_whiteTex);
@@ -1144,6 +1276,50 @@ void ForwardOpaquePass::_initGPU(
                   .multisample(sampleCount)
                   .build();
     _terrainPipeline = tp.pipeline;
+
+    // VAT: forward shading with vertex displacement from the animation textures.
+    // Reuses group 0 (frame + dynamic draw slot), group 1 (base map), group 2
+    // (shadow map); group 3 adds the two rgba32float VAT textures, sampled with
+    // textureLoad (unfilterable, vertex-visible). Culling off — a soft-body clip
+    // can invert winding as it deforms, and dropping back-faces would punch
+    // holes; the depth test still resolves overlap correctly.
+    auto vp = GpuPipelineBuilder(device)
+                  .wgsl(VAT_WGSL)
+                  .bgl(_uniformBGL)
+                  .bgl(_texBGL)
+                  .bgl(_shadowBGL)
+                  .bgl({ gpuUnfilterableTexture(0, wgsl_stage::vert), gpuUnfilterableTexture(1, wgsl_stage::vert) })
+                  .vertex(
+                      56,
+                      { { WGPUVertexFormat_Float32x3, 0, 0 },
+                        { WGPUVertexFormat_Float32x2, 12, 1 },
+                        { WGPUVertexFormat_Float32x3, 20, 2 } }
+                  )
+                  .colorFormat(colorFormat)
+                  .depth(true, WGPUCompareFunction_Less)
+                  .cull(WGPUCullMode_None)
+                  .multisample(sampleCount)
+                  .build();
+    _vatPipeline = vp.pipeline;
+    _vatBGL = vp.bgl(3);
+}
+
+WGPUBindGroup ForwardOpaquePass::_getOrCreateVATBG(uint32_t posTexID, uint32_t normTexID) {
+    WGPUTexture posTex = GfxFactory::GetWGPUTexture(posTexID);
+    WGPUTexture normTex = GfxFactory::GetWGPUTexture(normTexID);
+    if (!posTex || !normTex) return nullptr;
+
+    auto it = _vatBGCache.find(posTexID);
+    if (it != _vatBGCache.end()) {
+        if (it->second.posTex == posTex && it->second.normTex == normTex) return it->second.bg;
+        wgpuBindGroupRelease(it->second.bg);
+        _vatBGCache.erase(it);
+    }
+
+    WGPUBindGroup bg =
+        GpuBindGroupBuilder(_gpuDevice, _vatBGL).texture(0, posTex).texture(1, normTex).build();
+    _vatBGCache[posTexID] = { bg, posTex, normTex };
+    return bg;
 }
 
 void ForwardOpaquePass::_ensureDrawCapacity(uint32_t drawCount) {
@@ -1292,13 +1468,29 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             glm::vec3 diffuse = mat ? mat->diffuse : glm::vec3(0.55f);
             glm::vec3 specular = mat ? mat->specular : glm::vec3(0.7f);
             glm::vec3 matAmbient = mat ? mat->ambient : glm::vec3(0.0f);
-            float shininess = mat ? mat->shininess : 0.25f;
 
-            glm::vec4 d4(diffuse, 0.0f), s4(specular, 0.0f), a4(matAmbient, 0.0f), sh4(shininess, 0.0f, 0.0f, 0.0f);
+            glm::vec4 d4(diffuse, 0.0f), s4(specular, 0.0f), a4(matAmbient, 0.0f);
             std::memcpy(slot + 64, &d4, sizeof(glm::vec4));
             std::memcpy(slot + 80, &s4, sizeof(glm::vec4));
             std::memcpy(slot + 96, &a4, sizeof(glm::vec4));
-            std::memcpy(slot + 112, &sh4, sizeof(glm::vec4));
+
+            // Offset 112 is shininess for the standard pipeline (ignored by the
+            // fs) and vatParams for VAT_WGSL. Writing vatParams for VAT materials
+            // makes the VAT pipeline animate; the standard pipeline ignores it.
+            if (auto* vatMat = dynamic_cast<VATMaterial*>(mat)) {
+                VATClip* clip = vatMat->clip;
+                bool ready = clip && clip->GetVertCount() > 0 && clip->GetFrameCount() > 0;
+                glm::vec4 vatParams(
+                    ready ? static_cast<float>(clip->GetVertCount()) : 0.0f,
+                    ready ? static_cast<float>(clip->GetFrameCount()) : 0.0f,
+                    vatMat->normalizedTime,
+                    ready ? 1.0f : 0.0f
+                );
+                std::memcpy(slot + 112, &vatParams, sizeof(glm::vec4));
+            } else {
+                glm::vec4 sh4(mat ? mat->shininess : 0.25f, 0.0f, 0.0f, 0.0f);
+                std::memcpy(slot + 112, &sh4, sizeof(glm::vec4));
+            }
         }
         wgpuQueueWriteBuffer(_gpuQueue, _drawUniformBuf, 0, drawData.data(), drawData.size());
 
@@ -1310,17 +1502,27 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
         uint32_t defaultDiffuse = defaults.empty() ? 0 : static_cast<uint32_t>(defaults[0]);
 
         renderer.sceneRT->Begin(enc);
-        MeshType boundType = MeshType::PRIM;
-        wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, _pipeline);
+        WGPURenderPipeline boundPipeline = nullptr;
         for (size_t i = 0; i < draws.size(); ++i) {
-            if (draws[i].type != boundType) {
-                boundType = draws[i].type;
-                wgpuRenderPassEncoderSetPipeline(
-                    gpuEnc->pass, boundType == MeshType::TERRAIN ? _terrainPipeline : _pipeline
-                );
+            Material* mat = draws[i].mat;
+
+            // Resolve the VAT clip (PRIM-only). If the clip isn't ready we fall
+            // back to the standard pipeline so group 3 isn't required.
+            VATMaterial* vatMat = (draws[i].type == MeshType::PRIM) ? dynamic_cast<VATMaterial*>(mat) : nullptr;
+            VATClip* vatClip = vatMat ? vatMat->clip : nullptr;
+            bool vatReady = vatClip && vatClip->GetVertCount() > 0 && vatClip->GetFrameCount() > 0;
+            WGPUBindGroup vatBG =
+                vatReady ? _getOrCreateVATBG(vatClip->GetPositionTexture(), vatClip->GetNormalTexture()) : nullptr;
+            if (!vatBG) vatReady = false;// texture not yet registered — draw static
+
+            WGPURenderPipeline want = draws[i].type == MeshType::TERRAIN ? _terrainPipeline
+                : vatReady                                              ? _vatPipeline
+                                                                        : _pipeline;
+            if (want != boundPipeline) {
+                boundPipeline = want;
+                wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, want);
             }
 
-            Material* mat = draws[i].mat;
             uint32_t texID;
             if (draws[i].type == MeshType::TERRAIN) {
                 // Group 1 carries the heightmap; an invalid handle falls back
@@ -1338,6 +1540,8 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             // Group 2 (shadow map) is outside the terrain pipeline's layout;
             // leaving it bound is legal and the main pipeline needs it.
             wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 2, _shadowBG, 0, nullptr);
+            // Group 3 (VAT textures) is required by — and only by — _vatPipeline.
+            if (vatReady) wgpuRenderPassEncoderSetBindGroup(gpuEnc->pass, 3, vatBG, 0, nullptr);
             draws[i].buf->Draw(enc, PrimitiveTopology::Triangles);
         }
         renderer.sceneRT->End();

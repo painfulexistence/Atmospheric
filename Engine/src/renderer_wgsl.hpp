@@ -24,6 +24,40 @@ fn vs(@location(0) aPos: vec3<f32>) -> @builtin(position) vec4<f32> {
 }
 )";
 
+// VAT-aware shadow depth: SHADOW_WGSL with the vertex displaced from the VAT
+// position texture (group 1, unfilterable rgba32float via textureLoad) so a VAT
+// caster's shadow matches its animation. The draw slot is widened by vatParams
+// (x=vertCount y=frameCount z=time w=enabled).
+constexpr uint64_t SHADOW_VAT_DRAW_UNIFORM_SIZE = 80;// model(64) + vatParams(16)
+
+static const char* SHADOW_VAT_WGSL = R"(
+struct FrameUniforms { lightVP: mat4x4<f32> };
+struct DrawUniforms  { model: mat4x4<f32>, vatParams: vec4<f32> };
+@group(0) @binding(0) var<uniform> frame: FrameUniforms;
+@group(0) @binding(1) var<uniform> draw: DrawUniforms;
+@group(1) @binding(0) var vat_position_map: texture_2d<f32>;
+
+@vertex
+fn vs(@builtin(vertex_index) vid: u32, @location(0) aPos: vec3<f32>) -> @builtin(position) vec4<f32> {
+    var localPos = aPos;
+    let vcount  = i32(draw.vatParams.x);
+    let fcount  = i32(draw.vatParams.y);
+    let vtime   = draw.vatParams.z;
+    let enabled = draw.vatParams.w;
+    if (enabled > 0.5 && vcount > 0 && fcount > 0) {
+        let col = i32(vid);
+        let ft  = vtime * f32(max(fcount - 1, 0));
+        let f0  = i32(floor(ft));
+        let f1  = min(f0 + 1, fcount - 1);
+        let fr  = ft - floor(ft);
+        let p0 = textureLoad(vat_position_map, vec2<i32>(col, f0), 0).xyz;
+        let p1 = textureLoad(vat_position_map, vec2<i32>(col, f1), 0).xyz;
+        localPos = mix(p0, p1, fr);
+    }
+    return frame.lightVP * draw.model * vec4<f32>(localPos, 1.0);
+}
+)";
+
 // ── ForwardOpaquePass ────────────────────────────────────────────────────────
 constexpr uint32_t FWD_DRAW_SLOT_STRIDE = 256;
 constexpr uint64_t FWD_FRAME_UNIFORM_SIZE =
@@ -157,6 +191,154 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     let brdf     = kd * albedo / PI + specular;
 
     let shadow   = shadowFactor(in.worldPos, nl); // 1 = lit
+    let radiance = frame.lightColor.rgb * shadow;
+
+    var result = brdf * radiance * nl;
+    result    += vec3<f32>(0.2) * SURF_AO * albedo;
+
+    return vec4<f32>(pow(result, vec3<f32>(1.0 / 2.2)), texColor.a);
+}
+)";
+
+// Vertex Animation Texture forward pass — FORWARD_OPAQUE_WGSL's fragment stage
+// verbatim, with a vertex stage that displaces each vertex from the VAT
+// position/normal textures (group 3, unfilterable rgba32float sampled with
+// textureLoad — no sampler, no filtering). The animation frame data is packed
+// into the shared DrawUniforms' spare slot (shininess → vatParams), so the VAT
+// pipeline reuses group 0/1/2 (frame+draw uniforms, base map, shadow map) and
+// only adds group 3. Frames are blended in-shader (two textureLoads + mix)
+// since rgba32float can't be linearly filtered.
+static const char* VAT_WGSL = R"(
+struct FrameUniforms {
+    viewProj:   mat4x4<f32>,
+    lightVP:    mat4x4<f32>,
+    cameraPos:  vec4<f32>,
+    lightDir:   vec4<f32>,
+    lightColor: vec4<f32>,
+    ambient:    vec4<f32>,
+};
+struct DrawUniforms {
+    model:           mat4x4<f32>,
+    diffuse:         vec4<f32>,
+    specular:        vec4<f32>,
+    materialAmbient: vec4<f32>,
+    vatParams:       vec4<f32>, // x=vertCount y=frameCount z=time w=enabled
+};
+@group(0) @binding(0) var<uniform> frame: FrameUniforms;
+@group(0) @binding(1) var<uniform> draw: DrawUniforms;
+@group(1) @binding(0) var base_map: texture_2d<f32>;
+@group(1) @binding(1) var samp: sampler;
+@group(2) @binding(0) var shadow_map:  texture_depth_2d;
+@group(2) @binding(1) var shadow_samp: sampler_comparison;
+@group(3) @binding(0) var vat_position_map: texture_2d<f32>;
+@group(3) @binding(1) var vat_normal_map:   texture_2d<f32>;
+
+struct VSOut {
+    @builtin(position) position: vec4<f32>,
+    @location(0) worldPos: vec3<f32>,
+    @location(1) normal:   vec3<f32>,
+    @location(2) uv:       vec2<f32>,
+};
+
+@vertex
+fn vs(@builtin(vertex_index) vid: u32,
+      @location(0) aPos: vec3<f32>, @location(1) aUV: vec2<f32>, @location(2) aNormal: vec3<f32>) -> VSOut {
+    var localPos  = aPos;
+    var localNorm = aNormal;
+
+    let vcount  = i32(draw.vatParams.x);
+    let fcount  = i32(draw.vatParams.y);
+    let vtime   = draw.vatParams.z;
+    let enabled = draw.vatParams.w;
+    if (enabled > 0.5 && vcount > 0 && fcount > 0) {
+        let col = i32(vid);
+        let ft  = vtime * f32(max(fcount - 1, 0));
+        let f0  = i32(floor(ft));
+        let f1  = min(f0 + 1, fcount - 1);
+        let fr  = ft - floor(ft);
+        let p0 = textureLoad(vat_position_map, vec2<i32>(col, f0), 0).xyz;
+        let p1 = textureLoad(vat_position_map, vec2<i32>(col, f1), 0).xyz;
+        let n0 = textureLoad(vat_normal_map,   vec2<i32>(col, f0), 0).xyz;
+        let n1 = textureLoad(vat_normal_map,   vec2<i32>(col, f1), 0).xyz;
+        localPos  = mix(p0, p1, fr);
+        localNorm = normalize(mix(n0, n1, fr));
+    }
+
+    var out: VSOut;
+    let world = draw.model * vec4<f32>(localPos, 1.0);
+    out.worldPos = world.xyz;
+    let normalMat = mat3x3<f32>(draw.model[0].xyz, draw.model[1].xyz, draw.model[2].xyz);
+    out.normal = normalMat * localNorm;
+    out.uv = aUV;
+    out.position = frame.viewProj * world;
+    return out;
+}
+
+fn shadowFactor(worldPos: vec3<f32>, nDotL: f32) -> f32 {
+    let lp  = frame.lightVP * vec4<f32>(worldPos, 1.0);
+    let ndc = lp.xyz / lp.w;
+    let uv  = ndc.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
+    if (ndc.z <= 0.0 || ndc.z >= 1.0 ||
+        uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        return 1.0;
+    }
+    let bias  = max(0.004 * (1.0 - nDotL), 0.001);
+    let texel = 1.0 / vec2<f32>(textureDimensions(shadow_map));
+    var lit = 0.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            lit += textureSampleCompareLevel(shadow_map, shadow_samp,
+                                             uv + vec2<f32>(f32(x), f32(y)) * texel,
+                                             ndc.z - bias);
+        }
+    }
+    return lit / 9.0;
+}
+
+const PI: f32 = 3.1415927;
+const SURF_AO: f32        = 1.0;
+const SURF_ROUGHNESS: f32 = 0.6;
+const SURF_METALLIC: f32  = 0.0;
+
+fn trowbridgeReitzGGX(nh: f32, r: f32) -> f32 {
+    let a2   = r * r * r * r;
+    let nhr  = nh * nh * (a2 - 1.0) + 1.0;
+    return a2 / (PI * nhr * nhr);
+}
+
+fn smithsSchlickGGX(nv: f32, nl: f32, r: f32) -> f32 {
+    let k    = (r + 1.0) * (r + 1.0) / 8.0;
+    let ggx1 = nv / (nv * (1.0 - k) + k);
+    let ggx2 = nl / (nl * (1.0 - k) + k);
+    return ggx1 * ggx2;
+}
+
+@fragment
+fn fs(in: VSOut) -> @location(0) vec4<f32> {
+    let norm     = normalize(in.normal);
+    let lightDir = normalize(frame.lightDir.xyz);
+    let viewDir  = normalize(frame.cameraPos.xyz - in.worldPos);
+    let halfway  = normalize(lightDir + viewDir);
+
+    let nv = clamp(dot(norm, viewDir),  0.0, 1.0);
+    let nl = clamp(dot(norm, lightDir), 0.0, 1.0);
+    let nh = clamp(dot(norm, halfway),  0.0, 1.0);
+    let vh = clamp(dot(viewDir, halfway), 0.0, 1.0);
+
+    let texColor = textureSample(base_map, samp, in.uv);
+    let albedo   = pow(texColor.rgb, vec3<f32>(2.2)) * draw.diffuse.rgb;
+
+    let r  = SURF_ROUGHNESS + 0.01;
+    let d  = trowbridgeReitzGGX(nh, r);
+    let g  = smithsSchlickGGX(nv, nl, r);
+    let f0 = mix(vec3<f32>(0.04), albedo, SURF_METALLIC);
+    let f  = f0 + (vec3<f32>(1.0) - f0) * pow(1.0 - vh, 5.0);
+
+    let specular = d * f * g / max(4.0 * nv * nl, 0.0001);
+    let kd       = (1.0 - SURF_METALLIC) * (vec3<f32>(1.0) - f);
+    let brdf     = kd * albedo / PI + specular;
+
+    let shadow   = shadowFactor(in.worldPos, nl);
     let radiance = frame.lightColor.rgb * shadow;
 
     var result = brdf * radiance * nl;

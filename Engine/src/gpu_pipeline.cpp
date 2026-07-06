@@ -47,6 +47,11 @@ GpuPipeline GpuPipelineBuilder::build() {
                 we.texture.viewDimension = WGPUTextureViewDimension_2D;
                 we.texture.multisampled = false;
                 break;
+            case GpuBGLEntry::Kind::UnfilterableTexture:
+                we.texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+                we.texture.viewDimension = WGPUTextureViewDimension_2D;
+                we.texture.multisampled = false;
+                break;
             case GpuBGLEntry::Kind::Sampler:
                 we.sampler.type = WGPUSamplerBindingType_Filtering;
                 break;

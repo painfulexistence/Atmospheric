@@ -14,9 +14,10 @@
 // 3DBasics demo). Playback is a pure vertex-stage texture fetch (vat.vert), so
 // it needs no compute shaders and runs on every GL/GLES/WebGL2 target.
 //
-// This class owns the two float textures (position + normal) for one clip. The
-// vertex ordering baked here MUST match the mesh's vertex buffer ordering,
-// because vat.vert addresses columns by gl_VertexID.
+// This class owns the two float textures (position + normal) for one clip,
+// created through GfxFactory so the same code works on the OpenGL and WebGPU
+// backends. The vertex ordering baked here MUST match the mesh's vertex buffer
+// ordering, because vat.vert / VAT_WGSL address texture columns by vertex index.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Raw per-frame animation data fed to VATClip::Bake. positions[f][v] and
@@ -36,16 +37,19 @@ public:
     VATClip& operator=(const VATClip&) = delete;
     ~VATClip();
 
-    // Uploads frame data into RGB32F position/normal textures. Returns nullptr
-    // if the data is empty, ragged (frames of differing vertex counts), or the
-    // vertex count exceeds GL_MAX_TEXTURE_SIZE. Positions/normals are stored raw
-    // (object space); the shader's remap path is left disabled.
+    // Uploads frame data into RGBA32F position/normal textures via GfxFactory.
+    // Returns nullptr if the data is empty or ragged (frames of differing vertex
+    // counts). Positions/normals are stored raw (object space); the shader's
+    // remap path is left disabled.
     static std::unique_ptr<VATClip> Bake(const VATFrameData& data);
 
-    GLuint GetPositionTexture() const {
+    // Backend texture ID from GfxFactory: the GL handle on OpenGL (bind directly
+    // with glBindTexture), or a synthetic ID for GfxFactory::GetWGPUTexture() on
+    // WebGPU.
+    uint32_t GetPositionTexture() const {
         return _positionTex;
     }
-    GLuint GetNormalTexture() const {
+    uint32_t GetNormalTexture() const {
         return _normalTex;
     }
     uint32_t GetVertCount() const {
@@ -63,8 +67,8 @@ public:
     }
 
 private:
-    GLuint _positionTex = 0;
-    GLuint _normalTex = 0;
+    uint32_t _positionTex = 0;// GfxFactory texture ID (GL handle or synthetic)
+    uint32_t _normalTex = 0;
     uint32_t _vertCount = 0;
     uint32_t _frameCount = 0;
     float _frameRate = 30.0f;

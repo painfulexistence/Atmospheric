@@ -260,6 +260,51 @@ uint32_t GfxFactory::UploadTexture2D(const uint8_t* pixels, int w, int h, Textur
     return static_cast<uint32_t>(texID);
 }
 
+uint32_t GfxFactory::UploadTextureRGBA32F(const float* rgba, int w, int h) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (_backend == GfxBackend::WebGPU && _wgpuDevice) {
+        uint32_t id = _nextTexID++;
+
+        WGPUTextureDescriptor td{};
+        td.size = { static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+        td.format = WGPUTextureFormat_RGBA32Float;
+        td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+        td.dimension = WGPUTextureDimension_2D;
+        td.mipLevelCount = 1;
+        td.sampleCount = 1;
+        WGPUTexture tex = wgpuDeviceCreateTexture(_wgpuDevice, &td);
+
+        WGPUTexelCopyTextureInfo dst{};
+        dst.texture = tex;
+        dst.aspect = WGPUTextureAspect_All;
+        WGPUTexelCopyBufferLayout layout{};
+        layout.bytesPerRow = static_cast<uint32_t>(w) * 4 * 4;// 4 channels * 4 bytes
+        layout.rowsPerImage = static_cast<uint32_t>(h);
+        WGPUExtent3D extent{ static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+        wgpuQueueWriteTexture(
+            _wgpuQueue, &dst, rgba, static_cast<size_t>(w) * h * 4 * sizeof(float), &layout, &extent
+        );
+
+        // rgba32float is non-filterable; record Nearest so any sampler-based
+        // consumer picks a matching (non-filtering) sampler. VAT samples it with
+        // textureLoad, which needs no sampler at all.
+        _gpuTextures[id] = { tex, TextureFilter::Nearest };
+        return id;
+    }
+#endif
+    // OpenGL / WebGL path — NEAREST + CLAMP baked into the texture object.
+    GLuint texID;
+    glGenTextures(1, &texID);
+    glBindTexture(GL_TEXTURE_2D, texID);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, w, h, 0, GL_RGBA, GL_FLOAT, rgba);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return static_cast<uint32_t>(texID);
+}
+
 TextureFilter GfxFactory::GetTextureFilter(uint32_t id) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     auto it = _gpuTextures.find(id);
