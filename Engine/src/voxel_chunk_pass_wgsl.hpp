@@ -95,7 +95,7 @@ static const float SUN_QUAD_VERTS[] = {
 // ── VoxelChunkPass ────────────────────────────────────────────────────────────
 // WebGPU-spec-guaranteed-safe minUniformBufferOffsetAlignment.
 constexpr uint32_t VOXEL_DRAW_SLOT_STRIDE = 256;
-constexpr uint64_t VOXEL_FRAME_UNIFORM_SIZE = 160;// viewProj(64) + 6 * vec4(16)
+constexpr uint64_t VOXEL_FRAME_UNIFORM_SIZE = 176;// viewProj(64) + 7 * vec4(16)
 constexpr uint64_t VOXEL_DRAW_UNIFORM_SIZE = 64;// model mat4x4
 
 // Mirrors default_assets/shaders/voxel.vert + voxel.frag. v_uv from the GL
@@ -116,6 +116,9 @@ struct FrameUniforms {
     ambient:     vec4<f32>,
     fogColor:    vec4<f32>,
     fogDensity:  vec4<f32>,
+    // World-space clip plane (n, d) used by PlanarReflectionPass to cut away
+    // geometry below the mirror plane; all-zero disables (dot == 0 is kept).
+    clipPlane:   vec4<f32>,
 };
 struct DrawUniforms {
     model: mat4x4<f32>,
@@ -161,6 +164,9 @@ fn palette(t: f32) -> vec3<f32> {
 
 @fragment
 fn fs(in: VSOut) -> @location(0) vec4<f32> {
+    if (dot(frame.clipPlane.xyz, in.worldPos) + frame.clipPlane.w < 0.0) {
+        discard;
+    }
     let norm = normalize(in.normal);
     let diff = max(dot(norm, normalize(frame.lightDir.xyz)), 0.0);
     var baseColor = palette(f32(in.voxelId) / 50.0);
@@ -180,28 +186,37 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
 // ── WaterPass ─────────────────────────────────────────────────────────────────
 constexpr uint32_t WATER_DRAW_SLOT_STRIDE = 256;
 constexpr uint64_t WATER_FRAME_UNIFORM_SIZE =
-    128;// viewProj(64) + cameraPos(16) + lightDir(16) + lightColor(16) + time(16)
-constexpr uint64_t WATER_DRAW_UNIFORM_SIZE = 96;// model(64) + params0(16) + fogColor(16)
+    192;// viewProj(64) + reflViewProj(64) + cameraPos(16) + lightDir(16) + lightColor(16) + time(16)
+constexpr uint64_t WATER_DRAW_UNIFORM_SIZE = 112;// model(64) + params0(16) + fogColor(16) + params1(16)
 
 // Simplified port of default_assets/shaders/water.vert + water.frag: vertex
 // wave displacement plus fresnel/diffuse/specular shading and distance fog.
 // Drops the screen-space depth-texture Beer-Lambert thickness blend (no
 // access to a bound depth texture in this pass) — a documented simplification.
+// Planar reflection (group 1) mirrors the GL path: the world position is
+// projected with PlanarReflectionPass's mirrored viewProj and the RT sampled
+// there. params1.z = 0 (pass inactive or material opt-out) collapses the
+// blend to the non-reflective shading, so the 1x1 black fallback texture
+// bound in that case is never visible.
 static const char* WATER_WGSL = R"(
 struct FrameUniforms {
-    viewProj:   mat4x4<f32>,
-    cameraPos:  vec4<f32>,
-    lightDir:   vec4<f32>,
-    lightColor: vec4<f32>,
-    time:       vec4<f32>,
+    viewProj:     mat4x4<f32>,
+    reflViewProj: mat4x4<f32>,
+    cameraPos:    vec4<f32>,
+    lightDir:     vec4<f32>,
+    lightColor:   vec4<f32>,
+    time:         vec4<f32>,
 };
 struct DrawUniforms {
     model:    mat4x4<f32>,
     params0:  vec4<f32>, // waterLine, waveStrength, waveSpeed, fogDensity
     fogColor: vec4<f32>,
+    params1:  vec4<f32>, // reflStrength, reflDistortion, reflEnabled, unused
 };
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
 @group(0) @binding(1) var<uniform> draw: DrawUniforms;
+@group(1) @binding(0) var refl_tex: texture_2d<f32>;
+@group(1) @binding(1) var refl_samp: sampler;
 
 struct VSOut {
     @builtin(position) position: vec4<f32>,
@@ -253,12 +268,31 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     let diff = max(dot(norm, lightDir), 0.0);
     let spec = pow(max(dot(norm, halfDir), 0.0), 128.0);
     col = mix(col, col * diff * frame.lightColor.rgb + vec3<f32>(1.0) * spec * frame.lightColor.rgb, 0.2);
-    col = mix(col, vec3<f32>(1.0), fresnel * 0.5);
+
+    // Planar reflection: project this surface point with the mirrored
+    // camera's viewProj. WebGPU NDC y is up while texture v is down, so the
+    // y component flips (the GL shader samples without the flip).
+    let reflStrength   = draw.params1.x * draw.params1.z;
+    let reflDistortion = draw.params1.y;
+    var reflAmount     = 0.0;
+    if (reflStrength > 0.0) {
+        let reflClip = frame.reflViewProj * vec4<f32>(in.worldPos, 1.0);
+        let reflNdc  = reflClip.xy / reflClip.w;
+        var reflUV   = vec2<f32>(reflNdc.x, -reflNdc.y) * 0.5 + 0.5;
+        reflUV      += norm.xz * reflDistortion;
+        let reflCol  = textureSample(refl_tex, refl_samp,
+                                     clamp(reflUV, vec2<f32>(0.001), vec2<f32>(0.999))).rgb;
+        reflAmount   = clamp(reflStrength * (0.15 + 0.85 * fresnel), 0.0, 1.0);
+        col = mix(col, reflCol, reflAmount);
+    }
+    col = mix(col, vec3<f32>(1.0), fresnel * 0.5 * (1.0 - reflStrength));
 
     let dist = length(in.worldPos - frame.cameraPos.xyz);
     col = mix(fogColor, col, clamp(exp(-fogDensity * dist * dist), 0.0, 1.0));
 
-    return vec4<f32>(col, smoothstep(0.1, 0.9, fresnel + 0.3));
+    // Mirrored sky/terrain shouldn't fade out through the water's own
+    // transparency — raise opacity where the reflection dominates.
+    return vec4<f32>(col, max(smoothstep(0.1, 0.9, fresnel + 0.3), reflAmount));
 }
 )";
 
@@ -279,8 +313,8 @@ struct VOut {
 }
 )";
 
-// Soft-knee threshold: zeroes pixels at/below threshold, keeps only the
-// brightness "excess" above it. Simplified stand-in for GL's bloom_threshold.frag.
+// Hard luminance cutoff — an exact port of GL's bloom_threshold.frag: pixels
+// at/below the threshold are dropped, brighter ones pass through unmodified.
 static const std::string BLOOM_THRESH_WGSL = std::string(BLOOM_VS_WGSL) + R"(
 struct ThreshUniforms { threshold: f32, _pad0: f32, _pad1: f32, _pad2: f32 };
 @group(0) @binding(0) var<uniform> u: ThreshUniforms;
@@ -288,30 +322,72 @@ struct ThreshUniforms { threshold: f32, _pad0: f32, _pad1: f32, _pad2: f32 };
 @group(0) @binding(2) var samp: sampler;
 
 @fragment fn fs(in: VOut) -> @location(0) vec4<f32> {
-    let c = textureSample(srcTex, samp, in.uv);
-    let brightness = max(c.r, max(c.g, c.b));
-    let over = max(brightness - u.threshold, 0.0);
-    let factor = over / max(brightness, 0.0001);
-    return vec4<f32>(c.rgb * factor, 1.0);
+    let c = textureSample(srcTex, samp, in.uv).rgb;
+    let brightness = dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+    if (brightness > u.threshold) {
+        return vec4<f32>(c, 1.0);
+    }
+    return vec4<f32>(0.0, 0.0, 0.0, 1.0);
 }
 )";
 
-// 5-tap separable Gaussian blur; direction is (1,0) or (0,1) scaled by
-// texelSize so the same pipeline serves both the horizontal and vertical pass.
-static const std::string BLOOM_BLUR_WGSL = std::string(BLOOM_VS_WGSL) + R"(
-struct BlurUniforms { direction: vec2<f32>, texelSize: vec2<f32> };
-@group(0) @binding(0) var<uniform> u: BlurUniforms;
+// 13-tap Kawase-style downsample — port of GL's bloom_downsample.frag. Halves
+// resolution while pre-filtering, one level of the mip pyramid per invocation.
+static const std::string BLOOM_DOWN_WGSL = std::string(BLOOM_VS_WGSL) + R"(
+struct DownUniforms { texelSize: vec2<f32>, _pad: vec2<f32> };
+@group(0) @binding(0) var<uniform> u: DownUniforms;
 @group(0) @binding(1) var srcTex: texture_2d<f32>;
 @group(0) @binding(2) var samp: sampler;
 
 @fragment fn fs(in: VOut) -> @location(0) vec4<f32> {
-    let weights = array<f32, 5>(0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
-    var result = textureSample(srcTex, samp, in.uv).rgb * weights[0];
-    for (var i: i32 = 1; i < 5; i = i + 1) {
-        let offset = u.direction * u.texelSize * f32(i);
-        result += textureSample(srcTex, samp, in.uv + offset).rgb * weights[i];
-        result += textureSample(srcTex, samp, in.uv - offset).rgb * weights[i];
-    }
+    let t = u.texelSize;
+    let uv = in.uv;
+    let a = textureSample(srcTex, samp, uv + t * vec2<f32>(-1.0, -1.0)).rgb;
+    let b = textureSample(srcTex, samp, uv + t * vec2<f32>( 0.0, -1.0)).rgb;
+    let c = textureSample(srcTex, samp, uv + t * vec2<f32>( 1.0, -1.0)).rgb;
+    let d = textureSample(srcTex, samp, uv + t * vec2<f32>(-0.5, -0.5)).rgb;
+    let e = textureSample(srcTex, samp, uv + t * vec2<f32>( 0.5, -0.5)).rgb;
+    let f = textureSample(srcTex, samp, uv + t * vec2<f32>(-1.0,  0.0)).rgb;
+    let g = textureSample(srcTex, samp, uv).rgb;
+    let h = textureSample(srcTex, samp, uv + t * vec2<f32>( 1.0,  0.0)).rgb;
+    let i = textureSample(srcTex, samp, uv + t * vec2<f32>(-0.5,  0.5)).rgb;
+    let j = textureSample(srcTex, samp, uv + t * vec2<f32>( 0.5,  0.5)).rgb;
+    let k = textureSample(srcTex, samp, uv + t * vec2<f32>(-1.0,  1.0)).rgb;
+    let l = textureSample(srcTex, samp, uv + t * vec2<f32>( 0.0,  1.0)).rgb;
+    let m = textureSample(srcTex, samp, uv + t * vec2<f32>( 1.0,  1.0)).rgb;
+    var result = g * 0.125;
+    result += (b + f + h + l) * 0.0625;
+    result += (a + c + k + m) * 0.03125;
+    result += (d + e + i + j) * 0.125;
+    return vec4<f32>(result, 1.0);
+}
+)";
+
+// 9-tap tent upsample — port of GL's bloom_upsample.frag. Drawn with additive
+// blending so each level accumulates onto the coarser one already in the mip.
+static const std::string BLOOM_UP_WGSL = std::string(BLOOM_VS_WGSL) + R"(
+struct UpUniforms { texelSize: vec2<f32>, filterRadius: f32, _pad: f32 };
+@group(0) @binding(0) var<uniform> u: UpUniforms;
+@group(0) @binding(1) var srcTex: texture_2d<f32>;
+@group(0) @binding(2) var samp: sampler;
+
+@fragment fn fs(in: VOut) -> @location(0) vec4<f32> {
+    let r = u.filterRadius;
+    let t = u.texelSize;
+    let uv = in.uv;
+    let a = textureSample(srcTex, samp, uv + t * vec2<f32>(-r,  r)).rgb;
+    let b = textureSample(srcTex, samp, uv + t * vec2<f32>(0.0,  r)).rgb;
+    let c = textureSample(srcTex, samp, uv + t * vec2<f32>( r,  r)).rgb;
+    let d = textureSample(srcTex, samp, uv + t * vec2<f32>(-r, 0.0)).rgb;
+    let e = textureSample(srcTex, samp, uv).rgb;
+    let f = textureSample(srcTex, samp, uv + t * vec2<f32>( r, 0.0)).rgb;
+    let g = textureSample(srcTex, samp, uv + t * vec2<f32>(-r, -r)).rgb;
+    let h = textureSample(srcTex, samp, uv + t * vec2<f32>(0.0, -r)).rgb;
+    let i = textureSample(srcTex, samp, uv + t * vec2<f32>( r, -r)).rgb;
+    var result = e * 4.0;
+    result += (b + d + f + h) * 2.0;
+    result += (a + c + g + i) * 1.0;
+    result = result / 16.0;
     return vec4<f32>(result, 1.0);
 }
 )";

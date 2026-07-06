@@ -31,6 +31,9 @@ void WaterComponent::DrawImGui() {
     ImGui::DragFloat("Beer Coef", &wm->beerCoef, 0.001f, 0.0f, 1.0f);
     ImGui::ColorEdit3("Deep Color", &wm->deepColor.x);
     ImGui::ColorEdit3("Shallow Color", &wm->shallowColor.x);
+    ImGui::Checkbox("Reflections", &wm->planarReflection);
+    ImGui::DragFloat("Reflection Strength", &wm->reflectionStrength, 0.01f, 0.0f, 1.0f);
+    ImGui::DragFloat("Reflection Distortion", &wm->reflectionDistortion, 0.001f, 0.0f, 0.2f);
 }
 
 void WaterComponent::OnAttach() {
@@ -44,5 +47,8 @@ void WaterComponent::OnAttach() {
         wm->deepColor = _props.deepColor;
         wm->shallowColor = _props.shallowColor;
         wm->beerCoef = _props.beerCoef;
+        wm->planarReflection = _props.reflections;
+        wm->reflectionStrength = _props.reflectionStrength;
+        wm->reflectionDistortion = _props.reflectionDistortion;
     }
 }

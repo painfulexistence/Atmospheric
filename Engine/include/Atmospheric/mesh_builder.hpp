@@ -21,6 +21,11 @@ public:
     static Mesh* CreateCube(const float& size = 1.0f);
     static Mesh* CreatePlane(float width, float height);
 
+    // Flat triangle-fan disc in the XY plane, normal +Z, centered at origin.
+    // UVs are concentric (center 0.5,0.5, rim on the unit circle) so shaders
+    // can derive the rim distance as length(uv - 0.5) * 2. Used by portals.
+    static Mesh* CreateDisc(float radius, int segments = 48);
+
     static Mesh* CreateSphere(const float& radius = 0.5f, const int& division = 18);
 
     static Mesh* CreateTerrain(const float& size = 1024.f, const int& resolution = 10);

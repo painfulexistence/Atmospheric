@@ -116,6 +116,13 @@ void CameraComponent::Pitch(float angleOffset) {
     _vhAngle.x = std::max(gminVAngle, std::min(gmaxVAngle, _vhAngle.x + angleOffset));
 }
 
+void CameraComponent::SetEyeDirection(const glm::vec3& dir) {
+    glm::vec3 d = glm::normalize(dir);
+    // Inverse of GetEyeDirection(): dir = (cos v cos h, sin v, sin h cos v).
+    _vhAngle.x = std::max(gminVAngle, std::min(gmaxVAngle, std::asin(std::max(-1.0f, std::min(1.0f, d.y)))));
+    _vhAngle.y = std::atan2(d.z, d.x);
+}
+
 void CameraComponent::SetSize(float size) {
     if (_isOrthographic) {
         float aspectRatio = _orthoWidth / _orthoHeight;// Maintain aspect ratio

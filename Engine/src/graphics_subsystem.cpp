@@ -27,6 +27,12 @@
 
 GraphicsSubsystem* GraphicsSubsystem::_instance = nullptr;
 
+glm::vec3 GraphicsSubsystem::GetActiveEyePosition() const {
+    if (renderer && renderer->viewOverride) return renderer->viewOverride->eyePos;
+    CameraComponent* cam = GetMainCamera();
+    return cam ? cam->GetEyePosition() : glm::vec3(0.0f);
+}
+
 GraphicsSubsystem::GraphicsSubsystem() {
     if (_instance != nullptr) throw std::runtime_error("GraphicsSubsystem is already initialized!");
 
@@ -145,6 +151,16 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
 
     Frustum frustum(camera->GetProjectionMatrix() * camera->GetViewMatrix());
 
+    // Auxiliary views (portal recursion levels, water reflection) re-render
+    // this frame's queues from other viewpoints. Rather than disabling culling
+    // wholesale, keep anything visible in the main frustum OR any aux frustum
+    // (per-view culling — bounds the submitted set instead of drawing it all).
+    std::vector<Frustum> auxFrusta;
+    if (renderer) {
+        for (const glm::mat4& vp : renderer->GetAuxViewProjs())
+            auxFrusta.emplace_back(vp);
+    }
+
     // Submit render commands
     int totalCount = 0;
     int culledCount = 0;
@@ -160,7 +176,16 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
         // Frustum Culling
         const auto& transform = r->gameObject->GetTransform();
 
-        if (FRUSTUM_CULLING_ON) {
+        // Portal surfaces are never frustum-culled: PortalPass needs the
+        // partner's draw (for its transform) even when that partner is behind
+        // the main camera — the common case for facing portal pairs. Without
+        // this, an off-screen partner would keep its pair's chain inactive.
+        bool isPortalSurface = false;
+        if (Material* mat = AssetManager::Get().ResolveMaterial(mesh->GetMaterial())) {
+            isPortalSurface = dynamic_cast<PortalMaterial*>(mat) != nullptr;
+        }
+
+        if (FRUSTUM_CULLING_ON && !isPortalSurface) {
             ZoneScopedN("Frustum Culling");
             const auto& boundingBox = mesh->GetBoundingBox();
             std::array<glm::vec3, 8> worldBounds;
@@ -171,7 +196,12 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
                 }
                 worldBounds[i] = transform * glm::vec4(boundingBox[i], 1.0f);
             }
-            if (hasValidBounds && !frustum.Intersects(worldBounds)) {
+            bool visible = frustum.Intersects(worldBounds);
+            for (const Frustum& aux : auxFrusta) {
+                if (visible) break;
+                visible = aux.Intersects(worldBounds);
+            }
+            if (hasValidBounds && !visible) {
                 culledCount++;
                 continue;
             }

@@ -37,6 +37,7 @@
 #include "video_recorder.hpp"
 #include "window.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -46,6 +47,7 @@
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
+#include <thread>
 #ifndef NDEBUG
 #include "editor_layer.hpp"
 #endif
@@ -224,17 +226,19 @@ Application::Application(AppConfig config) : _config(config) {
     // clang-format on
 #endif
 
-    _window = std::make_unique<Window>(WindowProps{
-        .title = config.windowTitle,
-        .width = config.windowWidth,
-        .height = config.windowHeight,
-        .resizable = config.windowResizable,
-        .floating = config.windowFloating,
-        .fullscreen = config.fullscreen,
-        .vsync = config.vsync,
-    });// Multi-window not supported now
-    _window->Init();
-    _window->InitImGui();
+    if (!config.headless) {
+        _window = std::make_unique<Window>(WindowProps{
+            .title = config.windowTitle,
+            .width = config.windowWidth,
+            .height = config.windowHeight,
+            .resizable = config.windowResizable,
+            .floating = config.windowFloating,
+            .fullscreen = config.fullscreen,
+            .vsync = config.vsync,
+        });// Multi-window not supported now
+        _window->Init();
+        _window->InitImGui();
+    }
 
     // Construct subsystems in dependency order (matches member declaration
     // order). Each registers itself as its type's Get() locator here; the real
@@ -253,13 +257,16 @@ Application::Application(AppConfig config) : _config(config) {
 
     PushLayer(new GameLayer(this));
 #ifndef NDEBUG
-    auto* editorLayer = new EditorLayer(this);
-    _editorLayer = editorLayer;
-    PushLayer(editorLayer);
+    if (!config.headless) {
+        auto* editorLayer = new EditorLayer(this);
+        _editorLayer = editorLayer;
+        PushLayer(editorLayer);
+    }
 #endif
 
     _recorder = std::make_unique<VideoRecorder>();
-    ParseAutoCaptureEnv();
+    // Auto-capture reads back rendered frames; meaningless without a GL context.
+    if (!config.headless) ParseAutoCaptureEnv();
 
     RegisterComponents();
 }
@@ -549,7 +556,7 @@ void Application::RegisterComponents() {
 Application::~Application() {
     if (s_instance == this) s_instance = nullptr;
     ENGINE_LOG("Exiting...");
-    _window->DeinitImGui();
+    if (_window) _window->DeinitImGui();
 
     _entities.clear();
 
@@ -572,13 +579,26 @@ void Application::Run() {
     _input->Init(this);
     _audio->Init(this);
     _recorder->setAudioManager(_audio.get());
-    _graphics->Init(this);
+    if (!_config.headless) {
+        _graphics->Init(this);// glad + GL device setup — needs the window's GL context
+    }
     _physics->Init(this);// Note that physics debug drawer is dependent on graphics server
     _physics2D->Init(this);
     for (auto& subsystem : _subsystems) {
         subsystem->Init(this);
     }
     ENGINE_LOG("Subsystems initialized.");
+
+    if (_config.headless) {
+        // Headless apps may build their world procedurally in OnInit without a
+        // scene file; don't leave Update() gated on a GoScene that never comes.
+        // (GoScene still works — on native it completes synchronously and
+        // re-sets this flag itself.)
+        _sceneReady = true;
+        OnInit();
+        HeadlessLoop();
+        return;
+    }
 
     auto windowSize = _window->GetLogicalSize();
     RmlUiManager::Get()->Initialize(windowSize.width, windowSize.height, _graphics->renderer.get());
@@ -609,6 +629,35 @@ void Application::Run() {
     // UIApplicationMain. The OS reclaims process resources at app exit.
     RmlUiManager::Get()->Shutdown();
 #endif
+}
+
+// Fixed-tick Update()-only loop for headless (server) builds: no window, no
+// GL, no Render(). Ticks at _config.fixedTimeStep using a monotonic clock and
+// sleeps between ticks, so a dedicated server idles instead of spinning a
+// core. Exits when Quit() clears _headlessRunning.
+void Application::HeadlessLoop() {
+    ENGINE_LOG("Headless main loop started (tick = {:.4f} s)", _config.fixedTimeStep);
+    const auto tick = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+        std::chrono::duration<double>(_config.fixedTimeStep)
+    );
+    const auto start = std::chrono::steady_clock::now();
+    auto nextWake = start + tick;
+    float lastTime = 0.0f;
+
+    _headlessRunning = true;
+    while (_headlessRunning) {
+        const float now = std::chrono::duration<float>(std::chrono::steady_clock::now() - start).count();
+        _headlessTime = now;// GetWindowTime() source while there is no window
+        FrameData frame = { GetClock(), now, now - lastTime };
+        lastTime = now;
+
+        Update(frame);
+        _clock++;
+
+        std::this_thread::sleep_until(nextWake);
+        nextWake += tick;
+    }
+    ENGINE_LOG("Headless main loop exited.");
 }
 
 void Application::PushLayer(Layer* layer) {
@@ -1231,7 +1280,11 @@ const std::string& Application::GetEditorSceneError() const {
 
 void Application::Quit() {
     ENGINE_LOG("Requested to quit.");
-    _window->Close();
+    if (_window) {
+        _window->Close();
+    } else {
+        _headlessRunning = false;
+    }
 }
 
 void Application::DeferSpawn(std::function<void()> cmd) {
@@ -1265,7 +1318,7 @@ void Application::Update(const FrameData& props) {
 
     // ecs.Process(dt); // Note that most of the entity manipulation logic should be put there
     _console->Process(dt);
-    _input->Process(dt);
+    if (!_config.headless) _input->Process(dt);// polls Window::Get(), which is null headless
     _audio->Process(dt);
     _physics->Process(dt);// TODO: Update only every entity's physics transform
     _physics2D->Process(dt);
@@ -1422,18 +1475,25 @@ uint64_t Application::GetClock() {
 }
 
 float Application::GetWindowTime() {
+    if (!_window) return _headlessTime;
     return this->_window->GetTime();
 }
 
 void Application::SetWindowTime(float time) {
+    if (!_window) {
+        _headlessTime = time;
+        return;
+    }
     this->_window->SetTime(time);
 }
 
 std::string Application::GetWindowTitle() {
+    if (!_window) return _config.windowTitle;
     return this->_window->GetTitle();
 }
 
 void Application::SetWindowTitle(const std::string& title) {
+    if (!_window) return;
     this->_window->SetTitle(title);
 }
 

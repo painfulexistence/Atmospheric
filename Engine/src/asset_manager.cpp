@@ -412,6 +412,7 @@ void AssetManager::LoadDefaultShaders() {
           { "voxel", { .vert = "assets/shaders/voxel.vert", .frag = "assets/shaders/voxel.frag" } },
           { "microvoxel", { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/microvoxel.frag" } },
           { "water", { .vert = "assets/shaders/water.vert", .frag = "assets/shaders/water.frag" } },
+          { "portal", { .vert = "assets/shaders/portal.vert", .frag = "assets/shaders/portal.frag" } },
           { "bloom_threshold", { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_threshold.frag" } },
           { "bloom_downsample",
             { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_downsample.frag" } },
@@ -516,6 +517,14 @@ WaterMaterial* AssetManager::CreateWaterMaterial() {
     auto* ptr = material.get();
     materials.push_back(std::move(material));
     _materialCache["water_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return ptr;
+}
+
+PortalMaterial* AssetManager::CreatePortalMaterial() {
+    auto material = std::make_unique<PortalMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
+    _materialCache["portal_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
     return ptr;
 }
 
@@ -1205,6 +1214,14 @@ MeshHandle
 
     auto* mesh = new Mesh(MeshType::PRIM);
     mesh->Initialize(verts, tris);
+    return CreateMesh(name, mesh);
+}
+
+MeshHandle AssetManager::CreateDiscMesh(const std::string& name, float radius, int segments) {
+    auto mesh = MeshBuilder::CreateDisc(radius, segments);
+    if (_materialCache.find("Default") != _materialCache.end()) {
+        mesh->SetMaterial(GetMaterialHandle("Default"));
+    }
     return CreateMesh(name, mesh);
 }
 
