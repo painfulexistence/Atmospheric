@@ -259,14 +259,6 @@ public:
         return *this;
     }
 
-    // Enable additive (one/one) blending — the WebGPU equivalent of GL's
-    // glBlendFunc(GL_ONE, GL_ONE), used by the bloom upsample chain so each
-    // mip level accumulates onto the destination's existing content.
-    GpuPipelineBuilder& additiveBlend() {
-        _additiveBlend = true;
-        return *this;
-    }
-
     // Enable depth testing.  writeEnabled=true for opaque, false for transparent.
     GpuPipelineBuilder& depth(bool writeEnabled, WGPUCompareFunction cmp = WGPUCompareFunction_Less) {
         _depthEnabled = true;

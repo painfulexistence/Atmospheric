@@ -858,10 +858,9 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
     if (!camera) return;
     LightComponent* light = ctx->GetMainLight();
 
-    // Auxiliary views (portal recursion) drive us via viewOverride. There we
-    // render into the aux RT with a simplified water: no per-view scene depth
-    // (Beer-Lambert) and no reflection — matching the WebGPU water. The main
-    // view still renders into msaaResolveRT (post-resolve, through bloom).
+    // Auxiliary views (portal recursion) drive us via viewOverride: render into
+    // the aux RT with reflection off (it was computed for the main camera). The
+    // main view still renders into msaaResolveRT (post-resolve, through bloom).
     ResolvedView rv = ResolveView(renderer, camera);
     bool auxView = renderer.viewOverride != nullptr;
     RenderTarget* target = auxView ? rv.target : renderer.msaaResolveRT.get();
@@ -869,10 +868,23 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
     glViewport(0, 0, target->GetWidth(), target->GetHeight());
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(target)->GetNativeFBOID());
 
-    // WaterPass runs after MSAAResolvePass so the resolved depth is ready.
-    // In aux views it stays bound but unsampled (u_useDepth = 0) — reading the
-    // aux RT's own depth here would be a feedback loop.
+    // Beer-Lambert needs the opaque scene depth. Main view: the resolved depth.
+    // Aux view: the aux RT's own depth attachment, which desktop GL permits
+    // sampling read-only while the same target is bound (exactly what the main
+    // view does with msaaResolveRT). This gives portal water the same depth
+    // gradient as the main view instead of a flat fresnel fallback. GLES/WebGL
+    // forbid that feedback loop, so they keep the fresnel fallback there.
     GLuint depthTex = renderer.GetResolvedDepthTexture();
+    float useDepth = auxView ? 0.0f : 1.0f;
+#if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
+    if (auxView) {
+        GLuint auxDepth = static_cast<GLuint>(rv.target->GetDepthTextureID());
+        if (auxDepth != 0) {
+            depthTex = auxDepth;
+            useDepth = 1.0f;
+        }
+    }
+#endif
 
     shader->Activate();
 
@@ -886,7 +898,7 @@ void WaterPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncod
     shader->SetUniform("u_invView", glm::inverse(view));
     shader->SetUniform("u_screenSize", glm::vec2((float)target->GetWidth(), (float)target->GetHeight()));
     shader->SetUniform("u_depthTexture", 1);
-    shader->SetUniform("u_useDepth", auxView ? 0.0f : 1.0f);
+    shader->SetUniform("u_useDepth", useDepth);
 
     glm::vec3 lightDir = light ? glm::normalize(-light->direction) : glm::vec3(0.5f, 1.0f, 0.3f);
     glm::vec3 lightColor = light ? light->diffuse : glm::vec3(1.0f);
@@ -1176,11 +1188,13 @@ void BloomPass::_initGPU(WGPUDevice device, WGPUQueue queue, uint32_t sceneSampl
         // Additive blend (one/one) so the upsample accumulates onto the
         // destination mip's existing downsampled content — the WebGPU
         // equivalent of GL's upsample glBlendFunc(GL_ONE, GL_ONE).
+        // Bloom's up shader outputs alpha 1.0, so Blend::Additive (src.a·src +
+        // 1·dst) is exactly the one/one accumulation GL uses.
         auto p = GpuPipelineBuilder(device)
                      .wgsl(BLOOM_UP_WGSL)
                      .bgl(singleTexBGL)
                      .colorFormat(WGPUTextureFormat_RGBA16Float)
-                     .additiveBlend()
+                     .blend(GpuPipelineBuilder::Blend::Additive)
                      .build();
         _upPipeline = p.pipeline;
         _upBGL = p.bgl(0);
