@@ -10,9 +10,7 @@
 // by `slowMultiplier`. No-ops if the owning GameObject has no CameraComponent.
 class CameraController3D : public Component {
 public:
-    CameraController3D(
-        GameObject* owner, float moveSpeed = 20.0f, float lookSpeed = 1.5f, float slowMultiplier = 0.2f
-    )
+    CameraController3D(GameObject* owner, float moveSpeed = 20.0f, float lookSpeed = 1.5f, float slowMultiplier = 0.2f)
       : _moveSpeed(moveSpeed), _lookSpeed(lookSpeed), _slowMultiplier(slowMultiplier) {
         gameObject = owner;
     }
