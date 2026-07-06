@@ -316,8 +316,8 @@ void MicroVoxelPass::_uploadGL() {
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 
-// Layout must match Uniforms in MICROVOXEL_WGSL: 2 mat4 + 4 vec4f + 2 vec4i.
-static constexpr uint64_t MICROVOXEL_UNIFORM_SIZE = 224;
+// Layout must match Uniforms in MICROVOXEL_WGSL: 2 mat4 + 4 vec4f + 2 vec4i + 1 vec4f.
+static constexpr uint64_t MICROVOXEL_UNIFORM_SIZE = 240;
 
 MicroVoxelPass::~MicroVoxelPass() {
     if (_texBG) wgpuBindGroupRelease(_texBG);
@@ -457,6 +457,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             glm::vec4 sunColAmb;
             glm::ivec4 gridDim;
             glm::ivec4 misc;
+            glm::vec4 params;
         } u{
             invViewProj,
             viewProj,
@@ -466,6 +467,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             glm::vec4(sunColor, ambient),
             glm::ivec4(gridDim, gridDim, gridDim, brickDim),
             glm::ivec4(maxRaySteps, shadowEnabled ? 1 : 0, 0, 0),
+            glm::vec4(aoStrength, 0.0f, 0.0f, 0.0f),
         };
         static_assert(sizeof(u) == MICROVOXEL_UNIFORM_SIZE, "uniform layout must match MICROVOXEL_WGSL");
         wgpuQueueWriteBuffer(_gpuQueue, _uniformBuf, 0, &u, sizeof(u));
@@ -511,6 +513,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     shader->SetUniform(std::string("u_sunIntensity"), sunIntensity);
     shader->SetUniform(std::string("u_ambient"), ambient);
     shader->SetUniform(std::string("u_shadowEnabled"), shadowEnabled ? 1 : 0);
+    shader->SetUniform(std::string("u_aoStrength"), aoStrength);
     shader->SetUniform(std::string("u_volume"), 0);
     shader->SetUniform(std::string("u_occupancy"), 1);
     shader->SetUniform(std::string("u_palette"), 2);

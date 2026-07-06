@@ -20,6 +20,7 @@ struct Uniforms {
     sunColAmb:    vec4<f32>,   // sunColor.xyz, ambient
     gridDim:      vec4<i32>,   // gridDim.xyz, brickDim
     misc:         vec4<i32>,   // maxRaySteps, shadowEnabled, _, _
+    params:       vec4<f32>,   // aoStrength, _, _, _
 };
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(1) @binding(0) var volume:    texture_3d<u32>;
@@ -57,6 +58,41 @@ fn voxelHash(c: vec3<i32>) -> f32 {
 
 fn stepPos(rd: vec3<f32>) -> vec3<f32> {
     return select(vec3<f32>(0.0), vec3<f32>(1.0), rd > vec3<f32>(0.0));
+}
+
+// Minecraft-style per-pixel corner AO (see microvoxel.frag).
+fn voxelSolidAt(c: vec3<i32>) -> f32 {
+    if (any(c < vec3<i32>(0)) || any(c >= u.gridDim.xyz)) { return 0.0; }
+    return select(0.0, 1.0, textureLoad(volume, c, 0).r != 0u);
+}
+
+fn cornerAO(side1: f32, side2: f32, corner: f32) -> f32 {
+    if (side1 > 0.5 && side2 > 0.5) { return 0.0; }
+    return 1.0 - (side1 + side2 + corner) / 3.0;
+}
+
+fn faceAO(cell: vec3<i32>, normal: vec3<f32>, hitPos: vec3<f32>) -> f32 {
+    let n = vec3<i32>(round(normal));
+    let outside = cell + n;
+    var t1 = vec3<i32>(1, 0, 0);
+    if (n.x != 0) { t1 = vec3<i32>(0, 1, 0); }
+    var t2 = vec3<i32>(0, 0, 1);
+    if (n.z != 0) { t2 = vec3<i32>(0, 1, 0); }
+
+    let f = (hitPos - u.originVoxel.xyz) / u.originVoxel.w - vec3<f32>(cell);
+    let uu = clamp(dot(f, vec3<f32>(t1)), 0.0, 1.0);
+    let vv = clamp(dot(f, vec3<f32>(t2)), 0.0, 1.0);
+
+    let sP1 = voxelSolidAt(outside + t1); let sM1 = voxelSolidAt(outside - t1);
+    let sP2 = voxelSolidAt(outside + t2); let sM2 = voxelSolidAt(outside - t2);
+    let cPP = voxelSolidAt(outside + t1 + t2); let cPM = voxelSolidAt(outside + t1 - t2);
+    let cMP = voxelSolidAt(outside - t1 + t2); let cMM = voxelSolidAt(outside - t1 - t2);
+
+    let ao00 = cornerAO(sM1, sM2, cMM);
+    let ao10 = cornerAO(sP1, sM2, cPM);
+    let ao01 = cornerAO(sM1, sP2, cMP);
+    let ao11 = cornerAO(sP1, sP2, cPP);
+    return mix(mix(ao00, ao10, uu), mix(ao01, ao11, uu), vv);
 }
 
 fn traverseBrick(ro: vec3<f32>, rd: vec3<f32>, invDir: vec3<f32>, tStart: f32,
@@ -217,9 +253,15 @@ struct FOut {
         if (sh.hit) { shadow = 0.0; }
     }
 
+    var ao = 1.0;
+    if (u.params.x > 0.0) {
+        ao = mix(1.0, faceAO(cell, h.normal, hitPos), u.params.x);
+    }
+
     let skyAmbient = mix(vec3<f32>(0.20, 0.22, 0.28), vec3<f32>(0.45, 0.55, 0.75), h.normal.y * 0.5 + 0.5);
     let direct = u.sunDirInt.w * u.sunColAmb.xyz * (1.0 / PI) * ndl * shadow;
-    let color = albedo * (direct + skyAmbient * u.sunColAmb.w);
+    // AO fully attenuates ambient; a stylized 30% also darkens direct.
+    let color = albedo * (direct * (0.7 + 0.3 * ao) + skyAmbient * u.sunColAmb.w * ao);
 
     out.color = vec4<f32>(color, 1.0);
 

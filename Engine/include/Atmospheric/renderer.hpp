@@ -346,6 +346,7 @@ public:
     int maxRaySteps = 256;
     float sunIntensity = 3.0f;
     float ambient = 0.6f;
+    float aoStrength = 0.7f;// Minecraft-style corner AO; 0 disables
     bool shadowEnabled = true;
     uint32_t solidCount = 0;
 

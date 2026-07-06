@@ -41,6 +41,7 @@ uniform vec3  u_sunColor;
 uniform float u_sunIntensity;
 uniform float u_ambient;
 uniform int   u_shadowEnabled;
+uniform float u_aoStrength;    // 0 disables corner AO
 
 out vec4 fragColor;
 
@@ -59,6 +60,45 @@ struct Hit {
     uint  material;
     bool  hit;
 };
+
+// ── Minecraft-style per-pixel corner AO ─────────────────────────────────────
+// Darkens hit points near solid neighbors of the hit face: the classic trick
+// that makes micro voxel scenes read as detailed. 8 extra texel fetches, only
+// on primary hits.
+
+float voxelSolidAt(ivec3 c) {
+    if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(u_gridDim)))) return 0.0;
+    return texelFetch(u_volume, c, 0).r != 0u ? 1.0 : 0.0;
+}
+
+float cornerAO(float side1, float side2, float corner) {
+    if (side1 > 0.5 && side2 > 0.5) return 0.0;
+    return 1.0 - (side1 + side2 + corner) / 3.0;
+}
+
+float faceAO(ivec3 cell, vec3 normal, vec3 hitPos) {
+    ivec3 n = ivec3(round(normal));
+    ivec3 outside = cell + n;
+    // The two axes spanning the hit face
+    ivec3 t1 = (n.x != 0) ? ivec3(0, 1, 0) : ivec3(1, 0, 0);
+    ivec3 t2 = (n.z != 0) ? ivec3(0, 1, 0) : ivec3(0, 0, 1);
+
+    // Fractional position within the face
+    vec3 f = (hitPos - u_volumeOrigin) / u_voxelSize - vec3(cell);
+    float u = clamp(dot(f, vec3(t1)), 0.0, 1.0);
+    float v = clamp(dot(f, vec3(t2)), 0.0, 1.0);
+
+    float sP1 = voxelSolidAt(outside + t1), sM1 = voxelSolidAt(outside - t1);
+    float sP2 = voxelSolidAt(outside + t2), sM2 = voxelSolidAt(outside - t2);
+    float cPP = voxelSolidAt(outside + t1 + t2), cPM = voxelSolidAt(outside + t1 - t2);
+    float cMP = voxelSolidAt(outside - t1 + t2), cMM = voxelSolidAt(outside - t1 - t2);
+
+    float ao00 = cornerAO(sM1, sM2, cMM);
+    float ao10 = cornerAO(sP1, sM2, cPM);
+    float ao01 = cornerAO(sM1, sP2, cMP);
+    float ao11 = cornerAO(sP1, sP2, cPP);
+    return mix(mix(ao00, ao10, u), mix(ao01, ao11, u), v);
+}
 
 // Fine DDA over individual voxels inside one brick cell [lo, lo+B-1].
 Hit traverseBrick(vec3 ro, vec3 rd, vec3 invDir, float tStart, ivec3 brickCell, vec3 enterNormal) {
@@ -203,9 +243,16 @@ void main() {
         if (sh.hit) shadow = 0.0;
     }
 
+    float ao = 1.0;
+    if (u_aoStrength > 0.0) {
+        ao = mix(1.0, faceAO(cell, h.normal, hitPos), u_aoStrength);
+    }
+
     vec3 skyAmbient = mix(vec3(0.20, 0.22, 0.28), vec3(0.45, 0.55, 0.75), h.normal.y * 0.5 + 0.5);
     vec3 direct = u_sunColor * u_sunIntensity * (1.0 / PI) * ndl * shadow;
-    vec3 color = albedo * (direct + skyAmbient * u_ambient);
+    // AO fully attenuates ambient; a stylized 30% also darkens direct so
+    // corners stay readable in full sun (Teardown-ish look).
+    vec3 color = albedo * (direct * (0.7 + 0.3 * ao) + skyAmbient * u_ambient * ao);
 
     fragColor = vec4(color, 1.0);
 
