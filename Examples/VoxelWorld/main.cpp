@@ -1,18 +1,13 @@
 #include "Atmospheric.hpp"
+#include "Atmospheric/camera_controller_3d.hpp"
 #include "components.hpp"
 
-// Camera navigation is FlyCameraComponent; world streaming and rendering are
-// VoxelWorldComponent. OnUpdate only handles ESC.
+// Camera navigation is CameraController3D (engine-level); world streaming and
+// rendering are VoxelWorldComponent. OnUpdate only handles ESC.
 class VoxelWorldApp : public Application {
     using Application::Application;
 
     void OnInit() override {
-        ComponentFactory::Register("FlyCameraComponent", [](GameObject* o, Deserializer& d) -> Component* {
-            float moveSpeed = 20.0f, lookSpeed = 1.5f;
-            d.Read("moveSpeed", moveSpeed);
-            d.Read("lookSpeed", lookSpeed);
-            return new FlyCameraComponent(o, moveSpeed, lookSpeed);
-        });
         ComponentFactory::Register("VoxelWorld", [](GameObject* o, Deserializer& d) -> Component* {
             int seed = 42;
             d.Read("seed", seed);
@@ -26,7 +21,7 @@ class VoxelWorldApp : public Application {
         mainCamera->gameObject->SetPosition(glm::vec3(200.0f, 80.0f, 200.0f));
         mainCamera->Pitch(glm::radians(-20.0f));
         mainCamera->Yaw(glm::radians(-75.0f));
-        mainCamera->gameObject->AddComponent<FlyCameraComponent>(/*moveSpeed=*/20.0f, /*lookSpeed=*/1.5f);
+        mainCamera->gameObject->AddComponent<CameraController3D>(/*moveSpeed=*/20.0f, /*lookSpeed=*/1.5f);
 
         auto* worldObj = CreateGameObject();
         worldObj->AddComponent<VoxelWorldComponent>(/*seed=*/1337);
@@ -38,7 +33,7 @@ class VoxelWorldApp : public Application {
             bloom->bloomStrength = 0.06f;
         }
 
-        ConsoleSubsystem::Get()->Info("VoxelWorld loaded. WASD move, RF up/down, IJKL look, ESC quit.");
+        ConsoleSubsystem::Get()->Info("VoxelWorld loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
     }
 
     void OnUpdate(float /*dt*/, float /*time*/) override {
