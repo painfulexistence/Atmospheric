@@ -4,6 +4,7 @@ option(AE_USE_BASIS_UNIVERSAL "Enable Basis Universal transcoder for KTX2 GPU-co
 option(AE_USE_FFMPEG "Enable FFmpeg for VideoPlayer and VideoRecorder (uses the system FFmpeg found via pkg-config)" ON)
 option(AE_BUILD_EXAMPLES "Build the bundled example projects" ON)
 option(AE_USE_NETWORKING "Enable HTTP and WebSocket networking" OFF)
+option(AE_USE_TINYUSDZ "Enable TinyUSDZ for AssetManager::LoadUSD (USDA/USDC/USDZ). Heavy dependency vendored as a submodule; off by default." OFF)
 
 # curl + libwebsockets live behind the "networking" vcpkg manifest feature so
 # that default builds don't compile OpenSSL and friends. Must be requested

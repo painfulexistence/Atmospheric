@@ -1,3 +1,6 @@
 [submodule "vcpkg"]
 	path = vcpkg
 	url = https://github.com/Microsoft/vcpkg.git
+[submodule "Engine/external/tinyusdz"]
+	path = Engine/external/tinyusdz
+	url = https://github.com/lighttransport/tinyusdz.git

@@ -460,6 +460,29 @@ if(AE_USE_FFMPEG AND NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
 elseif(NOT AE_USE_FFMPEG)
     message(STATUS "FFmpeg disabled (AE_USE_FFMPEG=OFF). VideoPlayer and VideoRecorder will be unavailable.")
 endif()
+if(AE_USE_TINYUSDZ)
+    # TinyUSDZ: dependency-free USD (USDA/USDC/USDZ) reader plus its Tydra
+    # render-data converter, vendored as a git submodule under external/. It's a
+    # heavy dependency, so it lives behind an option (default OFF) to keep the
+    # baseline build small per the project vision. The static target's include
+    # dir is only exposed PRIVATE, so add external/tinyusdz/src ourselves for
+    # <tinyusdz.hh> / <tydra/render-data.hh>.
+    if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/external/tinyusdz/CMakeLists.txt)
+        message(FATAL_ERROR
+            "AE_USE_TINYUSDZ=ON but external/tinyusdz is empty. Run "
+            "`git submodule update --init --recursive Engine/external/tinyusdz`.")
+    endif()
+    set(TINYUSDZ_WITH_TYDRA ON CACHE BOOL "" FORCE)
+    set(TINYUSDZ_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(TINYUSDZ_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(TINYUSDZ_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(external/tinyusdz EXCLUDE_FROM_ALL)
+    target_link_libraries(AtmosphericEngine PUBLIC tinyusdz::tinyusdz_static)
+    target_include_directories(AtmosphericEngine PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/tinyusdz/src)
+    target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_TINYUSDZ)
+    message(STATUS "TinyUSDZ enabled (AE_USE_TINYUSDZ=ON). AssetManager::LoadUSD available.")
+endif()
 if(EMSCRIPTEN OR ANDROID OR IOS)
     # IMGUI_IMPL_OPENGL_ES3 : tell Dear ImGui's OpenGL3 backend to use GLES3
     #   headers instead of the default desktop GL3 loader.

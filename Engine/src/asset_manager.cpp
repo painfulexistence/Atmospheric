@@ -8,9 +8,18 @@
 #include "mesh_builder.hpp"
 #include "shader.hpp"
 #include <algorithm>
+#include <array>
 #include <cassert>
+#include <cctype>
+#include <cmath>
+#include <fstream>
 #include <nlohmann/json.hpp>
 #include <unordered_set>
+
+#ifdef AE_USE_TINYUSDZ
+#include <tinyusdz.hh>
+#include <tydra/render-data.hh>
+#endif
 
 TextureHandle::TextureHandle(const char* path) {
     *this = AssetManager::Get().CreateTexture(path);
@@ -1530,6 +1539,463 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
 
     ENGINE_LOG("LoadGLTF '{}': {} verts, {} indices", path, allVerts.size(), allIndices.size());
     return CreateMesh(path, mesh);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quake ".map" brush-format loader
+//
+// A .map is a list of entities `{ … }`; a brush entity additionally contains
+// brushes `{ … }`, each a set of face planes. A brush is the convex volume
+// carved out by the intersection of every face's half-space, so a face's actual
+// polygon is recovered by clipping a huge quad on that plane against all the
+// other planes. This mirrors how id's own qbsp derives brush windings.
+// ─────────────────────────────────────────────────────────────────────────────
+namespace {
+
+    struct MapFace {
+        glm::dvec3 normal{ 0 };// outward plane normal (Quake space)
+        double dist = 0;// plane offset: dot(normal, x) == dist on the plane
+        std::string texture;
+        // Valve 220 stores explicit world-space texture axes; the classic format
+        // derives them from the face normal (see kBaseAxis below).
+        bool valve220 = false;
+        glm::dvec3 uAxis{ 1, 0, 0 }, vAxis{ 0, 1, 0 };
+        double uOffset = 0, vOffset = 0;
+        double rotation = 0, scaleX = 1, scaleY = 1;
+    };
+
+    struct MapBrush {
+        std::vector<MapFace> faces;
+    };
+
+    // Split the file into tokens, treating braces/parens/brackets as single
+    // characters, keeping "quoted strings" intact, and dropping // line comments.
+    std::vector<std::string> TokenizeMap(const std::string& text) {
+        std::vector<std::string> tokens;
+        size_t i = 0, n = text.size();
+        while (i < n) {
+            char c = text[i];
+            if (std::isspace(static_cast<unsigned char>(c))) {
+                ++i;
+            } else if (c == '/' && i + 1 < n && text[i + 1] == '/') {
+                while (i < n && text[i] != '\n')
+                    ++i;
+            } else if (c == '"') {
+                size_t j = i + 1;
+                while (j < n && text[j] != '"')
+                    ++j;
+                tokens.emplace_back(text.substr(i + 1, j - i - 1));
+                i = (j < n) ? j + 1 : j;
+            } else if (c == '{' || c == '}' || c == '(' || c == ')' || c == '[' || c == ']') {
+                tokens.emplace_back(1, c);
+                ++i;
+            } else {
+                size_t j = i;
+                while (j < n && !std::isspace(static_cast<unsigned char>(text[j])) && text[j] != '{' && text[j] != '}'
+                       && text[j] != '(' && text[j] != ')' && text[j] != '[' && text[j] != ']')
+                    ++j;
+                tokens.emplace_back(text.substr(i, j - i));
+                i = j;
+            }
+        }
+        return tokens;
+    }
+
+    // Classic-format texture axes, indexed by dominant face-normal direction.
+    // Layout per entry: { normal, uAxis, vAxis }. From Quake's map.c.
+    const glm::dvec3 kBaseAxis[18] = {
+        { 0, 0, 1 },  { 1, 0, 0 }, { 0, -1, 0 },// floor
+        { 0, 0, -1 }, { 1, 0, 0 }, { 0, -1, 0 },// ceiling
+        { 1, 0, 0 },  { 0, 1, 0 }, { 0, 0, -1 },// west wall
+        { -1, 0, 0 }, { 0, 1, 0 }, { 0, 0, -1 },// east wall
+        { 0, 1, 0 },  { 1, 0, 0 }, { 0, 0, -1 },// south wall
+        { 0, -1, 0 }, { 1, 0, 0 }, { 0, 0, -1 }// north wall
+    };
+
+    // Sutherland-Hodgman clip: keep the part of `poly` on the inside (dist <= 0)
+    // half-space of the plane (normal, d).
+    std::vector<glm::dvec3> ClipPolygon(const std::vector<glm::dvec3>& poly, glm::dvec3 normal, double d) {
+        constexpr double kEps = 1e-4;
+        std::vector<glm::dvec3> out;
+        const size_t m = poly.size();
+        for (size_t i = 0; i < m; ++i) {
+            const glm::dvec3& a = poly[i];
+            const glm::dvec3& b = poly[(i + 1) % m];
+            double da = glm::dot(normal, a) - d;
+            double db = glm::dot(normal, b) - d;
+            bool aIn = da <= kEps;
+            bool bIn = db <= kEps;
+            if (aIn) out.push_back(a);
+            if (aIn != bIn) {
+                double t = da / (da - db);
+                out.push_back(a + t * (b - a));
+            }
+        }
+        return out;
+    }
+
+    // Convert Quake Z-up to the engine's Y-up (a proper rotation, so winding is
+    // preserved): (x, y, z) → (x, z, -y).
+    inline glm::vec3 QuakeToEngine(glm::dvec3 v) {
+        return glm::vec3(static_cast<float>(v.x), static_cast<float>(v.z), static_cast<float>(-v.y));
+    }
+
+}// namespace
+
+MeshHandle AssetManager::LoadMap(const std::string& path, float scale) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        ConsoleSubsystem::Get()->Warn(fmt::format("LoadMap: cannot open '{}'", path));
+        return MeshHandle{};
+    }
+    std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+    const std::vector<std::string> tokens = TokenizeMap(text);
+    size_t pos = 0;
+    const size_t count = tokens.size();
+
+    auto parseDouble = [](const std::string& s) {
+        try {
+            return std::stod(s);
+        } catch (...) {
+            return 0.0;
+        }
+    };
+
+    std::vector<MapBrush> brushes;
+
+    // Grammar: file := entity* ; entity := '{' (keyvalue | brush)* '}'
+    while (pos < count) {
+        if (tokens[pos] != "{") {// skip stray tokens
+            ++pos;
+            continue;
+        }
+        ++pos;// consume entity '{'
+        while (pos < count && tokens[pos] != "}") {
+            if (tokens[pos] == "{") {
+                ++pos;// consume brush '{'
+                MapBrush brush;
+                while (pos < count && tokens[pos] != "}") {
+                    // Face: '(' x y z ')' '(' x y z ')' '(' x y z ')' TEX …
+                    glm::dvec3 p[3];
+                    bool ok = true;
+                    for (auto& pt : p) {
+                        if (pos >= count || tokens[pos] != "(") {
+                            ok = false;
+                            break;
+                        }
+                        ++pos;
+                        pt.x = parseDouble(tokens[pos < count ? pos : count - 1]);
+                        pt.y = parseDouble(tokens[pos + 1 < count ? pos + 1 : count - 1]);
+                        pt.z = parseDouble(tokens[pos + 2 < count ? pos + 2 : count - 1]);
+                        pos += 3;
+                        if (pos >= count || tokens[pos] != ")") {
+                            ok = false;
+                            break;
+                        }
+                        ++pos;// consume ')'
+                    }
+                    if (!ok) break;
+
+                    MapFace face;
+                    face.texture = (pos < count) ? tokens[pos++] : "";
+                    face.normal = glm::normalize(glm::cross(p[0] - p[1], p[2] - p[1]));
+                    face.dist = glm::dot(face.normal, p[0]);
+
+                    if (pos < count && tokens[pos] == "[") {
+                        // Valve 220: '[' ux uy uz uoff ']' '[' vx vy vz voff ']' rot sx sy
+                        face.valve220 = true;
+                        ++pos;// '['
+                        face.uAxis = { parseDouble(tokens[pos]),
+                                       parseDouble(tokens[pos + 1]),
+                                       parseDouble(tokens[pos + 2]) };
+                        face.uOffset = parseDouble(tokens[pos + 3]);
+                        pos += 4;
+                        if (pos < count && tokens[pos] == "]") ++pos;
+                        if (pos < count && tokens[pos] == "[") ++pos;
+                        face.vAxis = { parseDouble(tokens[pos]),
+                                       parseDouble(tokens[pos + 1]),
+                                       parseDouble(tokens[pos + 2]) };
+                        face.vOffset = parseDouble(tokens[pos + 3]);
+                        pos += 4;
+                        if (pos < count && tokens[pos] == "]") ++pos;
+                        face.rotation = parseDouble(tokens[pos]);
+                        face.scaleX = parseDouble(tokens[pos + 1]);
+                        face.scaleY = parseDouble(tokens[pos + 2]);
+                        pos += 3;
+                    } else {
+                        // Classic: xoff yoff rot sx sy
+                        face.uOffset = parseDouble(tokens[pos]);
+                        face.vOffset = parseDouble(tokens[pos + 1]);
+                        face.rotation = parseDouble(tokens[pos + 2]);
+                        face.scaleX = parseDouble(tokens[pos + 3]);
+                        face.scaleY = parseDouble(tokens[pos + 4]);
+                        pos += 5;
+                    }
+                    if (face.scaleX == 0) face.scaleX = 1;
+                    if (face.scaleY == 0) face.scaleY = 1;
+                    brush.faces.push_back(face);
+                }
+                if (pos < count) ++pos;// consume brush '}'
+                if (brush.faces.size() >= 4) brushes.push_back(std::move(brush));
+            } else {
+                // key/value pair (or a stray token) — skip both tokens.
+                pos += (pos + 1 < count) ? 2 : 1;
+            }
+        }
+        if (pos < count) ++pos;// consume entity '}'
+    }
+
+    // ── Brush → triangles ────────────────────────────────────────────────────
+    constexpr double kTexSize = 64.0;// classic Quake textures are 64² by default
+    std::vector<Vertex> allVerts;
+    std::vector<uint16_t> allIndices;
+    bool truncated = false;
+
+    for (const auto& brush : brushes) {
+        for (size_t fi = 0; fi < brush.faces.size() && !truncated; ++fi) {
+            const MapFace& face = brush.faces[fi];
+
+            // Seed a large quad on this face's plane, oriented CCW around n.
+            glm::dvec3 n = face.normal;
+            glm::dvec3 up = (std::abs(n.z) < 0.999) ? glm::dvec3(0, 0, 1) : glm::dvec3(1, 0, 0);
+            glm::dvec3 uDir = glm::normalize(glm::cross(up, n));
+            glm::dvec3 vDir = glm::normalize(glm::cross(n, uDir));// cross(uDir, vDir) == n
+            glm::dvec3 origin = n * face.dist;
+            constexpr double kBig = 1.0e6;
+            std::vector<glm::dvec3> poly = { origin - uDir * kBig - vDir * kBig,
+                                             origin + uDir * kBig - vDir * kBig,
+                                             origin + uDir * kBig + vDir * kBig,
+                                             origin - uDir * kBig + vDir * kBig };
+
+            // Clip against every other plane in the brush.
+            for (size_t fj = 0; fj < brush.faces.size() && poly.size() >= 3; ++fj) {
+                if (fj == fi) continue;
+                poly = ClipPolygon(poly, brush.faces[fj].normal, brush.faces[fj].dist);
+            }
+            if (poly.size() < 3) continue;// face fully clipped away
+
+            // Texture axes (Quake space) for UV projection.
+            glm::dvec3 texU, texV;
+            if (face.valve220) {
+                texU = face.uAxis;
+                texV = face.vAxis;
+            } else {
+                int best = 0;
+                double bestDot = -1.0;
+                for (int i = 0; i < 6; ++i) {
+                    double d = glm::dot(n, kBaseAxis[i * 3]);
+                    if (d > bestDot) {
+                        bestDot = d;
+                        best = i;
+                    }
+                }
+                texU = kBaseAxis[best * 3 + 1];
+                texV = kBaseAxis[best * 3 + 2];
+                // The classic format's `rotation` is applied as a 2D rotation in
+                // texture space below (see cosR/sinR), not to these axes.
+            }
+
+            const glm::vec3 engineNormal = glm::normalize(QuakeToEngine(n));
+            glm::vec3 tangent = glm::normalize(glm::cross(engineNormal, glm::vec3(0, 1, 0)));
+            if (glm::length(tangent) < 0.01f) tangent = glm::normalize(glm::cross(engineNormal, glm::vec3(1, 0, 0)));
+            glm::vec3 bitangent = glm::cross(engineNormal, tangent);
+
+            const double cosR = std::cos(glm::radians(face.rotation));
+            const double sinR = std::sin(glm::radians(face.rotation));
+
+            const auto vertBase = static_cast<uint32_t>(allVerts.size());
+            if (vertBase + poly.size() > 65535) {
+                truncated = true;
+                break;
+            }
+
+            for (const glm::dvec3& q : poly) {
+                double u = glm::dot(q, texU) / face.scaleX;
+                double v = glm::dot(q, texV) / face.scaleY;
+                // Classic rotation is a 2D rotation in texture space; Valve 220
+                // bakes rotation into the axes already, so only rotate here for
+                // the classic path (rotation is 0 for Valve unless authored).
+                if (!face.valve220) {
+                    double ru = u * cosR - v * sinR;
+                    double rv = u * sinR + v * cosR;
+                    u = ru;
+                    v = rv;
+                }
+                u += face.uOffset;
+                v += face.vOffset;
+                Vertex vert;
+                vert.position = scale * QuakeToEngine(q);
+                vert.uv = glm::vec2(static_cast<float>(u / kTexSize), static_cast<float>(v / kTexSize));
+                vert.normal = engineNormal;
+                vert.tangent = tangent;
+                vert.bitangent = bitangent;
+                allVerts.push_back(vert);
+            }
+
+            // Triangle fan (poly is convex and CCW around the outward normal).
+            for (size_t k = 1; k + 1 < poly.size(); ++k) {
+                allIndices.push_back(static_cast<uint16_t>(vertBase));
+                allIndices.push_back(static_cast<uint16_t>(vertBase + k));
+                allIndices.push_back(static_cast<uint16_t>(vertBase + k + 1));
+            }
+        }
+    }
+
+    if (truncated)
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format("LoadMap '{}': geometry exceeds the 16-bit index limit; remaining brushes skipped.", path)
+        );
+
+    if (allVerts.empty()) {
+        ConsoleSubsystem::Get()->Warn(fmt::format("LoadMap: no brush geometry found in '{}'", path));
+        return MeshHandle{};
+    }
+
+    auto* mesh = new Mesh(MeshType::PRIM);
+    mesh->Initialize(allVerts, allIndices);
+
+    glm::vec3 lo = allVerts[0].position, hi = allVerts[0].position;
+    for (const auto& v : allVerts) {
+        lo = glm::min(lo, v.position);
+        hi = glm::max(hi, v.position);
+    }
+    mesh->SetBoundingBox({ glm::vec3(lo.x, lo.y, lo.z),
+                           glm::vec3(hi.x, lo.y, lo.z),
+                           glm::vec3(lo.x, hi.y, lo.z),
+                           glm::vec3(hi.x, hi.y, lo.z),
+                           glm::vec3(lo.x, lo.y, hi.z),
+                           glm::vec3(hi.x, lo.y, hi.z),
+                           glm::vec3(lo.x, hi.y, hi.z),
+                           glm::vec3(hi.x, hi.y, hi.z) });
+
+    ENGINE_LOG(
+        "LoadMap '{}': {} brushes, {} verts, {} indices", path, brushes.size(), allVerts.size(), allIndices.size()
+    );
+    return CreateMesh(path, mesh);
+}
+
+MeshHandle AssetManager::LoadUSD(const std::string& path) {
+#ifndef AE_USE_TINYUSDZ
+    ConsoleSubsystem::Get()->Warn(
+        fmt::format("LoadUSD '{}': USD support not compiled in (build with -DAE_USE_TINYUSDZ=ON)", path)
+    );
+    return MeshHandle{};
+#else
+    tinyusdz::Stage stage;
+    std::string warn, err;
+    if (!tinyusdz::LoadUSDFromFile(path, &stage, &warn, &err)) {
+        if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("LoadUSD '{}': {}", path, warn));
+        if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("LoadUSD '{}' error: {}", path, err));
+        return MeshHandle{};
+    }
+    if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("LoadUSD '{}': {}", path, warn));
+
+    // Tydra flattens the USD scene graph into renderer-friendly meshes, applying
+    // triangulation, single-index rebuild, and normal/tangent synthesis (see
+    // MeshConverterConfig defaults). We don't touch USD textures yet, so skip
+    // asset loading to avoid needless file access.
+    tinyusdz::tydra::RenderSceneConverter converter;
+    tinyusdz::tydra::RenderSceneConverterEnv env(stage);
+    const size_t slash = path.find_last_of("/\\");
+    if (slash != std::string::npos) env.set_search_paths({ path.substr(0, slash) });
+    env.scene_config.load_texture_assets = false;
+
+    tinyusdz::tydra::RenderScene rscene;
+    if (!converter.ConvertToRenderScene(env, &rscene)) {
+        ConsoleSubsystem::Get()->Warn(fmt::format("LoadUSD '{}' convert error: {}", path, converter.GetError()));
+        return MeshHandle{};
+    }
+
+    std::vector<Vertex> allVerts;
+    std::vector<uint16_t> allIndices;
+    bool truncated = false;
+
+    for (const auto& rmesh : rscene.meshes) {
+        const std::vector<uint32_t>& idx = rmesh.faceVertexIndices();// triangulated
+        const size_t pointCount = rmesh.points.size();
+
+        // Attribute readers cope with either 'vertex' (count == points) or
+        // 'facevarying' (count == face-vertices) variability by choosing the
+        // right index at each face-vertex.
+        auto normalAt = [&](size_t k, uint32_t pointIndex) -> glm::vec3 {
+            const auto& a = rmesh.normals;
+            const size_t vc = a.vertex_count();
+            if (vc == 0 || a.format_size() < sizeof(float) * 3) return glm::vec3(0, 1, 0);
+            const auto* f = reinterpret_cast<const float*>(a.buffer());
+            size_t at = (vc == pointCount) ? pointIndex : k;
+            if (at >= vc) return glm::vec3(0, 1, 0);
+            return glm::vec3(f[at * 3 + 0], f[at * 3 + 1], f[at * 3 + 2]);
+        };
+        auto uvAt = [&](size_t k, uint32_t pointIndex) -> glm::vec2 {
+            auto it = rmesh.texcoords.find(0);
+            if (it == rmesh.texcoords.end()) return glm::vec2(0);
+            const auto& a = it->second;
+            const size_t vc = a.vertex_count();
+            if (vc == 0 || a.format_size() < sizeof(float) * 2) return glm::vec2(0);
+            const auto* f = reinterpret_cast<const float*>(a.buffer());
+            size_t at = (vc == pointCount) ? pointIndex : k;
+            if (at >= vc) return glm::vec2(0);
+            return glm::vec2(f[at * 2 + 0], f[at * 2 + 1]);
+        };
+
+        if (allVerts.size() + idx.size() > 65535) {
+            truncated = true;
+            break;
+        }
+
+        const auto vertBase = static_cast<uint32_t>(allVerts.size());
+        for (size_t k = 0; k < idx.size(); ++k) {
+            const uint32_t pointIndex = idx[k];
+            if (pointIndex >= pointCount) continue;
+            const auto& p = rmesh.points[pointIndex];
+            Vertex vert;
+            vert.position = glm::vec3(p.x, p.y, p.z);
+            vert.normal = normalAt(k, pointIndex);
+            vert.uv = uvAt(k, pointIndex);
+            vert.tangent = glm::vec3(1, 0, 0);
+            vert.bitangent = glm::cross(vert.normal, vert.tangent);
+            allVerts.push_back(vert);
+        }
+        for (uint32_t k = 0; k + 2 < static_cast<uint32_t>(idx.size()); k += 3) {
+            allIndices.push_back(static_cast<uint16_t>(vertBase + k));
+            allIndices.push_back(static_cast<uint16_t>(vertBase + k + 1));
+            allIndices.push_back(static_cast<uint16_t>(vertBase + k + 2));
+        }
+    }
+
+    if (truncated)
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format("LoadUSD '{}': geometry exceeds the 16-bit index limit; remaining meshes skipped.", path)
+        );
+
+    if (allVerts.empty()) {
+        ConsoleSubsystem::Get()->Warn(fmt::format("LoadUSD: no mesh geometry found in '{}'", path));
+        return MeshHandle{};
+    }
+
+    auto* mesh = new Mesh(MeshType::PRIM);
+    mesh->Initialize(allVerts, allIndices);
+
+    glm::vec3 lo = allVerts[0].position, hi = allVerts[0].position;
+    for (const auto& v : allVerts) {
+        lo = glm::min(lo, v.position);
+        hi = glm::max(hi, v.position);
+    }
+    mesh->SetBoundingBox({ glm::vec3(lo.x, lo.y, lo.z),
+                           glm::vec3(hi.x, lo.y, lo.z),
+                           glm::vec3(lo.x, hi.y, lo.z),
+                           glm::vec3(hi.x, hi.y, lo.z),
+                           glm::vec3(lo.x, lo.y, hi.z),
+                           glm::vec3(hi.x, lo.y, hi.z),
+                           glm::vec3(lo.x, hi.y, hi.z),
+                           glm::vec3(hi.x, hi.y, hi.z) });
+
+    ENGINE_LOG(
+        "LoadUSD '{}': {} meshes, {} verts, {} indices", path, rscene.meshes.size(), allVerts.size(), allIndices.size()
+    );
+    return CreateMesh(path, mesh);
+#endif
 }
 
 // Uploads the [0,1] float grid at 16-bit precision — 8-bit quantization shows
