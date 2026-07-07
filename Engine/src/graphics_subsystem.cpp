@@ -340,63 +340,37 @@ void GraphicsSubsystem::DrawImGui(float dt) {
                 // }
             }
             ImGui::Separator();
-            if (ImGui::TreeNode(fmt::format("Scene Color RT").c_str())) {
-                ImGui::Image(
-                    static_cast<ImTextureID>(static_cast<intptr_t>(
-                        static_cast<uint32_t>(renderer->sceneRT ? renderer->sceneRT->GetTextureID() : 0)
-                    )),
-                    ImVec2(64, 64)
-                );
+            // RT previews. Two GL-specific fixups vs a naive ImGui::Image:
+            //   - The scene target is MSAA (GL_TEXTURE_2D_MULTISAMPLE); ImGui's
+            //     sampler2D shader cannot sample it (blank). Preview the
+            //     resolved (non-MSAA) msaaResolveRT instead.
+            //   - GL framebuffer textures are bottom-up, so flip V (uv 0,1 ->
+            //     1,0) or previews render upside down.
+            // HDR targets still show over-exposed (linear RGBA16F sampled raw),
+            // and raw depth reads near-white; good enough to confirm content.
+            auto rtNode = [](const char* label, uint32_t texID) {
+                if (!ImGui::TreeNode(label)) return;
+                if (texID == 0) {
+                    ImGui::TextDisabled("(not allocated)");
+                } else {
+                    ImGui::Image(
+                        static_cast<ImTextureID>(static_cast<intptr_t>(texID)), ImVec2(192, 108), ImVec2(0, 1),
+                        ImVec2(1, 0)
+                    );
+                }
                 ImGui::TreePop();
-            }
-            if (ImGui::TreeNode(fmt::format("Scene Depth RT").c_str())) {
-                ImGui::Image(
-                    static_cast<ImTextureID>(static_cast<intptr_t>(
-                        static_cast<uint32_t>(renderer->sceneRT ? renderer->sceneRT->GetDepthTextureID() : 0)
-                    )),
-                    ImVec2(64, 64)
-                );
-                ImGui::TreePop();
-            }
-            if (ImGui::TreeNode(fmt::format("MSAA Resolve RT").c_str())) {
-                ImGui::Image(
-                    static_cast<ImTextureID>(static_cast<intptr_t>(
-                        static_cast<uint32_t>(renderer->msaaResolveRT ? renderer->msaaResolveRT->GetTextureID() : 0)
-                    )),
-                    ImVec2(64, 64)
-                );
-                ImGui::TreePop();
-            }
-            if (ImGui::TreeNode(fmt::format("GBuffer Position RT").c_str())) {
-                ImGui::Image(
-                    static_cast<ImTextureID>(static_cast<intptr_t>(renderer->gl.gBuffer.positionRT)), ImVec2(64, 64)
-                );
-                ImGui::TreePop();
-            }
-            if (ImGui::TreeNode(fmt::format("GBuffer Normal RT").c_str())) {
-                ImGui::Image(
-                    static_cast<ImTextureID>(static_cast<intptr_t>(renderer->gl.gBuffer.normalRT)), ImVec2(64, 64)
-                );
-                ImGui::TreePop();
-            }
-            if (ImGui::TreeNode(fmt::format("GBuffer Albedo RT").c_str())) {
-                ImGui::Image(
-                    static_cast<ImTextureID>(static_cast<intptr_t>(renderer->gl.gBuffer.albedoRT)), ImVec2(64, 64)
-                );
-                ImGui::TreePop();
-            }
-            if (ImGui::TreeNode(fmt::format("GBuffer Material RT").c_str())) {
-                ImGui::Image(
-                    static_cast<ImTextureID>(static_cast<intptr_t>(renderer->gl.gBuffer.materialRT)), ImVec2(64, 64)
-                );
-                ImGui::TreePop();
-            }
-            if (ImGui::TreeNode(fmt::format("GBuffer Depth RT").c_str())) {
-                ImGui::Image(
-                    static_cast<ImTextureID>(static_cast<intptr_t>(renderer->gl.gBuffer.depthRT)), ImVec2(64, 64)
-                );
-                ImGui::TreePop();
-            }
+            };
+            rtNode(
+                "Scene Color RT (resolved)", renderer->msaaResolveRT ? renderer->msaaResolveRT->GetTextureID() : 0
+            );
+            rtNode(
+                "Scene Depth RT (resolved)", renderer->msaaResolveRT ? renderer->msaaResolveRT->GetDepthTextureID() : 0
+            );
+            rtNode("GBuffer Position RT", renderer->gl.gBuffer.positionRT);
+            rtNode("GBuffer Normal RT", renderer->gl.gBuffer.normalRT);
+            rtNode("GBuffer Albedo RT", renderer->gl.gBuffer.albedoRT);
+            rtNode("GBuffer Material RT", renderer->gl.gBuffer.materialRT);
+            rtNode("GBuffer Depth RT", renderer->gl.gBuffer.depthRT);
             ImGui::Separator();
             auto& assetManager = AssetManager::Get();
             for (auto t : assetManager.GetDefaultTextures()) {
