@@ -97,7 +97,8 @@ void MicroVoxelPass::_uploadGL(VoxelVolumeComponent* v) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, v->paletteRGBA.data());
+    // 256x2: row 0 albedo+emission, row 1 material params (reflectivity/roughness)
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, v->paletteRGBA.data());
 
     glBindTexture(GL_TEXTURE_3D, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -143,8 +144,9 @@ void MicroVoxelPass::_ensureGIRenderTargets(int w, int h) {
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 
-// Layout must match Uniforms in MICROVOXEL_WGSL: 2 mat4 + 4 vec4f + 2 vec4i + 1 vec4f.
-static constexpr uint64_t MICROVOXEL_UNIFORM_SIZE = 240;
+// Layout must match Uniforms in MICROVOXEL_WGSL:
+//   2 mat4 + 4 vec4f + 2 vec4i + 1 vec4f + 2 x array<vec4f,4> = 240 + 128.
+static constexpr uint64_t MICROVOXEL_UNIFORM_SIZE = 368;
 
 MicroVoxelPass::~MicroVoxelPass() {
     if (_texBG) wgpuBindGroupRelease(_texBG);
@@ -230,7 +232,7 @@ void MicroVoxelPass::_uploadGPU(VoxelVolumeComponent* v) {
 
     {
         WGPUTextureDescriptor td{};
-        td.size = { 256, 1, 1 };
+        td.size = { 256, 2, 1 };// row 0 albedo+emission, row 1 material params
         td.format = WGPUTextureFormat_RGBA8Unorm;
         td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
         td.dimension = WGPUTextureDimension_2D;
@@ -243,8 +245,8 @@ void MicroVoxelPass::_uploadGPU(VoxelVolumeComponent* v) {
         dst.aspect = WGPUTextureAspect_All;
         WGPUTexelCopyBufferLayout layout{};
         layout.bytesPerRow = 256 * 4;
-        layout.rowsPerImage = 1;
-        WGPUExtent3D extent{ 256, 1, 1 };
+        layout.rowsPerImage = 2;
+        WGPUExtent3D extent{ 256, 2, 1 };
         wgpuQueueWriteTexture(_gpuQueue, &dst, v->paletteRGBA.data(), v->paletteRGBA.size(), &layout, &extent);
     }
 
@@ -281,6 +283,12 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     const glm::vec3 cameraPos = camera->GetEyePosition();
     const glm::vec3 sunDir = light ? glm::normalize(-light->direction) : glm::normalize(glm::vec3(0.4f, 0.8f, 0.3f));
     const glm::vec3 sunColor = light ? light->diffuse : glm::vec3(1.0f, 0.96f, 0.9f);
+    // Respect the main light's intensity; sunIntensity is just an artistic gain.
+    const float sunIntensityEff = sunIntensity * (light ? light->intensity : 1.0f);
+    // Ambient level also follows the light. MicroVoxel keeps its sky-hemisphere
+    // gradient (nicer than a flat fill), so the pass 'ambient' scalar is a gain
+    // scaled by the light's ambient magnitude (its average channel).
+    const float ambientEff = ambient * (light ? (light->ambient.r + light->ambient.g + light->ambient.b) / 3.0f : 1.0f);
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
@@ -298,6 +306,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         }
         if (!_texBG) return;
 
+        const int lightCount = std::min(pointLightCount, kMaxPointLights);
         struct {
             glm::mat4 invViewProj;
             glm::mat4 viewProj;
@@ -308,17 +317,25 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             glm::ivec4 gridDim;
             glm::ivec4 misc;
             glm::vec4 params;
+            glm::vec4 pointPosRadius[kMaxPointLights];
+            glm::vec4 pointColor[kMaxPointLights];
         } u{
             invViewProj,
             viewProj,
             glm::vec4(cameraPos, 1.0f),
             glm::vec4(volumeOrigin, voxelSize),
-            glm::vec4(sunDir, sunIntensity),
-            glm::vec4(sunColor, ambient),
+            glm::vec4(sunDir, sunIntensityEff),
+            glm::vec4(sunColor, ambientEff),
             glm::ivec4(gridDim, gridDim, gridDim, brickDim),
-            glm::ivec4(maxRaySteps, shadowEnabled ? 1 : 0, 0, 0),
-            glm::vec4(aoStrength, 0.0f, 0.0f, 0.0f),
+            glm::ivec4(maxRaySteps, shadowEnabled ? 1 : 0, reflectionsEnabled ? 1 : 0, lightCount),
+            glm::vec4(aoStrength, emissiveStrength, 0.0f, 0.0f),
+            {},
+            {},
         };
+        for (int i = 0; i < lightCount; i++) {
+            u.pointPosRadius[i] = glm::vec4(pointLightPos[i], pointLightRadius[i]);
+            u.pointColor[i] = glm::vec4(pointLightColor[i] * pointLightIntensity[i], 0.0f);
+        }
         static_assert(sizeof(u) == MICROVOXEL_UNIFORM_SIZE, "uniform layout must match MICROVOXEL_WGSL");
         wgpuQueueWriteBuffer(_gpuQueue, _uniformBuf, 0, &u, sizeof(u));
 
@@ -386,9 +403,10 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         giShader->SetUniform(std::string("u_maxRaySteps"), maxRaySteps);
         giShader->SetUniform(std::string("u_sunDir"), sunDir);
         giShader->SetUniform(std::string("u_sunColor"), sunColor);
-        giShader->SetUniform(std::string("u_sunIntensity"), sunIntensity);
+        giShader->SetUniform(std::string("u_sunIntensity"), sunIntensityEff);
         giShader->SetUniform(std::string("u_frameIndex"), _giFrame);
         giShader->SetUniform(std::string("u_blend"), giBlend);
+        giShader->SetUniform(std::string("u_emissiveStrength"), emissiveStrength);
         giShader->SetUniform(std::string("u_volume"), 0);
         giShader->SetUniform(std::string("u_occupancy"), 1);
         giShader->SetUniform(std::string("u_palette"), 2);
@@ -431,12 +449,24 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     shader->SetUniform(std::string("u_maxRaySteps"), maxRaySteps);
     shader->SetUniform(std::string("u_sunDir"), sunDir);
     shader->SetUniform(std::string("u_sunColor"), sunColor);
-    shader->SetUniform(std::string("u_sunIntensity"), sunIntensity);
-    shader->SetUniform(std::string("u_ambient"), ambient);
+    shader->SetUniform(std::string("u_sunIntensity"), sunIntensityEff);
+    shader->SetUniform(std::string("u_ambient"), ambientEff);
     shader->SetUniform(std::string("u_shadowEnabled"), shadowEnabled ? 1 : 0);
     shader->SetUniform(std::string("u_aoStrength"), aoStrength);
     shader->SetUniform(std::string("u_giStrength"), giActive ? giStrength : 0.0f);
     shader->SetUniform(std::string("u_debugMode"), debugMode);
+    shader->SetUniform(std::string("u_emissiveStrength"), emissiveStrength);
+    shader->SetUniform(std::string("u_reflectionsEnabled"), reflectionsEnabled ? 1 : 0);
+    const int lightCount = std::min(pointLightCount, kMaxPointLights);
+    shader->SetUniform(std::string("u_pointLightCount"), lightCount);
+    for (int i = 0; i < lightCount; i++) {
+        const std::string idx = "[" + std::to_string(i) + "]";
+        shader->SetUniform(std::string("u_pointLightPos") + idx, pointLightPos[i]);
+        // Fold intensity into the color the shader receives, so the shader loop
+        // stays a plain scaled-radiance accumulation.
+        shader->SetUniform(std::string("u_pointLightColor") + idx, pointLightColor[i] * pointLightIntensity[i]);
+        shader->SetUniform(std::string("u_pointLightRadius") + idx, pointLightRadius[i]);
+    }
     shader->SetUniform(std::string("u_volume"), 0);
     shader->SetUniform(std::string("u_occupancy"), 1);
     shader->SetUniform(std::string("u_palette"), 2);

@@ -70,5 +70,9 @@ void MeshComponent::DrawImGui() {
     ImGui::ColorEdit3("Specular", &mat->specular.r);
     ImGui::ColorEdit3("Ambient", &mat->ambient.r);
     ImGui::DragFloat("Shininess", &mat->shininess, 0.0f, 1.0f);
-    ImGui::Checkbox("Cull face enabled", &mat->cullFaceEnabled);
+    static const char* cullNames[] = { "None", "Front", "Back" };
+    int cullIdx = static_cast<int>(mat->renderState.cull);
+    if (ImGui::Combo("Cull mode", &cullIdx, cullNames, IM_ARRAYSIZE(cullNames))) {
+        mat->renderState.cull = static_cast<CullMode>(cullIdx);
+    }
 }

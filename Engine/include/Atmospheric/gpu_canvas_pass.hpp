@@ -3,6 +3,7 @@
 #include "batch_renderer_2d.hpp"
 #include "command_encoder.hpp"
 #include "gpu_pipeline.hpp"
+#include "material.hpp"
 #include <glm/glm.hpp>
 #include <unordered_map>
 #include <vector>
@@ -102,10 +103,12 @@ struct VOut {
     void _init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format, uint32_t sceneSampleCount);
     WGPUBindGroup _getOrCreateTexBG(uint32_t texID);
 
-    // Pipelines are keyed by (variant, blend). Variant selects the
-    // color-target format / depth state; blend selects the color-blend factors
-    // (matches the GL BatchRenderer2D::Flush switch). Built lazily on first
-    // use so a scene that only ever draws Alpha doesn't pay for the other 4.
+    // Pipelines are keyed by (variant, RenderState hash). Variant selects the
+    // color-target format / depth state that varies across the three canvas
+    // passes; RenderState carries the per-command surface state (currently
+    // blend — depth/cull/polygon/topology aren't varied by canvas draws, but
+    // this keeps the cache key structurally consistent with the material-side
+    // pipeline caches so future extensions don't need to rewire it).
     enum class Variant : uint32_t {
         Canvas = 0,// depth-transparent (Always), sceneRT format
         WorldCanvas = 1,// depth-tested read-only (LessEqual), sceneRT format
@@ -113,17 +116,18 @@ struct VOut {
     };
     struct PipelineKey {
         Variant variant;
-        GpuPipelineBuilder::Blend blend;
+        size_t rsHash;// RenderState::Hash()
         bool operator==(const PipelineKey& o) const {
-            return variant == o.variant && blend == o.blend;
+            return variant == o.variant && rsHash == o.rsHash;
         }
     };
     struct PipelineKeyHash {
         size_t operator()(const PipelineKey& k) const {
-            return (static_cast<size_t>(k.variant) << 8) | static_cast<size_t>(k.blend);
+            return (static_cast<size_t>(k.variant) << 56) ^ k.rsHash;
         }
     };
-    WGPURenderPipeline _getOrCreatePipeline(Variant v, GpuPipelineBuilder::Blend b);
+    WGPURenderPipeline _getOrCreatePipeline(Variant v, const RenderState& rs);
+    static RenderState _toRenderState(BlendMode m);
     static GpuPipelineBuilder::Blend _mapBlend(BlendMode m);
     static const std::vector<GpuVertexAttr>& _quadAttrs();
 

@@ -84,7 +84,7 @@ class HelloWorld : public Application {
             // The blob deforms enough to locally invert faces, so disable culling
             // (the WebGPU VAT pipeline already renders cull=None); depth testing
             // still resolves the surface correctly.
-            if (auto* mat = vat->GetMaterial()) mat->cullFaceEnabled = false;
+            if (auto* mat = vat->GetMaterial()) mat->renderState.cull = CullMode::None;
             blob->AddComponent<RotatorComponent>(glm::vec3(0.0f, 0.6f, 0.0f));
             blob->SetName("VAT Blob");
         }
