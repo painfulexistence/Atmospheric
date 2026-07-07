@@ -23,6 +23,7 @@ add_subdirectory(MultiplayerSandbox) # deterministic lockstep netplay
 if(NOT EMSCRIPTEN)
     add_subdirectory(RelayServer)    # headless UDP relay (server deployment shape)
     add_subdirectory(HideAndSeek)    # server-authoritative asymmetric PvP netcode
+    add_subdirectory(Deathmatch)     # server-authoritative FPS: lag compensation + prediction/reconciliation
 endif()
 
 # ── Scripting frontend ───────────────────────────────────────────────────────
