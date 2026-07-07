@@ -111,79 +111,79 @@ class TerrainStreamingDemo : public Application {
         ));
         _rockMesh = am.CreateMesh("ent_rock", rock);
 
-        StreamingTerrainProps terrainProps{
-            .worldSize = 10240.0f,
-            .tileSize = 512.0f,
-            // Balanced against the noise frequency below: perceived
-            // steepness is heightScale * frequency, so halving the
-            // wavelength (0.00035 -> 0.0007) must roughly halve the
-            // amplitude or every slope doubles (and the tree-scatter
-            // slope rules stop matching).
-            .heightScale = 500.0f,
-            .tileHeightRes = 512,// 1 m/texel in the LOD0 ring
-            .tileMeshRes = 64,
-            .lodCount = 4,
-            .lod0RadiusTiles = 2,
-            .paletteIndex = 3,// forest
-            // ~1.4km feature wavelength: enough distinct ridges/valleys
-            // across 10km that traversal reads as covering ground.
-            .noise = { .resolution = 0, .seed = 20260705, .frequency = 0.0007f, .octaves = 9 },
-        // Baked-tile cache: first run generates + stores, every run
-        // after boots from pure IO (watch "cache" in the stats line).
-        // Resolved against the engine base path (SDL_GetBasePath — next to
-        // the executable) so it doesn't depend on the working directory.
-        // Emscripten's default FS is RAM-backed, so skip it there and
-        // keep generating (ship a preloaded pyramid instead).
-#if !defined(__EMSCRIPTEN__)
-            .cacheDir = FileSystem::Get().BasePath() + "cache/terrain",
-#endif
-            // .layers / .splatFn: plug Gaea-style splat + detail textures here.
-            .colliderRadiusTiles = 1,
-            // Deterministic scatter: slope/height rules decide trees vs
-            // rocks; the streamer spawns/pools them as the ring moves.
-            .placeEntitiesFn =
-                [](const TerrainTileContext& ctx) {
-                    std::vector<TerrainEntityPlacement> out;
-                    uint32_t rng = static_cast<uint32_t>(ctx.coord.x * 73856093 ^ ctx.coord.y * 19349663 ^ ctx.seed);
-                    auto rand01 = [&rng] {
-                        rng = rng * 1664525u + 1013904223u;
-                        return static_cast<float>(rng >> 8) * (1.0f / 16777216.0f);
-                    };
-                    for (int i = 0; i < 90; ++i) {
-                        const float wx = ctx.worldMin.x + rand01() * (ctx.worldMax.x - ctx.worldMin.x);
-                        const float wz = ctx.worldMin.y + rand01() * (ctx.worldMax.y - ctx.worldMin.y);
-                        const float y = ctx.HeightAt(wx, wz);
-                        const float dhdx = (ctx.HeightAt(wx + 4.0f, wz) - ctx.HeightAt(wx - 4.0f, wz)) / 8.0f;
-                        const float dhdz = (ctx.HeightAt(wx, wz + 4.0f) - ctx.HeightAt(wx, wz - 4.0f)) / 8.0f;
-                        const float slope = std::sqrt(dhdx * dhdx + dhdz * dhdz);
-                        const float hn = y / ctx.heightScale;
-                        if (slope < 0.35f && hn > 0.25f && hn < 0.62f) {
-                            const float s = 3.0f + rand01() * 5.0f;// tree
-                            out.push_back({ { wx, y + 0.5f * s, wz }, rand01() * 6.2832f, s, 0 });
-                        } else if (slope >= 0.35f && slope < 1.1f && rand01() < 0.35f) {
-                            const float s = 1.0f + rand01() * 3.0f;// rock
-                            out.push_back({ { wx, y + 0.2f * s, wz }, rand01() * 6.2832f, s, 1 });
-                        }
-                    }
-                    return out;
-                },
-            .spawnEntityFn =
-                [this](Application* app, const TerrainEntityPlacement& p) {
-                    auto* go = app->CreateGameObject(glm::vec3(0.0f));
-                    go->SetName(p.type == 0 ? "tree" : "rock");
-                    go->AddComponent<MeshComponent>(p.type == 0 ? _treeMesh : _rockMesh);
-                    return go;
-                },
-            .entityRadiusTiles = 3,
-        };
-
         // The terrain GameObject roots every tile/collider/entity; the
         // component's OnAttach prewarms the world (synchronous, ~1 frame) and
         // its OnTick streams thereafter — no per-frame work left in the app.
         auto* terrainGO = CreateGameObject(glm::vec3(0.0f));
         terrainGO->SetName("Terrain");
-        _terrain =
-            static_cast<StreamingTerrainComponent*>(terrainGO->AddComponent<StreamingTerrainComponent>(terrainProps));
+        _terrain = static_cast<StreamingTerrainComponent*>(
+            terrainGO->AddComponent<StreamingTerrainComponent>(StreamingTerrainProps{
+                .worldSize = 10240.0f,
+                .tileSize = 512.0f,
+                // Balanced against the noise frequency below: perceived
+                // steepness is heightScale * frequency, so halving the
+                // wavelength (0.00035 -> 0.0007) must roughly halve the
+                // amplitude or every slope doubles (and the tree-scatter
+                // slope rules stop matching).
+                .heightScale = 500.0f,
+                .tileHeightRes = 512,// 1 m/texel in the LOD0 ring
+                .tileMeshRes = 64,
+                .lodCount = 4,
+                .lod0RadiusTiles = 2,
+                .paletteIndex = 3,// forest
+                // ~1.4km feature wavelength: enough distinct ridges/valleys
+                // across 10km that traversal reads as covering ground.
+                .noise = { .resolution = 0, .seed = 20260705, .frequency = 0.0007f, .octaves = 9 },
+        // Baked-tile cache: first run generates + stores, every run
+        // after boots from pure IO (watch "cache" in the stats line).
+        // Resolved against the engine base path (SDL_GetBasePath — next
+        // to the executable) so it doesn't depend on the working dir.
+        // Emscripten's default FS is RAM-backed, so skip it there and
+        // keep generating (ship a preloaded pyramid instead).
+#if !defined(__EMSCRIPTEN__)
+                .cacheDir = FileSystem::Get().BasePath() + "cache/terrain",
+#endif
+                // .layers / .splatFn: plug Gaea-style splat + detail textures here.
+                .colliderRadiusTiles = 1,
+                // Deterministic scatter: slope/height rules decide trees vs
+                // rocks; the streamer spawns/pools them as the ring moves.
+                .placeEntitiesFn =
+                    [](const TerrainTileContext& ctx) {
+                        std::vector<TerrainEntityPlacement> out;
+                        uint32_t rng =
+                            static_cast<uint32_t>(ctx.coord.x * 73856093 ^ ctx.coord.y * 19349663 ^ ctx.seed);
+                        auto rand01 = [&rng] {
+                            rng = rng * 1664525u + 1013904223u;
+                            return static_cast<float>(rng >> 8) * (1.0f / 16777216.0f);
+                        };
+                        for (int i = 0; i < 90; ++i) {
+                            const float wx = ctx.worldMin.x + rand01() * (ctx.worldMax.x - ctx.worldMin.x);
+                            const float wz = ctx.worldMin.y + rand01() * (ctx.worldMax.y - ctx.worldMin.y);
+                            const float y = ctx.HeightAt(wx, wz);
+                            const float dhdx = (ctx.HeightAt(wx + 4.0f, wz) - ctx.HeightAt(wx - 4.0f, wz)) / 8.0f;
+                            const float dhdz = (ctx.HeightAt(wx, wz + 4.0f) - ctx.HeightAt(wx, wz - 4.0f)) / 8.0f;
+                            const float slope = std::sqrt(dhdx * dhdx + dhdz * dhdz);
+                            const float hn = y / ctx.heightScale;
+                            if (slope < 0.35f && hn > 0.25f && hn < 0.62f) {
+                                const float s = 3.0f + rand01() * 5.0f;// tree
+                                out.push_back({ { wx, y + 0.5f * s, wz }, rand01() * 6.2832f, s, 0 });
+                            } else if (slope >= 0.35f && slope < 1.1f && rand01() < 0.35f) {
+                                const float s = 1.0f + rand01() * 3.0f;// rock
+                                out.push_back({ { wx, y + 0.2f * s, wz }, rand01() * 6.2832f, s, 1 });
+                            }
+                        }
+                        return out;
+                    },
+                .spawnEntityFn =
+                    [this](Application* app, const TerrainEntityPlacement& p) {
+                        auto* go = app->CreateGameObject(glm::vec3(0.0f));
+                        go->SetName(p.type == 0 ? "tree" : "rock");
+                        go->AddComponent<MeshComponent>(p.type == 0 ? _treeMesh : _rockMesh);
+                        return go;
+                    },
+                .entityRadiusTiles = 3,
+            })
+        );
 
         const auto bootMs =
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _bootTime).count();
