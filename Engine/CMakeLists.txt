@@ -185,6 +185,8 @@ set(SOURCES
     src/text_3d_component.cpp
     src/height_field.cpp
     src/terrain_mesh_component.cpp
+    src/terrain_streamer.cpp
+    src/terrain_tile_cache.cpp
     src/height_field_collider_component.cpp
     src/water_component.cpp
     src/shader.cpp
@@ -216,6 +218,10 @@ set(SOURCES
     src/voxel_chunk_component.cpp
     src/voxel_world.cpp
     src/voxel_chunk_pass.cpp
+    src/micro_voxel_pass.cpp
+    src/voxel_volume_component.cpp
+    src/portal_pass.cpp
+    src/portal_component.cpp
     src/sun_component.cpp
     src/scene_loader.cpp
     src/scene_transition.cpp
@@ -257,6 +263,21 @@ endif()
 #   Native : synchronous fread + JobSystem-parallel Prefetch.
 # Compiled on all platforms (not just Emscripten).
 list(APPEND SOURCES src/file_system.cpp)
+# UdpSocket: shared non-blocking UDP socket primitive (open/bind/send/recv/
+# close + platform shim) underlying UdpRelay, UdpRelayClient, and every
+# example's own net code. Same zero-extra-dependency reasoning. Empty TU on
+# Emscripten.
+list(APPEND SOURCES src/udp_socket.cpp)
+# UdpRelay: OS sockets only, no third-party deps — compiled always so server
+# builds and the relay loopback test don't require AE_USE_NETWORKING (which
+# drags in curl/libwebsockets/OpenSSL). Empty TU on Emscripten.
+list(APPEND SOURCES src/udp_relay.cpp)
+# UdpRelayClient: client-side counterpart — wraps outgoing datagrams for
+# delivery through a UdpRelay. Same zero-extra-dependency reasoning.
+list(APPEND SOURCES src/udp_relay_client.cpp)
+# RelaySubsystem: thin Application/AddSubsystem<T> wrapper around UdpRelay
+# (same zero-extra-dependency reasoning; empty TU on Emscripten).
+list(APPEND SOURCES src/relay_subsystem.cpp)
 
 set(SOURCES_EXT
     external/imgui/imgui.cpp
@@ -356,6 +377,25 @@ endif()
 
 
 
+# ── Networking (HttpClient + WebSocketClient + NetworkSubsystem) ──────────────
+# Native  : libcurl (HTTP/2, OpenSSL) + libwebsockets (OpenSSL)
+# Web     : emscripten_fetch (already linked via -sFETCH=1) + Emscripten WebSocket
+option(AE_USE_NETWORKING "Enable HTTP and WebSocket networking" OFF)
+if(AE_USE_NETWORKING)
+    list(APPEND SOURCES
+        src/http_client.cpp
+        src/websocket_client.cpp
+        src/network_subsystem.cpp
+    )
+    if(NOT EMSCRIPTEN)
+        find_package(CURL REQUIRED)
+        find_package(libwebsockets CONFIG REQUIRED)
+        message(STATUS "Networking enabled (libcurl + libwebsockets, OpenSSL, HTTP/2)")
+    else()
+        message(STATUS "Networking enabled (emscripten_fetch + Emscripten WebSocket)")
+    endif()
+endif()
+
 add_library(AtmosphericEngine STATIC ${SOURCES} ${SOURCES_EXT})
 
 target_include_directories(AtmosphericEngine
@@ -384,6 +424,16 @@ endif()
 if(AE_USE_BASIS_UNIVERSAL)
     target_link_libraries(AtmosphericEngine PUBLIC basisu_transcoder)
     target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_BASIS_UNIVERSAL)
+endif()
+if(AE_USE_NETWORKING)
+    target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_NETWORKING)
+    if(NOT EMSCRIPTEN)
+        target_link_libraries(AtmosphericEngine PUBLIC CURL::libcurl websockets)
+    else()
+        # -sWEBSOCKET=1 exposes emscripten/websocket.h and the JS WebSocket glue.
+        target_compile_options(AtmosphericEngine PUBLIC -sWEBSOCKET=1)
+        target_link_options(AtmosphericEngine INTERFACE -sWEBSOCKET=1)
+    endif()
 endif()
 if(AE_USE_FFMPEG AND NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
     # Use the system FFmpeg located via pkg-config rather than building the
@@ -451,7 +501,7 @@ if(EMSCRIPTEN)
             -sMAXIMUM_MEMORY=536870912
             "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
             "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_load_editor_scene_json','_ae_add_scene','_ae_unload_scene','_ae_get_loaded_scenes','_ae_get_last_loaded_scene','_ae_reset_scene','_ae_get_version','_ae_is_ready','_ae_mount_file','_ae_get_scene_error']"
-            "-sEXPORTED_RUNTIME_METHODS=['requestFullscreen','ccall','HEAPU8']"
+            "-sEXPORTED_RUNTIME_METHODS=['requestFullscreen','ccall','HEAPU8','callMain']"
             "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     else()
         target_link_options(AtmosphericEngine INTERFACE
@@ -463,7 +513,7 @@ if(EMSCRIPTEN)
             -sMAXIMUM_MEMORY=536870912
             "-sPTHREAD_POOL_SIZE=(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? Math.min(4, navigator.hardwareConcurrency || 2) : Math.min(16, navigator.hardwareConcurrency || 4))"
             "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_ae_load_editor_scene','_ae_load_editor_scene_json','_ae_add_scene','_ae_unload_scene','_ae_get_loaded_scenes','_ae_get_last_loaded_scene','_ae_reset_scene','_ae_get_version','_ae_is_ready','_ae_mount_file','_ae_get_scene_error']"
-            "-sEXPORTED_RUNTIME_METHODS=['requestFullscreen','ccall','HEAPU8']"
+            "-sEXPORTED_RUNTIME_METHODS=['requestFullscreen','ccall','HEAPU8','callMain']"
             "SHELL:--post-js ${CMAKE_CURRENT_SOURCE_DIR}/src/post.js")
     endif()
 else()
@@ -476,6 +526,10 @@ else()
         target_compile_definitions(AtmosphericEngine PUBLIC TRACY_ENABLE TRACY_VERBOSE TRACY_ON_DEMAND)
     endif()
     target_link_libraries(AtmosphericEngine PUBLIC SDL3::SDL3)
+    if(WIN32)
+        # Winsock2 for UdpRelay (compiled into the engine unconditionally).
+        target_link_libraries(AtmosphericEngine PUBLIC ws2_32)
+    endif()
     if(ANDROID)
         find_library(GLES3_LIB GLESv3)
         if(GLES3_LIB)
@@ -537,6 +591,19 @@ if(EMSCRIPTEN)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/copy_if_exists.cmake"
         COMMENT "Assembling @atmospheric/engine package → ${_AE_WASM_OUT}"
     )
+endif()
+
+# ── Headless smoke test ────────────────────────────────────────────────────────
+# Boots a full Application with AppConfig::headless — no window, no GL — and
+# verifies the fixed-tick loop drives OnUpdate and shuts down cleanly.
+# Built so it stays compiling, but NOT registered with ctest (no add_test):
+# this PR is scoped to networking, and the headless path needs more shakeout
+# before it gates CI. Register it once that's done.
+# Gated on AE_BUILD_EXAMPLES so downstream projects consuming Engine directly
+# via add_subdirectory don't grow an extra target.
+if(AE_BUILD_EXAMPLES AND NOT EMSCRIPTEN)
+    add_executable(HeadlessSmokeTest tests/headless_smoke_test.cpp)
+    target_link_libraries(HeadlessSmokeTest PRIVATE AtmosphericEngine)
 endif()
 
 set(AE_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/default_assets" PARENT_SCOPE)

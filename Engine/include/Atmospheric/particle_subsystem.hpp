@@ -45,6 +45,11 @@ namespace Atmospheric {
         ParticleSubsystem() = default;
         ~ParticleSubsystem() = default;
 
+        // Kill-switch for the whole subsystem. The GL simulate/draw path is
+        // untested and the WebGPU path is unimplemented, so every entry point
+        // no-ops when this is false. Flip to true once one backend is verified.
+        bool _enabled = false;
+
         GraphicsSubsystem* graphics_server = nullptr;
         Renderer* renderer = nullptr;
         std::vector<ParticleEmitterComponent*> emitters;

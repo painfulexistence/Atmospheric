@@ -24,6 +24,7 @@
 #include "Atmospheric/sprite_3d_component.hpp"
 #include "Atmospheric/sprite_component.hpp"
 #include "Atmospheric/terrain_mesh_component.hpp"
+#include "Atmospheric/terrain_streamer.hpp"
 #include "Atmospheric/text_2d_component.hpp"
 #include "Atmospheric/text_3d_component.hpp"
 #include "Atmospheric/ui_page_component.hpp"

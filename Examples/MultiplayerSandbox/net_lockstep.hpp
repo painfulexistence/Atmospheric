@@ -1,20 +1,10 @@
 #pragma once
 #include "game_sim.hpp"
+#include <Atmospheric/udp_relay_client.hpp>
+#include <Atmospheric/udp_socket.hpp>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
-
-// Platform-neutral UDP socket handle. On Windows a SOCKET is a UINT_PTR
-// (64-bit) whose invalid value is INVALID_SOCKET (~0), not -1, so we cannot
-// store it in a plain int. We mirror those types here without dragging
-// <winsock2.h> into every translation unit that includes this header.
-#if defined(_WIN32)
-using SocketHandle = uintptr_t;
-static constexpr SocketHandle kInvalidSocket = SocketHandle(~uintptr_t(0));
-#else
-using SocketHandle = int;
-static constexpr SocketHandle kInvalidSocket = SocketHandle(-1);
-#endif
 
 // Deterministic-lockstep UDP session for exactly two peers.
 //
@@ -39,9 +29,16 @@ public:
     bool desync = false;
     std::string error;
 
+    // Relay mode: set by StartRelayHost/StartRelayClient. SendRaw delegates
+    // to _relayClient (below) when useRelay is true.
+    bool useRelay = false;
+
     void StartSolo(uint32_t seed);
     bool StartHost(uint16_t port, uint32_t seed, int delay);
     bool StartClient(const std::string& ip, uint16_t port);
+    // Relay variants: both peers point at the relay server; roomId identifies the session.
+    bool StartRelayHost(const std::string& relayIp, uint16_t relayPort, uint32_t roomId, uint32_t seed, int delay);
+    bool StartRelayClient(const std::string& relayIp, uint16_t relayPort, uint32_t roomId);
     void Shutdown();
 
     // Call once per frame: receives packets, drives the handshake,
@@ -62,7 +59,15 @@ public:
     void PruneBelow(uint32_t tick);
 
 private:
-    SocketHandle sock = kInvalidSocket;
+    // Native only: UdpSocket/UdpRelayClient don't exist on Emscripten (no raw
+    // UDP sockets in the browser — see their header comments). The web build
+    // uses RTCDataChannel instead (see net_lockstep.cpp's __EMSCRIPTEN__
+    // branch), so these members would sit unused there even if they could be
+    // declared.
+#ifndef __EMSCRIPTEN__
+    UdpSocket _socket;
+    UdpRelayClient _relayClient;// only touched when useRelay is true
+#endif
     bool havePeer = false;
     uint32_t peerAddr = 0;
     uint16_t peerPort = 0;

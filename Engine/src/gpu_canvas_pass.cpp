@@ -11,9 +11,8 @@ GPUCanvasPass::~GPUCanvasPass() {
     if (_uniformBG) wgpuBindGroupRelease(_uniformBG);
     if (_uniformBGL) wgpuBindGroupLayoutRelease(_uniformBGL);
     if (_texBGL) wgpuBindGroupLayoutRelease(_texBGL);
-    if (_pipeline) wgpuRenderPipelineRelease(_pipeline);
-    if (_pipelineDepthTest) wgpuRenderPipelineRelease(_pipelineDepthTest);
-    if (_pipelineSwapchain) wgpuRenderPipelineRelease(_pipelineSwapchain);
+    for (auto& [k, p] : _pipelines)
+        if (p) wgpuRenderPipelineRelease(p);
     if (_uniformBuf) wgpuBufferRelease(_uniformBuf);
     for (uint32_t s = 0; s < UNIFORM_SLOT_COUNT; ++s) {
         if (_vertexBufs[s]) wgpuBufferRelease(_vertexBufs[s]);
@@ -27,6 +26,8 @@ GPUCanvasPass::~GPUCanvasPass() {
 void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format, uint32_t sceneSampleCount) {
     _device = device;
     _queue = queue;
+    _sceneFormat = format;
+    _sceneSampleCount = sceneSampleCount;
 
     // ── Buffers (one geometry pair per pass variant — see header) ──────────
     for (uint32_t s = 0; s < UNIFORM_SLOT_COUNT; ++s) {
@@ -91,30 +92,27 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
         wgpuQueueWriteTexture(queue, &dst, white, 4, &layout, &extent);
     }
 
-    // ── First pipeline: blend on, depth ignored (2D screenspace canvas) ────
-    // sceneRT's render pass always carries a Depth32Float attachment, so the
-    // pipeline must declare a matching depthStencil state even though the
-    // canvas neither tests nor writes depth — write=false + Always is the
-    // "depth-transparent" configuration that keeps attachment states
-    // compatible (Dawn rejects the pipeline in the pass otherwise).
-    // Vertex layout: pos(2f) uv(2f) color(4f) flags(2f) = 10 floats = 40 B.
-    const std::vector<GpuVertexAttr> quadAttrs = {
-        { WGPUVertexFormat_Float32x3, 0, 0 },// pos (xyz — see FLOATS_PER_VERT)
-        { WGPUVertexFormat_Float32x2, 12, 1 },// uv
-        { WGPUVertexFormat_Float32x4, 20, 2 },// color
-        { WGPUVertexFormat_Float32x2, 36, 3 },// texIdx(unused), flags
-    };
+    // ── First pipeline: Canvas variant, Alpha blend ────────────────────────
+    // Built here up front to populate _uniformBGL and _texBGL. Other
+    // (variant, blend) combinations are built on demand by
+    // _getOrCreatePipeline() using these BGLs so all bind groups stay
+    // compatible. sceneRT's render pass always carries a Depth32Float
+    // attachment, so pipelines targeting it must declare a matching
+    // depthStencil state even when they don't test or write depth —
+    // write=false + Always is the "depth-transparent" configuration that
+    // keeps attachment states compatible (Dawn rejects otherwise).
+    // Vertex layout: pos(3f) uv(2f) color(4f) flags(2f) = 11 floats = 44 B.
     auto p = GpuPipelineBuilder(device)
                  .wgsl(QUAD_WGSL)
                  .bgl({ gpuDynUniform(0, wgsl_stage::vert, 64) })
                  .bgl({ gpuTexture(0), gpuSampler(1) })
-                 .vertex(static_cast<uint64_t>(FLOATS_PER_VERT) * sizeof(float), quadAttrs)
+                 .vertex(static_cast<uint64_t>(FLOATS_PER_VERT) * sizeof(float), _quadAttrs())
                  .colorFormat(format)
-                 .blend()
+                 .blend(GpuPipelineBuilder::Blend::Alpha)
                  .depth(false, WGPUCompareFunction_Always)
                  .multisample(sceneSampleCount)
                  .build();
-    _pipeline = p.pipeline;
+    _pipelines[{ Variant::Canvas, GpuPipelineBuilder::Blend::Alpha }] = p.pipeline;
     _uniformBGL = p.bgl(0);
     _texBGL = p.bgl(1);
 
@@ -123,36 +121,71 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
     // via dynamic offset in Render().
     _uniformBG = GpuBindGroupBuilder(device, _uniformBGL).buffer(0, _uniformBuf, 64).build();
 
-    // ── Depth-tested variant (WorldCanvasPass): read-only LessEqual ────────
-    // Borrows the BGLs created above so bind groups stay compatible.
-    _pipelineDepthTest = GpuPipelineBuilder(device)
-                             .wgsl(QUAD_WGSL)
-                             .bgl(_uniformBGL)
-                             .bgl(_texBGL)
-                             .vertex(static_cast<uint64_t>(FLOATS_PER_VERT) * sizeof(float), quadAttrs)
-                             .colorFormat(format)
-                             .blend()
-                             .depth(false, WGPUCompareFunction_LessEqual)
-                             .multisample(sceneSampleCount)
-                             .build()
-                             .pipeline;
-
-    // ── Swapchain-format variant (UIPass): no depth, blend on, but targets ──
-    // GfxFactory::GetSwapchainFormat() instead of sceneRT's HDR format, since
-    // UIPass runs after PostProcessPass has already resolved sceneRT to the
-    // swapchain. Borrows the same BGLs for bind-group compatibility.
-    _pipelineSwapchain = GpuPipelineBuilder(device)
-                             .wgsl(QUAD_WGSL)
-                             .bgl(_uniformBGL)
-                             .bgl(_texBGL)
-                             .vertex(static_cast<uint64_t>(FLOATS_PER_VERT) * sizeof(float), quadAttrs)
-                             .colorFormat(GfxFactory::GetSwapchainFormat())
-                             .blend()
-                             .build()
-                             .pipeline;
-
     _verts.reserve(static_cast<size_t>(MAX_VERTS) * FLOATS_PER_VERT);
     _indices.reserve(static_cast<size_t>(MAX_INDICES));
+}
+
+const std::vector<GpuVertexAttr>& GPUCanvasPass::_quadAttrs() {
+    static const std::vector<GpuVertexAttr> attrs = {
+        { WGPUVertexFormat_Float32x3, 0, 0 },// pos (xyz — see FLOATS_PER_VERT)
+        { WGPUVertexFormat_Float32x2, 12, 1 },// uv
+        { WGPUVertexFormat_Float32x4, 20, 2 },// color
+        { WGPUVertexFormat_Float32x2, 36, 3 },// texIdx(unused), flags
+    };
+    return attrs;
+}
+
+WGPURenderPipeline GPUCanvasPass::_getOrCreatePipeline(Variant v, GpuPipelineBuilder::Blend b) {
+    auto it = _pipelines.find({ v, b });
+    if (it != _pipelines.end()) return it->second;
+
+    // Match _init's Canvas/Alpha pipeline in every axis except the varying two.
+    auto builder = GpuPipelineBuilder(_device)
+                       .wgsl(QUAD_WGSL)
+                       .bgl(_uniformBGL)
+                       .bgl(_texBGL)
+                       .vertex((uint64_t)FLOATS_PER_VERT * sizeof(float), _quadAttrs())
+                       .blend(b);
+
+    switch (v) {
+    case Variant::Canvas:
+        // Screen-space canvas: same target as WorldCanvas below (sceneRT), but
+        // depth-transparent so it renders on top of 3D without any test.
+        builder.colorFormat(_sceneFormat).depth(false, WGPUCompareFunction_Always).multisample(_sceneSampleCount);
+        break;
+    case Variant::WorldCanvas:
+        // World-space canvas: depth-tested read-only against sceneRT's depth
+        // so 2D sprites are occluded by (but don't occlude) 3D geometry.
+        builder.colorFormat(_sceneFormat).depth(false, WGPUCompareFunction_LessEqual).multisample(_sceneSampleCount);
+        break;
+    case Variant::UI:
+        // UIPass runs after PostProcessPass has resolved sceneRT to the
+        // swapchain — different color format, no depth, single sample.
+        builder.colorFormat(GfxFactory::GetSwapchainFormat());
+        break;
+    }
+
+    WGPURenderPipeline pipe = builder.build().pipeline;
+    _pipelines[{ v, b }] = pipe;
+    return pipe;
+}
+
+GpuPipelineBuilder::Blend GPUCanvasPass::_mapBlend(BlendMode m) {
+    switch (m) {
+    case BlendMode::None:
+        return GpuPipelineBuilder::Blend::None;
+    case BlendMode::Alpha:
+        return GpuPipelineBuilder::Blend::Alpha;
+    case BlendMode::Additive:
+        return GpuPipelineBuilder::Blend::Additive;
+    case BlendMode::Multiply:
+        return GpuPipelineBuilder::Blend::Multiply;
+    case BlendMode::Screen:
+        return GpuPipelineBuilder::Blend::Screen;
+    case BlendMode::Premultiplied:
+        return GpuPipelineBuilder::Blend::Premultiplied;
+    }
+    return GpuPipelineBuilder::Blend::Alpha;
 }
 
 WGPUBindGroup GPUCanvasPass::_getOrCreateTexBG(uint32_t texID) {
@@ -189,7 +222,7 @@ void GPUCanvasPass::Render(
     uint32_t sceneSampleCount
 ) {
     // Lazy init: wait until GfxFactory has a live device
-    if (!_pipeline) {
+    if (!_uniformBGL) {
         WGPUDevice dev = GfxFactory::GetWebGPUDevice();
         WGPUQueue q = GfxFactory::GetWebGPUQueue();
         if (!dev) return;
@@ -201,18 +234,16 @@ void GPUCanvasPass::Render(
     // at ndc z≈-0.82 — visible under GL, clipped entirely under WebGPU. Remap
     // z for the variants that don't depth-test; the depth-tested variant must
     // stay in the same convention as the 3D passes that wrote sceneRT's depth.
-    glm::mat4 vp = viewProj;
-    if (!depthTest) {
-        const glm::mat4 z01 = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.5f))
-                              * glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 0.5f));
-        vp = z01 * viewProj;
-    }
+    glm::mat4 vp = depthTest ? viewProj : GpuProjectionZ01() * viewProj;
 
     if (commands.empty()) return;
 
-    // ── Build CPU vertex/index staging and per-texture batch list ─────────
+    // ── Build CPU vertex/index staging and per-(texture, blend) batch list ─
+    // Batches split on either axis change so pipeline / bind-group binds can
+    // stay contiguous during the record loop.
     struct DrawBatch {
         uint32_t texID;
+        BlendMode blend;
         uint32_t idxOffset;
         uint32_t idxCount;
     };
@@ -222,13 +253,17 @@ void GPUCanvasPass::Render(
     _indices.clear();
 
     uint32_t curTex = UINT32_MAX;
+    BlendMode curBlend = BlendMode::None;
+    bool haveBatch = false;
     int vertOff = 0;
     uint32_t idxOff = 0;
 
     for (const auto& cmd : commands) {
-        if (cmd.textureID != curTex) {
+        if (!haveBatch || cmd.textureID != curTex || cmd.blendMode != curBlend) {
             curTex = cmd.textureID;
-            batches.push_back({ curTex, idxOff, 0u });
+            curBlend = cmd.blendMode;
+            haveBatch = true;
+            batches.push_back({ curTex, curBlend, idxOff, 0u });
         }
 
         // flags: 1=solid color (no texture), 0=textured
@@ -272,18 +307,20 @@ void GPUCanvasPass::Render(
     WGPURenderPassEncoder pass = gpuEnc->pass;
     if (!pass) return;
 
-    wgpuRenderPassEncoderSetPipeline(
-        pass,
-        toSwapchain ? _pipelineSwapchain
-        : depthTest ? _pipelineDepthTest
-                    : _pipeline
-    );
+    const Variant variant = toSwapchain ? Variant::UI : depthTest ? Variant::WorldCanvas : Variant::Canvas;
+
     wgpuRenderPassEncoderSetBindGroup(pass, 0, _uniformBG, 1, &uniformOff);
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, _vertexBufs[slot], 0, WGPU_WHOLE_SIZE);
     wgpuRenderPassEncoderSetIndexBuffer(pass, _indexBufs[slot], WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
 
+    WGPURenderPipeline curPipeline = nullptr;
     for (const auto& batch : batches) {
         if (batch.idxCount == 0) continue;
+        WGPURenderPipeline pipe = _getOrCreatePipeline(variant, _mapBlend(batch.blend));
+        if (pipe != curPipeline) {
+            wgpuRenderPassEncoderSetPipeline(pass, pipe);
+            curPipeline = pipe;
+        }
         WGPUBindGroup texBG = _getOrCreateTexBG(batch.texID);
         wgpuRenderPassEncoderSetBindGroup(pass, 1, texBG, 0, nullptr);
         wgpuRenderPassEncoderDrawIndexed(pass, batch.idxCount, 1, batch.idxOffset, 0, 0);

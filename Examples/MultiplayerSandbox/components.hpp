@@ -101,6 +101,32 @@ public:
         }
     }
 
+    // Same as Start(), but routes through a UdpRelay (see Examples/RelayServer)
+    // instead of connecting directly — for peers direct UDP can't reach.
+    void StartRelay(
+        LockstepNet::Mode mode,
+        const std::string& relayIp,
+        uint16_t relayPort,
+        uint32_t roomId,
+        uint32_t seed,
+        int delay
+    ) {
+        auto* con = ConsoleSubsystem::Get();
+        switch (mode) {
+        case LockstepNet::Mode::Host:
+            _net.StartRelayHost(relayIp, relayPort, roomId, seed, delay);
+            con->Info(fmt::format("Hosting via relay {}:{} (room {}, seed {})", relayIp, relayPort, roomId, seed));
+            break;
+        case LockstepNet::Mode::Client:
+            _net.StartRelayClient(relayIp, relayPort, roomId);
+            con->Info(fmt::format("Joining via relay {}:{} (room {}) ...", relayIp, relayPort, roomId));
+            break;
+        default:
+            _net.StartSolo(seed);
+            break;
+        }
+    }
+
     void Shutdown() {
         _net.Shutdown();
     }

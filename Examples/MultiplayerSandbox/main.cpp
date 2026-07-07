@@ -12,8 +12,15 @@
 // NoitaLike: two-player networked falling-sand arena (deterministic lockstep).
 //
 //   ./NoitaLikeDemo                       solo sandbox
-//   ./NoitaLikeDemo --host [port]         host a 2P game (player 0)
-//   ./NoitaLikeDemo --join <ip> [port]    join a 2P game  (player 1)
+//   ./NoitaLikeDemo --host [port]         host a 2P game (player 0), direct UDP
+//   ./NoitaLikeDemo --join <ip> [port]    join a 2P game  (player 1), direct UDP
+//
+//   ./NoitaLikeDemo --relay-host <relayIp> <relayPort> <roomId>   host via relay
+//   ./NoitaLikeDemo --relay-join <relayIp> <relayPort> <roomId>   join via relay
+//     Use when direct UDP can't reach the other peer (NAT/firewall). Both
+//     players point at the same UdpRelay (see Examples/RelayServer) and pick
+//     any shared roomId; the relay pairs the first two senders it sees.
+//
 //   options: --seed <n>  --delay <ticks: input delay, default 3 = 50 ms>
 //
 // Controls: A/D move · W/Space jump+levitate · mouse aim · LMB cast
@@ -28,6 +35,11 @@ namespace {
         uint32_t seed = 0;
         int delay = 3;
         uint32_t autotestTicks = 0;// run N ticks headless-style, print checksum, quit
+        // Relay mode (mutually exclusive with direct --host/--join above).
+        bool useRelay = false;
+        std::string relayIp;
+        uint16_t relayPort = 0;
+        uint32_t roomId = 0;
     } gcli;
 
     inline uint32_t Pack(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) {
@@ -132,7 +144,11 @@ class NoitaLikeGame : public Application {
         netObj->SetName("NetSession");
         netObj->AddComponent<LockstepNetComponent>();
         _netComp = netObj->GetComponent<LockstepNetComponent>();
-        _netComp->Start(gcli.mode, gcli.port, gcli.seed, gcli.delay, gcli.joinIp);
+        if (gcli.useRelay) {
+            _netComp->StartRelay(gcli.mode, gcli.relayIp, gcli.relayPort, gcli.roomId, gcli.seed, gcli.delay);
+        } else {
+            _netComp->Start(gcli.mode, gcli.port, gcli.seed, gcli.delay, gcli.joinIp);
+        }
 
         // Inspector: one entity per player slot.
         for (int i = 0; i < 2; i++) {
@@ -263,15 +279,37 @@ class NoitaLikeGame : public Application {
         if (_elStatus) {
             std::string s;
             if (net.state == LockstepNet::State::Connecting) {
-                s = (net.mode == LockstepNet::Mode::Host)
-                        ? fmt::format("waiting for player 2 on UDP :{} ...", gcli.port)
-                        : fmt::format("connecting to {}:{} ...", gcli.joinIp, gcli.port);
+#ifdef __EMSCRIPTEN__
+                s = (net.mode == LockstepNet::Mode::Host) ? "waiting for player 2 via WebRTC ..."
+                                                          : "connecting via WebRTC ...";
+#else
+                if (net.useRelay) {
+                    s = (net.mode == LockstepNet::Mode::Host)
+                            ? fmt::format(
+                                  "waiting for player 2 via relay {}:{} (room {}) ...",
+                                  gcli.relayIp,
+                                  gcli.relayPort,
+                                  gcli.roomId
+                              )
+                            : fmt::format(
+                                  "connecting via relay {}:{} (room {}) ...", gcli.relayIp, gcli.relayPort, gcli.roomId
+                              );
+                } else {
+                    s = (net.mode == LockstepNet::Mode::Host)
+                            ? fmt::format("waiting for player 2 on UDP :{} ...", gcli.port)
+                            : fmt::format("connecting to {}:{} ...", gcli.joinIp, gcli.port);
+                }
+#endif
             } else if (net.state == LockstepNet::State::Failed) {
                 s = "network error: " + net.error;
             } else if (net.desync) {
                 s = "DESYNC DETECTED - peers have diverged";
             } else if (net.mode == LockstepNet::Mode::Solo) {
+#ifdef __EMSCRIPTEN__
+                s = "solo sandbox";
+#else
                 s = "solo sandbox - run with --host / --join for 2P";
+#endif
             } else {
                 s = fmt::format(
                     "{} | ping {} ms | delay {} ticks{}",
@@ -348,6 +386,18 @@ int main(int argc, char* argv[]) {
             gcli.delay = std::max(1, std::atoi(argv[++i]));
         } else if (std::strcmp(argv[i], "--autotest") == 0 && i + 1 < argc) {
             gcli.autotestTicks = static_cast<uint32_t>(std::atoi(argv[++i]));
+        } else if (std::strcmp(argv[i], "--relay-host") == 0 && i + 3 < argc) {
+            gcli.mode = LockstepNet::Mode::Host;
+            gcli.useRelay = true;
+            gcli.relayIp = argv[++i];
+            gcli.relayPort = static_cast<uint16_t>(std::atoi(argv[++i]));
+            gcli.roomId = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
+        } else if (std::strcmp(argv[i], "--relay-join") == 0 && i + 3 < argc) {
+            gcli.mode = LockstepNet::Mode::Client;
+            gcli.useRelay = true;
+            gcli.relayIp = argv[++i];
+            gcli.relayPort = static_cast<uint16_t>(std::atoi(argv[++i]));
+            gcli.roomId = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
         }
     }
 

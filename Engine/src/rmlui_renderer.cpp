@@ -101,42 +101,14 @@ Rml::TextureHandle RmlUiRenderer::LoadTexture(Rml::Vector2i& texture_dimensions,
 }
 
 Rml::TextureHandle RmlUiRenderer::GenerateTexture(Rml::Span<const Rml::byte> source, Rml::Vector2i source_dimensions) {
-#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
-        uint32_t texture_id = GfxFactory::UploadTexture2D(
-            reinterpret_cast<const uint8_t*>(source.data()), source_dimensions.x, source_dimensions.y
-        );
-        return (Rml::TextureHandle)texture_id;
-    }
-#endif
-
-    // OpenGL path: GfxFactory::UploadTexture2D's GL fallback uses GL_NEAREST,
-    // which would regress RmlUi's text/UI rendering quality — upload directly
-    // with GL_LINEAR filtering instead, as before.
-    GLuint textureId;
-    glGenTextures(1, &textureId);
-    glBindTexture(GL_TEXTURE_2D, textureId);
-
-    glTexImage2D(
-        GL_TEXTURE_2D,
-        0,
-        GL_RGBA8,
-        source_dimensions.x,
-        source_dimensions.y,
-        0,
-        GL_RGBA,
-        GL_UNSIGNED_BYTE,
-        source.data()
+    // Both backends go through the RHI so filter/wrap policy stays uniform.
+    // Linear filtering is what UI text needs; GfxFactory::UploadTexture2D's
+    // default already matches, but pass it explicitly so future default
+    // changes here don't silently regress UI quality.
+    TextureHandle texture = GfxFactory::UploadTexture2D(
+        reinterpret_cast<const uint8_t*>(source.data()), source_dimensions.x, source_dimensions.y, TextureFilter::Linear
     );
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    return static_cast<Rml::TextureHandle>(textureId);
+    return static_cast<Rml::TextureHandle>(texture.id);
 }
 
 void RmlUiRenderer::ReleaseTexture(Rml::TextureHandle texture_handle) {

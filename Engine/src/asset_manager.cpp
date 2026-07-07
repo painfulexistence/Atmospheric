@@ -407,7 +407,11 @@ void AssetManager::LoadDefaultShaders() {
           { "skybox", { .vert = "assets/shaders/skybox.vert", .frag = "assets/shaders/skybox.frag" } },
           { "sun", { .vert = "assets/shaders/sun.vert", .frag = "assets/shaders/sun.frag" } },
           { "voxel", { .vert = "assets/shaders/voxel.vert", .frag = "assets/shaders/voxel.frag" } },
+          { "microvoxel", { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/microvoxel.frag" } },
+          { "microvoxel_gi",
+            { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/microvoxel_gi.frag" } },
           { "water", { .vert = "assets/shaders/water.vert", .frag = "assets/shaders/water.frag" } },
+          { "portal", { .vert = "assets/shaders/portal.vert", .frag = "assets/shaders/portal.frag" } },
           { "bloom_threshold", { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_threshold.frag" } },
           { "bloom_downsample",
             { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_downsample.frag" } },
@@ -512,6 +516,14 @@ WaterMaterial* AssetManager::CreateWaterMaterial() {
     auto* ptr = material.get();
     materials.push_back(std::move(material));
     _materialCache["water_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return ptr;
+}
+
+PortalMaterial* AssetManager::CreatePortalMaterial() {
+    auto material = std::make_unique<PortalMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
+    _materialCache["portal_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
     return ptr;
 }
 
@@ -1202,6 +1214,14 @@ MeshHandle
     return CreateMesh(name, mesh);
 }
 
+MeshHandle AssetManager::CreateDiscMesh(const std::string& name, float radius, int segments) {
+    auto mesh = MeshBuilder::CreateDisc(radius, segments);
+    if (_materialCache.find("Default") != _materialCache.end()) {
+        mesh->SetMaterial(GetMaterialHandle("Default"));
+    }
+    return CreateMesh(name, mesh);
+}
+
 MeshHandle AssetManager::CreateSphereMesh(const std::string& name, float radius, int division) {
     auto mesh = MeshBuilder::CreateSphere(radius, division);
     if (_materialCache.find("Default") != _materialCache.end()) {
@@ -1574,4 +1594,47 @@ void AssetManager::UpdateHeightmapTexture(TextureHandle handle, const std::vecto
     // Full re-specification: handles resolution changes as well as data updates.
     UploadHeightmapPixels(grid, width, height);
     glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+TextureHandle AssetManager::CreateOrUpdateTextureRGBA8(
+    const std::string& name, const unsigned char* data, int width, int height
+) {
+    const size_t bytes = static_cast<size_t>(width) * height * 4;
+    auto it = _textureCache.find(name);
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
+        if (it != _textureCache.end()) {
+            GfxFactory::UpdateTexture2D(it->second.glID, data, width, height);
+            it->second.width = static_cast<uint32_t>(width);
+            it->second.height = static_cast<uint32_t>(height);
+            it->second.bytes = bytes;
+            return TextureHandle(it->second.glID);
+        }
+        uint32_t texID = GfxFactory::UploadTexture2D(data, width, height);
+        textures.push_back(texID);
+        _textureCache[name] = { texID, static_cast<uint32_t>(width), static_cast<uint32_t>(height), bytes };
+        return TextureHandle(texID);
+    }
+#endif
+
+    GLuint texID = 0;
+    if (it != _textureCache.end()) {
+        texID = it->second.glID;
+    } else {
+        glGenTextures(1, &texID);
+        textures.push_back(texID);
+    }
+    glBindTexture(GL_TEXTURE_2D, texID);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    // Full re-specification: handles resolution changes as well as data updates.
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    _textureCache[name] = { texID, static_cast<uint32_t>(width), static_cast<uint32_t>(height), bytes };
+    return TextureHandle(texID);
 }

@@ -93,7 +93,12 @@
         }
         /* ── On-screen touch controls (mobile-browser demo) ────────────────
            Buttons synthesize the same keyboard events the game already reads,
-           so no engine-side input changes are needed. See the script below. */
+           so no engine-side input changes are needed. See the script below.
+           Hidden on devices with a fine hover-capable pointer (desktops with
+           a mouse), shown on touch/coarse-pointer devices (phones, tablets). */
+        @media (hover: hover) and (pointer: fine) {
+            #touch-controls { display: none !important; }
+        }
         #touch-controls {
             flex: 0 0 auto;
             display: flex;
@@ -234,10 +239,10 @@
         <div class="pad-group">
             <div class="pad-label">Look</div>
             <div class="pad">
-                <button class="up" data-code="KeyI" data-key="i" data-keycode="73">&uarr;</button>
-                <button class="left" data-code="KeyJ" data-key="j" data-keycode="74">&larr;</button>
-                <button class="down" data-code="KeyK" data-key="k" data-keycode="75">&darr;</button>
-                <button class="right" data-code="KeyL" data-key="l" data-keycode="76">&rarr;</button>
+                <button class="up" data-code="ArrowUp" data-key="ArrowUp" data-keycode="38">&uarr;</button>
+                <button class="left" data-code="ArrowLeft" data-key="ArrowLeft" data-keycode="37">&larr;</button>
+                <button class="down" data-code="ArrowDown" data-key="ArrowDown" data-keycode="40">&darr;</button>
+                <button class="right" data-code="ArrowRight" data-key="ArrowRight" data-keycode="39">&rarr;</button>
             </div>
         </div>
         <div class="pad-group">

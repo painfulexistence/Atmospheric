@@ -1,7 +1,10 @@
 #include "Atmospheric.hpp"
+#include "Atmospheric/camera_controller_3d.hpp"
+#include "Atmospheric/portal_component.hpp"
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Elements/ElementFormControlSelect.h>
 #include <array>
+#include <functional>
 #include <memory>
 
 class TerrainDemo : public Application {
@@ -9,9 +12,6 @@ class TerrainDemo : public Application {
 
     CameraComponent* _cam = nullptr;
     GameObject* _camGO = nullptr;
-    float _moveSpeed = 20.0f;
-    float _slowSpeed = 4.0f;
-    bool _slow = false;
     bool _wireframe = false;
 
     GameObject* _proceduralTerrain = nullptr;
@@ -62,7 +62,7 @@ class TerrainDemo : public Application {
             _selPalette->SetSelection(_paletteIndex);
             _syncing = false;
         }
-        Log::Info("{}", std::string("Terrain palette ") + gpaletteNames[_paletteIndex]);
+        Log::Info("Terrain palette {}", gpaletteNames[_paletteIndex]);
     }
 
     GameObject* CreateTerrain(const std::string& name, const std::shared_ptr<HeightField>& hf) {
@@ -91,6 +91,36 @@ class TerrainDemo : public Application {
             }
         );
         return terrain;
+    }
+
+    // Two large linked portals flanking the initial camera (at (0, 64, 0)),
+    // facing each other for the classic infinite-corridor recursion. Spaced a
+    // little wider than eye-to-eye so the corridor reads clearly. Created
+    // inactive so the demo carries no portal render budget until asked for: an
+    // inactive GameObject is neither ticked nor submitted, so PortalPass finds
+    // no PortalMaterial and returns before allocating any recursion RT. Toggle
+    // both ends "Active" in the entity inspector to switch the corridor on
+    // (both must be active — each end needs its partner's draw).
+    void SetupPortals() {
+        auto* blueGO = CreateGameObject(glm::vec3(-24.0f, 60.0f, 0.0f));
+        blueGO->SetName("PortalBlue");
+        blueGO->SetRotation(glm::vec3(0.0f, glm::radians(90.0f), 0.0f));// +Z -> +X, faces the camera
+        auto* blue = static_cast<PortalComponent*>(blueGO->AddComponent<PortalComponent>(PortalProps{
+            .radius = 8.0f,
+            .rimColor = { 0.25f, 0.55f, 1.0f },
+        }));
+
+        auto* orangeGO = CreateGameObject(glm::vec3(24.0f, 60.0f, 0.0f));
+        orangeGO->SetName("PortalOrange");
+        orangeGO->SetRotation(glm::vec3(0.0f, glm::radians(-90.0f), 0.0f));// +Z -> -X, faces the camera
+        auto* orange = static_cast<PortalComponent*>(orangeGO->AddComponent<PortalComponent>(PortalProps{
+            .radius = 8.0f,
+            .rimColor = { 1.0f, 0.55f, 0.15f },
+        }));
+
+        PortalComponent::Link(blue, orange);
+        blueGO->SetActive(false);
+        orangeGO->SetActive(false);
     }
 
     void SetupHUD() {
@@ -127,6 +157,9 @@ class TerrainDemo : public Application {
         _cam = mainCamera;
         _camGO = _cam->gameObject;
         _camGO->SetPosition(glm::vec3(0.0f, 64.0f, 0.0f));
+        _camGO->AddComponent<CameraController3D>(/*moveSpeed=*/20.0f, /*lookSpeed=*/1.5f);
+
+        SetupPortals();
 
         // Procedural Noise HeightField
         _proceduralTerrain = CreateTerrain(
@@ -183,33 +216,13 @@ class TerrainDemo : public Application {
         ApplyPalette(_paletteIndex);
 
         Log::Info(
-            "Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, ESC "
-            "quit."
+            "Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, "
+            "ESC quit."
         );
     }
 
-    void OnUpdate(float dt, float /*time*/) override {
-        _slow = InputSubsystem::Get()->IsKeyDown(Key::Z);
-
-        if (InputSubsystem::Get()->IsKeyDown(Key::UP)) _cam->Pitch(CAMERA_ANGULAR_OFFSET);
-        if (InputSubsystem::Get()->IsKeyDown(Key::DOWN)) _cam->Pitch(-CAMERA_ANGULAR_OFFSET);
-        if (InputSubsystem::Get()->IsKeyDown(Key::RIGHT)) _cam->Yaw(CAMERA_ANGULAR_OFFSET);
-        if (InputSubsystem::Get()->IsKeyDown(Key::LEFT)) _cam->Yaw(-CAMERA_ANGULAR_OFFSET);
-
-        const float speed = (_slow ? _slowSpeed : _moveSpeed) * dt;
-        glm::vec3 pos = _camGO->GetPosition();
-        glm::vec3 fwd = _cam->GetEyeDirection();
-
-        if (InputSubsystem::Get()->IsKeyDown(Key::W)) pos += fwd * speed;
-        if (InputSubsystem::Get()->IsKeyDown(Key::S)) pos -= fwd * speed;
-        if (InputSubsystem::Get()->IsKeyDown(Key::A))
-            pos -= glm::normalize(glm::cross(fwd, glm::vec3(0, 1, 0))) * speed;
-        if (InputSubsystem::Get()->IsKeyDown(Key::D))
-            pos += glm::normalize(glm::cross(fwd, glm::vec3(0, 1, 0))) * speed;
-        if (InputSubsystem::Get()->IsKeyDown(Key::R)) pos.y += speed;
-        if (InputSubsystem::Get()->IsKeyDown(Key::F)) pos.y -= speed;
-        _camGO->SetPosition(pos);
-
+    void OnUpdate(float /*dt*/, float /*time*/) override {
+        // Camera movement/look is handled by CameraController3D on _camGO.
         // LMB switches terrain only when not clicking the HUD (the HUD handles
         // its own clicks via RmlUi event listeners).
         bool worldClick = InputSubsystem::Get()->IsMouseButtonPressed() && !InputSubsystem::Get()->IsMouseOverUI();
