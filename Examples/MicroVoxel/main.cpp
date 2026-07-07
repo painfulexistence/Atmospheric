@@ -1,5 +1,6 @@
 #include "Atmospheric.hpp"
 #include "Atmospheric/camera_controller_3d.hpp"
+#include "Atmospheric/light_component.hpp"
 #include "Atmospheric/voxel_volume_component.hpp"
 
 // Micro voxel rendering demo: a raymarched 12.8m diorama of 5cm voxels
@@ -22,6 +23,27 @@ class MicroVoxelApp : public Application {
         auto* volumeObj = CreateGameObject();
         volumeObj->SetPosition(glm::vec3(0.0f, 0.0f, 0.0f));
         volumeObj->AddComponent<VoxelVolumeComponent>(/*seed=*/1337u);
+
+        // An angled warm sun. Without one the engine falls back to its default
+        // directional light, which points straight down (0,-1,0) — that lights
+        // the terrain flat from overhead with no raking shadows. A low, angled
+        // sun gives long shadows and side-lit relief, and shows up as "Sun" in
+        // the scene tree. MicroVoxelPass reads its direction + diffuse (its own
+        // sunIntensity still drives brightness), and casts a raymarched shadow.
+        auto* sunGO = CreateGameObject(glm::vec3(0.0f));
+        sunGO->SetName("Sun");
+        sunGO->AddComponent(new LightComponent(
+            sunGO,
+            LightProps{
+                .type = LightType::Directional,
+                .ambient = glm::vec3(1.0f),
+                .diffuse = glm::vec3(1.0f, 0.95f, 0.85f),// warm daylight
+                .specular = glm::vec3(1.0f),
+                .direction = glm::normalize(glm::vec3(-0.45f, -0.82f, -0.35f)),
+                .intensity = 1.0f,
+                .castShadow = false,
+            }
+        ));
 
         mainCamera->gameObject->SetPosition(glm::vec3(0.0f, 9.0f, 20.0f));
         mainCamera->Pitch(glm::radians(-14.0f));
