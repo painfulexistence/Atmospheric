@@ -70,7 +70,7 @@ int TerrainStreamer::DesiredLod(glm::ivec2 coord, glm::ivec2 camTile) const {
 
 // ── init ─────────────────────────────────────────────────────────────────────
 
-void TerrainStreamer::Init(Application* app, const TerrainStreamerProps& props, GameObject* root) {
+void TerrainStreamer::Init(Application* app, const StreamingTerrainProps& props, GameObject* root) {
     _app = app;
     _props = props;
     _root = root;

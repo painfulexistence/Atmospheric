@@ -134,7 +134,7 @@ scale:
 ## Phase 2 — streaming robustness & scale
 
 - **Disk-backed tile cache — implemented** (`TerrainTileCache`, enabled via
-  `TerrainStreamerProps::cacheDir`): tiles bake to 16-bit delta+varint
+  `StreamingTerrainProps::cacheDir`): tiles bake to 16-bit delta+varint
   compressed files keyed by a parameter hash; cache hits replace synthesis
   entirely, so the second boot is pure IO — the Ghost-of-Tsushima load path.
   Dependency-free C++ file IO (all desktop platforms; on Emscripten point it

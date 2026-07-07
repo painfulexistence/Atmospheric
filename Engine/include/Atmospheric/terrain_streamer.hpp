@@ -46,7 +46,7 @@ private:
     std::vector<float> _grid;
 };
 
-// One streamed entity on the terrain (see TerrainStreamerProps::placeEntitiesFn).
+// One streamed entity on the terrain (see StreamingTerrainProps::placeEntitiesFn).
 struct TerrainEntityPlacement {
     glm::vec3 position{ 0.0f };// world space (set y from ctx.HeightAt)
     float yaw = 0.0f;// radians around world Y
@@ -77,7 +77,7 @@ struct TerrainTileContext {
 // grid; ring L covers tiles within Chebyshev distance lod0RadiusTiles << L.
 // Tiles carry perimeter skirts so mixed-LOD borders never show cracks, and
 // heightmaps include a 1-texel gutter so lighting is seam-free across tiles.
-struct TerrainStreamerProps {
+struct StreamingTerrainProps {
     float worldSize = 10240.0f;// full XZ extent in metres, centred on origin
     float tileSize = 512.0f;// metres per tile edge (worldSize is rounded to a multiple)
     float heightScale = 800.0f;// metres of displacement for height 1.0
@@ -165,7 +165,7 @@ public:
     // prewarms the whole world at the coarsest LOD (fast — a few hundred small
     // tiles in parallel) so the full view distance is visible on frame one;
     // the detail rings then stream in asynchronously.
-    void Init(Application* app, const TerrainStreamerProps& props = {}, GameObject* root = nullptr);
+    void Init(Application* app, const StreamingTerrainProps& props = {}, GameObject* root = nullptr);
 
     // Streams tiles toward their desired LOD and frustum-culls loaded tiles.
     // Call once per frame with the camera world position and view-projection.
@@ -196,7 +196,7 @@ public:
     const Stats& GetStats() const {
         return _stats;
     }
-    const TerrainStreamerProps& Props() const {
+    const StreamingTerrainProps& Props() const {
         return _props;
     }
 
@@ -250,7 +250,7 @@ private:
     void UpdateEntities(glm::ivec2 camTile);
     void CullTiles(const glm::mat4& viewProj);
 
-    TerrainStreamerProps _props;
+    StreamingTerrainProps _props;
     Application* _app = nullptr;
     GameObject* _root = nullptr;
     int _tilesPerSide = 0;

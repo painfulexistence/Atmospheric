@@ -4,7 +4,7 @@
 #include "game_object.hpp"
 #include "imgui.h"
 
-StreamingTerrainComponent::StreamingTerrainComponent(GameObject* owner, const TerrainStreamerProps& props)
+StreamingTerrainComponent::StreamingTerrainComponent(GameObject* owner, const StreamingTerrainProps& props)
   : _props(props) {
     gameObject = owner;
 }

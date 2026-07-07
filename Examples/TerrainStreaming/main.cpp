@@ -111,7 +111,7 @@ class TerrainStreamingDemo : public Application {
         ));
         _rockMesh = am.CreateMesh("ent_rock", rock);
 
-        TerrainStreamerProps terrainProps{
+        StreamingTerrainProps terrainProps{
             .worldSize = 10240.0f,
             .tileSize = 512.0f,
             // Balanced against the noise frequency below: perceived
