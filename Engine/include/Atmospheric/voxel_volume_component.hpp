@@ -37,9 +37,7 @@ public:
 
     // Grid config (gridDim must be a multiple of brickDim; Generate enforces it).
 #ifdef __EMSCRIPTEN__
-    // Smaller default on the web: generation is single-threaded there (see
-    // Generate) and the WebGL2 fragment raymarch is costlier per pixel.
-    int gridDim = 128;// 6.4 m at 5 cm voxels
+    int gridDim = 128;// 6.4 m at 5 cm voxels (WebGL2 fragment raymarch is pricier per pixel)
 #else
     int gridDim = 256;// 12.8 m at 5 cm voxels
 #endif

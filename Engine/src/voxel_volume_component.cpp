@@ -3,12 +3,12 @@
 #include "console_subsystem.hpp"
 #include "game_object.hpp"
 #include "graphics_subsystem.hpp"
+#include "job_system.hpp"
 #include "renderer.hpp"
 
 #include <cmath>
 #include <fmt/format.h>
 #include <imgui.h>
-#include <thread>
 
 // ============================================================================
 //  Procedural demo volume generation (ported from project-vapor's Metal
@@ -149,19 +149,15 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
     }
 
     // Column fill, parallelized over z slices (cells are disjoint per worker)
-#ifdef __EMSCRIPTEN__
-    // Single-threaded on the web: spawning std::threads and joining them
-    // immediately deadlocks under Emscripten pthreads — the join blocks the
-    // browser event loop that the spawn needs to create its Web Worker (no
-    // preallocated pthread pool). Symptom: page freezes with no error.
-    const uint32_t threadCount = 1;
-#else
-    const uint32_t threadCount = std::max(1u, std::thread::hardware_concurrency());
-#endif
-    std::vector<uint32_t> threadSolidCounts(threadCount, 0);
+    // via the engine JobSystem. The JobSystem owns a persistent worker pool, so
+    // this is safe on the web: with Emscripten pthreads the workers already
+    // exist (no spawn-during-join deadlock), and without pthreads Execute runs
+    // the job inline on the main thread.
+    const uint32_t workerCount = std::max(1u, JobSystem::Get()->GetThreadCount());
+    std::vector<uint32_t> sliceSolidCounts(workerCount, 0);
     auto fillSlices = [&](uint32_t ti) {
         uint32_t localSolid = 0;
-        for (uint32_t z = ti; z < N; z += threadCount) {
+        for (uint32_t z = ti; z < N; z += workerCount) {
             for (uint32_t x = 0; x < N; x++) {
                 const float h = heights[z * N + x];
                 const auto top = static_cast<uint32_t>(h);
@@ -185,18 +181,14 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
                 }
             }
         }
-        threadSolidCounts[ti] = localSolid;
+        sliceSolidCounts[ti] = localSolid;
     };
-    if (threadCount == 1) {
-        fillSlices(0);
-    } else {
-        std::vector<std::thread> workers;
-        workers.reserve(threadCount);
-        for (uint32_t ti = 0; ti < threadCount; ti++) workers.emplace_back([&fillSlices, ti]() { fillSlices(ti); });
-        for (auto& w : workers) w.join();
+    for (uint32_t ti = 0; ti < workerCount; ti++) {
+        JobSystem::Get()->Execute([&fillSlices, ti](int) { fillSlices(ti); });
     }
+    JobSystem::Get()->Wait();
     solidCount = 0;
-    for (uint32_t c : threadSolidCounts) solidCount += c;
+    for (uint32_t c : sliceSolidCounts) solidCount += c;
 
     // A few floating crystal spheres to show the volume is truly 3D
     for (int s = 0; s < 4; s++) {
