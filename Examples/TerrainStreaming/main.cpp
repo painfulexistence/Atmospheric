@@ -133,10 +133,12 @@ class TerrainStreamingDemo : public Application {
                 .noise = { .resolution = 0, .seed = 20260705, .frequency = 0.0007f, .octaves = 9 },
         // Baked-tile cache: first run generates + stores, every run
         // after boots from pure IO (watch "cache" in the stats line).
+        // Resolved against the engine base path (SDL_GetBasePath — next to
+        // the executable) so it doesn't depend on the working directory.
         // Emscripten's default FS is RAM-backed, so skip it there and
         // keep generating (ship a preloaded pyramid instead).
 #if !defined(__EMSCRIPTEN__)
-                .cacheDir = "cache/terrain",
+                .cacheDir = FileSystem::Get().BasePath() + "cache/terrain",
 #endif
                 // .layers / .splatFn: plug Gaea-style splat + detail textures here.
                 .colliderRadiusTiles = 1,

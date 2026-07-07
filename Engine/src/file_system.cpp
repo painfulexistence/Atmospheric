@@ -148,6 +148,10 @@ std::optional<std::string> FileSystem::ResolvePath(const std::string& path) cons
     return normPath;
 }
 
+const std::string& FileSystem::BasePath() const {
+    return gBasePath;
+}
+
 void FileSystem::EvictCache(const std::string& path) {
     std::string normPath = NormalizePath(path);
     {
