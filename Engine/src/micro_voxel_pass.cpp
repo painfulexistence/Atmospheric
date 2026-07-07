@@ -6,6 +6,7 @@
 #include "graphics_subsystem.hpp"
 #include "light_component.hpp"
 #include "renderer.hpp"
+#include "voxel_volume_component.hpp"
 #include "window.hpp"
 
 #include <cmath>
@@ -42,245 +43,29 @@ static void DrawScreenQuadVAO(GLuint vao) {
     glBindVertexArray(0);
 }
 
-// ---- Procedural demo volume: deterministic hash noise ------------------------
-
-static float MvHashNoise(int x, int y, int z, uint32_t seed) {
-    uint32_t h = static_cast<uint32_t>(x) * 374761393u + static_cast<uint32_t>(y) * 668265263u
-                 + static_cast<uint32_t>(z) * 2246822519u + seed * 3266489917u;
-    h = (h ^ (h >> 13)) * 1274126177u;
-    h ^= h >> 16;
-    return static_cast<float>(h & 0xFFFFu) / 65535.0f;
-}
-
-static float MvValueNoise3(glm::vec3 p, uint32_t seed) {
-    glm::vec3 pf = glm::floor(p);
-    glm::vec3 f = p - pf;
-    f = f * f * (3.0f - 2.0f * f);// smoothstep
-    int xi = static_cast<int>(pf.x), yi = static_cast<int>(pf.y), zi = static_cast<int>(pf.z);
-
-    auto corner = [&](int dx, int dy, int dz) { return MvHashNoise(xi + dx, yi + dy, zi + dz, seed); };
-    float c000 = corner(0, 0, 0), c100 = corner(1, 0, 0), c010 = corner(0, 1, 0), c110 = corner(1, 1, 0);
-    float c001 = corner(0, 0, 1), c101 = corner(1, 0, 1), c011 = corner(0, 1, 1), c111 = corner(1, 1, 1);
-
-    float x00 = glm::mix(c000, c100, f.x), x10 = glm::mix(c010, c110, f.x);
-    float x01 = glm::mix(c001, c101, f.x), x11 = glm::mix(c011, c111, f.x);
-    return glm::mix(glm::mix(x00, x10, f.y), glm::mix(x01, x11, f.y), f.z);
-}
-
-static float MvFbm3(glm::vec3 p, int octaves, uint32_t seed) {
-    float sum = 0.0f, amp = 0.5f;
-    for (int i = 0; i < octaves; i++) {
-        sum += amp * MvValueNoise3(p, seed + static_cast<uint32_t>(i) * 101u);
-        p *= 2.0f;
-        amp *= 0.5f;
-    }
-    return sum;// ~[0, 1)
-}
-
-// Gradient (Perlin-style) noise for the terrain heightfield — value noise has
-// axis-aligned plateaus that read as fake terrain; hashed unit gradients with
-// a quintic fade give the classic smooth rolling look.
-static float MvGradDot(int xi, int yi, int zi, glm::vec3 offset, uint32_t seed) {
-    glm::vec3 g(
-        MvHashNoise(xi, yi, zi, seed) - 0.5f,
-        MvHashNoise(xi, yi, zi, seed ^ 0x9E3779B9u) - 0.5f,
-        MvHashNoise(xi, yi, zi, seed ^ 0x85EBCA6Bu) - 0.5f
-    );
-    float len = glm::length(g);
-    if (len < 1e-6f) return offset.x;
-    return glm::dot(g / len, offset);
-}
-
-static float MvGradNoise3(glm::vec3 p, uint32_t seed) {
-    glm::vec3 pf = glm::floor(p);
-    glm::vec3 f = p - pf;
-    glm::vec3 u = f * f * f * (f * (f * 6.0f - 15.0f) + 10.0f);// quintic fade
-    int xi = static_cast<int>(pf.x), yi = static_cast<int>(pf.y), zi = static_cast<int>(pf.z);
-
-    auto corner = [&](int dx, int dy, int dz) {
-        return MvGradDot(xi + dx, yi + dy, zi + dz, f - glm::vec3(dx, dy, dz), seed);
-    };
-    float x00 = glm::mix(corner(0, 0, 0), corner(1, 0, 0), u.x);
-    float x10 = glm::mix(corner(0, 1, 0), corner(1, 1, 0), u.x);
-    float x01 = glm::mix(corner(0, 0, 1), corner(1, 0, 1), u.x);
-    float x11 = glm::mix(corner(0, 1, 1), corner(1, 1, 1), u.x);
-    return glm::mix(glm::mix(x00, x10, u.y), glm::mix(x01, x11, u.y), u.z);// ~[-0.7, 0.7]
-}
-
-static float MvGradFbm01(glm::vec3 p, int octaves, uint32_t seed) {
-    float sum = 0.0f, amp = 0.5f;
-    for (int i = 0; i < octaves; i++) {
-        sum += amp * MvGradNoise3(p, seed + static_cast<uint32_t>(i) * 101u);
-        p *= 2.0f;
-        amp *= 0.5f;
-    }
-    return glm::clamp(0.5f + sum * 1.2f, 0.0f, 1.0f);
-}
-
-// Fills the volume with a procedural terrain (heightfield + caves + ore
-// speckles + floating crystal spheres), rebuilds the brick occupancy grid,
-// marks everything for GPU upload and enables the pass.
-void MicroVoxelPass::GenerateDemoVolume(uint32_t seed) {
-    gridDim -= gridDim % brickDim;// Guard against non-brick-aligned sizes
-    const uint32_t N = static_cast<uint32_t>(gridDim);
-    const uint32_t B = static_cast<uint32_t>(brickDim);
-    const uint32_t BG = N / B;
-
-    _volume.assign(static_cast<size_t>(N) * N * N, 0);
-    _occupancy.assign(static_cast<size_t>(BG) * BG * BG, 0);
-    auto voxelAt = [this, N](uint32_t x, uint32_t y, uint32_t z) -> uint8_t& {
-        return _volume[(static_cast<size_t>(z) * N + y) * N + x];
-    };
-
-    // Material palette (index 0 = air)
-    enum : uint8_t { MatGrass = 1, MatDirt = 2, MatStone = 3, MatSnow = 4, MatSand = 5, MatOre = 6, MatCrystal = 7 };
-    _paletteRGBA.assign(256 * 4, 0);
-    auto setPalette = [this](uint8_t idx, uint8_t r, uint8_t g, uint8_t b) {
-        _paletteRGBA[idx * 4 + 0] = r;
-        _paletteRGBA[idx * 4 + 1] = g;
-        _paletteRGBA[idx * 4 + 2] = b;
-        _paletteRGBA[idx * 4 + 3] = 255;
-    };
-    for (int i = 8; i < 256; i++)
-        setPalette(static_cast<uint8_t>(i), 128, 128, 128);
-    setPalette(MatGrass, 64, 140, 46);
-    setPalette(MatDirt, 107, 77, 46);
-    setPalette(MatStone, 122, 122, 128);
-    setPalette(MatSnow, 235, 240, 250);
-    setPalette(MatSand, 204, 184, 122);
-    setPalette(MatOre, 242, 191, 64);
-    setPalette(MatCrystal, 115, 191, 242);
-
-    // Terrain heightfield: gradient-noise fbm with gentle amplitude (~0.28
-    // height/width ratio) so the terrain reads as rolling hills rather than
-    // the 1:1-aspect spikes the first value-noise recipe produced.
-    const float baseH = 0.10f * static_cast<float>(N);
-    const float varH = 0.34f * static_cast<float>(N);
-    const float snowLine = baseH + 0.75f * varH;
-    const float sandLine = baseH + 0.12f * varH;
-    std::vector<float> heights(static_cast<size_t>(N) * N);
-    for (uint32_t z = 0; z < N; z++) {
-        for (uint32_t x = 0; x < N; x++) {
-            float h01 = MvGradFbm01(glm::vec3(x, 0.0f, z) * 0.010f, 5, seed);
-            h01 = std::pow(h01, 1.6f);// Bias toward valleys with occasional peaks
-            heights[z * N + x] = baseH + h01 * varH;
-        }
-    }
-
-    // Column fill, parallelized over z slices (cells are disjoint per thread)
-    const uint32_t threadCount = std::max(1u, std::thread::hardware_concurrency());
-    std::vector<uint32_t> threadSolidCounts(threadCount, 0);
-    {
-        std::vector<std::thread> workers;
-        workers.reserve(threadCount);
-        for (uint32_t ti = 0; ti < threadCount; ti++) {
-            workers.emplace_back([&, ti]() {
-                uint32_t localSolid = 0;
-                for (uint32_t z = ti; z < N; z += threadCount) {
-                    for (uint32_t x = 0; x < N; x++) {
-                        const float h = heights[z * N + x];
-                        const auto top = static_cast<uint32_t>(h);
-                        for (uint32_t y = 0; y <= top && y < N; y++) {
-                            // Carve caves below the surface crust
-                            if (y + 4 < top) {
-                                float cave = MvFbm3(glm::vec3(x, y, z) * 0.045f, 3, seed + 7u);
-                                if (cave > 0.62f) continue;
-                            }
-                            uint8_t mat = MatStone;
-                            const uint32_t depth = top - y;
-                            if (depth == 0) {
-                                mat = (h > snowLine) ? MatSnow : ((h < sandLine) ? MatSand : MatGrass);
-                            } else if (depth <= 3) {
-                                mat = (h < sandLine) ? MatSand : MatDirt;
-                            } else if (MvHashNoise(
-                                           static_cast<int>(x), static_cast<int>(y), static_cast<int>(z), seed + 13u
-                                       )
-                                       > 0.995f) {
-                                mat = MatOre;
-                            }
-                            voxelAt(x, y, z) = mat;
-                            localSolid++;
-                        }
-                    }
-                }
-                threadSolidCounts[ti] = localSolid;
-            });
-        }
-        for (auto& w : workers)
-            w.join();
-    }
-    solidCount = 0;
-    for (uint32_t c : threadSolidCounts)
-        solidCount += c;
-
-    // A few floating crystal spheres to show the volume is truly 3D
-    for (int s = 0; s < 4; s++) {
-        glm::vec3 center(
-            (0.15f + 0.7f * MvHashNoise(s, 1, 0, seed + 23u)) * N,
-            (0.70f + 0.22f * MvHashNoise(s, 2, 0, seed + 23u)) * N,
-            (0.15f + 0.7f * MvHashNoise(s, 3, 0, seed + 23u)) * N
-        );
-        float radius = (0.02f + 0.03f * MvHashNoise(s, 4, 0, seed + 23u)) * N;
-        int r = static_cast<int>(radius) + 1;
-        for (int dz = -r; dz <= r; dz++) {
-            for (int dy = -r; dy <= r; dy++) {
-                for (int dx = -r; dx <= r; dx++) {
-                    if (glm::length(glm::vec3(dx, dy, dz)) > radius) continue;
-                    int x = static_cast<int>(center.x) + dx;
-                    int y = static_cast<int>(center.y) + dy;
-                    int z = static_cast<int>(center.z) + dz;
-                    if (x < 0 || y < 0 || z < 0 || x >= static_cast<int>(N) || y >= static_cast<int>(N)
-                        || z >= static_cast<int>(N))
-                        continue;
-                    uint8_t& v = voxelAt(x, y, z);
-                    if (v == 0) solidCount++;
-                    v = MatCrystal;
-                }
-            }
-        }
-    }
-
-    // Brick occupancy grid (any-solid per brick; empty bricks are skipped in
-    // one coarse DDA step)
-    for (uint32_t bz = 0; bz < BG; bz++) {
-        for (uint32_t by = 0; by < BG; by++) {
-            for (uint32_t bx = 0; bx < BG; bx++) {
-                bool occupied = false;
-                for (uint32_t z = bz * B; z < (bz + 1) * B && !occupied; z++) {
-                    for (uint32_t y = by * B; y < (by + 1) * B && !occupied; y++) {
-                        for (uint32_t x = bx * B; x < (bx + 1) * B; x++) {
-                            if (voxelAt(x, y, z) != 0) {
-                                occupied = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                _occupancy[(static_cast<size_t>(bz) * BG + by) * BG + bx] = occupied ? 1 : 0;
-            }
-        }
-    }
-
-    _dirty = true;
-    enabled = true;
-
-    if (auto* console = ConsoleSubsystem::Get()) {
-        console->Info(
-            fmt::format(
-                "MicroVoxel demo volume generated: {}^3 grid, {} solid voxels ({:.1f}% fill)",
-                N,
-                solidCount,
-                100.0f * static_cast<float>(solidCount) / static_cast<float>(static_cast<size_t>(N) * N * N)
-            )
-        );
-    }
-}
 
 // ---- OpenGL upload ------------------------------------------------------------
 
-void MicroVoxelPass::_uploadGL() {
-    const auto N = static_cast<GLsizei>(gridDim);
-    const auto BG = static_cast<GLsizei>(gridDim / brickDim);
+void MicroVoxelPass::RegisterVolume(VoxelVolumeComponent* v) {
+    if (!v) return;
+    for (auto* existing : _volumes)
+        if (existing == v) return;
+    _volumes.push_back(v);
+}
+
+void MicroVoxelPass::UnregisterVolume(VoxelVolumeComponent* v) {
+    for (size_t i = 0; i < _volumes.size(); i++) {
+        if (_volumes[i] == v) {
+            _volumes.erase(_volumes.begin() + static_cast<long>(i));
+            break;
+        }
+    }
+    if (_uploadedVolume == v) _uploadedVolume = nullptr;// force re-upload of whatever renders next
+}
+
+void MicroVoxelPass::_uploadGL(VoxelVolumeComponent* v) {
+    const auto N = static_cast<GLsizei>(v->gridDim);
+    const auto BG = static_cast<GLsizei>(v->gridDim / v->brickDim);
 
     if (_volumeTexGL == 0) {
         glGenTextures(1, &_volumeTexGL);
@@ -301,18 +86,18 @@ void MicroVoxelPass::_uploadGL() {
 
     glBindTexture(GL_TEXTURE_3D, _volumeTexGL);
     setupIntTexParams(GL_TEXTURE_3D);
-    glTexImage3D(GL_TEXTURE_3D, 0, GL_R8UI, N, N, N, 0, GL_RED_INTEGER, GL_UNSIGNED_BYTE, _volume.data());
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_R8UI, N, N, N, 0, GL_RED_INTEGER, GL_UNSIGNED_BYTE, v->volume.data());
 
     glBindTexture(GL_TEXTURE_3D, _occupancyTexGL);
     setupIntTexParams(GL_TEXTURE_3D);
-    glTexImage3D(GL_TEXTURE_3D, 0, GL_R8UI, BG, BG, BG, 0, GL_RED_INTEGER, GL_UNSIGNED_BYTE, _occupancy.data());
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_R8UI, BG, BG, BG, 0, GL_RED_INTEGER, GL_UNSIGNED_BYTE, v->occupancy.data());
 
     glBindTexture(GL_TEXTURE_2D, _paletteTexGL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, _paletteRGBA.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, v->paletteRGBA.data());
 
     glBindTexture(GL_TEXTURE_3D, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -326,8 +111,6 @@ void MicroVoxelPass::_uploadGL() {
         }
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    _dirty = false;
 }
 
 // Creates/resizes the GI accumulation ping-pong targets; history is cleared on
@@ -398,28 +181,16 @@ void MicroVoxelPass::_initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFor
     _uniformBG = GpuBindGroupBuilder(device, _uniformBGL).buffer(0, _uniformBuf, MICROVOXEL_UNIFORM_SIZE).build();
 }
 
-void MicroVoxelPass::_uploadGPU() {
-    const auto N = static_cast<uint32_t>(gridDim);
-    const auto BG = static_cast<uint32_t>(gridDim / brickDim);
+void MicroVoxelPass::_uploadGPU(VoxelVolumeComponent* v) {
+    const auto N = static_cast<uint32_t>(v->gridDim);
+    const auto BG = static_cast<uint32_t>(v->gridDim / v->brickDim);
 
     // Recreate on every upload: sizes can change with gridDim, and WebGPU
     // textures are immutable in size/format.
-    if (_texBG) {
-        wgpuBindGroupRelease(_texBG);
-        _texBG = nullptr;
-    }
-    if (_volumeTexGPU) {
-        wgpuTextureRelease(_volumeTexGPU);
-        _volumeTexGPU = nullptr;
-    }
-    if (_occupancyTexGPU) {
-        wgpuTextureRelease(_occupancyTexGPU);
-        _occupancyTexGPU = nullptr;
-    }
-    if (_paletteTexGPU) {
-        wgpuTextureRelease(_paletteTexGPU);
-        _paletteTexGPU = nullptr;
-    }
+    if (_texBG) { wgpuBindGroupRelease(_texBG); _texBG = nullptr; }
+    if (_volumeTexGPU) { wgpuTextureRelease(_volumeTexGPU); _volumeTexGPU = nullptr; }
+    if (_occupancyTexGPU) { wgpuTextureRelease(_occupancyTexGPU); _occupancyTexGPU = nullptr; }
+    if (_paletteTexGPU) { wgpuTextureRelease(_paletteTexGPU); _paletteTexGPU = nullptr; }
 
     auto make3D = [&](uint32_t dim, const uint8_t* data) -> WGPUTexture {
         WGPUTextureDescriptor td{};
@@ -442,8 +213,8 @@ void MicroVoxelPass::_uploadGPU() {
         return tex;
     };
 
-    _volumeTexGPU = make3D(N, _volume.data());
-    _occupancyTexGPU = make3D(BG, _occupancy.data());
+    _volumeTexGPU = make3D(N, v->volume.data());
+    _occupancyTexGPU = make3D(BG, v->occupancy.data());
 
     {
         WGPUTextureDescriptor td{};
@@ -462,7 +233,7 @@ void MicroVoxelPass::_uploadGPU() {
         layout.bytesPerRow = 256 * 4;
         layout.rowsPerImage = 1;
         WGPUExtent3D extent{ 256, 1, 1 };
-        wgpuQueueWriteTexture(_gpuQueue, &dst, _paletteRGBA.data(), _paletteRGBA.size(), &layout, &extent);
+        wgpuQueueWriteTexture(_gpuQueue, &dst, v->paletteRGBA.data(), v->paletteRGBA.size(), &layout, &extent);
     }
 
     _texBG = GpuBindGroupBuilder(_gpuDevice, _texBGL)
@@ -470,8 +241,6 @@ void MicroVoxelPass::_uploadGPU() {
                  .texture(1, _occupancyTexGPU)
                  .texture(2, _paletteTexGPU)
                  .build();
-
-    _dirty = false;
 }
 
 #endif// AE_USE_WEBGPU && __EMSCRIPTEN__
@@ -479,7 +248,17 @@ void MicroVoxelPass::_uploadGPU() {
 // ---- Execute --------------------------------------------------------------------
 
 void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
-    if (!enabled || _volume.empty()) return;
+    if (_volumes.empty()) return;
+    VoxelVolumeComponent* vol = _volumes[0];// stage 1: render the first registered volume
+    if (vol->volume.empty()) return;
+
+    // Read grid config + world origin from the active volume; the rest of the
+    // pass uses these as locals so the uniform setup below is unchanged.
+    const int gridDim = vol->gridDim;
+    const int brickDim = vol->brickDim;
+    const float voxelSize = vol->voxelSize;
+    const glm::vec3 volumeOrigin = vol->GetOrigin();
+    const bool needUpload = vol->dirty || _uploadedVolume != vol;
 
     CameraComponent* camera = ctx->GetMainCamera();
     if (!camera) return;
@@ -488,7 +267,8 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     const glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
     const glm::mat4 invViewProj = glm::inverse(viewProj);
     const glm::vec3 cameraPos = camera->GetEyePosition();
-    const glm::vec3 sunDir = light ? glm::normalize(-light->direction) : glm::normalize(glm::vec3(0.4f, 0.8f, 0.3f));
+    const glm::vec3 sunDir =
+        light ? glm::normalize(-light->direction) : glm::normalize(glm::vec3(0.4f, 0.8f, 0.3f));
     const glm::vec3 sunColor = light ? light->diffuse : glm::vec3(1.0f, 0.96f, 0.9f);
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
@@ -500,7 +280,11 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             if (!dev) return;
             _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, static_cast<uint32_t>(renderer.sceneRT->GetNumSamples()));
         }
-        if (_dirty) _uploadGPU();
+        if (needUpload) {
+            _uploadGPU(vol);
+            vol->dirty = false;
+            _uploadedVolume = vol;
+        }
         if (!_texBG) return;
 
         struct {
@@ -545,7 +329,11 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     ShaderProgram* shader = AssetManager::Get().GetShader("microvoxel");
     if (!shader) return;
 
-    if (_dirty) _uploadGL();
+    if (needUpload) {
+        _uploadGL(vol);
+        vol->dirty = false;
+        _uploadedVolume = vol;
+    }
 
     auto [width, height] = Window::Get()->GetPhysicalSize();
 

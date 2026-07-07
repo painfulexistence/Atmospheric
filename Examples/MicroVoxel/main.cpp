@@ -1,5 +1,6 @@
 #include "Atmospheric.hpp"
 #include "Atmospheric/camera_controller_3d.hpp"
+#include "Atmospheric/voxel_volume_component.hpp"
 
 // Micro voxel rendering demo: a raymarched 12.8m diorama of 5cm voxels
 // (procedural terrain + caves + ore + floating crystals), depth-composited
@@ -15,15 +16,16 @@ class MicroVoxelApp : public Application {
     }
 
     void OnLoad() override {
-        // The demo volume spans x,z in [-6.4, 6.4]; terrain tops out near y=5.6.
+        // A voxel volume attached to a GameObject at the origin. The grid is
+        // centred over the object in x/z (spanning [-6.4, 6.4]) and rises from
+        // y=0; it shows up in the scene tree like any other component.
+        auto* volumeObj = CreateGameObject();
+        volumeObj->SetPosition(glm::vec3(0.0f, 0.0f, 0.0f));
+        volumeObj->AddComponent<VoxelVolumeComponent>(/*seed=*/1337u);
+
         mainCamera->gameObject->SetPosition(glm::vec3(0.0f, 9.0f, 20.0f));
         mainCamera->Pitch(glm::radians(-14.0f));
         mainCamera->gameObject->AddComponent<CameraController3D>(/*moveSpeed=*/6.0f, /*lookSpeed=*/1.5f);
-
-        Renderer* renderer = GraphicsSubsystem::Get()->renderer.get();
-        if (auto* microVoxel = renderer->GetPass<MicroVoxelPass>()) {
-            microVoxel->GenerateDemoVolume(/*seed=*/1337u);
-        }
 
         ConsoleSubsystem::Get()->Info("MicroVoxel loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
         ConsoleSubsystem::Get()->Info("The terrain block ahead is raymarched 5cm voxels — no triangles.");

@@ -32,6 +32,7 @@ class GraphicsSubsystem;
 class ShaderProgram;
 class Renderer;
 class CameraComponent;
+class VoxelVolumeComponent;
 
 struct RenderCommand {
     MeshHandle mesh;
@@ -324,8 +325,8 @@ private:
 // Micro voxel raymarch (experimental): a fullscreen two-level DDA over a
 // dense voxel volume in a 3D texture, depth-composited with the rasterized
 // scene. Contrast with VoxelChunkPass, which meshes 1m macro voxels into
-// triangles. Inert until GenerateDemoVolume() builds and enables the demo
-// volume. See micro_voxel_pass.cpp.
+// triangles. Renders every registered VoxelVolumeComponent; inert when
+// none are attached. See micro_voxel_pass.cpp.
 class MicroVoxelPass : public RenderPass {
 public:
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
@@ -333,16 +334,13 @@ public:
 #endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
-    // Builds the procedural demo volume (terrain + caves + ore + floating
-    // crystals) on the CPU, marks it for GPU upload, and enables the pass.
-    // Call again (with a different seed) to regenerate.
-    void GenerateDemoVolume(uint32_t seed = 1337u);
+    // Volume data lives in VoxelVolumeComponent; components register/unregister
+    // themselves here on attach/detach. Stage 1 renders the first registered
+    // volume (single-volume); the multi-volume per-object raymarch is stage 2.
+    void RegisterVolume(VoxelVolumeComponent* v);
+    void UnregisterVolume(VoxelVolumeComponent* v);
 
-    bool enabled = false;
-    glm::vec3 volumeOrigin = glm::vec3(-6.4f, 0.0f, -6.4f);
-    float voxelSize = 0.05f;// 5 cm voxels (256^3 => a 12.8m diorama)
-    int gridDim = 256;// voxels per edge (cubic; must be a multiple of brickDim)
-    int brickDim = 8;
+    // Global lighting / GI settings shared by all volumes.
     int maxRaySteps = 256;
     float sunIntensity = 3.0f;
     float ambient = 0.6f;
@@ -354,15 +352,13 @@ public:
     float giBlend = 0.93f;// history weight per frame
     int debugMode = 0;// 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
     bool shadowEnabled = true;
-    uint32_t solidCount = 0;
 
 private:
-    void _uploadGL();
+    void _uploadGL(VoxelVolumeComponent* v);
     void _ensureGIRenderTargets(int w, int h);
-    std::vector<uint8_t> _volume;// gridDim^3 palette indices, 0 = air
-    std::vector<uint8_t> _occupancy;// (gridDim/brickDim)^3, nonzero = brick has voxels
-    std::vector<uint8_t> _paletteRGBA;// 256 * 4, albedo per material index
-    bool _dirty = false;
+
+    std::vector<VoxelVolumeComponent*> _volumes;
+    VoxelVolumeComponent* _uploadedVolume = nullptr;// which volume the GPU textures currently hold
 
     GLuint _volumeTexGL = 0;
     GLuint _occupancyTexGL = 0;
@@ -381,7 +377,7 @@ private:
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
-    void _uploadGPU();
+    void _uploadGPU(VoxelVolumeComponent* v);
     WGPUDevice _gpuDevice = nullptr;
     WGPUQueue _gpuQueue = nullptr;
     WGPURenderPipeline _pipeline = nullptr;
