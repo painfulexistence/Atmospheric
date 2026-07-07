@@ -20,7 +20,7 @@ struct Uniforms {
     sunColAmb:    vec4<f32>,   // sunColor.xyz, ambient
     gridDim:      vec4<i32>,   // gridDim.xyz, brickDim
     misc:         vec4<i32>,   // maxRaySteps, shadowEnabled, _, _
-    params:       vec4<f32>,   // aoStrength, _, _, _
+    params:       vec4<f32>,   // aoStrength, emissiveStrength, _, _
 };
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(1) @binding(0) var volume:    texture_3d<u32>;
@@ -240,7 +240,9 @@ struct FOut {
     let cell = clamp(vec3<i32>(floor((hitPos + rd * vsize * 0.01 - u.originVoxel.xyz) / vsize)),
                      vec3<i32>(0), u.gridDim.xyz - 1);
 
-    var albedo = textureLoad(palette, vec2<i32>(i32(h.material), 0), 0).rgb;
+    let pal = textureLoad(palette, vec2<i32>(i32(h.material), 0), 0);
+    var albedo = pal.rgb;
+    let emission = pal.a;    // 0..1 self-illumination (0 for normal materials)
     albedo = albedo * (0.85 + 0.3 * voxelHash(cell));
 
     let L = normalize(u.sunDirInt.xyz);
@@ -260,8 +262,12 @@ struct FOut {
 
     let skyAmbient = mix(vec3<f32>(0.20, 0.22, 0.28), vec3<f32>(0.45, 0.55, 0.75), h.normal.y * 0.5 + 0.5);
     let direct = u.sunDirInt.w * u.sunColAmb.xyz * (1.0 / PI) * ndl * shadow;
-    // AO fully attenuates ambient; a stylized 30% also darkens direct.
-    let color = albedo * (direct * (0.7 + 0.3 * ao) + skyAmbient * u.sunColAmb.w * ao);
+    // AO fully attenuates ambient; a stylized 30% also darkens direct. Emission
+    // is self-lit, added after AO so glowing voxels stay bright in crevices.
+    // (The WebGPU path keeps flat ambient + self-emission; traced GI and point
+    // lights are GL-only for now, matching the GI split.)
+    let emissive = albedo * emission * u.params.y;
+    let color = albedo * (direct * (0.7 + 0.3 * ao) + skyAmbient * u.sunColAmb.w * ao) + emissive;
 
     // Scene convention: gamma-encoded into sceneRT (see FORWARD_OPAQUE_WGSL);
     // the tonemap pass decodes with pow(2.2) first.

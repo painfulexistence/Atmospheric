@@ -358,6 +358,21 @@ public:
     int debugMode = 0;// 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
     bool shadowEnabled = true;
 
+    // Emissive voxels: palette alpha is per-material emission strength; this
+    // HDR multiplier scales it in the main pass and the GI bounce (so glowing
+    // voxels also bleed indirect light onto neighbors). GL + WebGPU main pass;
+    // GI pickup is GL-only.
+    float emissiveStrength = 4.0f;
+
+    // Local point lights (warm fill). GL path only for now (mirrors the GI
+    // split); colors are un-scaled here and multiplied by intensity on upload.
+    static constexpr int kMaxPointLights = 4;
+    int pointLightCount = 0;
+    glm::vec3 pointLightPos[kMaxPointLights]{};
+    glm::vec3 pointLightColor[kMaxPointLights]{ glm::vec3(1.0f) };
+    float pointLightIntensity[kMaxPointLights]{};
+    float pointLightRadius[kMaxPointLights]{};
+
 private:
     void _uploadGL(VoxelVolumeComponent* v);
     void _ensureGIRenderTargets(int w, int h);

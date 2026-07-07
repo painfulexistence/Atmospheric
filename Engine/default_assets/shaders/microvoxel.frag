@@ -45,6 +45,15 @@ uniform int   u_shadowEnabled;
 uniform float u_aoStrength;    // 0 disables corner AO
 uniform float u_giStrength;    // 0 = flat ambient, >0 = traced indirect
 uniform int   u_debugMode;     // 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
+uniform float u_emissiveStrength;  // HDR multiplier for palette-alpha emission
+
+// Local point lights (warm fill). Colors arrive pre-scaled by intensity;
+// falloff reaches 0 at the radius. u_pointLightCount <= MAX_POINT_LIGHTS.
+const int MAX_POINT_LIGHTS = 4;
+uniform int   u_pointLightCount;
+uniform vec3  u_pointLightPos[MAX_POINT_LIGHTS];
+uniform vec3  u_pointLightColor[MAX_POINT_LIGHTS];
+uniform float u_pointLightRadius[MAX_POINT_LIGHTS];
 
 out vec4 fragColor;
 
@@ -233,7 +242,9 @@ void main() {
     ivec3 cell = clamp(ivec3(floor((hitPos + rd * u_voxelSize * 0.01 - u_volumeOrigin) / u_voxelSize)),
                        ivec3(0), ivec3(u_gridDim - 1));
 
-    vec3 albedo = texelFetch(u_palette, ivec2(int(h.material), 0), 0).rgb;
+    vec4 pal = texelFetch(u_palette, ivec2(int(h.material), 0), 0);
+    vec3 albedo = pal.rgb;
+    float emission = pal.a;    // 0..1 self-illumination (0 for normal materials)
     albedo *= 0.85 + 0.3 * voxelHash(cell);
 
     vec3 L = normalize(u_sunDir);
@@ -261,10 +272,34 @@ void main() {
         indirect = skyAmbient * u_ambient;
     }
 
+    // Local point lights: distance falloff + N·L, with an optional shadow ray
+    // (same voxel DDA, gated on the shadow toggle to keep the cost bounded).
+    vec3 pointLight = vec3(0.0);
+    for (int i = 0; i < MAX_POINT_LIGHTS; i++) {
+        if (i >= u_pointLightCount) break;
+        vec3 d = u_pointLightPos[i] - hitPos;
+        float dist = length(d);
+        float radius = u_pointLightRadius[i];
+        if (dist >= radius) continue;
+        vec3 Lp = d / max(dist, 1e-4);
+        float pndl = max(dot(h.normal, Lp), 0.0);
+        if (pndl <= 0.0) continue;
+        float a = 1.0 - dist / radius;
+        float atten = a * a;    // smooth falloff, exactly 0 at the radius
+        float psh = 1.0;
+        if (u_shadowEnabled != 0) {
+            Hit sh = raycast(hitPos + h.normal * u_voxelSize * 0.51, Lp);
+            if (sh.hit && sh.t < dist) psh = 0.0;
+        }
+        pointLight += u_pointLightColor[i] * (1.0 / PI) * pndl * atten * psh;
+    }
+
     vec3 direct = u_sunColor * u_sunIntensity * (1.0 / PI) * ndl * shadow;
     // AO fully attenuates indirect; a stylized 30% also darkens direct so
-    // corners stay readable in full sun (Teardown-ish look).
-    vec3 color = albedo * (direct * (0.7 + 0.3 * ao) + indirect * ao);
+    // corners stay readable in full sun (Teardown-ish look). Emission is
+    // self-lit, added after AO so glowing voxels stay bright in their crevices.
+    vec3 emissive = albedo * emission * u_emissiveStrength;
+    vec3 color = albedo * (direct * (0.7 + 0.3 * ao) + indirect * ao + pointLight * ao) + emissive;
 
     // Debug visualization of individual terms (keys in the MicroVoxel example)
     if (u_debugMode == 1) color = albedo;

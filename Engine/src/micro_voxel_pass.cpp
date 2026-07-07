@@ -317,7 +317,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             glm::vec4(sunColor, ambient),
             glm::ivec4(gridDim, gridDim, gridDim, brickDim),
             glm::ivec4(maxRaySteps, shadowEnabled ? 1 : 0, 0, 0),
-            glm::vec4(aoStrength, 0.0f, 0.0f, 0.0f),
+            glm::vec4(aoStrength, emissiveStrength, 0.0f, 0.0f),
         };
         static_assert(sizeof(u) == MICROVOXEL_UNIFORM_SIZE, "uniform layout must match MICROVOXEL_WGSL");
         wgpuQueueWriteBuffer(_gpuQueue, _uniformBuf, 0, &u, sizeof(u));
@@ -389,6 +389,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         giShader->SetUniform(std::string("u_sunIntensity"), sunIntensity);
         giShader->SetUniform(std::string("u_frameIndex"), _giFrame);
         giShader->SetUniform(std::string("u_blend"), giBlend);
+        giShader->SetUniform(std::string("u_emissiveStrength"), emissiveStrength);
         giShader->SetUniform(std::string("u_volume"), 0);
         giShader->SetUniform(std::string("u_occupancy"), 1);
         giShader->SetUniform(std::string("u_palette"), 2);
@@ -437,6 +438,17 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     shader->SetUniform(std::string("u_aoStrength"), aoStrength);
     shader->SetUniform(std::string("u_giStrength"), giActive ? giStrength : 0.0f);
     shader->SetUniform(std::string("u_debugMode"), debugMode);
+    shader->SetUniform(std::string("u_emissiveStrength"), emissiveStrength);
+    const int lightCount = std::min(pointLightCount, kMaxPointLights);
+    shader->SetUniform(std::string("u_pointLightCount"), lightCount);
+    for (int i = 0; i < lightCount; i++) {
+        const std::string idx = "[" + std::to_string(i) + "]";
+        shader->SetUniform(std::string("u_pointLightPos") + idx, pointLightPos[i]);
+        // Fold intensity into the color the shader receives, so the shader loop
+        // stays a plain scaled-radiance accumulation.
+        shader->SetUniform(std::string("u_pointLightColor") + idx, pointLightColor[i] * pointLightIntensity[i]);
+        shader->SetUniform(std::string("u_pointLightRadius") + idx, pointLightRadius[i]);
+    }
     shader->SetUniform(std::string("u_volume"), 0);
     shader->SetUniform(std::string("u_occupancy"), 1);
     shader->SetUniform(std::string("u_palette"), 2);

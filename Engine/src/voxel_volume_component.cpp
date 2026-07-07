@@ -114,16 +114,28 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
         return volume[(static_cast<size_t>(z) * N + y) * N + x];
     };
 
-    // Material palette (index 0 = air)
-    enum : uint8_t { MatGrass = 1, MatDirt = 2, MatStone = 3, MatSnow = 4, MatSand = 5, MatOre = 6, MatCrystal = 7 };
+    // Material palette (index 0 = air). The alpha channel is repurposed as
+    // per-material emission strength (0 = not emissive): voxels are always
+    // opaque, so alpha is free, and the shaders read it as self-illumination
+    // that the GI bounce also picks up (emissive voxels light their neighbors).
+    enum : uint8_t {
+        MatGrass = 1,
+        MatDirt = 2,
+        MatStone = 3,
+        MatSnow = 4,
+        MatSand = 5,
+        MatOre = 6,
+        MatCrystal = 7,
+        MatGlow = 8
+    };
     paletteRGBA.assign(256 * 4, 0);
-    auto setPalette = [this](uint8_t idx, uint8_t r, uint8_t g, uint8_t b) {
+    auto setPalette = [this](uint8_t idx, uint8_t r, uint8_t g, uint8_t b, uint8_t emission = 0) {
         paletteRGBA[idx * 4 + 0] = r;
         paletteRGBA[idx * 4 + 1] = g;
         paletteRGBA[idx * 4 + 2] = b;
-        paletteRGBA[idx * 4 + 3] = 255;
+        paletteRGBA[idx * 4 + 3] = emission;
     };
-    for (int i = 8; i < 256; i++)
+    for (int i = 9; i < 256; i++)
         setPalette(static_cast<uint8_t>(i), 128, 128, 128);
     setPalette(MatGrass, 64, 140, 46);
     setPalette(MatDirt, 107, 77, 46);
@@ -131,7 +143,8 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
     setPalette(MatSnow, 235, 240, 250);
     setPalette(MatSand, 204, 184, 122);
     setPalette(MatOre, 242, 191, 64);
-    setPalette(MatCrystal, 115, 191, 242);
+    setPalette(MatCrystal, 115, 191, 242, 160);// cool cyan glow
+    setPalette(MatGlow, 255, 140, 48, 255);// warm glowstone, full emission
 
     // Terrain heightfield: gradient-noise fbm with gentle amplitude (~0.28
     // height/width ratio) so the terrain reads as rolling hills rather than
@@ -215,6 +228,33 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
                     uint8_t& v = voxelAt(x, y, z);
                     if (v == 0) solidCount++;
                     v = MatCrystal;
+                }
+            }
+        }
+    }
+
+    // A handful of warm glowstone orbs resting on the terrain surface. These
+    // are emissive (full alpha), so the GI bounce ray picks them up and washes
+    // the surrounding stone/dirt with warm indirect light — the signature
+    // voxel-GI effect (glowing blocks lighting their neighbors), nearly free
+    // because the bounce rays are already being traced.
+    for (int g = 0; g < 6; g++) {
+        int gx = static_cast<int>((0.18f + 0.64f * MvHashNoise(g, 5, 0, seed + 31u)) * N);
+        int gz = static_cast<int>((0.18f + 0.64f * MvHashNoise(g, 6, 0, seed + 31u)) * N);
+        if (gx < 0 || gz < 0 || gx >= static_cast<int>(N) || gz >= static_cast<int>(N)) continue;
+        int gy = static_cast<int>(heights[static_cast<size_t>(gz) * N + gx]) + 1;// sit just above the surface
+        const int rad = 2;
+        for (int dz = -rad; dz <= rad; dz++) {
+            for (int dy = -rad; dy <= rad; dy++) {
+                for (int dx = -rad; dx <= rad; dx++) {
+                    if (dx * dx + dy * dy + dz * dz > rad * rad) continue;
+                    int x = gx + dx, y = gy + dy, z = gz + dz;
+                    if (x < 0 || y < 0 || z < 0 || x >= static_cast<int>(N) || y >= static_cast<int>(N)
+                        || z >= static_cast<int>(N))
+                        continue;
+                    uint8_t& v = voxelAt(x, y, z);
+                    if (v == 0) solidCount++;
+                    v = MatGlow;
                 }
             }
         }

@@ -27,10 +27,24 @@ class MicroVoxelApp : public Application {
         mainCamera->Pitch(glm::radians(-14.0f));
         mainCamera->gameObject->AddComponent<CameraController3D>(/*moveSpeed=*/6.0f, /*lookSpeed=*/1.5f);
 
+        // A warm local point light pooling over the terrain, to show off local
+        // illumination alongside the sun. Toggle with P. (The scene also has
+        // emissive glowstone orbs whose glow the GI bounce spreads onto nearby
+        // stone — that effect is on by default with GI.)
+        if (Renderer* renderer = GraphicsSubsystem::Get()->renderer.get()) {
+            if (auto* mv = renderer->GetPass<MicroVoxelPass>()) {
+                mv->pointLightCount = 1;
+                mv->pointLightPos[0] = glm::vec3(2.5f, 3.4f, 2.5f);
+                mv->pointLightColor[0] = glm::vec3(1.0f, 0.55f, 0.22f);// warm orange
+                mv->pointLightIntensity[0] = 7.0f;
+                mv->pointLightRadius[0] = 7.5f;
+            }
+        }
+
         ConsoleSubsystem::Get()->Info("MicroVoxel loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
         ConsoleSubsystem::Get()->Info("The terrain block ahead is raymarched 5cm voxels — no triangles.");
         ConsoleSubsystem::Get()->Info(
-            "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H toggle GI/AO/shadow."
+            "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P toggle GI/AO/shadow/point light."
         );
     }
 
@@ -66,6 +80,10 @@ class MicroVoxelApp : public Application {
         if (input->IsKeyPressed(Key::H)) {
             mv->shadowEnabled = !mv->shadowEnabled;
             console->Info(mv->shadowEnabled ? "MicroVoxel sun shadow: on" : "MicroVoxel sun shadow: off");
+        }
+        if (input->IsKeyPressed(Key::P)) {
+            mv->pointLightCount = (mv->pointLightCount > 0) ? 0 : 1;
+            console->Info(mv->pointLightCount > 0 ? "MicroVoxel point light: on" : "MicroVoxel point light: off");
         }
     }
 };
