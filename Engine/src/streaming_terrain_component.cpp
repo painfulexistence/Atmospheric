@@ -19,7 +19,13 @@ void StreamingTerrainComponent::OnAttach() {
 }
 
 void StreamingTerrainComponent::OnTick(float /*dt*/) {
-    if (!_camera) return;
+    if (!_camera) {
+        // Scene-load ordering: if this terrain was instantiated before the
+        // camera entity, the main camera wasn't available at OnAttach — retry
+        // lazily until it exists.
+        if (Application* app = gameObject->GetApp()) _camera = app->GetMainCamera();
+        if (!_camera) return;
+    }
     const glm::vec3 camPos = _camera->gameObject->GetPosition();
     const glm::mat4 viewProj = _camera->GetProjectionMatrix() * _camera->GetViewMatrix();
     _streamer.Update(camPos, viewProj);

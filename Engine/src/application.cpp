@@ -30,6 +30,7 @@
 #include "shape_renderer_component.hpp"
 #include "sprite_3d_component.hpp"
 #include "sprite_component.hpp"
+#include "streaming_terrain_component.hpp"
 #include "text_2d_component.hpp"
 #include "text_3d_component.hpp"
 #include "transform_component.hpp"
@@ -507,6 +508,60 @@ void Application::RegisterComponents() {
         d.Read("gridDim", c->gridDim);
         d.Read("voxelSize", c->voxelSize);
         return c;
+    });
+
+    // ── StreamingTerrainComponent (streamed open-world terrain) ────────────────
+    // Declares the *scalar* props of a streaming terrain. The height /
+    // entity-scatter / splat callbacks are code-only (std::function): a
+    // JSON-declared terrain uses the built-in OpenSimplex2 FBm height source
+    // (parameterized by "noise") and has no entity scatter. For a custom
+    // generator or vegetation, grab the component after load and set the
+    // callbacks in C++.
+    ComponentFactory::Register("StreamingTerrain", [](GameObject* o, Deserializer& d) -> Component* {
+        StreamingTerrainProps p;
+        d.Read("worldSize", p.worldSize, p.worldSize);
+        d.Read("tileSize", p.tileSize, p.tileSize);
+        d.Read("heightScale", p.heightScale, p.heightScale);
+        d.Read("tileHeightRes", p.tileHeightRes, p.tileHeightRes);
+        d.Read("tileMeshRes", p.tileMeshRes, p.tileMeshRes);
+        d.Read("lodCount", p.lodCount, p.lodCount);
+        d.Read("lod0RadiusTiles", p.lod0RadiusTiles, p.lod0RadiusTiles);
+        d.Read("skirtDepth", p.skirtDepth, p.skirtDepth);
+        d.Read("uploadsPerFrame", p.uploadsPerFrame, p.uploadsPerFrame);
+        d.Read("tessellationFactor", p.tessellationFactor, p.tessellationFactor);
+        d.Read("paletteIndex", p.paletteIndex, p.paletteIndex);
+        d.Read("fogDensity", p.fogDensity, p.fogDensity);
+        d.Read("fogColor", p.fogColor, p.fogColor);
+        d.Read("cacheDir", p.cacheDir, p.cacheDir);
+        int cacheVersion = 0;
+        d.Read("cacheVersion", cacheVersion, 0);
+        p.cacheVersion = static_cast<uint32_t>(cacheVersion);
+        d.Read("splatRes", p.splatRes, p.splatRes);
+        d.Read("colliderRadiusTiles", p.colliderRadiusTiles, p.colliderRadiusTiles);
+        d.Read("colliderResolution", p.colliderResolution, p.colliderResolution);
+        d.Read("entityRadiusTiles", p.entityRadiusTiles, p.entityRadiusTiles);
+        d.Read("entityTilesPerFrame", p.entityTilesPerFrame, p.entityTilesPerFrame);
+
+        if (auto noise = d.ReadObject("noise")) {
+            noise->Read("seed", p.noise.seed, p.noise.seed);
+            noise->Read("frequency", p.noise.frequency, p.noise.frequency);
+            noise->Read("octaves", p.noise.octaves, p.noise.octaves);
+            noise->Read("lacunarity", p.noise.lacunarity, p.noise.lacunarity);
+            noise->Read("gain", p.noise.gain, p.noise.gain);
+        }
+
+        // Optional shared detail layers: [{ "albedo": "...", "normal": "...",
+        // "tiling": 32 }]. Splat weights still come from a code-side splatFn (or
+        // the automatic slope/height fallback when none is set).
+        for (auto& layer : d.ReadArray("layers")) {
+            TerrainLayerDesc desc;
+            layer->Read("albedo", desc.albedoPath, std::string());
+            layer->Read("normal", desc.normalPath, std::string());
+            layer->Read("tiling", desc.tiling, desc.tiling);
+            p.layers.push_back(desc);
+        }
+
+        return new StreamingTerrainComponent(o, p);
     });
 
     // ── ShapeRendererComponent ────────────────────────────────────────────────

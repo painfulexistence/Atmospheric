@@ -16,6 +16,43 @@ is shaped the way it is, and the phased path to the full AAA feature set
 `Engine/include/Atmospheric/terrain_streamer.hpp` /
 `Engine/src/terrain_streamer.cpp`, demo in `Examples/TerrainStreaming`.
 
+### Using it
+
+`StreamingTerrainComponent` wraps the streamer as a scene component (owns it,
+prewarms on attach, streams from OnTick relative to the main camera). Add it in
+C++:
+
+```cpp
+auto* go = CreateGameObject(glm::vec3(0.0f));
+go->AddComponent<StreamingTerrainComponent>(StreamingTerrainProps{
+    .worldSize = 10240.0f, .heightScale = 500.0f,
+    .noise = { .seed = 20260705, .frequency = 0.0007f, .octaves = 9 },
+    .cacheDir = FileSystem::Get().BasePath() + "cache/terrain",
+});
+```
+
+…or declare its **scalar** props in a scene JSON entity (registered as
+`StreamingTerrain` in `Application::RegisterComponents`):
+
+```json
+{ "name": "Terrain", "components": [
+  { "type": "StreamingTerrain",
+    "worldSize": 10240, "tileSize": 512, "heightScale": 500,
+    "lodCount": 4, "lod0RadiusTiles": 2, "paletteIndex": 3,
+    "fogDensity": 0.00018, "fogColor": [0.62, 0.71, 0.85],
+    "noise": { "seed": 20260705, "frequency": 0.0007, "octaves": 9 },
+    "cacheDir": "cache/terrain",
+    "layers": [ { "albedo": "assets/grass.png", "tiling": 64 } ] } ] }
+```
+
+The height / entity-scatter / splat **callbacks** (`heightFn`,
+`placeEntitiesFn`, `spawnEntityFn`, `splatFn`) are `std::function` — not
+expressible in JSON. A JSON-declared terrain uses the built-in OpenSimplex2
+FBm source (from `noise`) and has no entity scatter; for a custom generator or
+vegetation, grab the component after load and set the callbacks in C++. That
+boundary — data-driven scalars, code-driven generators — is deliberate, not a
+gap to close.
+
 ### Core ideas
 
 **Whole world always resident, at *some* LOD.** The world is split into
