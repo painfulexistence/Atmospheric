@@ -46,7 +46,7 @@ static void DrawScreenQuadVAO(GLuint vao) {
 
 static float MvHashNoise(int x, int y, int z, uint32_t seed) {
     uint32_t h = static_cast<uint32_t>(x) * 374761393u + static_cast<uint32_t>(y) * 668265263u
-               + static_cast<uint32_t>(z) * 2246822519u + seed * 3266489917u;
+                 + static_cast<uint32_t>(z) * 2246822519u + seed * 3266489917u;
     h = (h ^ (h >> 13)) * 1274126177u;
     h ^= h >> 16;
     return static_cast<float>(h & 0xFFFFu) / 65535.0f;
@@ -141,7 +141,8 @@ void MicroVoxelPass::GenerateDemoVolume(uint32_t seed) {
         _paletteRGBA[idx * 4 + 2] = b;
         _paletteRGBA[idx * 4 + 3] = 255;
     };
-    for (int i = 8; i < 256; i++) setPalette(static_cast<uint8_t>(i), 128, 128, 128);
+    for (int i = 8; i < 256; i++)
+        setPalette(static_cast<uint8_t>(i), 128, 128, 128);
     setPalette(MatGrass, 64, 140, 46);
     setPalette(MatDirt, 107, 77, 46);
     setPalette(MatStone, 122, 122, 128);
@@ -191,7 +192,10 @@ void MicroVoxelPass::GenerateDemoVolume(uint32_t seed) {
                                 mat = (h > snowLine) ? MatSnow : ((h < sandLine) ? MatSand : MatGrass);
                             } else if (depth <= 3) {
                                 mat = (h < sandLine) ? MatSand : MatDirt;
-                            } else if (MvHashNoise(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z), seed + 13u) > 0.995f) {
+                            } else if (MvHashNoise(
+                                           static_cast<int>(x), static_cast<int>(y), static_cast<int>(z), seed + 13u
+                                       )
+                                       > 0.995f) {
                                 mat = MatOre;
                             }
                             voxelAt(x, y, z) = mat;
@@ -202,10 +206,12 @@ void MicroVoxelPass::GenerateDemoVolume(uint32_t seed) {
                 threadSolidCounts[ti] = localSolid;
             });
         }
-        for (auto& w : workers) w.join();
+        for (auto& w : workers)
+            w.join();
     }
     solidCount = 0;
-    for (uint32_t c : threadSolidCounts) solidCount += c;
+    for (uint32_t c : threadSolidCounts)
+        solidCount += c;
 
     // A few floating crystal spheres to show the volume is truly 3D
     for (int s = 0; s < 4; s++) {
@@ -259,12 +265,14 @@ void MicroVoxelPass::GenerateDemoVolume(uint32_t seed) {
     enabled = true;
 
     if (auto* console = ConsoleSubsystem::Get()) {
-        console->Info(fmt::format(
-            "MicroVoxel demo volume generated: {}^3 grid, {} solid voxels ({:.1f}% fill)",
-            N,
-            solidCount,
-            100.0f * static_cast<float>(solidCount) / static_cast<float>(static_cast<size_t>(N) * N * N)
-        ));
+        console->Info(
+            fmt::format(
+                "MicroVoxel demo volume generated: {}^3 grid, {} solid voxels ({:.1f}% fill)",
+                N,
+                solidCount,
+                100.0f * static_cast<float>(solidCount) / static_cast<float>(static_cast<size_t>(N) * N * N)
+            )
+        );
     }
 }
 
@@ -396,10 +404,22 @@ void MicroVoxelPass::_uploadGPU() {
 
     // Recreate on every upload: sizes can change with gridDim, and WebGPU
     // textures are immutable in size/format.
-    if (_texBG) { wgpuBindGroupRelease(_texBG); _texBG = nullptr; }
-    if (_volumeTexGPU) { wgpuTextureRelease(_volumeTexGPU); _volumeTexGPU = nullptr; }
-    if (_occupancyTexGPU) { wgpuTextureRelease(_occupancyTexGPU); _occupancyTexGPU = nullptr; }
-    if (_paletteTexGPU) { wgpuTextureRelease(_paletteTexGPU); _paletteTexGPU = nullptr; }
+    if (_texBG) {
+        wgpuBindGroupRelease(_texBG);
+        _texBG = nullptr;
+    }
+    if (_volumeTexGPU) {
+        wgpuTextureRelease(_volumeTexGPU);
+        _volumeTexGPU = nullptr;
+    }
+    if (_occupancyTexGPU) {
+        wgpuTextureRelease(_occupancyTexGPU);
+        _occupancyTexGPU = nullptr;
+    }
+    if (_paletteTexGPU) {
+        wgpuTextureRelease(_paletteTexGPU);
+        _paletteTexGPU = nullptr;
+    }
 
     auto make3D = [&](uint32_t dim, const uint8_t* data) -> WGPUTexture {
         WGPUTextureDescriptor td{};
@@ -468,8 +488,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     const glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
     const glm::mat4 invViewProj = glm::inverse(viewProj);
     const glm::vec3 cameraPos = camera->GetEyePosition();
-    const glm::vec3 sunDir =
-        light ? glm::normalize(-light->direction) : glm::normalize(glm::vec3(0.4f, 0.8f, 0.3f));
+    const glm::vec3 sunDir = light ? glm::normalize(-light->direction) : glm::normalize(glm::vec3(0.4f, 0.8f, 0.3f));
     const glm::vec3 sunColor = light ? light->diffuse : glm::vec3(1.0f, 0.96f, 0.9f);
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)

@@ -354,15 +354,15 @@ void GraphicsSubsystem::DrawImGui(float dt) {
                     ImGui::TextDisabled("(not allocated)");
                 } else {
                     ImGui::Image(
-                        static_cast<ImTextureID>(static_cast<intptr_t>(texID)), ImVec2(192, 108), ImVec2(0, 1),
+                        static_cast<ImTextureID>(static_cast<intptr_t>(texID)),
+                        ImVec2(192, 108),
+                        ImVec2(0, 1),
                         ImVec2(1, 0)
                     );
                 }
                 ImGui::TreePop();
             };
-            rtNode(
-                "Scene Color RT (resolved)", renderer->msaaResolveRT ? renderer->msaaResolveRT->GetTextureID() : 0
-            );
+            rtNode("Scene Color RT (resolved)", renderer->msaaResolveRT ? renderer->msaaResolveRT->GetTextureID() : 0);
             rtNode(
                 "Scene Depth RT (resolved)", renderer->msaaResolveRT ? renderer->msaaResolveRT->GetDepthTextureID() : 0
             );

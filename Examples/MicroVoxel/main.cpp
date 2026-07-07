@@ -27,7 +27,9 @@ class MicroVoxelApp : public Application {
 
         ConsoleSubsystem::Get()->Info("MicroVoxel loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
         ConsoleSubsystem::Get()->Info("The terrain block ahead is raymarched 5cm voxels — no triangles.");
-        ConsoleSubsystem::Get()->Info("Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H toggle GI/AO/shadow.");
+        ConsoleSubsystem::Get()->Info(
+            "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H toggle GI/AO/shadow."
+        );
     }
 
     void OnUpdate(float /*dt*/, float /*time*/) override {
