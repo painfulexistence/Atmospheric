@@ -44,6 +44,7 @@ uniform float u_ambient;
 uniform int   u_shadowEnabled;
 uniform float u_aoStrength;    // 0 disables corner AO
 uniform float u_giStrength;    // 0 = flat ambient, >0 = traced indirect
+uniform int   u_debugMode;     // 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
 
 out vec4 fragColor;
 
@@ -264,6 +265,14 @@ void main() {
     // AO fully attenuates indirect; a stylized 30% also darkens direct so
     // corners stay readable in full sun (Teardown-ish look).
     vec3 color = albedo * (direct * (0.7 + 0.3 * ao) + indirect * ao);
+
+    // Debug visualization of individual terms (keys in the MicroVoxel example)
+    if (u_debugMode == 1) color = albedo;
+    else if (u_debugMode == 2) color = h.normal * 0.5 + 0.5;
+    else if (u_debugMode == 3) color = vec3(ao);
+    else if (u_debugMode == 4) color = vec3(shadow);
+    else if (u_debugMode == 5) color = texture(u_giTex, v_uv).rgb;
+    else if (u_debugMode == 6) color = vec3(float(h.material) / 8.0);
 
     // Scene convention: gamma-encoded color into sceneRT (see pbr.frag); the
     // tonemap pass decodes with pow(2.2) first.
