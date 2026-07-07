@@ -321,7 +321,10 @@ uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& c
     // [16 bits: render queue] [16 bits: depth] [16 bits: material] [16 bits: mesh]
     uint64_t key = 0;
     key |= static_cast<uint64_t>(renderQueue & 0xFFFF) << 48;
-    key |= static_cast<uint64_t>(static_cast<uint16_t>(depth * 100.0f) & 0xFFFF) << 32;
+    // Clamp before converting: float-to-uint16 is undefined past 65535, and
+    // open-world depths exceed 655m routinely. Distant draws saturate the
+    // depth bits and fall back to material/mesh ordering, which is fine.
+    key |= static_cast<uint64_t>(static_cast<uint16_t>(std::min(depth * 100.0f, 65535.0f)) & 0xFFFF) << 32;
     key |= static_cast<uint64_t>(materialID & 0xFFFF) << 16;
     key |= static_cast<uint64_t>(meshID & 0xFFFF);
 
@@ -1478,6 +1481,8 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             terrainShader->SetUniform(std::string("height_scale"), tm ? tm->heightScale : 32.0f);
             terrainShader->SetUniform(std::string("world_size"), tm ? tm->worldSize : 1024.0f);
             terrainShader->SetUniform(std::string("palette_index"), tm ? tm->paletteIndex : 0);
+            terrainShader->SetUniform(std::string("fog_color"), tm ? tm->fogColor : glm::vec3(0.0f));
+            terrainShader->SetUniform(std::string("fog_density"), tm ? tm->fogDensity : 0.0f);
             glActiveTexture(GL_TEXTURE7);
             TextureHandle heightMap = material->heightMap;
             if (heightMap.IsValid() && static_cast<uint32_t>(heightMap) != 0) {

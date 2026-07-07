@@ -448,7 +448,7 @@ void Application::RegisterComponents() {
             d.Read("nearClip", props.orthographic.nearClip, -1.0f);
             d.Read("farClip", props.orthographic.farClip, 1.0f);
         } else {
-            d.Read("fieldOfView", props.perspective.fieldOfView, 45.0f);
+            d.Read("fieldOfView", props.perspective.fieldOfView, 58.0f);
             d.Read("aspectRatio", props.perspective.aspectRatio, 1.333f);
             d.Read("nearClip", props.perspective.nearClip, 0.1f);
             d.Read("farClip", props.perspective.farClip, 500.0f);
@@ -458,11 +458,12 @@ void Application::RegisterComponents() {
 
     // ── CameraController3D ────────────────────────────────────────────────────
     ComponentFactory::Register("CameraController3D", [](GameObject* o, Deserializer& d) -> Component* {
-        float moveSpeed = 20.0f, lookSpeed = 1.5f, slowMultiplier = 0.2f;
+        float moveSpeed = 20.0f, lookSpeed = 1.5f, slowMultiplier = 0.2f, fastMultiplier = 5.0f;
         d.Read("moveSpeed", moveSpeed, 20.0f);
         d.Read("lookSpeed", lookSpeed, 1.5f);
         d.Read("slowMultiplier", slowMultiplier, 0.2f);
-        return new CameraController3D(o, moveSpeed, lookSpeed, slowMultiplier);
+        d.Read("fastMultiplier", fastMultiplier, 5.0f);
+        return new CameraController3D(o, moveSpeed, lookSpeed, slowMultiplier, fastMultiplier);
     });
 
     // ── LightComponent ────────────────────────────────────────────────────────

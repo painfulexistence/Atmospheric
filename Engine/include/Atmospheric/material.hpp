@@ -160,6 +160,14 @@ public:
     TerrainLayer layers[MAX_LAYERS];
     int layerCount = 0;
 
+    // Aerial perspective: distant terrain fades toward fogColor with
+    // 1-exp(-fogDensity*distance). The single biggest lever for perceived
+    // world scale — without it a mountain 5km away reads like a hill 500m
+    // away. 0 disables (default, keeps legacy terrains unchanged); ~0.00018
+    // gives ~30% fade at 2km and ~80% at 10km.
+    glm::vec3 fogColor = glm::vec3(0.62f, 0.71f, 0.85f);
+    float fogDensity = 0.0f;
+
     TerrainMaterial() : Material(MaterialProps{}) {
     }
     explicit TerrainMaterial(const MaterialProps& props) : Material(props) {

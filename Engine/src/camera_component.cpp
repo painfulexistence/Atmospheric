@@ -29,7 +29,7 @@ CameraComponent::CameraComponent(GameObject* gameObject, const CameraProps& prop
         _nearZ = props.perspective.nearClip;
         _farZ = props.perspective.farClip;
         _projectionMatrix = glm::perspective(
-            props.perspective.fieldOfView,
+            glm::radians(props.perspective.fieldOfView),
             props.perspective.aspectRatio,
             props.perspective.nearClip,
             props.perspective.farClip
@@ -60,7 +60,11 @@ void CameraComponent::OnDetach() {
 
 void CameraComponent::SetPerspective(float fov, float aspectRatio, float nearClip, float farClip) {
     _isOrthographic = false;
-    _projectionMatrix = glm::perspective(fov, aspectRatio, nearClip, farClip);
+    _fov = fov;
+    _aspectRatio = aspectRatio;
+    _nearZ = nearClip;
+    _farZ = farClip;
+    _projectionMatrix = glm::perspective(glm::radians(fov), aspectRatio, nearClip, farClip);
 }
 
 void CameraComponent::SetOrthographic(float width, float height, float nearClip, float farClip) {

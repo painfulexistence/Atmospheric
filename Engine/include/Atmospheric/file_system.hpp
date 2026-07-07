@@ -114,6 +114,13 @@ public:
     // Returns std::nullopt if the path does not exist in the cache or on disk.
     [[nodiscard]] std::optional<std::string> ResolvePath(const std::string& path) const;
 
+    // Absolute prefix that relative paths resolve against on native builds
+    // (SDL_GetBasePath — the executable's directory), with a trailing
+    // separator. Empty on web, where paths are virtual (MEMFS / fetch). Use it
+    // to build an absolute location for files you create yourself (e.g. a
+    // writable tile cache) so they don't depend on the current working dir.
+    [[nodiscard]] const std::string& BasePath() const;
+
     // Release a cached entry to reclaim memory (after ConsumeSync is preferred).
     void EvictCache(const std::string& path);
 

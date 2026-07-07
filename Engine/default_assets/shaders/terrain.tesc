@@ -15,7 +15,9 @@ out vec2 tese_uv[];
 
 float cameraDistanceTessFactor(vec4 p0, vec4 p1)
 {
-	vec3 mid_point = (p0.xyz + p1.xyz) / 2.0;
+	// World-space midpoint: cam_pos is a world position, and streamed terrain
+	// tiles sit far from the object-space origin.
+	vec3 mid_point = (World * vec4((p0.xyz + p1.xyz) / 2.0, 1.0)).xyz;
 	return clamp(30.0 / distance(cam_pos, mid_point) * tessellation_factor, 1.0, 32.0);
 }
 
