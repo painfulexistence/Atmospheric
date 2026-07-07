@@ -18,7 +18,7 @@
 
 static float MvHashNoise(int x, int y, int z, uint32_t seed) {
     uint32_t h = static_cast<uint32_t>(x) * 374761393u + static_cast<uint32_t>(y) * 668265263u
-               + static_cast<uint32_t>(z) * 2246822519u + seed * 3266489917u;
+                 + static_cast<uint32_t>(z) * 2246822519u + seed * 3266489917u;
     h = (h ^ (h >> 13)) * 1274126177u;
     h ^= h >> 16;
     return static_cast<float>(h & 0xFFFFu) / 65535.0f;
@@ -123,7 +123,8 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
         paletteRGBA[idx * 4 + 2] = b;
         paletteRGBA[idx * 4 + 3] = 255;
     };
-    for (int i = 8; i < 256; i++) setPalette(static_cast<uint8_t>(i), 128, 128, 128);
+    for (int i = 8; i < 256; i++)
+        setPalette(static_cast<uint8_t>(i), 128, 128, 128);
     setPalette(MatGrass, 64, 140, 46);
     setPalette(MatDirt, 107, 77, 46);
     setPalette(MatStone, 122, 122, 128);
@@ -173,7 +174,8 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
                         mat = (h > snowLine) ? MatSnow : ((h < sandLine) ? MatSand : MatGrass);
                     } else if (depth <= 3) {
                         mat = (h < sandLine) ? MatSand : MatDirt;
-                    } else if (MvHashNoise(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z), seed + 13u) > 0.995f) {
+                    } else if (MvHashNoise(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z), seed + 13u)
+                               > 0.995f) {
                         mat = MatOre;
                     }
                     voxelAt(x, y, z) = mat;
@@ -188,7 +190,8 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
     }
     JobSystem::Get()->Wait();
     solidCount = 0;
-    for (uint32_t c : sliceSolidCounts) solidCount += c;
+    for (uint32_t c : sliceSolidCounts)
+        solidCount += c;
 
     // A few floating crystal spheres to show the volume is truly 3D
     for (int s = 0; s < 4; s++) {
@@ -241,12 +244,14 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
     dirty = true;
 
     if (auto* console = ConsoleSubsystem::Get()) {
-        console->Info(fmt::format(
-            "VoxelVolume generated: {}^3 grid, {} solid voxels ({:.1f}% fill)",
-            N,
-            solidCount,
-            100.0f * static_cast<float>(solidCount) / static_cast<float>(static_cast<size_t>(N) * N * N)
-        ));
+        console->Info(
+            fmt::format(
+                "VoxelVolume generated: {}^3 grid, {} solid voxels ({:.1f}% fill)",
+                N,
+                solidCount,
+                100.0f * static_cast<float>(solidCount) / static_cast<float>(static_cast<size_t>(N) * N * N)
+            )
+        );
     }
 }
 
