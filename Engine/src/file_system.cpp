@@ -149,7 +149,14 @@ std::optional<std::string> FileSystem::ResolvePath(const std::string& path) cons
 }
 
 const std::string& FileSystem::BasePath() const {
+#ifndef __EMSCRIPTEN__
     return gBasePath;
+#else
+    // gBasePath only exists on native (it wraps SDL_GetBasePath, and SDL isn't
+    // linked on web). Paths are virtual here, so the base prefix is empty.
+    static const std::string kEmpty;
+    return kEmpty;
+#endif
 }
 
 void FileSystem::EvictCache(const std::string& path) {
