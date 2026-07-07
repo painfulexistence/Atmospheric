@@ -342,7 +342,12 @@ public:
 
     // Global lighting / GI settings shared by all volumes.
     int maxRaySteps = 256;
-    float sunIntensity = 3.0f;
+    // Artistic gain on top of the main light's own intensity. The effective sun
+    // brightness is sunIntensity * light->intensity, so the LightComponent
+    // drives the level (set it on the light) and this stays a unit multiplier.
+    float sunIntensity = 1.0f;
+    // Ambient gain, scaled by the main light's ambient magnitude (see
+    // MicroVoxelPass). The sky-hemisphere ambient shape is kept; this sets level.
     float ambient = 0.6f;
     float aoStrength = 0.7f;// Minecraft-style corner AO; 0 disables
     // Traced 1-bounce GI with temporal accumulation (GL path only for now;
@@ -357,6 +362,25 @@ public:
     float giResolutionScale = 0.5f;
     int debugMode = 0;// 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
     bool shadowEnabled = true;
+
+    // Emissive voxels: palette alpha is per-material emission strength; this
+    // HDR multiplier scales it in the main pass and the GI bounce (so glowing
+    // voxels also bleed indirect light onto neighbors). GL + WebGPU main pass;
+    // GI pickup is GL-only.
+    float emissiveStrength = 4.0f;
+
+    // Per-material mirror reflections (palette row 1 = reflectivity/roughness):
+    // one reflection ray blended by Fresnel. GL path only for now.
+    bool reflectionsEnabled = true;
+
+    // Local point lights (warm fill). GL path only for now (mirrors the GI
+    // split); colors are un-scaled here and multiplied by intensity on upload.
+    static constexpr int kMaxPointLights = 4;
+    int pointLightCount = 0;
+    glm::vec3 pointLightPos[kMaxPointLights]{};
+    glm::vec3 pointLightColor[kMaxPointLights]{ glm::vec3(1.0f) };
+    float pointLightIntensity[kMaxPointLights]{};
+    float pointLightRadius[kMaxPointLights]{};
 
 private:
     void _uploadGL(VoxelVolumeComponent* v);

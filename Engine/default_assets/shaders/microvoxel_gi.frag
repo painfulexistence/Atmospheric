@@ -43,6 +43,7 @@ uniform vec3  u_sunColor;
 uniform float u_sunIntensity;
 uniform int   u_frameIndex;
 uniform float u_blend;             // history weight (e.g. 0.93)
+uniform float u_emissiveStrength;  // HDR multiplier for palette-alpha emission
 
 out vec4 fragColor;
 
@@ -215,7 +216,9 @@ void main() {
         radiance = skyRadiance(bounceDir);// sky light, occluded naturally
     } else {
         vec3 bPos = bounceOrigin + bounceDir * b.t;
-        vec3 bAlbedo = texelFetch(u_palette, ivec2(int(b.material), 0), 0).rgb;
+        vec4 bPal = texelFetch(u_palette, ivec2(int(b.material), 0), 0);
+        vec3 bAlbedo = bPal.rgb;
+        float bEmission = bPal.a;    // emissive voxels act as area lights here
         vec3 L = normalize(u_sunDir);
         float bNdl = max(dot(b.normal, L), 0.0);
         float bShadow = 1.0;
@@ -224,9 +227,11 @@ void main() {
             if (sh.hit) bShadow = 0.0;
         }
         // One-bounce: the bounce surface's direct sun light plus a small sky
-        // term standing in for further bounces.
+        // term standing in for further bounces, plus any self-emission (this is
+        // what makes glowing voxels bleed warm light onto their neighbors).
         radiance = bAlbedo * (u_sunColor * u_sunIntensity * (1.0 / PI) * bNdl * bShadow
-                              + skyRadiance(b.normal) * 0.3);
+                              + skyRadiance(b.normal) * 0.3)
+                   + bAlbedo * bEmission * u_emissiveStrength;
     }
 
     // Temporal accumulation: reproject the exact hit position into last frame.

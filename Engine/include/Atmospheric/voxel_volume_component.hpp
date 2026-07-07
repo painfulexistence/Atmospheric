@@ -48,7 +48,7 @@ public:
     // CPU data, consumed by MicroVoxelPass for GPU upload.
     std::vector<uint8_t> volume;// gridDim^3 palette indices, 0 = air
     std::vector<uint8_t> occupancy;// (gridDim/brickDim)^3, nonzero = brick occupied
-    std::vector<uint8_t> paletteRGBA;// 256 * 4, albedo per material index
+    std::vector<uint8_t> paletteRGBA;// 256x2 RGBA8: row0 albedo+emission, row1 reflectivity/roughness
     uint32_t solidCount = 0;
     bool dirty = true;// set by Generate, cleared by the pass after upload
 };
