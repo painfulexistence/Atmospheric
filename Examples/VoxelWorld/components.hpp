@@ -42,6 +42,21 @@ public:
     }
     void OnTick(float dt) override {
         if (!_camera) return;
+
+        // Hold E to dig — the same control as the MicroVoxel example, for a
+        // direct contrast. Here carving marks the affected chunks dirty and
+        // _world.Update() below RE-MESHES them (greedy meshing rebuilds the
+        // vertex buffers); the micro-voxel path instead just re-uploads a 3D
+        // texture with no geometry rebuild.
+        if (InputSubsystem::Get()->IsKeyDown(Key::E)) {
+            const glm::vec3 ro = _camera->GetEyePosition();
+            const glm::vec3 rd = _camera->GetEyeDirection();
+            glm::vec3 hit;
+            if (_world.RaycastVoxel(ro, rd, 200.0f, hit)) {
+                _world.CarveSphere(hit, 3.0f);// 3 m crater (1 m voxels)
+            }
+        }
+
         glm::vec3 pos = _camera->gameObject->GetPosition();
         glm::mat4 viewProj = _camera->GetProjectionMatrix() * _camera->GetViewMatrix();
         _world.Update(dt, pos);

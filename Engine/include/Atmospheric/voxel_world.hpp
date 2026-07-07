@@ -45,6 +45,16 @@ public:
     uint8_t GetVoxel(int wx, int wy, int wz) const;
     void SetVoxel(int wx, int wy, int wz, uint8_t type);
 
+    // Runtime editing (destruction) — the greedy-mesh counterpart to
+    // VoxelVolumeComponent's raymarch carving. CarveSphere clears voxels to air
+    // in a world-space sphere and marks the touched chunks AND their boundary
+    // neighbors dirty; the next Update() re-MESHES them (greedy meshing rebuilds
+    // the vertex buffers). Contrast with the micro-voxel path, which only
+    // re-uploads a 3D texture — no geometry rebuild. RaycastVoxel finds the
+    // first solid voxel along a world ray, for aiming.
+    void CarveSphere(const glm::vec3& worldCenter, float radius);
+    bool RaycastVoxel(const glm::vec3& worldRo, const glm::vec3& worldRd, float maxDist, glm::vec3& outHitWorld) const;
+
 private:
     using ChunkMap = std::unordered_map<glm::ivec3, VoxelChunkComponent*, IVec3Hash>;
 

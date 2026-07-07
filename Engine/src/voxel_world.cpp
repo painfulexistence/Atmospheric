@@ -173,6 +173,85 @@ void VoxelWorld::SetVoxel(int wx, int wy, int wz, uint8_t type) {
     if (c) c->SetVoxel(lx, ly, lz, type);
 }
 
+bool VoxelWorld::RaycastVoxel(const glm::vec3& ro, const glm::vec3& rd, float maxDist, glm::vec3& outHitWorld) const {
+    // Amanatides & Woo DDA over the 1 m world voxel grid.
+    int cx = static_cast<int>(std::floor(ro.x));
+    int cy = static_cast<int>(std::floor(ro.y));
+    int cz = static_cast<int>(std::floor(ro.z));
+    const int sx = rd.x > 0.0f ? 1 : (rd.x < 0.0f ? -1 : 0);
+    const int sy = rd.y > 0.0f ? 1 : (rd.y < 0.0f ? -1 : 0);
+    const int sz = rd.z > 0.0f ? 1 : (rd.z < 0.0f ? -1 : 0);
+    const float big = 1e30f;
+    const float idx = rd.x != 0.0f ? 1.0f / rd.x : big;
+    const float idy = rd.y != 0.0f ? 1.0f / rd.y : big;
+    const float idz = rd.z != 0.0f ? 1.0f / rd.z : big;
+    const float tdx = std::abs(idx);
+    const float tdy = std::abs(idy);
+    const float tdz = std::abs(idz);
+    // Distance to the first voxel boundary on each axis (big if the ray is flat there).
+    float tmx = sx != 0 ? (static_cast<float>(cx + (sx > 0 ? 1 : 0)) - ro.x) * idx : big;
+    float tmy = sy != 0 ? (static_cast<float>(cy + (sy > 0 ? 1 : 0)) - ro.y) * idy : big;
+    float tmz = sz != 0 ? (static_cast<float>(cz + (sz > 0 ? 1 : 0)) - ro.z) * idz : big;
+    float t = 0.0f;
+    const int maxSteps = static_cast<int>(maxDist * 3.0f) + 3;
+    for (int i = 0; i < maxSteps; i++) {
+        if (GetVoxel(cx, cy, cz) != 0) {
+            outHitWorld = ro + rd * t;
+            return true;
+        }
+        if (tmx <= tmy && tmx <= tmz) {
+            cx += sx;
+            t = tmx;
+            tmx += tdx;
+        } else if (tmy <= tmz) {
+            cy += sy;
+            t = tmy;
+            tmy += tdy;
+        } else {
+            cz += sz;
+            t = tmz;
+            tmz += tdz;
+        }
+        if (t > maxDist) break;
+    }
+    return false;
+}
+
+void VoxelWorld::CarveSphere(const glm::vec3& center, float radius) {
+    if (radius <= 0.0f) return;
+    const int lox = static_cast<int>(std::floor(center.x - radius));
+    const int loy = static_cast<int>(std::floor(center.y - radius));
+    const int loz = static_cast<int>(std::floor(center.z - radius));
+    const int hix = static_cast<int>(std::floor(center.x + radius));
+    const int hiy = static_cast<int>(std::floor(center.y + radius));
+    const int hiz = static_cast<int>(std::floor(center.z + radius));
+    const float r2 = radius * radius;
+    for (int wy = loy; wy <= hiy; wy++) {
+        for (int wz = loz; wz <= hiz; wz++) {
+            for (int wx = lox; wx <= hix; wx++) {
+                const float dx = static_cast<float>(wx) + 0.5f - center.x;
+                const float dy = static_cast<float>(wy) + 0.5f - center.y;
+                const float dz = static_cast<float>(wz) + 0.5f - center.z;
+                if (dx * dx + dy * dy + dz * dz > r2) continue;
+                if (GetVoxel(wx, wy, wz) != 0) SetVoxel(wx, wy, wz, 0);// SetVoxel marks the containing chunk dirty
+            }
+        }
+    }
+    // Mark every chunk overlapping the carve AABB (expanded by one voxel) dirty,
+    // so boundary neighbours re-mesh: a carved chunk-edge voxel exposes a face on
+    // the adjacent chunk that SetVoxel alone would not flag. RebuildDirtyChunks()
+    // (in Update) rebuilds the greedy meshes.
+    const int S = VoxelChunkComponent::SIZE;
+    auto chunkOf = [S](int w) { return static_cast<int>(std::floor(static_cast<float>(w) / static_cast<float>(S))); };
+    for (int cyi = chunkOf(loy - 1); cyi <= chunkOf(hiy + 1); cyi++) {
+        for (int czi = chunkOf(loz - 1); czi <= chunkOf(hiz + 1); czi++) {
+            for (int cxi = chunkOf(lox - 1); cxi <= chunkOf(hix + 1); cxi++) {
+                if (VoxelChunkComponent* c = GetChunk(cxi, cyi, czi)) c->MarkDirty();
+            }
+        }
+    }
+}
+
 // ── private ──────────────────────────────────────────────────────────────────
 
 VoxelChunkComponent* VoxelWorld::GetChunk(int cx, int cy, int cz) const {

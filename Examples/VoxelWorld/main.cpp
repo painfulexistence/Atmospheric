@@ -34,6 +34,9 @@ class VoxelWorldApp : public Application {
         }
 
         ConsoleSubsystem::Get()->Info("VoxelWorld loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
+        ConsoleSubsystem::Get()->Info(
+            "Hold E to dig — greedy-meshed 1m voxels, so carving re-meshes the affected chunks."
+        );
     }
 
     void OnUpdate(float /*dt*/, float /*time*/) override {
