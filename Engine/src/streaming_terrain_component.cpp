@@ -1,15 +1,15 @@
-#include "terrain_streamer_component.hpp"
+#include "streaming_terrain_component.hpp"
 #include "application.hpp"
 #include "camera_component.hpp"
 #include "game_object.hpp"
 #include "imgui.h"
 
-TerrainStreamerComponent::TerrainStreamerComponent(GameObject* owner, const TerrainStreamerProps& props)
+StreamingTerrainComponent::StreamingTerrainComponent(GameObject* owner, const TerrainStreamerProps& props)
   : _props(props) {
     gameObject = owner;
 }
 
-void TerrainStreamerComponent::OnAttach() {
+void StreamingTerrainComponent::OnAttach() {
     Application* app = gameObject->GetApp();
     if (!app) return;
     // The owning GameObject roots every tile/collider/entity the streamer
@@ -18,14 +18,14 @@ void TerrainStreamerComponent::OnAttach() {
     if (!_camera) _camera = app->GetMainCamera();
 }
 
-void TerrainStreamerComponent::OnTick(float /*dt*/) {
+void StreamingTerrainComponent::OnTick(float /*dt*/) {
     if (!_camera) return;
     const glm::vec3 camPos = _camera->gameObject->GetPosition();
     const glm::mat4 viewProj = _camera->GetProjectionMatrix() * _camera->GetViewMatrix();
     _streamer.Update(camPos, viewProj);
 }
 
-void TerrainStreamerComponent::DrawImGui() {
+void StreamingTerrainComponent::DrawImGui() {
     if (!ImGui::CollapsingHeader(GetName().c_str())) return;
     const TerrainStreamer::Stats& s = _streamer.GetStats();
     ImGui::Text("Tiles %d (visible %d, pending %d)", s.loadedTiles, s.visibleTiles, s.pendingJobs);

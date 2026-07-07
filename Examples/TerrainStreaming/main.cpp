@@ -26,7 +26,7 @@
 // so the clamp applies to this frame's movement.
 class GroundClampComponent : public Component {
 public:
-    GroundClampComponent(GameObject* owner, TerrainStreamerComponent* terrain) : _terrain(terrain) {
+    GroundClampComponent(GameObject* owner, StreamingTerrainComponent* terrain) : _terrain(terrain) {
         gameObject = owner;
     }
     std::string GetName() const override {
@@ -46,7 +46,7 @@ public:
     bool enabled = true;
 
 private:
-    TerrainStreamerComponent* _terrain;
+    StreamingTerrainComponent* _terrain;
 };
 
 class TerrainStreamingDemo : public Application {
@@ -55,7 +55,7 @@ class TerrainStreamingDemo : public Application {
     // The terrain is a reusable engine component now: it owns the streamer and
     // drives it from its own OnTick, so the app just holds a handle for height
     // queries / debug toggles.
-    TerrainStreamerComponent* _terrain = nullptr;
+    StreamingTerrainComponent* _terrain = nullptr;
     CameraComponent* _cam = nullptr;
     GameObject* _camGO = nullptr;
     GroundClampComponent* _groundClamp = nullptr;
@@ -183,7 +183,7 @@ class TerrainStreamingDemo : public Application {
         auto* terrainGO = CreateGameObject(glm::vec3(0.0f));
         terrainGO->SetName("Terrain");
         _terrain =
-            static_cast<TerrainStreamerComponent*>(terrainGO->AddComponent<TerrainStreamerComponent>(terrainProps));
+            static_cast<StreamingTerrainComponent*>(terrainGO->AddComponent<StreamingTerrainComponent>(terrainProps));
 
         const auto bootMs =
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _bootTime).count();
@@ -249,7 +249,7 @@ class TerrainStreamingDemo : public Application {
         }
         if (input->IsKeyPressed(Key::ESCAPE)) Quit();
 
-        // Streaming is driven by TerrainStreamerComponent::OnTick now; the app
+        // Streaming is driven by StreamingTerrainComponent::OnTick now; the app
         // only reads stats.
         const auto& stats = _terrain->GetStats();
         if (!_reportedStreamed && stats.initialLoadDone) {

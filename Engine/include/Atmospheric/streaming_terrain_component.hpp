@@ -11,7 +11,7 @@ class CameraComponent;
 // manager-owning-component pattern.
 //
 //   auto* go = CreateGameObject(glm::vec3(0.0f));
-//   go->AddComponent<TerrainStreamerComponent>(TerrainStreamerProps{
+//   go->AddComponent<StreamingTerrainComponent>(TerrainStreamerProps{
 //       .worldSize = 10240.0f, .tileSize = 512.0f, .heightScale = 500.0f, ... });
 //
 // By default it drives off the application's main camera; call SetCamera() to
@@ -19,12 +19,12 @@ class CameraComponent;
 // TerrainStreamerProps stay code-only (std::function), so this component is the
 // integration seam for terrain regardless of whether the scene is built in C++
 // or (for the scalar props) later declared in scene JSON.
-class TerrainStreamerComponent : public Component {
+class StreamingTerrainComponent : public Component {
 public:
-    TerrainStreamerComponent(GameObject* owner, const TerrainStreamerProps& props = {});
+    StreamingTerrainComponent(GameObject* owner, const TerrainStreamerProps& props = {});
 
     std::string GetName() const override {
-        return "TerrainStreamer";
+        return "StreamingTerrain";
     }
     void OnAttach() override;
     void OnTick(float dt) override;
