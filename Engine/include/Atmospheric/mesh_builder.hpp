@@ -38,8 +38,9 @@ public:
     // shader-side height displacement ceiling (heightScale) — the bounding
     // box must cover it or the engine's frustum culling, which only sees the
     // pre-displacement mesh, discards tiles whose mountains are on screen.
-    static Mesh*
-        CreateTerrainTile(float size, int meshResolution, int heightResolution, float skirtDepth, float maxDisplacement);
+    static Mesh* CreateTerrainTile(
+        float size, int meshResolution, int heightResolution, float skirtDepth, float maxDisplacement
+    );
 
     static Mesh* CreateCubeWithPhysics(const float& size = 1.0f);
 

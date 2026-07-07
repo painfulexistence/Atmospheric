@@ -388,10 +388,14 @@ Mesh* MeshBuilder::CreateTerrainTile(
     const float yTop = std::max(maxDisplacement, 0.5f);
     const float yBottom = -std::max(skirtDepth, 0.5f);
     tile->SetBoundingBox(
-        { { glm::vec3(.5f * size, yTop, .5f * size), glm::vec3(-.5f * size, yTop, .5f * size),
-            glm::vec3(-.5f * size, yBottom, .5f * size), glm::vec3(.5f * size, yBottom, .5f * size),
-            glm::vec3(.5f * size, yTop, -.5f * size), glm::vec3(-.5f * size, yTop, -.5f * size),
-            glm::vec3(-.5f * size, yBottom, -.5f * size), glm::vec3(.5f * size, yBottom, -.5f * size) } }
+        { { glm::vec3(.5f * size, yTop, .5f * size),
+            glm::vec3(-.5f * size, yTop, .5f * size),
+            glm::vec3(-.5f * size, yBottom, .5f * size),
+            glm::vec3(.5f * size, yBottom, .5f * size),
+            glm::vec3(.5f * size, yTop, -.5f * size),
+            glm::vec3(-.5f * size, yTop, -.5f * size),
+            glm::vec3(-.5f * size, yBottom, -.5f * size),
+            glm::vec3(.5f * size, yBottom, -.5f * size) } }
     );
     return tile;
 }

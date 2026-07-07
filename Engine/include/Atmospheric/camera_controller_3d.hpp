@@ -19,8 +19,7 @@ public:
         float slowMultiplier = 0.2f,
         float fastMultiplier = 5.0f
     )
-      : _moveSpeed(moveSpeed), _lookSpeed(lookSpeed), _slowMultiplier(slowMultiplier),
-        _fastMultiplier(fastMultiplier) {
+      : _moveSpeed(moveSpeed), _lookSpeed(lookSpeed), _slowMultiplier(slowMultiplier), _fastMultiplier(fastMultiplier) {
         gameObject = owner;
     }
 
@@ -44,8 +43,10 @@ public:
         if (input->IsKeyDown(Key::LEFT)) _camera->Yaw(-look);
 
         float multiplier = 1.0f;
-        if (input->IsKeyDown(Key::Z)) multiplier = _slowMultiplier;
-        else if (input->IsKeyDown(Key::X)) multiplier = _fastMultiplier;
+        if (input->IsKeyDown(Key::Z))
+            multiplier = _slowMultiplier;
+        else if (input->IsKeyDown(Key::X))
+            multiplier = _fastMultiplier;
         const float speed = _moveSpeed * multiplier * dt;
         const glm::vec3 fwd = _camera->GetEyeDirection();
         const glm::vec3 right = glm::normalize(glm::cross(fwd, glm::vec3(0.0f, 1.0f, 0.0f)));

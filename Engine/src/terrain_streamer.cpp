@@ -237,12 +237,24 @@ void TerrainStreamer::RequestTile(glm::ivec2 coord, int lod) {
     auto* hits = &_cacheHits;
     auto* misses = &_cacheMisses;
 
-    JobSystem::Get()->Execute([job, heightFn, splatFn, wantSplat, splatRes, n, w, step, origin, gutterMin, gutterMax,
-                               cache, cacheHash, hits, misses](int /*threadIndex*/) {
+    JobSystem::Get()->Execute([job,
+                               heightFn,
+                               splatFn,
+                               wantSplat,
+                               splatRes,
+                               n,
+                               w,
+                               step,
+                               origin,
+                               gutterMin,
+                               gutterMax,
+                               cache,
+                               cacheHash,
+                               hits,
+                               misses](int /*threadIndex*/) {
         // Cache first (pure IO, Ghost-of-Tsushima path); synthesize on miss
         // and bake the result so the next boot never generates this tile.
-        const bool cached =
-            cache && cache->Load(job->coord.x, job->coord.y, job->lod, cacheHash, w, job->heights);
+        const bool cached = cache && cache->Load(job->coord.x, job->coord.y, job->lod, cacheHash, w, job->heights);
         if (!cached) {
             job->heights.resize(static_cast<size_t>(w) * w);
             for (int j = 0; j < w; ++j) {
@@ -296,7 +308,9 @@ void TerrainStreamer::ApplyJobToSlot(GenJob& job, TileSlot* slot) {
     if (!job.splat.empty()) {
         slot->material->splatMap = am.CreateOrUpdateTextureRGBA8(
             "terrainstream_splat_L" + std::to_string(slot->lod) + "_" + std::to_string(slot->slotIndex),
-            job.splat.data(), _props.splatRes, _props.splatRes
+            job.splat.data(),
+            _props.splatRes,
+            _props.splatRes
         );
     }
     // LOD0 tiles keep their CPU grid as the collider/height-query source.
@@ -385,7 +399,7 @@ void TerrainStreamer::UpdateColliders(glm::ivec2 camTile) {
 
     auto wanted = [&](glm::ivec2 c) {
         return std::max(std::abs(c.x - camTile.x), std::abs(c.y - camTile.y)) <= r && c.x >= 0 && c.y >= 0
-            && c.x < _tilesPerSide && c.y < _tilesPerSide;
+               && c.x < _tilesPerSide && c.y < _tilesPerSide;
     };
 
     for (int dz = -r; dz <= r; ++dz) {
@@ -517,17 +531,16 @@ void TerrainStreamer::AssignCollider(ColliderSlot& slot, TileSlot* tile) {
         // btHeightfieldTerrainShape spans (res-1) cells at worldSize/res
         // scaling; stretch worldSize so the collider covers the tile exactly.
         const int res = _props.colliderResolution;
-        slot.collider =
-            static_cast<HeightFieldColliderComponent*>(slot.go->AddComponent<HeightFieldColliderComponent>(
-                slot.heightGrid,
-                HeightFieldColliderProps{
-                    .worldSize = _props.tileSize * static_cast<float>(res) / static_cast<float>(res - 1),
-                    .heightScale = _props.heightScale,
-                    .minHeight = 0.0f,
-                    .maxHeight = _props.heightScale,
-                    .resolution = res,
-                }
-            ));
+        slot.collider = static_cast<HeightFieldColliderComponent*>(slot.go->AddComponent<HeightFieldColliderComponent>(
+            slot.heightGrid,
+            HeightFieldColliderProps{
+                .worldSize = _props.tileSize * static_cast<float>(res) / static_cast<float>(res - 1),
+                .heightScale = _props.heightScale,
+                .minHeight = 0.0f,
+                .maxHeight = _props.heightScale,
+                .resolution = res,
+            }
+        ));
         slot.rigidbody = slot.go->GetComponent<RigidbodyComponent>();
     } else {
         slot.heightGrid->Assign(std::move(interior), n + 1, n + 1);

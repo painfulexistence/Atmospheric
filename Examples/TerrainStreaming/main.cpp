@@ -131,10 +131,10 @@ class TerrainStreamingDemo : public Application {
                 // ~1.4km feature wavelength: enough distinct ridges/valleys
                 // across 10km that traversal reads as covering ground.
                 .noise = { .resolution = 0, .seed = 20260705, .frequency = 0.0007f, .octaves = 9 },
-                // Baked-tile cache: first run generates + stores, every run
-                // after boots from pure IO (watch "cache" in the stats line).
-                // Emscripten's default FS is RAM-backed, so skip it there and
-                // keep generating (ship a preloaded pyramid instead).
+        // Baked-tile cache: first run generates + stores, every run
+        // after boots from pure IO (watch "cache" in the stats line).
+        // Emscripten's default FS is RAM-backed, so skip it there and
+        // keep generating (ship a preloaded pyramid instead).
 #if !defined(__EMSCRIPTEN__)
                 .cacheDir = "cache/terrain",
 #endif
@@ -145,7 +145,8 @@ class TerrainStreamingDemo : public Application {
                 .placeEntitiesFn =
                     [](const TerrainTileContext& ctx) {
                         std::vector<TerrainEntityPlacement> out;
-                        uint32_t rng = static_cast<uint32_t>(ctx.coord.x * 73856093 ^ ctx.coord.y * 19349663 ^ ctx.seed);
+                        uint32_t rng =
+                            static_cast<uint32_t>(ctx.coord.x * 73856093 ^ ctx.coord.y * 19349663 ^ ctx.seed);
                         auto rand01 = [&rng] {
                             rng = rng * 1664525u + 1013904223u;
                             return static_cast<float>(rng >> 8) * (1.0f / 16777216.0f);
@@ -181,8 +182,7 @@ class TerrainStreamingDemo : public Application {
         );
 
         const auto bootMs =
-            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _bootTime)
-                .count();
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _bootTime).count();
         ConsoleSubsystem::Get()->Info(
             "TerrainStreaming: full 10.24km x 10.24km horizon ready in " + std::to_string(bootMs) + "ms"
         );
@@ -199,8 +199,7 @@ class TerrainStreamingDemo : public Application {
         _camGO->AddComponent<CameraController3D>(
             /*moveSpeed=*/12.0f, /*lookSpeed=*/1.5f, /*slowMultiplier=*/0.2f, /*fastMultiplier=*/50.0f
         );
-        _groundClamp =
-            static_cast<GroundClampComponent*>(_camGO->AddComponent<GroundClampComponent>(&_terrain));
+        _groundClamp = static_cast<GroundClampComponent*>(_camGO->AddComponent<GroundClampComponent>(&_terrain));
 
         ConsoleSubsystem::Get()->Info(
             "WASD move, arrows look, X sprint, Z slow, R/F up/down, G ground-clamp, T teleport, L LOD tint, I "
