@@ -27,6 +27,7 @@ in vec2 v_uv;
 uniform usampler3D u_volume;
 uniform usampler3D u_occupancy;
 uniform sampler2D  u_palette;
+uniform sampler2D  u_giTex;    // accumulated 1-bounce indirect (microvoxel_gi.frag)
 
 uniform mat4  u_invViewProj;   // clip -> world
 uniform mat4  u_viewProj;      // world -> clip (for depth output)
@@ -42,6 +43,7 @@ uniform float u_sunIntensity;
 uniform float u_ambient;
 uniform int   u_shadowEnabled;
 uniform float u_aoStrength;    // 0 disables corner AO
+uniform float u_giStrength;    // 0 = flat ambient, >0 = traced indirect
 
 out vec4 fragColor;
 
@@ -248,13 +250,24 @@ void main() {
         ao = mix(1.0, faceAO(cell, h.normal, hitPos), u_aoStrength);
     }
 
-    vec3 skyAmbient = mix(vec3(0.20, 0.22, 0.28), vec3(0.45, 0.55, 0.75), h.normal.y * 0.5 + 0.5);
-    vec3 direct = u_sunColor * u_sunIntensity * (1.0 / PI) * ndl * shadow;
-    // AO fully attenuates ambient; a stylized 30% also darkens direct so
-    // corners stay readable in full sun (Teardown-ish look).
-    vec3 color = albedo * (direct * (0.7 + 0.3 * ao) + skyAmbient * u_ambient * ao);
+    // Indirect light: traced 1-bounce GI when enabled (sky light + bounce,
+    // so occlusion and color bleeding emerge naturally), else flat ambient.
+    vec3 indirect;
+    if (u_giStrength > 0.0) {
+        indirect = texture(u_giTex, v_uv).rgb * u_giStrength;
+    } else {
+        vec3 skyAmbient = mix(vec3(0.20, 0.22, 0.28), vec3(0.45, 0.55, 0.75), h.normal.y * 0.5 + 0.5);
+        indirect = skyAmbient * u_ambient;
+    }
 
-    fragColor = vec4(color, 1.0);
+    vec3 direct = u_sunColor * u_sunIntensity * (1.0 / PI) * ndl * shadow;
+    // AO fully attenuates indirect; a stylized 30% also darkens direct so
+    // corners stay readable in full sun (Teardown-ish look).
+    vec3 color = albedo * (direct * (0.7 + 0.3 * ao) + indirect * ao);
+
+    // Scene convention: gamma-encoded color into sceneRT (see pbr.frag); the
+    // tonemap pass decodes with pow(2.2) first.
+    fragColor = vec4(pow(max(color, vec3(0.0)), vec3(1.0 / 2.2)), 1.0);
 
     vec4 clip = u_viewProj * vec4(hitPos, 1.0);
     float ndcDepth = clip.z / clip.w;           // GL clip space: -1..1

@@ -263,7 +263,9 @@ struct FOut {
     // AO fully attenuates ambient; a stylized 30% also darkens direct.
     let color = albedo * (direct * (0.7 + 0.3 * ao) + skyAmbient * u.sunColAmb.w * ao);
 
-    out.color = vec4<f32>(color, 1.0);
+    // Scene convention: gamma-encoded into sceneRT (see FORWARD_OPAQUE_WGSL);
+    // the tonemap pass decodes with pow(2.2) first.
+    out.color = vec4<f32>(pow(max(color, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2)), 1.0);
 
     let clip = u.viewProj * vec4<f32>(hitPos, 1.0);
     out.depth = clamp(clip.z / clip.w, 0.0, 0.999999);   // WebGPU: no -1..1 remap

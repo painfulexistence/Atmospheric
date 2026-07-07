@@ -347,11 +347,17 @@ public:
     float sunIntensity = 3.0f;
     float ambient = 0.6f;
     float aoStrength = 0.7f;// Minecraft-style corner AO; 0 disables
+    // Traced 1-bounce GI with temporal accumulation (GL path only for now;
+    // the WebGPU path keeps the flat ambient). 0 disables and falls back to
+    // the flat ambient term.
+    float giStrength = 1.0f;
+    float giBlend = 0.93f;// history weight per frame
     bool shadowEnabled = true;
     uint32_t solidCount = 0;
 
 private:
     void _uploadGL();
+    void _ensureGIRenderTargets(int w, int h);
     std::vector<uint8_t> _volume;// gridDim^3 palette indices, 0 = air
     std::vector<uint8_t> _occupancy;// (gridDim/brickDim)^3, nonzero = brick has voxels
     std::vector<uint8_t> _paletteRGBA;// 256 * 4, albedo per material index
@@ -360,6 +366,17 @@ private:
     GLuint _volumeTexGL = 0;
     GLuint _occupancyTexGL = 0;
     GLuint _paletteTexGL = 0;
+
+    // GI accumulation ping-pong (RGBA16F: rgb = indirect radiance, a = camera
+    // distance for history validation)
+    GLuint _giTexGL[2] = { 0, 0 };
+    GLuint _giFBOGL[2] = { 0, 0 };
+    int _giW = 0, _giH = 0;
+    int _giCur = 0;
+    int _giFrame = 0;
+    glm::mat4 _prevViewProj{ 1.0f };
+    glm::vec3 _prevCameraPos{ 0.0f };
+    bool _prevViewValid = false;
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);

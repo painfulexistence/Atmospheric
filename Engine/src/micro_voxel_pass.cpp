@@ -309,7 +309,43 @@ void MicroVoxelPass::_uploadGL() {
     glBindTexture(GL_TEXTURE_3D, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
 
+    // Volume changed: accumulated GI history no longer matches the geometry.
+    for (int i = 0; i < 2; i++) {
+        if (_giFBOGL[i] != 0) {
+            glBindFramebuffer(GL_FRAMEBUFFER, _giFBOGL[i]);
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
     _dirty = false;
+}
+
+// Creates/resizes the GI accumulation ping-pong targets; history is cleared on
+// (re)creation (alpha 0 = invalid sample).
+void MicroVoxelPass::_ensureGIRenderTargets(int w, int h) {
+    if (_giW == w && _giH == h && _giTexGL[0] != 0) return;
+    _giW = w;
+    _giH = h;
+    for (int i = 0; i < 2; i++) {
+        if (_giTexGL[i] == 0) {
+            glGenTextures(1, &_giTexGL[i]);
+            glGenFramebuffers(1, &_giFBOGL[i]);
+        }
+        glBindTexture(GL_TEXTURE_2D, _giTexGL[i]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_HALF_FLOAT, nullptr);
+        glBindFramebuffer(GL_FRAMEBUFFER, _giFBOGL[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _giTexGL[i], 0);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+    }
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 // ---- WebGPU init / upload ------------------------------------------------------
@@ -493,6 +529,63 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     if (_dirty) _uploadGL();
 
     auto [width, height] = Window::Get()->GetPhysicalSize();
+
+    // ── GI subpass: trace one diffuse bounce per pixel and accumulate ───────
+    bool giActive = giStrength > 0.0f;
+    ShaderProgram* giShader = giActive ? AssetManager::Get().GetShader("microvoxel_gi") : nullptr;
+    if (giActive && giShader) {
+        _ensureGIRenderTargets(width, height);
+        const int prev = 1 - _giCur;
+        if (!_prevViewValid) {// first frame: reproject onto itself (blend rejects via alpha 0)
+            _prevViewProj = viewProj;
+            _prevCameraPos = cameraPos;
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, _giFBOGL[_giCur]);
+        glViewport(0, 0, width, height);
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+
+        giShader->Activate();
+        giShader->SetUniform(std::string("u_invViewProj"), invViewProj);
+        giShader->SetUniform(std::string("u_prevViewProj"), _prevViewProj);
+        giShader->SetUniform(std::string("u_cameraPos"), cameraPos);
+        giShader->SetUniform(std::string("u_prevCameraPos"), _prevCameraPos);
+        giShader->SetUniform(std::string("u_volumeOrigin"), volumeOrigin);
+        giShader->SetUniform(std::string("u_voxelSize"), voxelSize);
+        giShader->SetUniform(std::string("u_gridDim"), gridDim);
+        giShader->SetUniform(std::string("u_brickDim"), brickDim);
+        giShader->SetUniform(std::string("u_maxRaySteps"), maxRaySteps);
+        giShader->SetUniform(std::string("u_sunDir"), sunDir);
+        giShader->SetUniform(std::string("u_sunColor"), sunColor);
+        giShader->SetUniform(std::string("u_sunIntensity"), sunIntensity);
+        giShader->SetUniform(std::string("u_frameIndex"), _giFrame);
+        giShader->SetUniform(std::string("u_blend"), giBlend);
+        giShader->SetUniform(std::string("u_volume"), 0);
+        giShader->SetUniform(std::string("u_occupancy"), 1);
+        giShader->SetUniform(std::string("u_palette"), 2);
+        giShader->SetUniform(std::string("u_history"), 3);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_3D, _volumeTexGL);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_3D, _occupancyTexGL);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, _paletteTexGL);
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, _giTexGL[prev]);
+
+        DrawScreenQuadVAO(renderer.gl.screenQuadVAO);
+        _giFrame++;
+    } else {
+        giActive = false;
+    }
+
+    // Roll the reprojection sources forward for the next frame
+    _prevViewProj = viewProj;
+    _prevCameraPos = cameraPos;
+    _prevViewValid = true;
+
     glViewport(0, 0, width, height);
 
     // Render into the same target as ForwardOpaquePass (no clear; depth test
@@ -514,9 +607,11 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     shader->SetUniform(std::string("u_ambient"), ambient);
     shader->SetUniform(std::string("u_shadowEnabled"), shadowEnabled ? 1 : 0);
     shader->SetUniform(std::string("u_aoStrength"), aoStrength);
+    shader->SetUniform(std::string("u_giStrength"), giActive ? giStrength : 0.0f);
     shader->SetUniform(std::string("u_volume"), 0);
     shader->SetUniform(std::string("u_occupancy"), 1);
     shader->SetUniform(std::string("u_palette"), 2);
+    shader->SetUniform(std::string("u_giTex"), 3);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_3D, _volumeTexGL);
@@ -524,6 +619,8 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     glBindTexture(GL_TEXTURE_3D, _occupancyTexGL);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, _paletteTexGL);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, giActive ? _giTexGL[_giCur] : 0);
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
@@ -534,4 +631,6 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_3D, 0);
+
+    if (giActive) _giCur = 1 - _giCur;// ping-pong for the next frame
 }
