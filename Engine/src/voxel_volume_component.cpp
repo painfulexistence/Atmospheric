@@ -3,12 +3,12 @@
 #include "console_subsystem.hpp"
 #include "game_object.hpp"
 #include "graphics_subsystem.hpp"
+#include "job_system.hpp"
 #include "renderer.hpp"
 
 #include <cmath>
 #include <fmt/format.h>
 #include <imgui.h>
-#include <thread>
 
 // ============================================================================
 //  Procedural demo volume generation (ported from project-vapor's Metal
@@ -149,50 +149,48 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
         }
     }
 
-    // Column fill, parallelized over z slices (cells are disjoint per thread)
-    const uint32_t threadCount = std::max(1u, std::thread::hardware_concurrency());
-    std::vector<uint32_t> threadSolidCounts(threadCount, 0);
-    {
-        std::vector<std::thread> workers;
-        workers.reserve(threadCount);
-        for (uint32_t ti = 0; ti < threadCount; ti++) {
-            workers.emplace_back([&, ti]() {
-                uint32_t localSolid = 0;
-                for (uint32_t z = ti; z < N; z += threadCount) {
-                    for (uint32_t x = 0; x < N; x++) {
-                        const float h = heights[z * N + x];
-                        const auto top = static_cast<uint32_t>(h);
-                        for (uint32_t y = 0; y <= top && y < N; y++) {
-                            // Carve caves below the surface crust
-                            if (y + 4 < top) {
-                                float cave = MvFbm3(glm::vec3(x, y, z) * 0.045f, 3, seed + 7u);
-                                if (cave > 0.62f) continue;
-                            }
-                            uint8_t mat = MatStone;
-                            const uint32_t depth = top - y;
-                            if (depth == 0) {
-                                mat = (h > snowLine) ? MatSnow : ((h < sandLine) ? MatSand : MatGrass);
-                            } else if (depth <= 3) {
-                                mat = (h < sandLine) ? MatSand : MatDirt;
-                            } else if (MvHashNoise(
-                                           static_cast<int>(x), static_cast<int>(y), static_cast<int>(z), seed + 13u
-                                       )
-                                       > 0.995f) {
-                                mat = MatOre;
-                            }
-                            voxelAt(x, y, z) = mat;
-                            localSolid++;
-                        }
+    // Column fill, parallelized over z slices (cells are disjoint per worker)
+    // via the engine JobSystem. The JobSystem owns a persistent worker pool, so
+    // this is safe on the web: with Emscripten pthreads the workers already
+    // exist (no spawn-during-join deadlock), and without pthreads Execute runs
+    // the job inline on the main thread.
+    const uint32_t workerCount = std::max(1u, JobSystem::Get()->GetThreadCount());
+    std::vector<uint32_t> sliceSolidCounts(workerCount, 0);
+    auto fillSlices = [&](uint32_t ti) {
+        uint32_t localSolid = 0;
+        for (uint32_t z = ti; z < N; z += workerCount) {
+            for (uint32_t x = 0; x < N; x++) {
+                const float h = heights[z * N + x];
+                const auto top = static_cast<uint32_t>(h);
+                for (uint32_t y = 0; y <= top && y < N; y++) {
+                    // Carve caves below the surface crust
+                    if (y + 4 < top) {
+                        float cave = MvFbm3(glm::vec3(x, y, z) * 0.045f, 3, seed + 7u);
+                        if (cave > 0.62f) continue;
                     }
+                    uint8_t mat = MatStone;
+                    const uint32_t depth = top - y;
+                    if (depth == 0) {
+                        mat = (h > snowLine) ? MatSnow : ((h < sandLine) ? MatSand : MatGrass);
+                    } else if (depth <= 3) {
+                        mat = (h < sandLine) ? MatSand : MatDirt;
+                    } else if (MvHashNoise(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z), seed + 13u)
+                               > 0.995f) {
+                        mat = MatOre;
+                    }
+                    voxelAt(x, y, z) = mat;
+                    localSolid++;
                 }
-                threadSolidCounts[ti] = localSolid;
-            });
+            }
         }
-        for (auto& w : workers)
-            w.join();
+        sliceSolidCounts[ti] = localSolid;
+    };
+    for (uint32_t ti = 0; ti < workerCount; ti++) {
+        JobSystem::Get()->Execute([&fillSlices, ti](int) { fillSlices(ti); });
     }
+    JobSystem::Get()->Wait();
     solidCount = 0;
-    for (uint32_t c : threadSolidCounts)
+    for (uint32_t c : sliceSolidCounts)
         solidCount += c;
 
     // A few floating crystal spheres to show the volume is truly 3D

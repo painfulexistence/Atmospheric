@@ -9,11 +9,11 @@
 #include "voxel_volume_component.hpp"
 #include "window.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <fmt/format.h>
 #include <glm/glm.hpp>
-#include <thread>
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "command_encoder.hpp"
@@ -352,7 +352,12 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     bool giActive = giStrength > 0.0f;
     ShaderProgram* giShader = giActive ? AssetManager::Get().GetShader("microvoxel_gi") : nullptr;
     if (giActive && giShader) {
-        _ensureGIRenderTargets(width, height);
+        // GI traces at reduced resolution (indirect light is low frequency);
+        // the composite upsamples with bilinear filtering via uv sampling.
+        const float giScale = glm::clamp(giResolutionScale, 0.25f, 1.0f);
+        const int giW = std::max(1, static_cast<int>(static_cast<float>(width) * giScale));
+        const int giH = std::max(1, static_cast<int>(static_cast<float>(height) * giScale));
+        _ensureGIRenderTargets(giW, giH);
         const int prev = 1 - _giCur;
         if (!_prevViewValid) {// first frame: reproject onto itself (blend rejects via alpha 0)
             _prevViewProj = viewProj;
@@ -360,7 +365,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, _giFBOGL[_giCur]);
-        glViewport(0, 0, width, height);
+        glViewport(0, 0, giW, giH);
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
         // CRITICAL: the GI target's alpha channel carries camera distance for
