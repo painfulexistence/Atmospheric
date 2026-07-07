@@ -448,7 +448,7 @@ void Application::RegisterComponents() {
             d.Read("nearClip", props.orthographic.nearClip, -1.0f);
             d.Read("farClip", props.orthographic.farClip, 1.0f);
         } else {
-            d.Read("fieldOfView", props.perspective.fieldOfView, 45.0f);
+            d.Read("fieldOfView", props.perspective.fieldOfView, 58.0f);
             d.Read("aspectRatio", props.perspective.aspectRatio, 1.333f);
             d.Read("nearClip", props.perspective.nearClip, 0.1f);
             d.Read("farClip", props.perspective.farClip, 500.0f);

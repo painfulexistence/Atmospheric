@@ -78,7 +78,7 @@ void GraphicsSubsystem::Init(Application* app) {
         defaultCameraProps.horizontalAngle = -glm::half_pi<float>();
     } else {
         defaultCameraProps.isOrthographic = false;
-        defaultCameraProps.perspective = { .fieldOfView = 45.0f,
+        defaultCameraProps.perspective = { .fieldOfView = 58.0f,
                                            .aspectRatio = static_cast<float>(width) / static_cast<float>(height),
                                            .nearClip = 0.1f,
                                            .farClip = 1000.0f };

@@ -6,7 +6,8 @@ struct CameraProps {
     bool isOrthographic = false;
     union {
         struct {
-            float fieldOfView = 45.0f;// vertical fov in degrees
+            float fieldOfView = 58.0f;// vertical fov in degrees (was an effective ~58 deg
+            // back when fov was mistakenly passed to glm::perspective as radians)
             float aspectRatio = 1.333f;
             float nearClip = 0.1f;
             float farClip = 500.0f;
@@ -23,7 +24,7 @@ struct CameraProps {
     glm::vec3 eyeOffset = glm::vec3(0.0f);
 
     CameraProps() {
-        perspective = { 45.0f, 1.333f, 0.1f, 500.0f };
+        perspective = { 58.0f, 1.333f, 0.1f, 500.0f };
         isOrthographic = false;
     }
 };
