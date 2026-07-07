@@ -31,12 +31,44 @@ using PixelReadbackCallback = std::function<void(const GpuImageData&)>;
 class GraphicsSubsystem;
 class ShaderProgram;
 class Renderer;
+class CameraComponent;
+class VoxelVolumeComponent;
 
 struct RenderCommand {
     MeshHandle mesh;
     // Material* material; // TODO: currently material is coupled with mesh
     glm::mat4 transform;
 };
+
+// Camera/target override consumed by the scene passes (Skybox, Sun,
+// VoxelChunk) so PlanarReflectionPass can re-render the world from a mirrored
+// camera into an offscreen RenderTarget. Renderer::viewOverride is null while
+// rendering the main view.
+struct RenderViewOverride {
+    glm::mat4 view{ 1.0f };
+    glm::mat4 proj{ 1.0f };
+    glm::vec3 eyePos{ 0.0f };
+    RenderTarget* target = nullptr;// render here instead of sceneRT
+    // World-space clip plane (n, d): fragments with dot(n, P) + d < 0 are
+    // discarded. All-zero disables clipping (dot == 0 is kept).
+    glm::vec4 clipPlane{ 0.0f };
+    bool flipCull = false;// mirrored views reverse triangle winding
+};
+
+// The view a scene pass should actually render with: either the main camera +
+// sceneRT, or PlanarReflectionPass's mirrored override. Resolved once at the
+// top of each scene pass (Skybox, Sun, VoxelChunk, ForwardOpaque, WorldCanvas)
+// via ResolveView so the main-view and reflection-view paths stay identical.
+struct ResolvedView {
+    glm::mat4 view;
+    glm::mat4 proj;
+    glm::vec3 eye;
+    RenderTarget* target;
+    glm::vec4 clipPlane;
+    bool flipCull;
+};
+
+ResolvedView ResolveView(const Renderer& renderer, CameraComponent* camera);
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "gpu_canvas_pass.hpp"
@@ -123,6 +155,10 @@ private:
         WGPUTexture normTex = nullptr;
     };
     std::unordered_map<uint32_t, CachedVATBG> _vatBGCache;
+    // PRIM variant with cull=None, used when PlanarReflectionPass drives this
+    // pass with a mirrored (winding-reversed) camera. Terrain already culls
+    // None, so it reuses _terrainPipeline for both views.
+    WGPURenderPipeline _reflPipeline = nullptr;
     WGPUBindGroupLayout _uniformBGL = nullptr;
     WGPUBindGroupLayout _texBGL = nullptr;
     WGPUBindGroup _uniformBG = nullptr;
@@ -291,7 +327,9 @@ public:
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
-    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
+    void _initGPU(
+        WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount, WGPUCullMode cullMode
+    );
     // Grows _drawUniformBuf/_uniformBG to fit at least drawCount dynamic-offset slots.
     void _ensureDrawCapacity(uint32_t drawCount);
     WGPUDevice _gpuDevice = nullptr;
@@ -307,6 +345,81 @@ private:
     // Queue::Submit, not to render-pass recording order.
     WGPUBuffer _drawUniformBuf = nullptr;
     uint32_t _drawSlotCapacity = 0;
+#endif
+};
+
+// Micro voxel raymarch (experimental): a fullscreen two-level DDA over a
+// dense voxel volume in a 3D texture, depth-composited with the rasterized
+// scene. Contrast with VoxelChunkPass, which meshes 1m macro voxels into
+// triangles. Renders every registered VoxelVolumeComponent; inert when
+// none are attached. See micro_voxel_pass.cpp.
+class MicroVoxelPass : public RenderPass {
+public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~MicroVoxelPass() override;
+#endif
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+    // Volume data lives in VoxelVolumeComponent; components register/unregister
+    // themselves here on attach/detach. Stage 1 renders the first registered
+    // volume (single-volume); the multi-volume per-object raymarch is stage 2.
+    void RegisterVolume(VoxelVolumeComponent* v);
+    void UnregisterVolume(VoxelVolumeComponent* v);
+
+    // Global lighting / GI settings shared by all volumes.
+    int maxRaySteps = 256;
+    float sunIntensity = 3.0f;
+    float ambient = 0.6f;
+    float aoStrength = 0.7f;// Minecraft-style corner AO; 0 disables
+    // Traced 1-bounce GI with temporal accumulation (GL path only for now;
+    // the WebGPU path keeps the flat ambient). 0 disables and falls back to
+    // the flat ambient term.
+    float giStrength = 1.0f;
+    float giBlend = 0.93f;// history weight per frame
+    // GI trace resolution relative to the screen. Indirect light is low
+    // frequency, so half res (quarter the rays) is nearly indistinguishable
+    // after the bilinear-filtered composite; temporal accumulation hides the
+    // rest. 1.0 = full res.
+    float giResolutionScale = 0.5f;
+    int debugMode = 0;// 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
+    bool shadowEnabled = true;
+
+private:
+    void _uploadGL(VoxelVolumeComponent* v);
+    void _ensureGIRenderTargets(int w, int h);
+
+    std::vector<VoxelVolumeComponent*> _volumes;
+    VoxelVolumeComponent* _uploadedVolume = nullptr;// which volume the GPU textures currently hold
+
+    GLuint _volumeTexGL = 0;
+    GLuint _occupancyTexGL = 0;
+    GLuint _paletteTexGL = 0;
+
+    // GI accumulation ping-pong (RGBA16F: rgb = indirect radiance, a = camera
+    // distance for history validation)
+    GLuint _giTexGL[2] = { 0, 0 };
+    GLuint _giFBOGL[2] = { 0, 0 };
+    int _giW = 0, _giH = 0;
+    int _giCur = 0;
+    int _giFrame = 0;
+    glm::mat4 _prevViewProj{ 1.0f };
+    glm::vec3 _prevCameraPos{ 0.0f };
+    bool _prevViewValid = false;
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
+    void _uploadGPU(VoxelVolumeComponent* v);
+    WGPUDevice _gpuDevice = nullptr;
+    WGPUQueue _gpuQueue = nullptr;
+    WGPURenderPipeline _pipeline = nullptr;
+    WGPUBindGroupLayout _uniformBGL = nullptr;
+    WGPUBindGroupLayout _texBGL = nullptr;
+    WGPUBindGroup _uniformBG = nullptr;
+    WGPUBindGroup _texBG = nullptr;
+    WGPUBuffer _uniformBuf = nullptr;
+    WGPUTexture _volumeTexGPU = nullptr;
+    WGPUTexture _occupancyTexGPU = nullptr;
+    WGPUTexture _paletteTexGPU = nullptr;
 #endif
 };
 
@@ -336,7 +449,195 @@ private:
     // mesh, mirrors ForwardOpaquePass/VoxelChunkPass's pattern.
     WGPUBuffer _drawUniformBuf = nullptr;
     uint32_t _drawSlotCapacity = 0;
+
+    // Planar-reflection texture (group 1). When PlanarReflectionPass is
+    // inactive a 1x1 black fallback is bound instead; the per-draw
+    // reflection strength is zeroed so the sample is never visible. The bind
+    // group is rebuilt whenever the bound WGPUTexture changes (RT resize).
+    WGPUBindGroupLayout _reflBGL = nullptr;
+    WGPUSampler _reflSampler = nullptr;
+    WGPUTexture _reflFallbackTex = nullptr;
+    WGPUBindGroup _reflBG = nullptr;
+    WGPUTexture _reflBGSource = nullptr;
 #endif
+};
+
+// Re-renders the world (Skybox + Sun + VoxelChunk content) mirrored about a
+// reflective material's plane into an offscreen RenderTarget. Consumed by
+// WaterPass today; a future mirror surface only needs planarReflection=true
+// on its material plus a shader that samples GetReflectionRT().
+//
+// The reflection plane is derived from the reflective object's transform:
+// the plane through its position with its up (+Y) axis as normal. One plane
+// is supported per frame — the first draw whose material opts in wins.
+// PRIM opaque meshes (ForwardOpaquePass content) are not yet re-rendered.
+class PlanarReflectionPass : public RenderPass {
+public:
+    PlanarReflectionPass();
+    ~PlanarReflectionPass() override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+    // Reflection RT resolution relative to the window's physical size.
+    float resolutionScale = 0.5f;
+
+    // True when a reflection was rendered this frame (reflective material
+    // found and the camera is on the reflective side of the plane).
+    bool IsActive() const {
+        return _active;
+    }
+    RenderTarget* GetReflectionRT() const {
+        return _rt.get();
+    }
+    // proj * mirroredView of the frame this RT was rendered with; project a
+    // world position with it to get the RT sample position in clip space.
+    const glm::mat4& GetReflectionViewProj() const {
+        return _reflViewProj;
+    }
+
+private:
+    std::unique_ptr<RenderTarget> _rt;
+    glm::mat4 _reflViewProj{ 1.0f };
+    bool _active = false;
+
+    // Private sub-pass instances rather than the RenderGraph's: under WebGPU
+    // every pass writes its single per-frame uniform buffer via
+    // wgpuQueueWriteBuffer, whose ordering is relative to Queue::Submit — so
+    // executing the graph's own instances a second time per frame would make
+    // both views observe only the last-written uniforms. Separate instances
+    // own separate buffers (and, for VoxelChunkPass, a front-face-culling
+    // pipeline for the mirrored winding).
+    std::unique_ptr<ForwardOpaquePass> _forward;
+    std::unique_ptr<SkyboxPass> _skybox;
+    std::unique_ptr<SunPass> _sun;
+    std::unique_ptr<VoxelChunkPass> _voxel;
+    std::unique_ptr<WorldCanvasPass> _worldCanvas;
+};
+
+class PortalMaterial;
+
+// Recursive "through the portal" views for every linked PortalMaterial pair
+// found in the transparent queue (see PortalMaterial in material.hpp).
+//
+// Per visible portal surface s (looking into s shows the world seen from
+// behind its partner), a chain of virtual cameras is rendered depth-first:
+// rts[i] holds the image after i+1 portal transits, each level clipped at the
+// partner's plane and drawn with the world sub-passes (ForwardOpaque, Skybox,
+// Sun, VoxelChunk) plus the portal surfaces themselves sampling one level
+// deeper — that nesting is what produces the infinite-corridor recursion.
+// The recursion floor (level == recursionDepth) paints the void fill.
+//
+// Water and world sprites are not re-rendered inside portal views yet (water
+// depends on the main view's resolve/reflection chain; sprites share
+// GPUCanvasPass's per-variant uniform slots on WebGPU).
+//
+// Like PlanarReflectionPass, this is the hardcoded precursor of a future
+// generic AuxViewPass; see that class's comment for the WebGPU
+// one-uniform-write-per-frame rationale behind the private sub-pass copies.
+class PortalPass : public RenderPass {
+public:
+    PortalPass();
+    ~PortalPass() override;
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+    // Platform-scaled budget defaults, set in the constructor: handheld GPUs
+    // (iOS/Android, tile-based) get a single hop and a smaller RT since each
+    // recursion level is a full offscreen scene re-render. Any scene using
+    // portals inherits these — the per-platform choice lives here, not in the
+    // examples. Override after construction for a per-scene budget.
+    int recursionDepth = 4;// portal-in-portal levels before the void floor (desktop)
+    float resolutionScale = 0.4f;// portal RT size relative to the window
+
+    // viewProj of every portal recursion level rendered last frame. Published
+    // so the submission side can cull against these instead of disabling
+    // culling wholesale (see Renderer::GetAuxViewProjs). One frame stale —
+    // submission runs before Execute — which is fine for slow-moving portals.
+    const std::vector<glm::mat4>& ActiveViewProjs() const {
+        return _activeViewProjs;
+    }
+
+    struct PortalView {
+        PortalMaterial* mat = nullptr;// identity key
+        Mesh* mesh = nullptr;// surface mesh, refreshed each frame from the queue
+        glm::mat4 surfaceTransform{ 1.0f };
+        bool active = false;// linked and its chain was rendered this frame
+        bool seenThisFrame = false;// surface draw found in the queue this frame
+        std::vector<std::unique_ptr<RenderTarget>> rts;// rts[i] = image after i+1 transits
+    };
+
+    bool AnyActive() const {
+        return _anyActive;
+    }
+
+    // Draws every portal surface found this frame into the currently resolved
+    // target (main view or a recursion RT). sampleLevel picks the recursion
+    // image the surfaces show: 0 in the main view, k inside rts[k-1];
+    // >= recursionDepth (or an inactive surface) paints the void fill.
+    // `exclude` skips the portal being looked through (the virtual camera
+    // sits just behind it — drawing it would curtain the whole view).
+    void DrawPortalSurfaces(
+        GraphicsSubsystem* ctx,
+        Renderer& renderer,
+        CommandEncoder* enc,
+        int sampleLevel,
+        const Material* exclude = nullptr
+    );
+
+private:
+    // Per (portal, recursion level) world sub-pass copies — same WebGPU
+    // uniform-write rationale as PlanarReflectionPass's private instances.
+    struct WorldReplay {
+        std::unique_ptr<ForwardOpaquePass> forward;
+        std::unique_ptr<SkyboxPass> skybox;
+        std::unique_ptr<SunPass> sun;
+        std::unique_ptr<VoxelChunkPass> voxel;
+        std::unique_ptr<WaterPass> water;// simplified (depth-less, no reflection) inside portals
+    };
+    WorldReplay& _replaySlot(size_t index);
+
+    std::vector<std::unique_ptr<WorldReplay>> _replays;
+    std::vector<PortalView> _views;
+    std::vector<glm::mat4> _activeViewProjs;// one per rendered recursion level
+    bool _anyActive = false;
+
+    // GL: 1x1 black texture bound while a surface shows the void — sampling an
+    // unbound unit is undefined and trips macOS's "texture unloadable" warning.
+    GLuint _glFallbackTex = 0;
+
+    PortalView& _viewFor(PortalMaterial* mat);
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    // Portal-surface drawing state. One dynamic-offset slot per surface draw,
+    // consumed across all invocations of DrawPortalSurfaces in a frame (the
+    // cursor resets in Execute); one texture bind group per sampled RT.
+    void _initSurfaceGPU(WGPUDevice device, WGPUQueue queue, uint32_t sampleCount);
+    void _ensureSurfCapacity(uint32_t slotCount);
+    WGPUBindGroup _getOrCreateSurfTexBG(WGPUTexture tex);
+
+    WGPUDevice _gpuDevice = nullptr;
+    WGPUQueue _gpuQueue = nullptr;
+    WGPURenderPipeline _surfPipeline = nullptr;
+    WGPUBindGroupLayout _surfUniformBGL = nullptr;
+    WGPUBindGroupLayout _surfTexBGL = nullptr;
+    WGPUBindGroup _surfUniformBG = nullptr;
+    WGPUBuffer _surfDrawBuf = nullptr;// dynamic-offset slots
+    uint32_t _surfSlotCapacity = 0;
+    uint32_t _surfSlotCursor = 0;
+    WGPUSampler _surfSampler = nullptr;
+    WGPUTexture _surfFallbackTex = nullptr;// bound when a surface shows the void
+    struct CachedSurfTexBG {
+        WGPUBindGroup bg = nullptr;
+        WGPUTexture tex = nullptr;
+    };
+    std::unordered_map<uintptr_t, CachedSurfTexBG> _surfTexBGCache;
+#endif
+};
+
+// Draws the portal surfaces into the main view (PortalPass::DrawPortalSurfaces
+// with sampleLevel 0). Runs after the opaque world passes, before MSAA
+// resolve, so portals are depth-tested/-written like solid geometry.
+class PortalSurfacePass : public RenderPass {
+public:
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
 // Pyramid bloom: threshold → downsample → upsample → composite.
@@ -369,13 +670,12 @@ private:
     void DrawScreenQuad(GLuint screenVAO);
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    // Simplified WebGPU bloom: single half-res threshold + separable
-    // horizontal/vertical Gaussian blur (ping-ponging _brightA/_brightB) +
-    // additive composite — a deliberate simplification of GL's 5-level mip
-    // pyramid (see header comment). Avoids reading sceneRT's own texture
-    // while it's bound as the composite pass's render attachment by first
-    // copying it into _snapshotTex (requires CopySrc on sceneRT's texture,
-    // see gpu_render_target.cpp).
+    // WebGPU bloom mirrors the GL path exactly: a MIP_LEVELS mip pyramid with
+    // threshold -> downsample chain -> additive upsample chain -> composite.
+    // Avoids reading sceneRT's own texture while it's bound as the composite
+    // pass's render attachment by first copying it into _snapshotTex (requires
+    // CopySrc on sceneRT's texture, see gpu_render_target.cpp); the threshold
+    // pass samples that same snapshot.
     void _initGPU(WGPUDevice device, WGPUQueue queue, uint32_t sceneSampleCount);
     void _resizeGPU(int width, int height);
 
@@ -384,31 +684,42 @@ private:
     WGPUSampler _sampler = nullptr;
 
     WGPURenderPipeline _threshPipeline = nullptr;
-    WGPURenderPipeline _blurPipeline = nullptr;
+    WGPURenderPipeline _downPipeline = nullptr;
+    WGPURenderPipeline _upPipeline = nullptr;// additive blend
     WGPURenderPipeline _compPipeline = nullptr;
 
     WGPUBindGroupLayout _threshBGL = nullptr;
-    WGPUBindGroupLayout _blurBGL = nullptr;
+    WGPUBindGroupLayout _downBGL = nullptr;
+    WGPUBindGroupLayout _upBGL = nullptr;
     WGPUBindGroupLayout _compBGL = nullptr;
 
-    WGPUBuffer _threshUniformBuf = nullptr;
-    WGPUBuffer _blurHUniformBuf = nullptr;// direction+texelSize, fixed per resize
-    WGPUBuffer _blurVUniformBuf = nullptr;
-    WGPUBuffer _compUniformBuf = nullptr;
+    WGPUBuffer _threshUniformBuf = nullptr;// threshold, rewritten each frame
+    WGPUBuffer _compUniformBuf = nullptr;// bloomStrength, rewritten each frame
+    // One texelSize uniform per down/up step; content depends only on the mip
+    // sizes, so written once per resize. Indices 1..MIP_LEVELS-1 are used.
+    WGPUBuffer _downUniformBuf[MIP_LEVELS] = {};
+    WGPUBuffer _upUniformBuf[MIP_LEVELS] = {};
 
-    // Half-resolution ping-pong textures for the blur chain.
-    WGPUTexture _brightA = nullptr, _brightB = nullptr;
-    WGPUTextureView _brightAView = nullptr, _brightBView = nullptr;
+    // GPU mip chain mirroring the GL _mips pyramid; level 0 is half-res, each
+    // subsequent level halves again. Level 0 also holds the final accumulated
+    // bloom after the upsample chain (what the composite samples).
+    struct GpuMip {
+        WGPUTexture tex = nullptr;
+        WGPUTextureView view = nullptr;
+        int w = 0, h = 0;
+    };
+    GpuMip _gpuMips[MIP_LEVELS];
+
     // Full-resolution copy of sceneRT, refreshed each frame before composite.
     WGPUTexture _snapshotTex = nullptr;
     WGPUTextureView _snapshotView = nullptr;
 
-    WGPUBindGroup _threshBG = nullptr;
-    WGPUBindGroup _blurHBG = nullptr;// reads _brightA, writes _brightB
-    WGPUBindGroup _blurVBG = nullptr;// reads _brightB, writes _brightA
-    WGPUBindGroup _compBG = nullptr;// reads _snapshotTex + _brightB(final)
+    WGPUBindGroup _threshBG = nullptr;// reads _snapshotTex, writes mip[0]
+    WGPUBindGroup _downBG[MIP_LEVELS] = {};// _downBG[i] reads mip[i-1], writes mip[i]
+    WGPUBindGroup _upBG[MIP_LEVELS] = {};// _upBG[i] reads mip[i], writes mip[i-1]
+    WGPUBindGroup _compBG = nullptr;// reads _snapshotTex + mip[0]
 
-    int _gpuWidth = 0, _gpuHeight = 0, _gpuHalfW = 0, _gpuHalfH = 0;
+    int _gpuWidth = 0, _gpuHeight = 0;
 
     void _destroyGPUTextures();
 #endif
@@ -474,6 +785,20 @@ public:
         return _renderGraph ? _renderGraph->GetPass<T>() : nullptr;
     }
 
+    // True when an auxiliary view whose frustum can differ arbitrarily from
+    // the main camera's is being rendered (portals, as of last frame) — the
+    // submission side then skips frustum culling so aux views see the whole
+    // scene. The mirrored reflection view is deliberately not included: its
+    // frustum mostly overlaps the main one and always-on water would disable
+    // culling permanently.
+    // View-projection matrices of every auxiliary view rendered last frame
+    // (portal recursion levels + the water reflection). The submission side
+    // keeps any object visible in the main frustum OR any of these, so aux
+    // views see the whole scene without disabling frustum culling wholesale.
+    // Empty when no aux views are active. One frame stale by construction
+    // (submission precedes the passes) — fine for slow-moving portals/water.
+    std::vector<glm::mat4> GetAuxViewProjs();
+
     std::vector<std::pair<std::string, float>> GetTimings() const {
         return _renderGraph ? _renderGraph->GetTimings() : std::vector<std::pair<std::string, float>>{};
     }
@@ -537,6 +862,10 @@ public:
 
     glm::vec4 clearColor = glm::vec4(0.15f, 0.183f, 0.2f, 1.0f);
     bool wireframeEnabled = false;
+
+    // Non-null only while PlanarReflectionPass drives the scene passes with a
+    // mirrored camera; passes fall back to the main camera + sceneRT when null.
+    const RenderViewOverride* viewOverride = nullptr;
 
     // Abstract render targets (backend-independent)
     std::unique_ptr<RenderTarget> sceneRT;

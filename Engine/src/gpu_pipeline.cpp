@@ -63,6 +63,11 @@ GpuPipeline GpuPipelineBuilder::build() {
             case GpuBGLEntry::Kind::ComparisonSampler:
                 we.sampler.type = WGPUSamplerBindingType_Comparison;
                 break;
+            case GpuBGLEntry::Kind::UintTexture3D:
+                we.texture.sampleType = WGPUTextureSampleType_Uint;
+                we.texture.viewDimension = WGPUTextureViewDimension_3D;
+                we.texture.multisampled = false;
+                break;
             }
             wgpuEntries.push_back(we);
         }
@@ -80,14 +85,42 @@ GpuPipeline GpuPipelineBuilder::build() {
     plDesc.bindGroupLayouts = layouts.empty() ? nullptr : layouts.data();
     WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(_device, &plDesc);
 
-    // Blend state (standard src-alpha / one-minus-src-alpha)
-    WGPUBlendComponent blendColor{ WGPUBlendOperation_Add, WGPUBlendFactor_SrcAlpha, WGPUBlendFactor_OneMinusSrcAlpha };
-    WGPUBlendComponent blendAlpha{ WGPUBlendOperation_Add, WGPUBlendFactor_One, WGPUBlendFactor_OneMinusSrcAlpha };
-    WGPUBlendState blendState{ blendColor, blendAlpha };
+    // Blend state — factor pairs mirror the GL BatchRenderer2D::Flush switch
+    // (batch_renderer_2d.cpp) so the two backends composite identically.
+    // Alpha channel uses (1, 1-src.a) except for Multiply / Screen where it
+    // follows the color factors to keep the output alpha meaningful when the
+    // result is later blended into another target.
+    WGPUBlendState blendState{};
+    blendState.color.operation = WGPUBlendOperation_Add;
+    blendState.alpha.operation = WGPUBlendOperation_Add;
+    switch (_blend) {
+    case GpuPipelineBuilder::Blend::None:
+        break;// blendState unused (colorTarget.blend = nullptr below)
+    case GpuPipelineBuilder::Blend::Alpha:
+        blendState.color = { WGPUBlendOperation_Add, WGPUBlendFactor_SrcAlpha, WGPUBlendFactor_OneMinusSrcAlpha };
+        blendState.alpha = { WGPUBlendOperation_Add, WGPUBlendFactor_One, WGPUBlendFactor_OneMinusSrcAlpha };
+        break;
+    case GpuPipelineBuilder::Blend::Additive:
+        blendState.color = { WGPUBlendOperation_Add, WGPUBlendFactor_SrcAlpha, WGPUBlendFactor_One };
+        blendState.alpha = { WGPUBlendOperation_Add, WGPUBlendFactor_One, WGPUBlendFactor_One };
+        break;
+    case GpuPipelineBuilder::Blend::Multiply:
+        blendState.color = { WGPUBlendOperation_Add, WGPUBlendFactor_Dst, WGPUBlendFactor_Zero };
+        blendState.alpha = { WGPUBlendOperation_Add, WGPUBlendFactor_Dst, WGPUBlendFactor_Zero };
+        break;
+    case GpuPipelineBuilder::Blend::Screen:
+        blendState.color = { WGPUBlendOperation_Add, WGPUBlendFactor_One, WGPUBlendFactor_OneMinusSrc };
+        blendState.alpha = { WGPUBlendOperation_Add, WGPUBlendFactor_One, WGPUBlendFactor_OneMinusSrc };
+        break;
+    case GpuPipelineBuilder::Blend::Premultiplied:
+        blendState.color = { WGPUBlendOperation_Add, WGPUBlendFactor_One, WGPUBlendFactor_OneMinusSrcAlpha };
+        blendState.alpha = { WGPUBlendOperation_Add, WGPUBlendFactor_One, WGPUBlendFactor_OneMinusSrcAlpha };
+        break;
+    }
 
     WGPUColorTargetState colorTarget{};
     colorTarget.format = _colorFmt;
-    colorTarget.blend = _blend ? &blendState : nullptr;
+    colorTarget.blend = (_blend == GpuPipelineBuilder::Blend::None) ? nullptr : &blendState;
     colorTarget.writeMask = WGPUColorWriteMask_All;
 
     WGPUFragmentState frag{};

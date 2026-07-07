@@ -49,6 +49,22 @@ public:
     RenderQueue renderQueue = RenderQueue::Opaque;
     int renderQueueOffset = 0;// Fine-tune rendering order within queue
 
+    // ── Planar reflection (opt-in) ──────────────────────────────────────────
+    // When enabled, PlanarReflectionPass re-renders the scene mirrored about
+    // this object's plane — the plane through the object's position with the
+    // object transform's up (+Y) axis as its normal — into an offscreen
+    // RenderTarget the surface shader then samples. This lives on the base
+    // Material (not WaterMaterial) so any flat surface can become reflective:
+    // water today, a wall mirror later is just planarReflection=true plus a
+    // shader that samples PlanarReflectionPass's RT. The reflection RT itself
+    // is owned by the pass, never by a material (materials are shareable
+    // value-ish objects; GPU targets are per-backend resources).
+    // Current pass limitation: one reflection plane per frame (the first
+    // enabled draw wins); see PlanarReflectionPass.
+    bool planarReflection = false;
+    float reflectionStrength = 0.6f;// blend weight toward the mirror image at grazing angles
+    float reflectionDistortion = 0.02f;// normal-driven UV wobble (waves); 0 for a perfect mirror
+
     int GetFinalRenderQueue() const {
         return static_cast<int>(renderQueue) + renderQueueOffset;
     }
@@ -87,6 +103,28 @@ public:
     WaterMaterial() : Material(MaterialProps{}) {
         renderQueue = RenderQueue::Transparent;
         cullFaceEnabled = false;
+        planarReflection = true;// water reflects the sky/terrain by default
+    }
+};
+
+// A "through the portal" window surface. PortalPass finds every PortalMaterial
+// draw in the transparent queue, pairs it with its partner, and renders the
+// recursive views the surface then samples (see PortalPass in renderer.hpp).
+// The disc mesh's local frame defines the portal: +Z faces out (the side you
+// look into / exit from), +Y is up. Pair two portals via PortalComponent::Link,
+// which sets `partner` on both materials.
+//
+// Sits in the Transparent queue only to stay out of ForwardOpaquePass's PRIM
+// drawing; WaterPass explicitly skips PortalMaterial and PortalSurfacePass
+// draws it (opaque, depth-written).
+class PortalMaterial : public Material {
+public:
+    PortalMaterial* partner = nullptr;// the linked exit portal; null = unlinked (renders as void)
+    glm::vec3 rimColor = { 0.35f, 0.65f, 1.0f };// HDR-scaled edge glow (feeds bloom)
+
+    PortalMaterial() : Material(MaterialProps{}) {
+        renderQueue = RenderQueue::Transparent;
+        cullFaceEnabled = false;// visible (as void) from behind too
     }
 };
 
@@ -140,6 +178,14 @@ public:
     TextureHandle splatMap;
     TerrainLayer layers[MAX_LAYERS];
     int layerCount = 0;
+
+    // Aerial perspective: distant terrain fades toward fogColor with
+    // 1-exp(-fogDensity*distance). The single biggest lever for perceived
+    // world scale — without it a mountain 5km away reads like a hill 500m
+    // away. 0 disables (default, keeps legacy terrains unchanged); ~0.00018
+    // gives ~30% fade at 2km and ~80% at 10km.
+    glm::vec3 fogColor = glm::vec3(0.62f, 0.71f, 0.85f);
+    float fogDensity = 0.0f;
 
     TerrainMaterial() : Material(MaterialProps{}) {
     }

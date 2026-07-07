@@ -12,6 +12,7 @@ class Material;
 class WaterMaterial;
 class TerrainMaterial;
 class VATMaterial;
+class PortalMaterial;
 class ShaderProgram;
 struct ShaderProgramProps;
 struct MaterialProps;
@@ -56,6 +57,7 @@ public:
     Material* CreateMaterial(const std::string& name, const MaterialProps& props);
     Material* CreateMaterial(const MaterialProps& props);
     WaterMaterial* CreateWaterMaterial();
+    PortalMaterial* CreatePortalMaterial();
     TerrainMaterial* CreateTerrainMaterial();
     VATMaterial* CreateVATMaterial();
     Material* GetMaterial(const std::string& name) const;
@@ -92,6 +94,7 @@ public:
     MeshHandle CreateCubeMesh(const std::string& name, float size = 1.0f);
     MeshHandle CreatePlaneMesh(const std::string& name, float width, float height);
     MeshHandle CreatePlaneMeshSubdivided(const std::string& name, float width, float height, int subdivisions);
+    MeshHandle CreateDiscMesh(const std::string& name, float radius, int segments = 48);
     MeshHandle CreateSphereMesh(const std::string& name, float radius = 0.5f, int division = 18);
     MeshHandle CreateCapsuleMesh(const std::string& name, float radius = 0.5f, float height = 3.0f);
     MeshHandle CreateTerrainMesh(const std::string& name, float worldSize = 1024.f, int resolution = 10);
@@ -110,6 +113,10 @@ public:
     // Re-upload the pixel data of a heightmap texture previously created with
     // CreateHeightmapTexture (e.g. after regenerating a NoiseHeightField).
     void UpdateHeightmapTexture(TextureHandle handle, const std::vector<float>& grid, int width, int height);
+    // Create (or re-upload, when a texture with this name already exists) a
+    // tightly-packed RGBA8 texture from raw pixels. Used by TerrainStreamer to
+    // recycle per-tile splat-map textures without growing the texture cache.
+    TextureHandle CreateOrUpdateTextureRGBA8(const std::string& name, const unsigned char* data, int width, int height);
     std::shared_ptr<Mesh> LoadOBJ(const std::string& path);
     MeshHandle LoadGLTF(const std::string& path);
 

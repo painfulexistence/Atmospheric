@@ -14,6 +14,7 @@
 - 2025/01/09 - unable to resolve "fatal error LNK1104: cannot open file 'm.lib'" on Windows
 - 2025/05/25 - realized that LNK1104 might be caused by raudio or lua, solved by removing raudio
 - 2026/06/01 - completed major engine port to WebAssembly and resolved critical WebGL2 rendering bugs
+- 2026/07/05 - added TerrainStreamer: 10km x 10km open-world terrain streaming (tiled ring LOD, JobSystem async generation, gutter+skirt seam handling, collider ring, splat hooks) + TerrainStreaming example
 - 2026/07/06 - added Vertex Animation Texture (VAT) playback: vertices are displaced from baked position/normal textures in vat.vert (fetched by gl_VertexID), so cloth/soft-body/fluid clips play with no compute or CPU skinning; VATClip::Bake + VATComponent drive it, 3DBasics demos it with a runtime-baked blob
 - 2026/07/06 - wired VAT across every pass and backend: VATClip now bakes through GfxFactory (RGBA32F on GL, rgba32float on WebGPU) so it is backend-agnostic; ShadowPass got VAT-aware directional + omni depth shaders (GL) and a displacing shadow pipeline (WebGPU) so shadows track the animation; ForwardOpaquePass got a WebGPU VAT pipeline (VAT_WGSL, group 3 = animation textures via textureLoad). The deferred passes aren't in the render graph, so they need no VAT path. Untested in-repo (no Emscripten/GPU in CI); VAT code is isolated to VAT materials so it can't regress normal rendering on any backend
 - TODO: use std::filesystem to get the correct asset loading path

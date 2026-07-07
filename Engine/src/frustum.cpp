@@ -40,10 +40,21 @@ bool Frustum::Intersects(glm::vec3 point) const {
 }
 
 bool Frustum::Intersects(std::array<glm::vec3, 8> points) const {
-    for (int i = 0; i < 8; ++i) {
-        if (Intersects(points[i])) return true;
+    // Conservative box test: the box is outside only if all corners sit in
+    // the negative halfspace of a single plane. Testing "any corner inside"
+    // instead gives false negatives for large boxes (e.g. terrain tiles)
+    // whose corners are all outside while the box itself spans the frustum.
+    for (const Plane* plane : { &_near, &_far, &_top, &_bottom, &_left, &_right }) {
+        bool allOutside = true;
+        for (int i = 0; i < 8; ++i) {
+            if (plane->Halfspace(points[i]) >= 0) {
+                allOutside = false;
+                break;
+            }
+        }
+        if (allOutside) return false;
     }
-    return false;
+    return true;
 }
 
 bool Frustum::IntersectsSphere(glm::vec3 center, float radius) const {

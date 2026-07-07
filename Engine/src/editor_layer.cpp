@@ -176,8 +176,19 @@ void EditorLayer::DrawEntityNode(GameObject* entity, const std::vector<std::uniq
 
 void EditorLayer::DrawEntityInspector(GameObject* entity) {
     ImGui::Text("Name: %s", entity->GetName().c_str());
+    // Entity-level toggle: an inactive GameObject is neither ticked nor
+    // submitted for rendering (GameObject::Tick / GraphicsSubsystem submission),
+    // so this hides the entity and drops its whole draw/update budget.
+    ImGui::Checkbox("Active", &entity->isActive);
+    ImGui::Separator();
     for (const auto& comp : entity->GetComponents()) {
+        // Per-component enable checkbox gates OnTick / OnPhysicsTick via
+        // Component::CanTick; pair it inline with the component's header.
+        ImGui::PushID(comp.get());
+        ImGui::Checkbox("##enabled", &comp->enabled);
+        ImGui::SameLine();
         if (ImGui::CollapsingHeader(comp->GetName().c_str())) comp->DrawImGui();
+        ImGui::PopID();
     }
 }
 

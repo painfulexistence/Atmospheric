@@ -16,10 +16,16 @@ add_subdirectory(VideoPlayer)        # FFmpeg decode → texture
 # ── 3D ───────────────────────────────────────────────────────────────────────
 add_subdirectory(3DBasics)           # scene JSON + components, PBR, 2D+3D basics
 add_subdirectory(VoxelWorld)         # voxel streaming, fly camera, bloom
+add_subdirectory(MicroVoxel)         # raymarched micro voxels (DDA over 3D texture)
 add_subdirectory(Terrain)            # procedural / heightmap terrain, RmlUi HUD
+add_subdirectory(TerrainStreaming)   # 10km x 10km streamed open-world terrain (TerrainStreamer)
 
 # ── Networking ───────────────────────────────────────────────────────────────
 add_subdirectory(MultiplayerSandbox) # deterministic lockstep netplay
+if(NOT EMSCRIPTEN)
+    add_subdirectory(RelayServer)    # headless UDP relay (server deployment shape)
+    add_subdirectory(HideAndSeek)    # server-authoritative asymmetric PvP netcode
+endif()
 
 # ── Scripting frontend ───────────────────────────────────────────────────────
 add_subdirectory(LuaScripting)       # Löve2D-style Lua scripting frontend
