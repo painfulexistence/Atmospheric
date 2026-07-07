@@ -144,8 +144,9 @@ void MicroVoxelPass::_ensureGIRenderTargets(int w, int h) {
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 
-// Layout must match Uniforms in MICROVOXEL_WGSL: 2 mat4 + 4 vec4f + 2 vec4i + 1 vec4f.
-static constexpr uint64_t MICROVOXEL_UNIFORM_SIZE = 240;
+// Layout must match Uniforms in MICROVOXEL_WGSL:
+//   2 mat4 + 4 vec4f + 2 vec4i + 1 vec4f + 2 x array<vec4f,4> = 240 + 128.
+static constexpr uint64_t MICROVOXEL_UNIFORM_SIZE = 368;
 
 MicroVoxelPass::~MicroVoxelPass() {
     if (_texBG) wgpuBindGroupRelease(_texBG);
@@ -299,6 +300,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         }
         if (!_texBG) return;
 
+        const int lightCount = std::min(pointLightCount, kMaxPointLights);
         struct {
             glm::mat4 invViewProj;
             glm::mat4 viewProj;
@@ -309,6 +311,8 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             glm::ivec4 gridDim;
             glm::ivec4 misc;
             glm::vec4 params;
+            glm::vec4 pointPosRadius[kMaxPointLights];
+            glm::vec4 pointColor[kMaxPointLights];
         } u{
             invViewProj,
             viewProj,
@@ -317,9 +321,15 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             glm::vec4(sunDir, sunIntensity),
             glm::vec4(sunColor, ambient),
             glm::ivec4(gridDim, gridDim, gridDim, brickDim),
-            glm::ivec4(maxRaySteps, shadowEnabled ? 1 : 0, 0, 0),
+            glm::ivec4(maxRaySteps, shadowEnabled ? 1 : 0, reflectionsEnabled ? 1 : 0, lightCount),
             glm::vec4(aoStrength, emissiveStrength, 0.0f, 0.0f),
+            {},
+            {},
         };
+        for (int i = 0; i < lightCount; i++) {
+            u.pointPosRadius[i] = glm::vec4(pointLightPos[i], pointLightRadius[i]);
+            u.pointColor[i] = glm::vec4(pointLightColor[i] * pointLightIntensity[i], 0.0f);
+        }
         static_assert(sizeof(u) == MICROVOXEL_UNIFORM_SIZE, "uniform layout must match MICROVOXEL_WGSL");
         wgpuQueueWriteBuffer(_gpuQueue, _uniformBuf, 0, &u, sizeof(u));
 

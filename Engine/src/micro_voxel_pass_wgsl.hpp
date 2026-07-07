@@ -9,7 +9,8 @@
 // Depth is written via @builtin(frag_depth) WITHOUT the GL -1..1 -> 0..1 remap:
 // the WebGPU rasterizer writes clip.z/clip.w directly, so voxel depth matches
 // the rasterized scene only if it does the same. gridDim.w carries brickDim;
-// misc = (maxRaySteps, shadowEnabled, _, _).
+// misc = (maxRaySteps, shadowEnabled, reflectionsEnabled, pointLightCount).
+// Emissive, point lights, and reflections have GL parity; traced GI is GL-only.
 static const char* MICROVOXEL_WGSL = R"(
 struct Uniforms {
     invViewProj:  mat4x4<f32>,
@@ -19,8 +20,10 @@ struct Uniforms {
     sunDirInt:    vec4<f32>,   // sunDir.xyz, sunIntensity
     sunColAmb:    vec4<f32>,   // sunColor.xyz, ambient
     gridDim:      vec4<i32>,   // gridDim.xyz, brickDim
-    misc:         vec4<i32>,   // maxRaySteps, shadowEnabled, _, _
+    misc:         vec4<i32>,   // maxRaySteps, shadowEnabled, reflectionsEnabled, pointLightCount
     params:       vec4<f32>,   // aoStrength, emissiveStrength, _, _
+    pointPosRadius: array<vec4<f32>, 4>,   // xyz = world pos, w = radius
+    pointColor:     array<vec4<f32>, 4>,   // rgb = color pre-scaled by intensity
 };
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(1) @binding(0) var volume:    texture_3d<u32>;
@@ -28,6 +31,11 @@ struct Uniforms {
 @group(1) @binding(2) var palette:   texture_2d<f32>;
 
 const PI: f32 = 3.1415927;
+
+// Sky hemisphere gradient — ambient + reflection-ray miss color.
+fn skyRadiance(dir: vec3<f32>) -> vec3<f32> {
+    return mix(vec3<f32>(0.20, 0.22, 0.28), vec3<f32>(0.45, 0.55, 0.75), dir.y * 0.5 + 0.5);
+}
 
 struct VOut {
     @builtin(position) pos: vec4<f32>,
@@ -260,14 +268,55 @@ struct FOut {
         ao = mix(1.0, faceAO(cell, h.normal, hitPos), u.params.x);
     }
 
-    let skyAmbient = mix(vec3<f32>(0.20, 0.22, 0.28), vec3<f32>(0.45, 0.55, 0.75), h.normal.y * 0.5 + 0.5);
+    let skyAmbient = skyRadiance(h.normal);
+
+    // Local point lights: distance falloff + N·L, optional shadow ray (gated on
+    // the shadow toggle). Colors arrive pre-scaled by intensity.
+    var pointLight = vec3<f32>(0.0);
+    for (var i = 0; i < 4; i = i + 1) {
+        if (i >= u.misc.w) { break; }
+        let d = u.pointPosRadius[i].xyz - hitPos;
+        let dist = length(d);
+        let radius = u.pointPosRadius[i].w;
+        if (dist >= radius) { continue; }
+        let Lp = d / max(dist, 1e-4);
+        let pndl = max(dot(h.normal, Lp), 0.0);
+        if (pndl <= 0.0) { continue; }
+        let a = 1.0 - dist / radius;
+        let atten = a * a;
+        var psh = 1.0;
+        if (u.misc.y != 0) {
+            let sh = raycast(hitPos + h.normal * vsize * 0.51, Lp);
+            if (sh.hit && sh.t < dist) { psh = 0.0; }
+        }
+        pointLight = pointLight + u.pointColor[i].xyz * (1.0 / PI) * pndl * atten * psh;
+    }
+
     let direct = u.sunDirInt.w * u.sunColAmb.xyz * (1.0 / PI) * ndl * shadow;
     // AO fully attenuates ambient; a stylized 30% also darkens direct. Emission
     // is self-lit, added after AO so glowing voxels stay bright in crevices.
-    // (The WebGPU path keeps flat ambient + self-emission; traced GI and point
-    // lights are GL-only for now, matching the GI split.)
+    // (The WebGPU path keeps flat ambient + self-emission; traced GI is GL-only,
+    // matching the GI split. Point lights and reflections have parity here.)
     let emissive = albedo * emission * u.params.y;
-    let color = albedo * (direct * (0.7 + 0.3 * ao) + skyAmbient * u.sunColAmb.w * ao) + emissive;
+    var color = albedo * (direct * (0.7 + 0.3 * ao) + skyAmbient * u.sunColAmb.w * ao + pointLight * ao) + emissive;
+
+    // ── Per-material mirror reflections (palette row 1) ─────────────────────
+    let reflectivity = textureLoad(palette, vec2<i32>(i32(h.material), 1), 0).r;
+    if (u.misc.z != 0 && reflectivity > 0.0) {
+        let rdir = reflect(rd, h.normal);
+        let rh = raycast(hitPos + h.normal * vsize * 0.51, rdir);
+        var refl: vec3<f32>;
+        if (rh.hit) {
+            let rpal = textureLoad(palette, vec2<i32>(i32(rh.material), 0), 0);
+            let rndl = max(dot(rh.normal, L), 0.0);
+            refl = rpal.rgb * (u.sunDirInt.w * u.sunColAmb.xyz * (1.0 / PI) * rndl + skyRadiance(rh.normal) * u.sunColAmb.w)
+                 + rpal.rgb * rpal.a * u.params.y;
+        } else {
+            refl = skyRadiance(rdir);
+        }
+        let fres = reflectivity + (1.0 - reflectivity) * pow(1.0 - max(dot(-rd, h.normal), 0.0), 5.0);
+        color = mix(color, refl, clamp(fres, 0.0, 1.0));
+    }
 
     // Scene convention: gamma-encoded into sceneRT (see FORWARD_OPAQUE_WGSL);
     // the tonemap pass decodes with pow(2.2) first.
