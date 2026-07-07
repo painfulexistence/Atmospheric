@@ -12,6 +12,8 @@
 class MicroVoxelApp : public Application {
     using Application::Application;
 
+    std::vector<VoxelVolumeComponent*> _carveTargets;// volumes the E key can dig into
+
     void OnInit() override {
         GoScene("main", [this] { OnLoad(); });
     }
@@ -31,7 +33,8 @@ class MicroVoxelApp : public Application {
             auto* volumeObj = CreateGameObject();
             volumeObj->SetName(vd.name);
             volumeObj->SetPosition(vd.pos);
-            volumeObj->AddComponent<VoxelVolumeComponent>(vd.seed);
+            auto* vc = static_cast<VoxelVolumeComponent*>(volumeObj->AddComponent<VoxelVolumeComponent>(vd.seed));
+            _carveTargets.push_back(vc);
         }
 
         // An angled warm sun. Without one the engine falls back to its default
@@ -85,7 +88,7 @@ class MicroVoxelApp : public Application {
         }
 
         ConsoleSubsystem::Get()->Info("MicroVoxel loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
-        ConsoleSubsystem::Get()->Info("The terrain block ahead is raymarched 5cm voxels — no triangles.");
+        ConsoleSubsystem::Get()->Info("Three raymarched 5cm-voxel volumes — no triangles. Hold E to dig into them.");
         ConsoleSubsystem::Get()->Info(
             "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P/X toggle "
             "GI/AO/shadow/point light/reflections."
@@ -95,6 +98,30 @@ class MicroVoxelApp : public Application {
     void OnUpdate(float /*dt*/, float /*time*/) override {
         auto* input = InputSubsystem::Get();
         if (input->IsKeyPressed(Key::ESCAPE)) Quit();
+
+        // Hold E to dig: raycast the camera's aim into the volumes and carve a
+        // sphere of air at the first solid voxel. No remeshing — the pass just
+        // re-uploads the edited volume, which is the whole point of the raymarch
+        // model (a greedy-meshed world would have to rebuild its mesh here).
+        if (input->IsKeyDown(Key::E) && !_carveTargets.empty()) {
+            const glm::vec3 ro = mainCamera->GetEyePosition();
+            const glm::vec3 rd = mainCamera->GetEyeDirection();
+            float best = 1e9f;
+            VoxelVolumeComponent* target = nullptr;
+            glm::vec3 hitPos(0.0f);
+            for (auto* vc : _carveTargets) {
+                glm::vec3 hit;
+                if (vc->RaycastVoxel(ro, rd, 60.0f, hit)) {
+                    const float d = glm::length(hit - ro);
+                    if (d < best) {
+                        best = d;
+                        target = vc;
+                        hitPos = hit;
+                    }
+                }
+            }
+            if (target) target->CarveSphere(hitPos, 0.45f);
+        }
 
         // Debug hotkeys: 0-6 view individual shading terms in isolation,
         // G/O/H toggle GI / AO / the sun shadow ray (see microvoxel.frag).

@@ -311,6 +311,117 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
     }
 }
 
+void VoxelVolumeComponent::CarveSphere(const glm::vec3& worldCenter, float radius) {
+    if (volume.empty() || radius <= 0.0f) return;
+    const int N = gridDim;
+    const int B = brickDim;
+    const int BG = N / B;
+
+    // World -> voxel space (GetOrigin is the grid's world min corner).
+    const glm::vec3 c = (worldCenter - GetOrigin()) / voxelSize;// sphere centre in voxels
+    const float rv = radius / voxelSize;// radius in voxels
+    const glm::ivec3 lo = glm::clamp(glm::ivec3(glm::floor(c - rv)), glm::ivec3(0), glm::ivec3(N - 1));
+    const glm::ivec3 hi = glm::clamp(glm::ivec3(glm::ceil(c + rv)), glm::ivec3(0), glm::ivec3(N - 1));
+
+    bool changed = false;
+    const float rv2 = rv * rv;
+    for (int z = lo.z; z <= hi.z; z++) {
+        for (int y = lo.y; y <= hi.y; y++) {
+            for (int x = lo.x; x <= hi.x; x++) {
+                const glm::vec3 d = glm::vec3(x, y, z) + 0.5f - c;
+                if (glm::dot(d, d) > rv2) continue;
+                uint8_t& vx = volume[(static_cast<size_t>(z) * N + y) * N + x];
+                if (vx != 0) {
+                    vx = 0;
+                    if (solidCount > 0) solidCount--;
+                    changed = true;
+                }
+            }
+        }
+    }
+    if (!changed) return;
+
+    // Recompute occupancy for the affected brick range (a brick is occupied if
+    // any voxel in it is still solid). Only the carved bricks are touched.
+    const glm::ivec3 blo = lo / B;
+    const glm::ivec3 bhi = hi / B;
+    for (int bz = blo.z; bz <= bhi.z; bz++) {
+        for (int by = blo.y; by <= bhi.y; by++) {
+            for (int bx = blo.x; bx <= bhi.x; bx++) {
+                bool occ = false;
+                for (int z = bz * B; z < (bz + 1) * B && !occ; z++) {
+                    for (int y = by * B; y < (by + 1) * B && !occ; y++) {
+                        for (int x = bx * B; x < (bx + 1) * B; x++) {
+                            if (volume[(static_cast<size_t>(z) * N + y) * N + x] != 0) {
+                                occ = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                occupancy[(static_cast<size_t>(bz) * BG + by) * BG + bx] = occ ? 1 : 0;
+            }
+        }
+    }
+    dirty = true;// pass re-uploads the volume and resets GI history
+}
+
+bool VoxelVolumeComponent::RaycastVoxel(
+    const glm::vec3& ro, const glm::vec3& rd, float maxDist, glm::vec3& outHitWorld
+) const {
+    if (volume.empty()) return false;
+    const int N = gridDim;
+    const glm::vec3 origin = GetOrigin();
+    const glm::vec3 bmax = origin + glm::vec3(static_cast<float>(N) * voxelSize);
+
+    // Ray-AABB (slab). rd is a normalized view ray; axis-aligned components are
+    // vanishingly rare from a free camera, so 1/rd is fine here.
+    const glm::vec3 invD = 1.0f / rd;
+    const glm::vec3 t0 = (origin - ro) * invD;
+    const glm::vec3 t1 = (bmax - ro) * invD;
+    const glm::vec3 tsmall = glm::min(t0, t1);
+    const glm::vec3 tbig = glm::max(t0, t1);
+    const float tEnter = glm::max(glm::max(tsmall.x, tsmall.y), tsmall.z);
+    const float tExit = glm::min(glm::min(tbig.x, tbig.y), tbig.z);
+    if (tExit < glm::max(tEnter, 0.0f)) return false;
+
+    float t = glm::max(tEnter, 0.0f) + voxelSize * 1e-3f;
+    if (t > maxDist) return false;
+    const glm::vec3 p = ro + rd * t;
+    glm::ivec3 cell = glm::clamp(glm::ivec3(glm::floor((p - origin) / voxelSize)), glm::ivec3(0), glm::ivec3(N - 1));
+
+    const glm::ivec3 step = glm::ivec3(glm::sign(rd));
+    const glm::vec3 tDelta = glm::abs(glm::vec3(voxelSize) * invD);
+    const glm::vec3 stepPos = glm::vec3(glm::greaterThan(rd, glm::vec3(0.0f)));
+    const glm::vec3 boundary = origin + (glm::vec3(cell) + stepPos) * voxelSize;
+    glm::vec3 tMax = (boundary - ro) * invD;
+
+    for (int i = 0; i < 3 * N; i++) {
+        if (volume[(static_cast<size_t>(cell.z) * N + cell.y) * N + cell.x] != 0) {
+            outHitWorld = ro + rd * t;
+            return true;
+        }
+        if (tMax.x < tMax.y && tMax.x < tMax.z) {
+            t = tMax.x;
+            tMax.x += tDelta.x;
+            cell.x += step.x;
+            if (cell.x < 0 || cell.x >= N) break;
+        } else if (tMax.y < tMax.z) {
+            t = tMax.y;
+            tMax.y += tDelta.y;
+            cell.y += step.y;
+            if (cell.y < 0 || cell.y >= N) break;
+        } else {
+            t = tMax.z;
+            tMax.z += tDelta.z;
+            cell.z += step.z;
+            if (cell.z < 0 || cell.z >= N) break;
+        }
+        if (t > maxDist || t > tExit) break;
+    }
+    return false;
+}
+
 void VoxelVolumeComponent::OnAttach() {
     Generate(seed);
     if (auto* gs = GraphicsSubsystem::Get()) {
