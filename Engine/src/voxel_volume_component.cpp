@@ -18,7 +18,7 @@
 
 static float MvHashNoise(int x, int y, int z, uint32_t seed) {
     uint32_t h = static_cast<uint32_t>(x) * 374761393u + static_cast<uint32_t>(y) * 668265263u
-                 + static_cast<uint32_t>(z) * 2246822519u + seed * 3266489917u;
+               + static_cast<uint32_t>(z) * 2246822519u + seed * 3266489917u;
     h = (h ^ (h >> 13)) * 1274126177u;
     h ^= h >> 16;
     return static_cast<float>(h & 0xFFFFu) / 65535.0f;
@@ -123,8 +123,7 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
         paletteRGBA[idx * 4 + 2] = b;
         paletteRGBA[idx * 4 + 3] = 255;
     };
-    for (int i = 8; i < 256; i++)
-        setPalette(static_cast<uint8_t>(i), 128, 128, 128);
+    for (int i = 8; i < 256; i++) setPalette(static_cast<uint8_t>(i), 128, 128, 128);
     setPalette(MatGrass, 64, 140, 46);
     setPalette(MatDirt, 107, 77, 46);
     setPalette(MatStone, 122, 122, 128);
@@ -149,51 +148,55 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
         }
     }
 
-    // Column fill, parallelized over z slices (cells are disjoint per thread)
+    // Column fill, parallelized over z slices (cells are disjoint per worker)
+#ifdef __EMSCRIPTEN__
+    // Single-threaded on the web: spawning std::threads and joining them
+    // immediately deadlocks under Emscripten pthreads — the join blocks the
+    // browser event loop that the spawn needs to create its Web Worker (no
+    // preallocated pthread pool). Symptom: page freezes with no error.
+    const uint32_t threadCount = 1;
+#else
     const uint32_t threadCount = std::max(1u, std::thread::hardware_concurrency());
+#endif
     std::vector<uint32_t> threadSolidCounts(threadCount, 0);
-    {
+    auto fillSlices = [&](uint32_t ti) {
+        uint32_t localSolid = 0;
+        for (uint32_t z = ti; z < N; z += threadCount) {
+            for (uint32_t x = 0; x < N; x++) {
+                const float h = heights[z * N + x];
+                const auto top = static_cast<uint32_t>(h);
+                for (uint32_t y = 0; y <= top && y < N; y++) {
+                    // Carve caves below the surface crust
+                    if (y + 4 < top) {
+                        float cave = MvFbm3(glm::vec3(x, y, z) * 0.045f, 3, seed + 7u);
+                        if (cave > 0.62f) continue;
+                    }
+                    uint8_t mat = MatStone;
+                    const uint32_t depth = top - y;
+                    if (depth == 0) {
+                        mat = (h > snowLine) ? MatSnow : ((h < sandLine) ? MatSand : MatGrass);
+                    } else if (depth <= 3) {
+                        mat = (h < sandLine) ? MatSand : MatDirt;
+                    } else if (MvHashNoise(static_cast<int>(x), static_cast<int>(y), static_cast<int>(z), seed + 13u) > 0.995f) {
+                        mat = MatOre;
+                    }
+                    voxelAt(x, y, z) = mat;
+                    localSolid++;
+                }
+            }
+        }
+        threadSolidCounts[ti] = localSolid;
+    };
+    if (threadCount == 1) {
+        fillSlices(0);
+    } else {
         std::vector<std::thread> workers;
         workers.reserve(threadCount);
-        for (uint32_t ti = 0; ti < threadCount; ti++) {
-            workers.emplace_back([&, ti]() {
-                uint32_t localSolid = 0;
-                for (uint32_t z = ti; z < N; z += threadCount) {
-                    for (uint32_t x = 0; x < N; x++) {
-                        const float h = heights[z * N + x];
-                        const auto top = static_cast<uint32_t>(h);
-                        for (uint32_t y = 0; y <= top && y < N; y++) {
-                            // Carve caves below the surface crust
-                            if (y + 4 < top) {
-                                float cave = MvFbm3(glm::vec3(x, y, z) * 0.045f, 3, seed + 7u);
-                                if (cave > 0.62f) continue;
-                            }
-                            uint8_t mat = MatStone;
-                            const uint32_t depth = top - y;
-                            if (depth == 0) {
-                                mat = (h > snowLine) ? MatSnow : ((h < sandLine) ? MatSand : MatGrass);
-                            } else if (depth <= 3) {
-                                mat = (h < sandLine) ? MatSand : MatDirt;
-                            } else if (MvHashNoise(
-                                           static_cast<int>(x), static_cast<int>(y), static_cast<int>(z), seed + 13u
-                                       )
-                                       > 0.995f) {
-                                mat = MatOre;
-                            }
-                            voxelAt(x, y, z) = mat;
-                            localSolid++;
-                        }
-                    }
-                }
-                threadSolidCounts[ti] = localSolid;
-            });
-        }
-        for (auto& w : workers)
-            w.join();
+        for (uint32_t ti = 0; ti < threadCount; ti++) workers.emplace_back([&fillSlices, ti]() { fillSlices(ti); });
+        for (auto& w : workers) w.join();
     }
     solidCount = 0;
-    for (uint32_t c : threadSolidCounts)
-        solidCount += c;
+    for (uint32_t c : threadSolidCounts) solidCount += c;
 
     // A few floating crystal spheres to show the volume is truly 3D
     for (int s = 0; s < 4; s++) {
@@ -246,14 +249,12 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
     dirty = true;
 
     if (auto* console = ConsoleSubsystem::Get()) {
-        console->Info(
-            fmt::format(
-                "VoxelVolume generated: {}^3 grid, {} solid voxels ({:.1f}% fill)",
-                N,
-                solidCount,
-                100.0f * static_cast<float>(solidCount) / static_cast<float>(static_cast<size_t>(N) * N * N)
-            )
-        );
+        console->Info(fmt::format(
+            "VoxelVolume generated: {}^3 grid, {} solid voxels ({:.1f}% fill)",
+            N,
+            solidCount,
+            100.0f * static_cast<float>(solidCount) / static_cast<float>(static_cast<size_t>(N) * N * N)
+        ));
     }
 }
 

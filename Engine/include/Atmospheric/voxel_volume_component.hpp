@@ -36,7 +36,13 @@ public:
     }
 
     // Grid config (gridDim must be a multiple of brickDim; Generate enforces it).
-    int gridDim = 256;
+#ifdef __EMSCRIPTEN__
+    // Smaller default on the web: generation is single-threaded there (see
+    // Generate) and the WebGL2 fragment raymarch is costlier per pixel.
+    int gridDim = 128;// 6.4 m at 5 cm voxels
+#else
+    int gridDim = 256;// 12.8 m at 5 cm voxels
+#endif
     int brickDim = 8;
     float voxelSize = 0.05f;// 5 cm voxels => 256^3 is a 12.8 m diorama
     uint32_t seed = 1337u;

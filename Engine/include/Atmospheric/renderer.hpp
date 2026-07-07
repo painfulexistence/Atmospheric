@@ -350,6 +350,11 @@ public:
     // the flat ambient term.
     float giStrength = 1.0f;
     float giBlend = 0.93f;// history weight per frame
+    // GI trace resolution relative to the screen. Indirect light is low
+    // frequency, so half res (quarter the rays) is nearly indistinguishable
+    // after the bilinear-filtered composite; temporal accumulation hides the
+    // rest. 1.0 = full res.
+    float giResolutionScale = 0.5f;
     int debugMode = 0;// 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
     bool shadowEnabled = true;
 
