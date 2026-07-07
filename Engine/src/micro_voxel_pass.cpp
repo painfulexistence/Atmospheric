@@ -608,6 +608,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     shader->SetUniform(std::string("u_shadowEnabled"), shadowEnabled ? 1 : 0);
     shader->SetUniform(std::string("u_aoStrength"), aoStrength);
     shader->SetUniform(std::string("u_giStrength"), giActive ? giStrength : 0.0f);
+    shader->SetUniform(std::string("u_debugMode"), debugMode);
     shader->SetUniform(std::string("u_volume"), 0);
     shader->SetUniform(std::string("u_occupancy"), 1);
     shader->SetUniform(std::string("u_palette"), 2);

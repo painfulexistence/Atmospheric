@@ -26,11 +26,43 @@ class MicroVoxelApp : public Application {
         }
 
         ConsoleSubsystem::Get()->Info("MicroVoxel loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
-        ConsoleSubsystem::Get()->Info("The terrain block ahead is raymarched 10cm voxels — no triangles.");
+        ConsoleSubsystem::Get()->Info("The terrain block ahead is raymarched 5cm voxels — no triangles.");
+        ConsoleSubsystem::Get()->Info("Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H toggle GI/AO/shadow.");
     }
 
     void OnUpdate(float /*dt*/, float /*time*/) override {
-        if (InputSubsystem::Get()->IsKeyPressed(Key::ESCAPE)) Quit();
+        auto* input = InputSubsystem::Get();
+        if (input->IsKeyPressed(Key::ESCAPE)) Quit();
+
+        // Debug hotkeys: 0-6 view individual shading terms in isolation,
+        // G/O/H toggle GI / AO / the sun shadow ray (see microvoxel.frag).
+        Renderer* renderer = GraphicsSubsystem::Get()->renderer.get();
+        auto* mv = renderer ? renderer->GetPass<MicroVoxelPass>() : nullptr;
+        if (!mv) return;
+        auto* console = ConsoleSubsystem::Get();
+        auto setDebug = [&](int mode, const char* name) {
+            mv->debugMode = mode;
+            console->Info(std::string("MicroVoxel debug view: ") + name);
+        };
+        if (input->IsKeyPressed(Key::Num0)) setDebug(0, "final shading");
+        if (input->IsKeyPressed(Key::Num1)) setDebug(1, "albedo");
+        if (input->IsKeyPressed(Key::Num2)) setDebug(2, "normals");
+        if (input->IsKeyPressed(Key::Num3)) setDebug(3, "ambient occlusion");
+        if (input->IsKeyPressed(Key::Num4)) setDebug(4, "sun shadow");
+        if (input->IsKeyPressed(Key::Num5)) setDebug(5, "GI buffer");
+        if (input->IsKeyPressed(Key::Num6)) setDebug(6, "material index");
+        if (input->IsKeyPressed(Key::G)) {
+            mv->giStrength = (mv->giStrength > 0.0f) ? 0.0f : 1.0f;
+            console->Info(mv->giStrength > 0.0f ? "MicroVoxel GI: on" : "MicroVoxel GI: off (flat ambient)");
+        }
+        if (input->IsKeyPressed(Key::O)) {
+            mv->aoStrength = (mv->aoStrength > 0.0f) ? 0.0f : 0.7f;
+            console->Info(mv->aoStrength > 0.0f ? "MicroVoxel AO: on" : "MicroVoxel AO: off");
+        }
+        if (input->IsKeyPressed(Key::H)) {
+            mv->shadowEnabled = !mv->shadowEnabled;
+            console->Info(mv->shadowEnabled ? "MicroVoxel sun shadow: on" : "MicroVoxel sun shadow: off");
+        }
     }
 };
 

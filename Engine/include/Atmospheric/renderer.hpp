@@ -352,6 +352,7 @@ public:
     // the flat ambient term.
     float giStrength = 1.0f;
     float giBlend = 0.93f;// history weight per frame
+    int debugMode = 0;// 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
     bool shadowEnabled = true;
     uint32_t solidCount = 0;
 
