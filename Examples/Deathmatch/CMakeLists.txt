@@ -38,7 +38,9 @@ if(NOT EMSCRIPTEN)
     # ── DeathmatchClient: windowed renderer + input + ClientNet ─────────────
     find_package(glad CONFIG REQUIRED)
 
-    add_executable(DeathmatchClient main.cpp client_net.cpp)
+    # authority.cpp is compiled in for the --local single-process test mode
+    # (an embedded DeathmatchAuthority pumped over loopback).
+    add_executable(DeathmatchClient main.cpp client_net.cpp authority.cpp)
     set_target_properties(DeathmatchClient PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/DeathmatchClient
     )

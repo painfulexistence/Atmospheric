@@ -6,6 +6,11 @@
 // and replicates the shield buff. The server does the lag compensation.
 //
 //   ./DeathmatchClient --connect <ip> [port]     (default 127.0.0.1:9200)
+//   ./DeathmatchClient --local                    (embed the server, play solo)
+//
+// --local runs a single-process test mode: a DeathmatchAuthority is embedded
+// and pumped in-process and this client talks to it over loopback, so one
+// binary is a playable test arena without launching a separate server.
 //
 // Controls: WASD move · mouse look · LMB railgun · F rocket · SPACE jump
 //           (hold in air to levitate) · Q dash · C shield (hold) · ESC quit.
@@ -21,6 +26,7 @@
 // absolute cursor delta (the cursor can escape at window edges). Low-poly
 // "Control"-style materials + particle juice are a planned polish pass.
 #include "Atmospheric.hpp"
+#include "authority.hpp"
 #include "client_net.hpp"
 #include "sim_common.hpp"
 
@@ -33,6 +39,7 @@ namespace {
     struct CliOptions {
         std::string serverIp = "127.0.0.1";
         uint16_t serverPort = 9200;
+        bool local = false;
     } gcli;
 
     uint32_t NowMs() {
@@ -50,7 +57,10 @@ namespace {
 // and feeds ClientNet one input per fixed tick.
 class DeathmatchController : public Component {
 public:
-    DeathmatchController(GameObject* cameraGO, ClientNet* net) : _net(net) {
+    // authority is non-null only in --local mode, where it's pumped in-process
+    // right before the client's own Pump so this one binary is a full game.
+    DeathmatchController(GameObject* cameraGO, ClientNet* net, DeathmatchAuthority* authority)
+      : _net(net), _authority(authority) {
         gameObject = cameraGO;
     }
 
@@ -67,6 +77,7 @@ public:
         if (!inp || !_cam) return;
         const uint32_t nowMs = NowMs();
 
+        if (_authority) _authority->Pump();// --local: drive the embedded server
         _net->Pump(nowMs);
         _net->UpdateCosmetic(dt);
 
@@ -112,6 +123,7 @@ public:
 
 private:
     ClientNet* _net;
+    DeathmatchAuthority* _authority = nullptr;
     CameraComponent* _cam = nullptr;
     float _accum = 0.0f;
     uint32_t _tick = 0;
@@ -125,6 +137,7 @@ class DeathmatchGame : public Application {
     using Application::Application;
 
     ClientNet _net;
+    DeathmatchAuthority _localAuthority;// only bound/pumped in --local mode
     FontHandle _fontID = 0;
     GameObject* _enemyGO = nullptr;
     std::vector<GameObject*> _rocketPool;
@@ -180,10 +193,24 @@ class DeathmatchGame : public Application {
             _rocketPool.push_back(go);
         }
 
+        // --local: embed the authority in this process and talk to it over
+        // loopback, so one binary is a playable test arena (alone until a
+        // second player would join).
+        DeathmatchAuthority* localAuth = nullptr;
+        if (gcli.local) {
+            if (_localAuthority.Bind(0)) {
+                gcli.serverIp = "127.0.0.1";
+                gcli.serverPort = _localAuthority.BoundPort();
+                localAuth = &_localAuthority;
+            } else {
+                ConsoleSubsystem::Get()->Error("Failed to bind embedded authority");
+            }
+        }
+
         if (auto* cam = GraphicsSubsystem::Get()->GetMainCamera()) {
             auto ws = Window::Get()->GetLogicalSize();
             cam->SetPerspective(glm::radians(90.0f), static_cast<float>(ws.width) / ws.height, 0.05f, 200.0f);
-            cam->gameObject->AddComponent<DeathmatchController>(&_net);// the local player
+            cam->gameObject->AddComponent<DeathmatchController>(&_net, localAuth);// the local player
         }
 
         if (!_net.Connect(gcli.serverIp, gcli.serverPort)) {
@@ -268,6 +295,8 @@ int main(int argc, char* argv[]) {
         if (std::strcmp(argv[i], "--connect") == 0 && i + 1 < argc) {
             gcli.serverIp = argv[++i];
             if (i + 1 < argc && argv[i + 1][0] != '-') gcli.serverPort = static_cast<uint16_t>(std::atoi(argv[++i]));
+        } else if (std::strcmp(argv[i], "--local") == 0) {
+            gcli.local = true;
         }
     }
 
