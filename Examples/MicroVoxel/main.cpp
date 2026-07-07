@@ -39,8 +39,10 @@ class MicroVoxelApp : public Application {
                 .ambient = glm::vec3(1.0f),
                 .diffuse = glm::vec3(1.0f, 0.95f, 0.85f),// warm daylight
                 .specular = glm::vec3(1.0f),
-                .direction = glm::normalize(glm::vec3(-0.45f, -0.82f, -0.35f)),
-                .intensity = 5.0f,
+                // Low, near-horizon sun (tuned in the editor) for long raking
+                // shadows and grazing light across the terrain.
+                .direction = glm::normalize(glm::vec3(-0.451f, 10.179f, -236.350f)),
+                .intensity = 20.0f,
                 .castShadow = false,
             }
         ));
@@ -60,6 +62,15 @@ class MicroVoxelApp : public Application {
                 mv->pointLightColor[0] = glm::vec3(1.0f, 0.55f, 0.22f);// warm orange
                 mv->pointLightIntensity[0] = 7.0f;
                 mv->pointLightRadius[0] = 7.5f;
+            }
+            // Bloom, so the emissive glowstones, crystal reflections, and
+            // sun-lit highlights bleed a soft glow. Threshold/strength are
+            // tunable live in the ImGui panel; raise threshold if the bright
+            // sun (intensity 20) blooms too much of the terrain.
+            if (auto* bloom = renderer->GetPass<BloomPass>()) {
+                bloom->enabled = true;
+                bloom->threshold = 1.0f;
+                bloom->bloomStrength = 0.08f;
             }
         }
 
