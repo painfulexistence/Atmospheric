@@ -14,6 +14,7 @@
 #include <cstring>
 #include <fmt/format.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "command_encoder.hpp"
@@ -438,9 +439,17 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     // against the rasterized scene, and hits write depth for later passes)
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
 
+    // The volume is drawn as its world-space bounding box (unit cube scaled to
+    // [origin, origin + gridDim*voxelSize]); only covered pixels raymarch.
+    const float boxExtent = static_cast<float>(gridDim) * voxelSize;
+    const glm::vec3 boxCenter = volumeOrigin + glm::vec3(boxExtent * 0.5f);
+    const glm::mat4 model =
+        glm::translate(glm::mat4(1.0f), boxCenter) * glm::scale(glm::mat4(1.0f), glm::vec3(boxExtent * 0.5f));
+
     shader->Activate();
-    shader->SetUniform(std::string("u_invViewProj"), invViewProj);
+    shader->SetUniform(std::string("u_model"), model);
     shader->SetUniform(std::string("u_viewProj"), viewProj);
+    shader->SetUniform(std::string("u_viewportSize"), glm::vec2(width, height));
     shader->SetUniform(std::string("u_cameraPos"), cameraPos);
     shader->SetUniform(std::string("u_volumeOrigin"), volumeOrigin);
     shader->SetUniform(std::string("u_voxelSize"), voxelSize);
@@ -488,10 +497,15 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glDepthMask(GL_TRUE);
+    // Cull disabled so the box still covers its footprint when the camera is
+    // inside it (front faces would be clipped); the shader writes gl_FragDepth
+    // from the DDA hit, so the late depth test composites correctly regardless.
     glDisable(GL_CULL_FACE);
     glDisable(GL_BLEND);// voxel fragments are opaque (alpha=1); don't inherit a blend state
 
-    DrawScreenQuadVAO(renderer.gl.screenQuadVAO);
+    glBindVertexArray(renderer.gl.skyboxVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 36);// unit cube -> volume AABB via u_model
+    glBindVertexArray(0);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_3D, 0);
