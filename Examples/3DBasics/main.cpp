@@ -78,7 +78,13 @@ class HelloWorld : public Application {
         if (vatAsset.clip) {
             // VATComponent creates and assigns the VAT material to the mesh itself.
             auto* blob = CreateGameObject(glm::vec3(3.0f, 5.0f, 0.0f));
-            blob->AddComponent<VATComponent>(vatAsset.mesh, std::move(vatAsset.clip), VATProps{ .speed = 1.0f });
+            auto* vat = static_cast<VATComponent*>(
+                blob->AddComponent<VATComponent>(vatAsset.mesh, std::move(vatAsset.clip), VATProps{ .speed = 1.0f })
+            );
+            // The blob deforms enough to locally invert faces, so disable culling
+            // (the WebGPU VAT pipeline already renders cull=None); depth testing
+            // still resolves the surface correctly.
+            if (auto* mat = vat->GetMaterial()) mat->cullFaceEnabled = false;
             blob->AddComponent<RotatorComponent>(glm::vec3(0.0f, 0.6f, 0.0f));
             blob->SetName("VAT Blob");
         }

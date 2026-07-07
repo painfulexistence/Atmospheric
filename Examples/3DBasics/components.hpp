@@ -90,7 +90,10 @@ inline VATDemoAsset
             auto b = static_cast<uint16_t>((i + 1) * (sectors + 1) + j);
             auto c = static_cast<uint16_t>((i + 1) * (sectors + 1) + j + 1);
             auto d = static_cast<uint16_t>(i * (sectors + 1) + j + 1);
-            tris.insert(tris.end(), { a, b, c, a, c, d });
+            // CCW when viewed from outside (front faces face out), so back-face
+            // culling keeps the surface and the smooth-normal cross products
+            // below point outward.
+            tris.insert(tris.end(), { a, c, b, a, d, c });
         }
     }
 
