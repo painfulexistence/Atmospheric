@@ -58,6 +58,7 @@ private:
 
     struct Move {
         float forward = 0.0f, strafe = 0.0f, yaw = 0.0f;
+        bool jump = false, dash = false;
     };
 
     struct PlayerSlot {
@@ -65,8 +66,9 @@ private:
         uint32_t addr = 0;
         uint16_t port = 0;
 
-        sim::Vec3 foot;// authoritative foot position (y = 0)
+        sim::Motion motion;// authoritative motion state (foot + vy + dash timers)
         float viewYaw = 0.0f, viewPitch = 0.0f;// latest reported view (for snapshot replication)
+        bool shield = false;// held-shield state (blocks damage while true)
         int health = sim::kMaxHealth;
         bool alive = true;
         float respawnTimer = 0.0f;

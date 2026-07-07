@@ -18,7 +18,7 @@ bool ClientNet::Connect(const std::string& serverIp, uint16_t serverPort) {
         spdlog::error("ClientNet: invalid server address: {}", serverIp);
         return false;
     }
-    _predictedFoot = { -9.0f, 0.0f, 0.0f };// provisional until first snapshot
+    _predictedMotion.foot = { -9.0f, 0.0f, 0.0f };// provisional until first snapshot
 
     uint8_t buf[proto::kClientHelloLen];
     proto::PutU32(buf, proto::kMagic);
@@ -28,14 +28,24 @@ bool ClientNet::Connect(const std::string& serverIp, uint16_t serverPort) {
 }
 
 void ClientNet::SubmitInput(
-    uint32_t tick, float forward, float strafe, float yaw, float pitch, bool fireRail, bool fireRocket
+    uint32_t tick,
+    float forward,
+    float strafe,
+    float yaw,
+    float pitch,
+    bool jump,
+    bool dash,
+    bool shield,
+    bool fireRail,
+    bool fireRocket
 ) {
     if (!_socket.IsOpen()) return;
     _viewYaw = yaw;
     _viewPitch = pitch;
+    _shield = shield;
 
-    if (_alive) _predictedFoot = sim::StepPlayer(_predictedFoot, forward, strafe, yaw);
-    _pending[tick] = Move{ forward, strafe, yaw };
+    if (_alive) _predictedMotion = sim::StepPlayer(_predictedMotion, forward, strafe, yaw, jump, dash);
+    _pending[tick] = Move{ forward, strafe, yaw, jump, dash };
 
     if (fireRail) {
         _railSeq = _railSeq == 0xFFFF ? 1 : _railSeq + 1;
@@ -47,11 +57,16 @@ void ClientNet::SubmitInput(
         _rocketYaw = yaw;
         _rocketPitch = pitch;
         CosmeticRocket c;
-        c.pos = _predictedFoot + sim::Vec3{ 0.0f, sim::kEyeHeight, 0.0f };
+        c.pos = _predictedMotion.foot + sim::Vec3{ 0.0f, sim::kEyeHeight, 0.0f };
         c.vel = sim::ForwardDir(yaw, pitch) * sim::kRocketSpeed;
         c.life = 2.0f;
         _cosRockets.push_back(c);
     }
+
+    uint8_t buttons = 0;
+    if (jump) buttons |= proto::kBtnJump;
+    if (dash) buttons |= proto::kBtnDash;
+    if (shield) buttons |= proto::kBtnShield;
 
     const uint32_t renderTick = _lastServerTick > kInterpDelayTicks ? _lastServerTick - kInterpDelayTicks : 0;
 
@@ -62,14 +77,15 @@ void ClientNet::SubmitInput(
     proto::PutU32(buf + 9, renderTick);
     buf[13] = static_cast<uint8_t>(proto::QuantizeAxis(forward));
     buf[14] = static_cast<uint8_t>(proto::QuantizeAxis(strafe));
-    proto::PutU16(buf + 15, proto::QuantizeYaw(yaw));
-    proto::PutU16(buf + 17, proto::QuantizePitch(pitch));
-    proto::PutU16(buf + 19, _railSeq);
-    proto::PutU16(buf + 21, proto::QuantizeYaw(_railYaw));
-    proto::PutU16(buf + 23, proto::QuantizePitch(_railPitch));
-    proto::PutU16(buf + 25, _rocketSeq);
-    proto::PutU16(buf + 27, proto::QuantizeYaw(_rocketYaw));
-    proto::PutU16(buf + 29, proto::QuantizePitch(_rocketPitch));
+    buf[15] = buttons;
+    proto::PutU16(buf + 16, proto::QuantizeYaw(yaw));
+    proto::PutU16(buf + 18, proto::QuantizePitch(pitch));
+    proto::PutU16(buf + 20, _railSeq);
+    proto::PutU16(buf + 22, proto::QuantizeYaw(_railYaw));
+    proto::PutU16(buf + 24, proto::QuantizePitch(_railPitch));
+    proto::PutU16(buf + 26, _rocketSeq);
+    proto::PutU16(buf + 28, proto::QuantizeYaw(_rocketYaw));
+    proto::PutU16(buf + 30, proto::QuantizePitch(_rocketPitch));
     _socket.SendTo(_serverAddr, _serverPort, buf, sizeof(buf));
 }
 
@@ -97,24 +113,39 @@ void ClientNet::Pump(uint32_t nowMs) {
 void ClientNet::HandleSnapshot(const uint8_t* data, int len, uint32_t nowMs) {
     _lastServerTick = proto::GetU32(data + 5);
     const uint32_t ackedInputTick = proto::GetU32(data + 9);
-    const sim::Vec3 serverFoot = proto::GetVec3(data + 13);
-    _health = data[25];
-    _alive = data[26] != 0;
-    _score = data[27];
-    _enemyScore = data[28];
-    _enemyAlive = data[29] != 0;
-    const sim::Vec3 enemyFoot = proto::GetVec3(data + 30);
-    const float enemyYaw = proto::DequantizeYaw(proto::GetU16(data + 42));
-    const float enemyPitch = proto::DequantizePitch(proto::GetU16(data + 44));
+    sim::Motion serverMotion;
+    serverMotion.foot = proto::GetVec3(data + 13);
+    serverMotion.vy = proto::GetF32(data + 25);
+    serverMotion.dashCd = data[29];
+    serverMotion.dashTicks = data[30];
+    _health = data[31];
+    _alive = data[32] != 0;
+    _shield = data[33] != 0;
+    _score = data[34];
+    _enemyScore = data[35];
+    _enemyAlive = data[36] != 0;
+    const sim::Vec3 enemyFoot = proto::GetVec3(data + 37);
+    const float enemyYaw = proto::DequantizeYaw(proto::GetU16(data + 49));
+    const float enemyPitch = proto::DequantizePitch(proto::GetU16(data + 51));
+    _enemyShield = data[54] != 0;
 
-    // Exact rewind-replay reconciliation.
-    _predictedFoot = serverFoot;
+    // Exact rewind-replay reconciliation: reset the full motion state to the
+    // server's authoritative value as of ackedInputTick, then replay pending
+    // inputs (vertical velocity and dash timers reconcile along with position).
+    _predictedMotion = serverMotion;
     for (auto it = _pending.begin(); it != _pending.end();) {
         if (it->first <= ackedInputTick) {
             it = _pending.erase(it);
         } else {
             if (_alive)
-                _predictedFoot = sim::StepPlayer(_predictedFoot, it->second.forward, it->second.strafe, it->second.yaw);
+                _predictedMotion = sim::StepPlayer(
+                    _predictedMotion,
+                    it->second.forward,
+                    it->second.strafe,
+                    it->second.yaw,
+                    it->second.jump,
+                    it->second.dash
+                );
             ++it;
         }
     }
@@ -131,7 +162,7 @@ void ClientNet::HandleSnapshot(const uint8_t* data, int len, uint32_t nowMs) {
 
     // Authoritative rockets.
     _authRockets.clear();
-    const uint8_t numRockets = data[47];
+    const uint8_t numRockets = data[55];
     int off = proto::kServerSnapshotHeaderLen;
     for (uint8_t i = 0; i < numRockets; i++) {
         if (off + proto::kRocketEntryLen > len) break;

@@ -101,6 +101,11 @@ namespace proto {
         return static_cast<float>(v) / 127.0f;
     }
 
+    // Ability button bits in the ClientInput `buttons` byte.
+    constexpr uint8_t kBtnJump = 1 << 0;// tap grounded = jump; hold airborne = levitate
+    constexpr uint8_t kBtnDash = 1 << 1;
+    constexpr uint8_t kBtnShield = 1 << 2;
+
     // ── packet layouts ───────────────────────────────────────────────────────
     // ClientHello: magic(4) type(1)
     constexpr int kClientHelloLen = 5;
@@ -110,18 +115,20 @@ namespace proto {
 
     // ClientInput: magic(4) type(1)
     //   clientTick(u32) renderTick(u32)
-    //   forward(i8) strafe(i8) viewYaw(u16) viewPitch(u16)
+    //   forward(i8) strafe(i8) buttons(u8) viewYaw(u16) viewPitch(u16)
     //   railSeq(u16)   railYaw(u16)   railPitch(u16)
     //   rocketSeq(u16) rocketYaw(u16) rocketPitch(u16)
-    constexpr int kClientInputLen = 5 + 4 + 4 + 1 + 1 + 2 + 2 + (2 + 2 + 2) + (2 + 2 + 2);
+    constexpr int kClientInputLen = 5 + 4 + 4 + 1 + 1 + 1 + 2 + 2 + (2 + 2 + 2) + (2 + 2 + 2);
 
     // ServerSnapshot header: magic(4) type(1)
     //   serverTick(u32) ackedInputTick(u32)
-    //   selfPos(vec3) selfHealth(u8) selfAlive(u8) selfScore(u8) enemyScore(u8)
-    //   enemyAlive(u8) enemyPos(vec3) enemyYaw(u16) enemyPitch(u16) enemyHealth(u8)
-    //   numRockets(u8)
+    //   selfFoot(vec3) selfVy(f32) selfDashCd(u8) selfDashTicks(u8)
+    //   selfHealth(u8) selfAlive(u8) selfShield(u8) selfScore(u8) enemyScore(u8)
+    //   enemyAlive(u8) enemyFoot(vec3) enemyYaw(u16) enemyPitch(u16)
+    //   enemyHealth(u8) enemyShield(u8) numRockets(u8)
     // then numRockets * rocket entry
-    constexpr int kServerSnapshotHeaderLen = 5 + 4 + 4 + 12 + 1 + 1 + 1 + 1 + 1 + 12 + 2 + 2 + 1 + 1;
+    constexpr int kServerSnapshotHeaderLen =
+        5 + 4 + 4 + 12 + 4 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 12 + 2 + 2 + 1 + 1 + 1;
 
     // Rocket entry: id(u16) ownerId(u8) pos(vec3)
     constexpr int kRocketEntryLen = 2 + 1 + 12;

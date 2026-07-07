@@ -1,19 +1,25 @@
 // DeathmatchClient — 2-player, server-authoritative, Quake-style 3D arena
-// shooter (first-person). Demonstrates the FPS-lineage client stack: predicts
-// own movement and reconciles it with exact rewind-replay, replicates and
-// interpolates the enemy's position AND view angles, and shows cosmetic
-// rockets. The server does the lag compensation (see authority.hpp).
+// shooter (first-person) with a small Control-style ability kit. Demonstrates
+// the FPS-lineage client stack: predicts own movement (incl. jump/levitate/
+// dash) and reconciles it with exact rewind-replay, replicates and
+// interpolates the enemy's position AND view angles, shows cosmetic rockets,
+// and replicates the shield buff. The server does the lag compensation.
 //
 //   ./DeathmatchClient --connect <ip> [port]     (default 127.0.0.1:9200)
 //
-// Controls: WASD move · mouse look · LMB railgun · SPACE rocket · ESC quit.
+// Controls: WASD move · mouse look · LMB railgun · F rocket · SPACE jump
+//           (hold in air to levitate) · Q dash · C shield (hold) · ESC quit.
+//
+// The local player is a DeathmatchController Component (mirroring the engine's
+// CameraController3D): it owns input sampling, the first-person camera, and
+// the per-tick SubmitInput. The Application builds the greybox world and syncs
+// the enemy/rocket render objects from ClientNet.
 //
 // NOTE: This render/input layer needs the full engine and is NOT built in the
 // netcode CI lane; the netcode it drives is the headless-verified ClientNet.
 // The engine has no relative-mouse/cursor-lock, so mouse-look reads the
-// absolute cursor delta — fine for a demo, but the cursor can escape the
-// window at the edges. A low-poly "Control"-style material palette and
-// particle juice are intended as a follow-up polish pass.
+// absolute cursor delta (the cursor can escape at window edges). Low-poly
+// "Control"-style materials + particle juice are a planned polish pass.
 #include "Atmospheric.hpp"
 #include "client_net.hpp"
 #include "sim_common.hpp"
@@ -36,23 +42,92 @@ namespace {
     }
 
     constexpr int kRocketPoolSize = 16;
-    const glm::vec3 kParked = glm::vec3(0.0f, -100.0f, 0.0f);// off-screen "hidden" slot
+    const glm::vec3 kParked = glm::vec3(0.0f, -100.0f, 0.0f);
 }// namespace
 
+// ── Local-player controller ──────────────────────────────────────────────────
+// A Component (like CameraController3D): samples input, drives the FP camera,
+// and feeds ClientNet one input per fixed tick.
+class DeathmatchController : public Component {
+public:
+    DeathmatchController(GameObject* cameraGO, ClientNet* net) : _net(net) {
+        gameObject = cameraGO;
+    }
+
+    std::string GetName() const override {
+        return "DeathmatchController";
+    }
+
+    void OnAttach() override {
+        _cam = gameObject->GetComponent<CameraComponent>();
+    }
+
+    void OnTick(float dt) override {
+        auto* inp = InputSubsystem::Get();
+        if (!inp || !_cam) return;
+        const uint32_t nowMs = NowMs();
+
+        _net->Pump(nowMs);
+        _net->UpdateCosmetic(dt);
+
+        // Mouse-look via absolute-cursor delta (no relative mouse in-engine).
+        const glm::vec2 mouse = inp->GetMousePosition();
+        if (_haveMouse) {
+            const glm::vec2 d = mouse - _lastMouse;
+            _cam->Yaw(d.x * 0.003f);
+            _cam->Pitch(-d.y * 0.003f);
+        }
+        _lastMouse = mouse;
+        _haveMouse = true;
+
+        // Edge-triggered actions latched between fixed ticks.
+        if (inp->IsMouseButtonPressed()) _pendingRail = true;
+        if (inp->IsKeyPressed(Key::F)) _pendingRocket = true;
+        if (inp->IsKeyPressed(Key::Q)) _pendingDash = true;
+
+        const glm::vec3 vd = _cam->GetEyeDirection();
+        const float yaw = std::atan2(vd.x, -vd.z);
+        const float pitch = std::asin(sim::Clamp(vd.y, -1.0f, 1.0f));
+
+        _accum += std::min(dt, 0.25f);
+        while (_accum >= sim::kTickDt) {
+            _accum -= sim::kTickDt;
+            float forward = 0.0f, strafe = 0.0f;
+            if (inp->IsKeyDown(Key::W)) forward += 1.0f;
+            if (inp->IsKeyDown(Key::S)) forward -= 1.0f;
+            if (inp->IsKeyDown(Key::D)) strafe += 1.0f;
+            if (inp->IsKeyDown(Key::A)) strafe -= 1.0f;
+            const bool jump = inp->IsKeyDown(Key::SPACE);// tap = jump, hold in air = levitate
+            const bool shield = inp->IsKeyDown(Key::C);
+            const bool dash = _pendingDash;
+            const bool fr = _pendingRail, fk = _pendingRocket;
+            _pendingRail = _pendingRocket = _pendingDash = false;
+            _net->SubmitInput(_tick++, forward, strafe, yaw, pitch, jump, dash, shield, fr, fk);
+        }
+
+        // First-person camera at the eye of the predicted foot position.
+        const sim::Vec3 foot = _net->GetOwnFoot();
+        gameObject->SetPosition(glm::vec3(foot.x, foot.y + sim::kEyeHeight, foot.z));
+    }
+
+private:
+    ClientNet* _net;
+    CameraComponent* _cam = nullptr;
+    float _accum = 0.0f;
+    uint32_t _tick = 0;
+    bool _pendingRail = false, _pendingRocket = false, _pendingDash = false;
+    glm::vec2 _lastMouse{ 0.0f, 0.0f };
+    bool _haveMouse = false;
+};
+
+// ── Application: world + render sync ─────────────────────────────────────────
 class DeathmatchGame : public Application {
     using Application::Application;
 
     ClientNet _net;
     FontHandle _fontID = 0;
-    CameraComponent* _cam = nullptr;
     GameObject* _enemyGO = nullptr;
     std::vector<GameObject*> _rocketPool;
-
-    float _accum = 0.0f;
-    uint32_t _tick = 0;
-    bool _pendingRail = false, _pendingRocket = false;
-    glm::vec2 _lastMouse{ 0.0f, 0.0f };
-    bool _haveMouse = false;
 
     void OnInit() override {
         GoScene("main", [this] { OnLoad(); });
@@ -64,12 +139,11 @@ class DeathmatchGame : public Application {
         AssetManager::Get().CreateMaterial(name, props);
     }
 
-    GameObject* MakeBox(const sim::Box& b, MeshHandle cube, const std::string& mat) {
+    GameObject* MakeBox(const sim::Box& b, MeshHandle cube) {
         auto* go =
             CreateGameObject(glm::vec3((b.minX + b.maxX) * 0.5f, (b.minY + b.maxY) * 0.5f, (b.minZ + b.maxZ) * 0.5f));
         go->SetScale(glm::vec3(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ));
         go->AddComponent<MeshComponent>(cube);
-        (void)mat;
         return go;
     }
 
@@ -85,14 +159,13 @@ class DeathmatchGame : public Application {
         auto& am = AssetManager::Get();
         auto floorMesh = am.CreatePlaneMesh("dm_floor", 2.0f * sim::kArenaHalf, 2.0f * sim::kArenaHalf);
         am.GetMeshPtr(floorMesh)->SetMaterial(am.GetMaterialHandle("dm_floor_mat"));
-        auto* floor = CreateGameObject(glm::vec3(0.0f, 0.0f, 0.0f));
-        floor->AddComponent<MeshComponent>(floorMesh);
+        CreateGameObject(glm::vec3(0.0f))->AddComponent<MeshComponent>(floorMesh);
 
         auto cubeMesh = am.CreateCubeMesh("dm_cube", 1.0f);
         am.GetMeshPtr(cubeMesh)->SetMaterial(am.GetMaterialHandle("dm_box_mat"));
         const sim::Box* boxes = sim::Boxes();
         for (int i = 0; i < sim::kNumBoxes; i++)
-            MakeBox(boxes[i], cubeMesh, "dm_box_mat");
+            MakeBox(boxes[i], cubeMesh);
 
         auto capsuleMesh = am.CreateCapsuleMesh("dm_capsule", sim::kCapsuleRadius, sim::kCapsuleHeight);
         am.GetMeshPtr(capsuleMesh)->SetMaterial(am.GetMaterialHandle("dm_enemy_mat"));
@@ -107,10 +180,10 @@ class DeathmatchGame : public Application {
             _rocketPool.push_back(go);
         }
 
-        _cam = GraphicsSubsystem::Get()->GetMainCamera();
-        if (_cam) {
+        if (auto* cam = GraphicsSubsystem::Get()->GetMainCamera()) {
             auto ws = Window::Get()->GetLogicalSize();
-            _cam->SetPerspective(glm::radians(90.0f), static_cast<float>(ws.width) / ws.height, 0.05f, 200.0f);
+            cam->SetPerspective(glm::radians(90.0f), static_cast<float>(ws.width) / ws.height, 0.05f, 200.0f);
+            cam->gameObject->AddComponent<DeathmatchController>(&_net);// the local player
         }
 
         if (!_net.Connect(gcli.serverIp, gcli.serverPort)) {
@@ -118,57 +191,11 @@ class DeathmatchGame : public Application {
         }
     }
 
-    // Reads back the camera's current view as (yaw, pitch) so it can be sent to
-    // the server (movement is yaw-relative; fires aim along the view).
-    void ReadView(float& yaw, float& pitch) {
-        glm::vec3 d = _cam ? _cam->GetEyeDirection() : glm::vec3(0, 0, -1);
-        yaw = std::atan2(d.x, -d.z);
-        pitch = std::asin(sim::Clamp(d.y, -1.0f, 1.0f));
-    }
-
-    void OnUpdate(float dt, float /*time*/) override {
+    void OnUpdate(float /*dt*/, float /*time*/) override {
         const uint32_t nowMs = NowMs();
-        _net.Pump(nowMs);
-        _net.UpdateCosmetic(dt);
 
-        auto* inp = InputSubsystem::Get();
-
-        // Mouse-look via absolute-cursor delta (no relative mouse in-engine).
-        const glm::vec2 mouse = inp->GetMousePosition();
-        if (_haveMouse && _cam) {
-            const glm::vec2 d = mouse - _lastMouse;
-            _cam->Yaw(d.x * 0.003f);
-            _cam->Pitch(-d.y * 0.003f);
-        }
-        _lastMouse = mouse;
-        _haveMouse = true;
-
-        if (inp->IsMouseButtonPressed()) _pendingRail = true;
-        if (inp->IsKeyPressed(Key::SPACE)) _pendingRocket = true;
-
-        float yaw, pitch;
-        ReadView(yaw, pitch);
-
-        _accum += std::min(dt, 0.25f);
-        while (_accum >= sim::kTickDt) {
-            _accum -= sim::kTickDt;
-            float forward = 0.0f, strafe = 0.0f;
-            if (inp->IsKeyDown(Key::W)) forward += 1.0f;
-            if (inp->IsKeyDown(Key::S)) forward -= 1.0f;
-            if (inp->IsKeyDown(Key::D)) strafe += 1.0f;
-            if (inp->IsKeyDown(Key::A)) strafe -= 1.0f;
-            const bool fr = _pendingRail, fk = _pendingRocket;
-            _pendingRail = _pendingRocket = false;
-            _net.SubmitInput(_tick++, forward, strafe, yaw, pitch, fr, fk);
-        }
-
-        // Camera at own eye.
-        if (_cam) {
-            const sim::Vec3 foot = _net.GetOwnFoot();
-            _cam->gameObject->SetPosition(glm::vec3(foot.x, foot.y + sim::kEyeHeight, foot.z));
-        }
-
-        // Enemy capsule (interpolated position + yaw).
+        // Enemy capsule (interpolated position + yaw); a red-shift could denote
+        // the shield in the polish pass — EnemyShielded() is available.
         if (_net.HasEnemy()) {
             const sim::Vec3 ef = _net.GetEnemyFoot(nowMs);
             _enemyGO->SetPosition(glm::vec3(ef.x, ef.y + sim::kCapsuleHeight * 0.5f, ef.z));
@@ -177,7 +204,6 @@ class DeathmatchGame : public Application {
             _enemyGO->SetPosition(kParked);
         }
 
-        // Rockets (authoritative + own cosmetic) into the pool.
         int slot = 0;
         for (const auto& r : _net.AuthoritativeRockets()) {
             if (slot >= kRocketPoolSize) break;
@@ -190,15 +216,14 @@ class DeathmatchGame : public Application {
         for (; slot < kRocketPoolSize; slot++)
             _rocketPool[slot]->SetPosition(kParked);
 
-        // HUD (2D overlay).
-        auto ws = Window::Get()->GetLogicalSize();
-        gfxHud(ws.width, ws.height);
+        DrawHud();
 
-        if (inp->IsKeyDown(Key::ESCAPE)) Quit();
+        if (InputSubsystem::Get()->IsKeyDown(Key::ESCAPE)) Quit();
     }
 
-    void gfxHud(int w, int h) {
+    void DrawHud() {
         auto* gfx = GraphicsSubsystem::Get();
+        auto ws = Window::Get()->GetLogicalSize();
         gfx->DrawText(
             _fontID,
             "HP " + std::to_string(_net.GetHealth()),
@@ -215,11 +240,26 @@ class DeathmatchGame : public Application {
             0.8f,
             glm::vec4(0.85f, 0.85f, 0.85f, 1.0f)
         );
+        if (_net.IsShielded()) gfx->DrawText(_fontID, "SHIELD", 20.0f, 84.0f, 0.8f, glm::vec4(0.4f, 0.7f, 1.0f, 1.0f));
+        if (_net.DashCooldownFrac() <= 0.0f)
+            gfx->DrawText(_fontID, "DASH READY", 20.0f, 116.0f, 0.7f, glm::vec4(0.7f, 1.0f, 0.7f, 1.0f));
         if (!_net.IsAlive())
-            gfx->DrawText(_fontID, "DOWNED — respawning...", 20.0f, 84.0f, 0.9f, glm::vec4(1.0f, 0.5f, 0.5f, 1.0f));
+            gfx->DrawText(_fontID, "DOWNED — respawning...", 20.0f, 148.0f, 0.9f, glm::vec4(1.0f, 0.5f, 0.5f, 1.0f));
         // Crosshair.
-        gfx->DrawLine(w * 0.5f - 8, h * 0.5f, w * 0.5f + 8, h * 0.5f, glm::vec4(0.9f, 0.9f, 0.9f, 0.8f));
-        gfx->DrawLine(w * 0.5f, h * 0.5f - 8, w * 0.5f, h * 0.5f + 8, glm::vec4(0.9f, 0.9f, 0.9f, 0.8f));
+        gfx->DrawLine(
+            ws.width * 0.5f - 8,
+            ws.height * 0.5f,
+            ws.width * 0.5f + 8,
+            ws.height * 0.5f,
+            glm::vec4(0.9f, 0.9f, 0.9f, 0.8f)
+        );
+        gfx->DrawLine(
+            ws.width * 0.5f,
+            ws.height * 0.5f - 8,
+            ws.width * 0.5f,
+            ws.height * 0.5f + 8,
+            glm::vec4(0.9f, 0.9f, 0.9f, 0.8f)
+        );
     }
 };
 

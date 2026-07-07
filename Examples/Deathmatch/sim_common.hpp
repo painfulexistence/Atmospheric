@@ -13,9 +13,9 @@
 // 3D arena shooter (Quake lineage). No physics engine on the authoritative
 // path (Bullet/Box2D): server-authoritative single simulator, hand-rolled
 // kinematics, so the server stays a lean dependency-free class and client and
-// server run the *same* movement code. Movement is on the XZ ground plane
-// (no jump/gravity in v1); Y is up. A player's authoritative position is its
-// foot point on the floor (y = 0); the capsule and eye rise from there.
+// server run the *same* movement code. Y is up; a player's authoritative
+// position is its foot point, which now rises off the floor with jump/levitate
+// (the full predicted state is the Motion struct below, not just the foot).
 //
 // What this dimension buys over a 2D version, netcode-wise: view angles
 // (yaw/pitch) must now be replicated and quantized, movement is yaw-relative
@@ -46,6 +46,25 @@ namespace sim {
     constexpr int kRocketDamage = 50;
     constexpr float kRespawnDelay = 1.5f;
 
+    // ── Abilities ────────────────────────────────────────────────────────────
+    // Jump/levitate share one input (tap SPACE grounded = jump; hold SPACE
+    // airborne = levitate/hover), matching the engine's existing convention.
+    constexpr float kGravity = 20.0f;// m/s^2
+    constexpr float kJumpSpeed = 7.0f;// launch velocity (~1.2 m apex)
+    constexpr float kLevitateNet = 3.0f;// net upward accel while hovering (gravity ignored that tick)
+    constexpr float kHoverRiseMax = 3.0f;// clamp on levitate rise speed
+    constexpr float kMaxFallSpeed = 25.0f;
+    constexpr float kMaxHoverHeight = 4.0f;// levitate stops lifting above this
+    // Dash: a short horizontal burst on a cooldown (a "predicted ability
+    // movement" — its cooldown lives in the reconciled motion state).
+    constexpr float kDashSpeed = 20.0f;// m/s during the burst
+    constexpr int kDashTicks = 8;// ~0.13 s burst
+    constexpr int kDashCooldownTicks = 90;// 1.5 s
+    // Shield: a held damage-block. No movement effect; a replicated buff state.
+    // Deliberately checked at the target's PRESENT when a (lag-compensated) hit
+    // resolves — so a shield raised after the shooter fired still blocks, a
+    // fairness wrinkle worth seeing.
+
     struct Vec3 {
         float x = 0.0f, y = 0.0f, z = 0.0f;
     };
@@ -65,6 +84,18 @@ namespace sim {
     inline float Clamp(float v, float lo, float hi) {
         return v < lo ? lo : (v > hi ? hi : v);
     }
+
+    // The full predicted/reconciled motion state of a player. Everything that
+    // StepPlayer reads and writes lives here so the client can reset to the
+    // server's authoritative Motion and replay inputs exactly — vertical
+    // velocity (jump/levitate) and the dash timers are part of that state, not
+    // just the foot position.
+    struct Motion {
+        Vec3 foot;// foot on the ground plane; y varies with jump/levitate
+        float vy = 0.0f;// vertical velocity
+        int dashTicks = 0;// remaining ticks of an active dash burst
+        int dashCd = 0;// dash cooldown remaining (ticks)
+    };
 
     // Axis-aligned box obstacle (full 3D extents). A tall central pillar plus
     // a couple of low crates: the pillar is the cover whose shadow makes the
@@ -121,11 +152,30 @@ namespace sim {
         }
     }
 
-    // Advances a foot position by one tick given a (client-reported, untrusted)
-    // move intent expressed as forward/strafe in the player's own view frame.
-    // Speed and dt are fixed server constants; yaw is taken from the input so
-    // the server reproduces exactly the movement the client predicted.
-    inline Vec3 StepPlayer(Vec3 foot, float forward, float strafe, float yaw) {
+    // Advances a Motion by one tick given a (client-reported, untrusted) move
+    // intent in the player's own view frame plus the jump/dash buttons. Speeds
+    // and dt are fixed server constants; yaw is taken from the input so the
+    // server reproduces exactly the movement the client predicted. Both the
+    // client (prediction) and the server (authority) call this; sharing it is
+    // what keeps reconciliation exact.
+    inline Motion StepPlayer(Motion m, float forward, float strafe, float yaw, bool jump, bool dash) {
+        const bool grounded = m.foot.y <= 1e-3f && m.vy <= 0.0f;
+
+        // Dash: cooldown ticks down; an active burst continues; a fresh dash
+        // starts if the button is down and the cooldown is ready.
+        if (m.dashCd > 0) m.dashCd--;
+        bool dashing = false;
+        if (m.dashTicks > 0) {
+            dashing = true;
+            m.dashTicks--;
+        } else if (dash && m.dashCd == 0) {
+            dashing = true;
+            m.dashTicks = kDashTicks - 1;
+            m.dashCd = kDashCooldownTicks;
+        }
+        const float hspeed = dashing ? kDashSpeed : kMoveSpeed;
+
+        // Horizontal (yaw-relative).
         float fx, fz, rx, rz;
         GroundBasis(yaw, fx, fz, rx, rz);
         float mx = fx * forward + rx * strafe;
@@ -135,13 +185,35 @@ namespace sim {
             mx /= len;
             mz /= len;
         }
-        foot.x = Clamp(foot.x + mx * kMoveSpeed * kTickDt, -kArenaHalf + kCapsuleRadius, kArenaHalf - kCapsuleRadius);
-        foot.z = Clamp(foot.z + mz * kMoveSpeed * kTickDt, -kArenaHalf + kCapsuleRadius, kArenaHalf - kCapsuleRadius);
+        m.foot.x = Clamp(m.foot.x + mx * hspeed * kTickDt, -kArenaHalf + kCapsuleRadius, kArenaHalf - kCapsuleRadius);
+        m.foot.z = Clamp(m.foot.z + mz * hspeed * kTickDt, -kArenaHalf + kCapsuleRadius, kArenaHalf - kCapsuleRadius);
         const Box* boxes = Boxes();
         for (int i = 0; i < kNumBoxes; i++)
-            ResolveBoxXZ(foot.x, foot.z, kCapsuleRadius, boxes[i]);
-        foot.y = kFloorY;
-        return foot;
+            ResolveBoxXZ(m.foot.x, m.foot.z, kCapsuleRadius, boxes[i]);
+
+        // Vertical: tap-jump when grounded; hold-jump in the air levitates
+        // (gentle rise, gravity skipped that tick) up to a ceiling; otherwise
+        // gravity.
+        if (jump && grounded) {
+            m.vy = kJumpSpeed;
+        } else if (jump && !grounded && m.foot.y < kMaxHoverHeight) {
+            m.vy += kLevitateNet * kTickDt;
+            if (m.vy > kHoverRiseMax) m.vy = kHoverRiseMax;
+        } else {
+            m.vy -= kGravity * kTickDt;
+        }
+        if (m.vy < -kMaxFallSpeed) m.vy = -kMaxFallSpeed;
+        m.foot.y += m.vy * kTickDt;
+        if (m.foot.y <= kFloorY) {
+            m.foot.y = kFloorY;
+            if (m.vy < 0.0f) m.vy = 0.0f;
+        }
+        const float headroom = kCeilingY - kCapsuleHeight;
+        if (m.foot.y > headroom) {
+            m.foot.y = headroom;
+            if (m.vy > 0.0f) m.vy = 0.0f;
+        }
+        return m;
     }
 
     inline Vec3 StepRocket(Vec3 p, Vec3 vel) {

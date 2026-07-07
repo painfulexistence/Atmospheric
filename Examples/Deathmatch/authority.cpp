@@ -40,9 +40,11 @@ void DeathmatchAuthority::Shutdown() {
 
 void DeathmatchAuthority::ResetPlayer(int idx) {
     PlayerSlot& p = _slots[idx];
-    p.foot = kSpawn[idx];
+    p.motion = sim::Motion{};
+    p.motion.foot = kSpawn[idx];
     p.viewYaw = kSpawnYaw[idx];
     p.viewPitch = 0.0f;
+    p.shield = false;
     p.health = sim::kMaxHealth;
     p.alive = true;
     p.respawnTimer = 0.0f;
@@ -59,12 +61,19 @@ sim::Vec3 DeathmatchAuthority::HistoricalPos(int idx, uint32_t tick) const {
     const PlayerSlot& p = _slots[idx];
     const int slot = static_cast<int>(tick % kHistoryTicks);
     if (p.historyValid[slot] && p.historyTick[slot] == tick) return p.posHistory[slot];
-    return p.foot;// not in history → best-effort current
+    return p.motion.foot;// not in history → best-effort current
 }
 
 void DeathmatchAuthority::ApplyDamage(int targetIdx, int dmg, int killerIdx) {
     PlayerSlot& t = _slots[targetIdx];
     if (!t.alive) return;
+    // Shield is checked at the target's PRESENT, even though the hit position
+    // was lag-compensated (rewound): a shield raised after the shooter fired
+    // still blocks. Deliberate fairness wrinkle — see sim_common.hpp.
+    if (t.shield) {
+        spdlog::info("DeathmatchAuthority: player {} blocked {} with shield", targetIdx, dmg);
+        return;
+    }
     t.health -= dmg;
     if (t.health <= 0) {
         t.health = 0;
@@ -81,7 +90,7 @@ void DeathmatchAuthority::FireRail(int shooterIdx, float yaw, float pitch, uint3
     const int targetIdx = 1 - shooterIdx;
     if (!_slots[targetIdx].connected || !_slots[targetIdx].alive) return;
 
-    const sim::Vec3 eye = shooter.foot + sim::Vec3{ 0.0f, sim::kEyeHeight, 0.0f };
+    const sim::Vec3 eye = shooter.motion.foot + sim::Vec3{ 0.0f, sim::kEyeHeight, 0.0f };
     const sim::Vec3 viewDir = sim::ForwardDir(yaw, pitch);
     // Favor the shooter: test against where the target was on the shooter's
     // screen (rewound to renderTick), not where it is now.
@@ -95,7 +104,7 @@ void DeathmatchAuthority::SpawnRocket(int shooterIdx, float yaw, float pitch, ui
     const PlayerSlot& shooter = _slots[shooterIdx];
     if (!shooter.alive) return;
 
-    const sim::Vec3 eye = shooter.foot + sim::Vec3{ 0.0f, sim::kEyeHeight, 0.0f };
+    const sim::Vec3 eye = shooter.motion.foot + sim::Vec3{ 0.0f, sim::kEyeHeight, 0.0f };
     const sim::Vec3 viewDir = sim::ForwardDir(yaw, pitch);
     Rocket r;
     r.id = _nextRocketId++;
@@ -149,24 +158,29 @@ void DeathmatchAuthority::HandlePacket(const uint8_t* data, int len, uint32_t fr
         const uint32_t renderTick = proto::GetU32(data + 9);
         const float forward = proto::DequantizeAxis(static_cast<int8_t>(data[13]));
         const float strafe = proto::DequantizeAxis(static_cast<int8_t>(data[14]));
-        const float viewYaw = proto::DequantizeYaw(proto::GetU16(data + 15));
-        const float viewPitch = proto::DequantizePitch(proto::GetU16(data + 17));
-        const uint16_t railSeq = proto::GetU16(data + 19);
-        const float railYaw = proto::DequantizeYaw(proto::GetU16(data + 21));
-        const float railPitch = proto::DequantizePitch(proto::GetU16(data + 23));
-        const uint16_t rocketSeq = proto::GetU16(data + 25);
-        const float rocketYaw = proto::DequantizeYaw(proto::GetU16(data + 27));
-        const float rocketPitch = proto::DequantizePitch(proto::GetU16(data + 29));
+        const uint8_t buttons = data[15];
+        const float viewYaw = proto::DequantizeYaw(proto::GetU16(data + 16));
+        const float viewPitch = proto::DequantizePitch(proto::GetU16(data + 18));
+        const uint16_t railSeq = proto::GetU16(data + 20);
+        const float railYaw = proto::DequantizeYaw(proto::GetU16(data + 22));
+        const float railPitch = proto::DequantizePitch(proto::GetU16(data + 24));
+        const uint16_t rocketSeq = proto::GetU16(data + 26);
+        const float rocketYaw = proto::DequantizeYaw(proto::GetU16(data + 28));
+        const float rocketPitch = proto::DequantizePitch(proto::GetU16(data + 30));
 
         p.viewYaw = viewYaw;
         p.viewPitch = viewPitch;
+        // Shield is a held state read from the latest input — the "present"
+        // used when a lag-compensated hit resolves against this player.
+        p.shield = (buttons & proto::kBtnShield) != 0;
 
         // Movement: buffer for in-order, once-only consumption (exact
-        // reconciliation). yaw travels with the input because movement is
-        // yaw-relative — the server must reproduce the exact yaw the client
-        // predicted with.
+        // reconciliation). yaw + jump/dash travel with the input so the server
+        // reproduces exactly the movement (including vertical + dash) the
+        // client predicted.
         if (!p.everConsumed || clientTick > p.lastConsumedTick) {
-            p.inputBuffer[clientTick] = Move{ forward, strafe, viewYaw };
+            p.inputBuffer[clientTick] =
+                Move{ forward, strafe, viewYaw, (buttons & proto::kBtnJump) != 0, (buttons & proto::kBtnDash) != 0 };
         }
 
         // Fires: act on a sequence only when it advances; the latched yaw/pitch
@@ -203,7 +217,10 @@ void DeathmatchAuthority::Tick() {
                 it = p.inputBuffer.erase(it);
                 continue;
             }
-            if (p.alive) p.foot = sim::StepPlayer(p.foot, it->second.forward, it->second.strafe, it->second.yaw);
+            if (p.alive)
+                p.motion = sim::StepPlayer(
+                    p.motion, it->second.forward, it->second.strafe, it->second.yaw, it->second.jump, it->second.dash
+                );
             p.lastConsumedTick = it->first;
             p.everConsumed = true;
             it = p.inputBuffer.erase(it);
@@ -214,7 +231,7 @@ void DeathmatchAuthority::Tick() {
     for (int i = 0; i < 2; i++) {
         PlayerSlot& p = _slots[i];
         const int slot = static_cast<int>(_serverTick % kHistoryTicks);
-        p.posHistory[slot] = p.foot;
+        p.posHistory[slot] = p.motion.foot;
         p.historyTick[slot] = _serverTick;
         p.historyValid[slot] = true;
     }
@@ -231,7 +248,7 @@ void DeathmatchAuthority::Tick() {
         PlayerSlot& target = _slots[targetIdx];
         if (!target.connected || !target.alive) continue;
 
-        sim::Vec3 tf = target.foot;
+        sim::Vec3 tf = target.motion.foot;
         if (r.favorShooter) {
             const uint32_t lookup = (_serverTick > r.lagTicks) ? (_serverTick - r.lagTicks) : 0;
             tf = HistoricalPos(targetIdx, lookup);
@@ -260,18 +277,23 @@ void DeathmatchAuthority::SendSnapshot(int idx) {
     buf[4] = static_cast<uint8_t>(proto::PacketType::ServerSnapshot);
     proto::PutU32(buf + 5, _serverTick);
     proto::PutU32(buf + 9, self.lastConsumedTick);
-    proto::PutVec3(buf + 13, self.foot);
-    buf[25] = static_cast<uint8_t>(self.health);
-    buf[26] = self.alive ? 1 : 0;
-    buf[27] = static_cast<uint8_t>(self.score);
-    buf[28] = static_cast<uint8_t>(enemy.score);
-    buf[29] = (enemy.connected && enemy.alive) ? 1 : 0;
-    proto::PutVec3(buf + 30, enemy.foot);
-    proto::PutU16(buf + 42, proto::QuantizeYaw(enemy.viewYaw));
-    proto::PutU16(buf + 44, proto::QuantizePitch(enemy.viewPitch));
-    buf[46] = static_cast<uint8_t>(enemy.health);
+    proto::PutVec3(buf + 13, self.motion.foot);
+    proto::PutF32(buf + 25, self.motion.vy);
+    buf[29] = static_cast<uint8_t>(self.motion.dashCd);
+    buf[30] = static_cast<uint8_t>(self.motion.dashTicks);
+    buf[31] = static_cast<uint8_t>(self.health);
+    buf[32] = self.alive ? 1 : 0;
+    buf[33] = self.shield ? 1 : 0;
+    buf[34] = static_cast<uint8_t>(self.score);
+    buf[35] = static_cast<uint8_t>(enemy.score);
+    buf[36] = (enemy.connected && enemy.alive) ? 1 : 0;
+    proto::PutVec3(buf + 37, enemy.motion.foot);
+    proto::PutU16(buf + 49, proto::QuantizeYaw(enemy.viewYaw));
+    proto::PutU16(buf + 51, proto::QuantizePitch(enemy.viewPitch));
+    buf[53] = static_cast<uint8_t>(enemy.health);
+    buf[54] = (enemy.connected && enemy.shield) ? 1 : 0;
 
-    int off = proto::kServerSnapshotHeaderLen;// 48
+    int off = proto::kServerSnapshotHeaderLen;// 56
     int count = 0;
     for (const Rocket& r : _rockets) {
         if (!r.active || count >= proto::kMaxRocketsInSnapshot) continue;
@@ -281,7 +303,7 @@ void DeathmatchAuthority::SendSnapshot(int idx) {
         off += proto::kRocketEntryLen;
         count++;
     }
-    buf[47] = static_cast<uint8_t>(count);
+    buf[55] = static_cast<uint8_t>(count);
     SendTo(self.addr, self.port, buf, off);
 }
 

@@ -39,10 +39,20 @@ public:
 
     bool Connect(const std::string& serverIp, uint16_t serverPort);
 
-    // Predicts one tick of yaw-relative movement, latches any fire this tick
-    // (aimed along the current view), and sends the input.
-    void
-        SubmitInput(uint32_t tick, float forward, float strafe, float yaw, float pitch, bool fireRail, bool fireRocket);
+    // Predicts one tick of movement (incl. jump/levitate/dash), latches any
+    // fire this tick (aimed along the current view), and sends the input.
+    void SubmitInput(
+        uint32_t tick,
+        float forward,
+        float strafe,
+        float yaw,
+        float pitch,
+        bool jump,
+        bool dash,
+        bool shield,
+        bool fireRail,
+        bool fireRocket
+    );
 
     void Pump(uint32_t nowMs);
     void UpdateCosmetic(float dt);
@@ -54,13 +64,23 @@ public:
         return _playerId;
     }
     sim::Vec3 GetOwnFoot() const {
-        return _predictedFoot;
+        return _predictedMotion.foot;
     }
     int GetHealth() const {
         return _health;
     }
     bool IsAlive() const {
         return _alive;
+    }
+    bool IsShielded() const {
+        return _shield;
+    }
+    bool EnemyShielded() const {
+        return _enemyShield;
+    }
+    // 0 = dash ready, 1 = just used (for a HUD cooldown indicator).
+    float DashCooldownFrac() const {
+        return static_cast<float>(_predictedMotion.dashCd) / static_cast<float>(sim::kDashCooldownTicks);
     }
     int GetScore() const {
         return _score;
@@ -85,6 +105,7 @@ public:
 private:
     struct Move {
         float forward = 0.0f, strafe = 0.0f, yaw = 0.0f;
+        bool jump = false, dash = false;
     };
 
     static constexpr uint32_t kInterpDelayMs = 100;
@@ -98,10 +119,12 @@ private:
     int _playerId = 0;
     uint32_t _lastServerTick = 0;
 
-    sim::Vec3 _predictedFoot;
+    sim::Motion _predictedMotion;
     float _viewYaw = 0.0f, _viewPitch = 0.0f;
     int _health = sim::kMaxHealth;
     bool _alive = true;
+    bool _shield = false;
+    bool _enemyShield = false;
     int _score = 0;
     int _enemyScore = 0;
 

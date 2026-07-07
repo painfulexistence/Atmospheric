@@ -24,7 +24,8 @@ Third real-time architecture in the repo, contrasted with the other two:
 `--favor-target` flips rocket lag comp from favor-the-shooter (default) to
 favor-the-target so the difference is observable.
 
-Controls: WASD move · mouse look · LMB railgun · SPACE rocket · ESC quit.
+Controls: WASD move · mouse look · LMB railgun · F rocket · SPACE jump (hold
+in air to levitate) · Q dash · C shield (hold) · ESC quit.
 
 ## What the 3rd dimension adds, netcode-wise
 
@@ -57,6 +58,25 @@ Going 3D isn't cosmetic here — it forces a class of classic UDP-FPS problems a
   so the victim can dodge the replicated rocket. The central pillar is the cover
   that makes the difference visible. (`authority.cpp` rocket loop in `Tick`.)
 
+## Character abilities — each a distinct netcode lesson
+
+A small Control-style kit, chosen so every ability also demonstrates a
+networking facet (all in `sim_common.hpp` `StepPlayer` + the reconciled
+`Motion` state, so client and server run identical ability logic):
+
+- **Jump / Levitate** (tap/hold SPACE) — vertical prediction. The reconciled
+  state gains a vertical velocity `vy`; jump/levitate integrate it, and exact
+  reconciliation now reproduces the *airborne* position with zero residual, not
+  just the ground position.
+- **Dash** (Q) — a predicted ability movement on a cooldown. The dash burst and
+  its cooldown live in the reconciled `Motion`, so the client predicts the dash
+  immediately and the server confirms it.
+- **Shield** (hold C) — a replicated buff state that changes hit resolution. The
+  server checks the shield at the target's **present** when a lag-compensated
+  hit resolves — so a shield raised *after* the shooter fired still blocks. That
+  favor-the-shooter-vs-shield collision is a real fairness wrinkle, deliberately
+  left visible (`authority.cpp` `ApplyDamage`).
+
 ## Client prediction, three faces
 
 `client_net.hpp`/`.cpp`: own movement predicted + **exact rewind-replay**
@@ -75,28 +95,28 @@ shares the *same* movement code with the client.
 
 The netcode core (`authority.cpp` + `client_net.cpp` + `udp_socket.cpp`) is
 covered by a headless integration test: exact reconciliation of yaw-relative
-movement converges with zero residual, the pillar occludes a railshot,
-favor-the-shooter hitscan hits a rewound capsule the present-time shot misses,
-and favor-shooter vs favor-target rockets diverge. The windowed
-`DeathmatchClient` (3D camera, meshes, mouse-look) needs the full engine and is
-not built in the netcode CI lane; its netcode is the same verified `ClientNet`.
+movement **including vertical jump/levitate** converges with zero residual, the
+pillar occludes a railshot, favor-the-shooter hitscan hits a rewound capsule
+the present-time shot misses, favor-shooter vs favor-target rockets diverge,
+and the shield blocks a shot the same aim lands without it. The windowed
+`DeathmatchClient` (3D camera, meshes, mouse-look — the local player is a
+`DeathmatchController` Component) needs the full engine and is not built in the
+netcode CI lane; its netcode is the same verified `ClientNet`.
 
 ## Roadmap / not yet built
 
-- **Character abilities**: jump + levitate (vertical prediction with a gravity/
-  hover state folded into the reconciled player state), dash/evade (predicted
-  ability movement + cooldown replication), shield (a replicated buff state,
-  with an interesting favor-the-shooter-vs-shield fairness interaction).
 - **Visual polish**: low-poly "Control"-style material palette, particle juice
-  (muzzle/impact/explosion via the engine's particle subsystem), optional
-  third-person camera. Real levels will come from Quake-map loading on a
-  separate branch — the single greybox pillar here is only the placeholder the
-  lag-comp "behind cover" demo needs.
+  (muzzle/impact/explosion via the engine's particle subsystem), enemy-shield
+  visual, dash trail, optional third-person camera. Real levels will come from
+  Quake-map loading on a separate branch — the single greybox pillar here is
+  only the placeholder the lag-comp "behind cover" demo needs.
 
 ## Known limitations (v1)
 
-- 2 players; movement is XZ-only (no jump yet — see roadmap).
-- A slot can be claimed by any `ClientHello` (no auth); no disconnect timeout.
+- 2 players; a slot can be claimed by any `ClientHello` (no auth); no
+  disconnect timeout.
+- Dash inputs aren't redundantly resent (a lost dash-tick packet drops the
+  dash); shield/levitate have no energy cap.
 - Rocket splash is direct-hit only; single capsule hitbox (no headshots).
 - The engine has no relative-mouse/cursor-lock, so mouse-look uses absolute
   cursor delta (cursor can escape at window edges).
