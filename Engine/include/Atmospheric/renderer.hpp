@@ -32,6 +32,7 @@ class GraphicsSubsystem;
 class ShaderProgram;
 class Renderer;
 class CameraComponent;
+class VoxelVolumeComponent;
 
 struct RenderCommand {
     MeshHandle mesh;
@@ -318,6 +319,76 @@ private:
     // Queue::Submit, not to render-pass recording order.
     WGPUBuffer _drawUniformBuf = nullptr;
     uint32_t _drawSlotCapacity = 0;
+#endif
+};
+
+// Micro voxel raymarch (experimental): a fullscreen two-level DDA over a
+// dense voxel volume in a 3D texture, depth-composited with the rasterized
+// scene. Contrast with VoxelChunkPass, which meshes 1m macro voxels into
+// triangles. Renders every registered VoxelVolumeComponent; inert when
+// none are attached. See micro_voxel_pass.cpp.
+class MicroVoxelPass : public RenderPass {
+public:
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    ~MicroVoxelPass() override;
+#endif
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+    // Volume data lives in VoxelVolumeComponent; components register/unregister
+    // themselves here on attach/detach. Stage 1 renders the first registered
+    // volume (single-volume); the multi-volume per-object raymarch is stage 2.
+    void RegisterVolume(VoxelVolumeComponent* v);
+    void UnregisterVolume(VoxelVolumeComponent* v);
+
+    // Global lighting / GI settings shared by all volumes.
+    int maxRaySteps = 256;
+    float sunIntensity = 3.0f;
+    float ambient = 0.6f;
+    float aoStrength = 0.7f;// Minecraft-style corner AO; 0 disables
+    // Traced 1-bounce GI with temporal accumulation (GL path only for now;
+    // the WebGPU path keeps the flat ambient). 0 disables and falls back to
+    // the flat ambient term.
+    float giStrength = 1.0f;
+    float giBlend = 0.93f;// history weight per frame
+    int debugMode = 0;// 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
+    bool shadowEnabled = true;
+
+private:
+    void _uploadGL(VoxelVolumeComponent* v);
+    void _ensureGIRenderTargets(int w, int h);
+
+    std::vector<VoxelVolumeComponent*> _volumes;
+    VoxelVolumeComponent* _uploadedVolume = nullptr;// which volume the GPU textures currently hold
+
+    GLuint _volumeTexGL = 0;
+    GLuint _occupancyTexGL = 0;
+    GLuint _paletteTexGL = 0;
+
+    // GI accumulation ping-pong (RGBA16F: rgb = indirect radiance, a = camera
+    // distance for history validation)
+    GLuint _giTexGL[2] = { 0, 0 };
+    GLuint _giFBOGL[2] = { 0, 0 };
+    int _giW = 0, _giH = 0;
+    int _giCur = 0;
+    int _giFrame = 0;
+    glm::mat4 _prevViewProj{ 1.0f };
+    glm::vec3 _prevCameraPos{ 0.0f };
+    bool _prevViewValid = false;
+
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
+    void _uploadGPU(VoxelVolumeComponent* v);
+    WGPUDevice _gpuDevice = nullptr;
+    WGPUQueue _gpuQueue = nullptr;
+    WGPURenderPipeline _pipeline = nullptr;
+    WGPUBindGroupLayout _uniformBGL = nullptr;
+    WGPUBindGroupLayout _texBGL = nullptr;
+    WGPUBindGroup _uniformBG = nullptr;
+    WGPUBindGroup _texBG = nullptr;
+    WGPUBuffer _uniformBuf = nullptr;
+    WGPUTexture _volumeTexGPU = nullptr;
+    WGPUTexture _occupancyTexGPU = nullptr;
+    WGPUTexture _paletteTexGPU = nullptr;
 #endif
 };
 

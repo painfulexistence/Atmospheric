@@ -218,6 +218,8 @@ set(SOURCES
     src/voxel_chunk_component.cpp
     src/voxel_world.cpp
     src/voxel_chunk_pass.cpp
+    src/micro_voxel_pass.cpp
+    src/voxel_volume_component.cpp
     src/portal_pass.cpp
     src/portal_component.cpp
     src/sun_component.cpp

@@ -35,6 +35,7 @@
 #include "transform_component.hpp"
 #include "ui_page_manager.hpp"
 #include "video_recorder.hpp"
+#include "voxel_volume_component.hpp"
 #include "window.hpp"
 #include <algorithm>
 #include <chrono>
@@ -496,6 +497,16 @@ void Application::RegisterComponents() {
             props.type = LightType::Area;
 
         return new LightComponent(o, props);
+    });
+
+    // ── VoxelVolumeComponent (micro voxel raymarched volume) ──────────────────
+    ComponentFactory::Register("VoxelVolume", [](GameObject* o, Deserializer& d) -> Component* {
+        int seed = 1337;
+        d.Read("seed", seed);
+        auto* c = new VoxelVolumeComponent(o, static_cast<uint32_t>(seed));
+        d.Read("gridDim", c->gridDim);
+        d.Read("voxelSize", c->voxelSize);
+        return c;
     });
 
     // ── ShapeRendererComponent ────────────────────────────────────────────────
