@@ -1,0 +1,59 @@
+#pragma once
+#include "component.hpp"
+#include "terrain_streamer.hpp"
+
+class CameraComponent;
+
+// Reusable engine wrapper that makes a streamed open-world terrain a
+// first-class scene component. Owns a TerrainStreamer, initialises it on
+// attach (the owning GameObject is the tile/collider/entity root), and drives
+// it each tick relative to a camera. Mirrors VoxelWorldComponent's
+// manager-owning-component pattern.
+//
+//   auto* go = CreateGameObject(glm::vec3(0.0f));
+//   go->AddComponent<TerrainStreamerComponent>(TerrainStreamerProps{
+//       .worldSize = 10240.0f, .tileSize = 512.0f, .heightScale = 500.0f, ... });
+//
+// By default it drives off the application's main camera; call SetCamera() to
+// stream relative to a different view. The generator/entity/splat callbacks in
+// TerrainStreamerProps stay code-only (std::function), so this component is the
+// integration seam for terrain regardless of whether the scene is built in C++
+// or (for the scalar props) later declared in scene JSON.
+class TerrainStreamerComponent : public Component {
+public:
+    TerrainStreamerComponent(GameObject* owner, const TerrainStreamerProps& props = {});
+
+    std::string GetName() const override {
+        return "TerrainStreamer";
+    }
+    void OnAttach() override;
+    void OnTick(float dt) override;
+    void DrawImGui() override;
+
+    // Stream relative to this camera instead of the application's main camera.
+    void SetCamera(CameraComponent* camera) {
+        _camera = camera;
+    }
+
+    // Direct access to the underlying streamer (height queries, LOD-tint debug,
+    // stats, live prop inspection).
+    TerrainStreamer& Streamer() {
+        return _streamer;
+    }
+    const TerrainStreamer& Streamer() const {
+        return _streamer;
+    }
+
+    // Convenience passthroughs for the common callers (ground clamp, HUD).
+    float GetHeight(float wx, float wz) const {
+        return _streamer.GetHeight(wx, wz);
+    }
+    const TerrainStreamer::Stats& GetStats() const {
+        return _streamer.GetStats();
+    }
+
+private:
+    TerrainStreamer _streamer;
+    TerrainStreamerProps _props;
+    CameraComponent* _camera = nullptr;
+};

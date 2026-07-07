@@ -185,6 +185,7 @@ set(SOURCES
     src/height_field.cpp
     src/terrain_mesh_component.cpp
     src/terrain_streamer.cpp
+    src/terrain_streamer_component.cpp
     src/terrain_tile_cache.cpp
     src/height_field_collider_component.cpp
     src/water_component.cpp

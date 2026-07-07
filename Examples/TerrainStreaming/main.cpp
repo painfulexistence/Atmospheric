@@ -26,7 +26,7 @@
 // so the clamp applies to this frame's movement.
 class GroundClampComponent : public Component {
 public:
-    GroundClampComponent(GameObject* owner, TerrainStreamer* terrain) : _terrain(terrain) {
+    GroundClampComponent(GameObject* owner, TerrainStreamerComponent* terrain) : _terrain(terrain) {
         gameObject = owner;
     }
     std::string GetName() const override {
@@ -46,16 +46,18 @@ public:
     bool enabled = true;
 
 private:
-    TerrainStreamer* _terrain;
+    TerrainStreamerComponent* _terrain;
 };
 
 class TerrainStreamingDemo : public Application {
     using Application::Application;
 
-    TerrainStreamer _terrain;
+    // The terrain is a reusable engine component now: it owns the streamer and
+    // drives it from its own OnTick, so the app just holds a handle for height
+    // queries / debug toggles.
+    TerrainStreamerComponent* _terrain = nullptr;
     CameraComponent* _cam = nullptr;
     GameObject* _camGO = nullptr;
-    GameObject* _terrainRoot = nullptr;
     GroundClampComponent* _groundClamp = nullptr;
     MeshHandle _treeMesh;
     MeshHandle _rockMesh;
@@ -95,9 +97,6 @@ class TerrainStreamingDemo : public Application {
             }
         ));
 
-        _terrainRoot = CreateGameObject(glm::vec3(0.0f));
-        _terrainRoot->SetName("TerrainRoot");
-
         // Shared entity meshes: one mesh + material per type, so every spawned
         // instance batches into the same draw.
         auto& am = AssetManager::Get();
@@ -112,25 +111,23 @@ class TerrainStreamingDemo : public Application {
         ));
         _rockMesh = am.CreateMesh("ent_rock", rock);
 
-        _terrain.Init(
-            this,
-            TerrainStreamerProps{
-                .worldSize = 10240.0f,
-                .tileSize = 512.0f,
-                // Balanced against the noise frequency below: perceived
-                // steepness is heightScale * frequency, so halving the
-                // wavelength (0.00035 -> 0.0007) must roughly halve the
-                // amplitude or every slope doubles (and the tree-scatter
-                // slope rules stop matching).
-                .heightScale = 500.0f,
-                .tileHeightRes = 512,// 1 m/texel in the LOD0 ring
-                .tileMeshRes = 64,
-                .lodCount = 4,
-                .lod0RadiusTiles = 2,
-                .paletteIndex = 3,// forest
-                // ~1.4km feature wavelength: enough distinct ridges/valleys
-                // across 10km that traversal reads as covering ground.
-                .noise = { .resolution = 0, .seed = 20260705, .frequency = 0.0007f, .octaves = 9 },
+        TerrainStreamerProps terrainProps{
+            .worldSize = 10240.0f,
+            .tileSize = 512.0f,
+            // Balanced against the noise frequency below: perceived
+            // steepness is heightScale * frequency, so halving the
+            // wavelength (0.00035 -> 0.0007) must roughly halve the
+            // amplitude or every slope doubles (and the tree-scatter
+            // slope rules stop matching).
+            .heightScale = 500.0f,
+            .tileHeightRes = 512,// 1 m/texel in the LOD0 ring
+            .tileMeshRes = 64,
+            .lodCount = 4,
+            .lod0RadiusTiles = 2,
+            .paletteIndex = 3,// forest
+            // ~1.4km feature wavelength: enough distinct ridges/valleys
+            // across 10km that traversal reads as covering ground.
+            .noise = { .resolution = 0, .seed = 20260705, .frequency = 0.0007f, .octaves = 9 },
         // Baked-tile cache: first run generates + stores, every run
         // after boots from pure IO (watch "cache" in the stats line).
         // Resolved against the engine base path (SDL_GetBasePath — next to
@@ -138,50 +135,55 @@ class TerrainStreamingDemo : public Application {
         // Emscripten's default FS is RAM-backed, so skip it there and
         // keep generating (ship a preloaded pyramid instead).
 #if !defined(__EMSCRIPTEN__)
-                .cacheDir = FileSystem::Get().BasePath() + "cache/terrain",
+            .cacheDir = FileSystem::Get().BasePath() + "cache/terrain",
 #endif
-                // .layers / .splatFn: plug Gaea-style splat + detail textures here.
-                .colliderRadiusTiles = 1,
-                // Deterministic scatter: slope/height rules decide trees vs
-                // rocks; the streamer spawns/pools them as the ring moves.
-                .placeEntitiesFn =
-                    [](const TerrainTileContext& ctx) {
-                        std::vector<TerrainEntityPlacement> out;
-                        uint32_t rng =
-                            static_cast<uint32_t>(ctx.coord.x * 73856093 ^ ctx.coord.y * 19349663 ^ ctx.seed);
-                        auto rand01 = [&rng] {
-                            rng = rng * 1664525u + 1013904223u;
-                            return static_cast<float>(rng >> 8) * (1.0f / 16777216.0f);
-                        };
-                        for (int i = 0; i < 90; ++i) {
-                            const float wx = ctx.worldMin.x + rand01() * (ctx.worldMax.x - ctx.worldMin.x);
-                            const float wz = ctx.worldMin.y + rand01() * (ctx.worldMax.y - ctx.worldMin.y);
-                            const float y = ctx.HeightAt(wx, wz);
-                            const float dhdx = (ctx.HeightAt(wx + 4.0f, wz) - ctx.HeightAt(wx - 4.0f, wz)) / 8.0f;
-                            const float dhdz = (ctx.HeightAt(wx, wz + 4.0f) - ctx.HeightAt(wx, wz - 4.0f)) / 8.0f;
-                            const float slope = std::sqrt(dhdx * dhdx + dhdz * dhdz);
-                            const float hn = y / ctx.heightScale;
-                            if (slope < 0.35f && hn > 0.25f && hn < 0.62f) {
-                                const float s = 3.0f + rand01() * 5.0f;// tree
-                                out.push_back({ { wx, y + 0.5f * s, wz }, rand01() * 6.2832f, s, 0 });
-                            } else if (slope >= 0.35f && slope < 1.1f && rand01() < 0.35f) {
-                                const float s = 1.0f + rand01() * 3.0f;// rock
-                                out.push_back({ { wx, y + 0.2f * s, wz }, rand01() * 6.2832f, s, 1 });
-                            }
+            // .layers / .splatFn: plug Gaea-style splat + detail textures here.
+            .colliderRadiusTiles = 1,
+            // Deterministic scatter: slope/height rules decide trees vs
+            // rocks; the streamer spawns/pools them as the ring moves.
+            .placeEntitiesFn =
+                [](const TerrainTileContext& ctx) {
+                    std::vector<TerrainEntityPlacement> out;
+                    uint32_t rng = static_cast<uint32_t>(ctx.coord.x * 73856093 ^ ctx.coord.y * 19349663 ^ ctx.seed);
+                    auto rand01 = [&rng] {
+                        rng = rng * 1664525u + 1013904223u;
+                        return static_cast<float>(rng >> 8) * (1.0f / 16777216.0f);
+                    };
+                    for (int i = 0; i < 90; ++i) {
+                        const float wx = ctx.worldMin.x + rand01() * (ctx.worldMax.x - ctx.worldMin.x);
+                        const float wz = ctx.worldMin.y + rand01() * (ctx.worldMax.y - ctx.worldMin.y);
+                        const float y = ctx.HeightAt(wx, wz);
+                        const float dhdx = (ctx.HeightAt(wx + 4.0f, wz) - ctx.HeightAt(wx - 4.0f, wz)) / 8.0f;
+                        const float dhdz = (ctx.HeightAt(wx, wz + 4.0f) - ctx.HeightAt(wx, wz - 4.0f)) / 8.0f;
+                        const float slope = std::sqrt(dhdx * dhdx + dhdz * dhdz);
+                        const float hn = y / ctx.heightScale;
+                        if (slope < 0.35f && hn > 0.25f && hn < 0.62f) {
+                            const float s = 3.0f + rand01() * 5.0f;// tree
+                            out.push_back({ { wx, y + 0.5f * s, wz }, rand01() * 6.2832f, s, 0 });
+                        } else if (slope >= 0.35f && slope < 1.1f && rand01() < 0.35f) {
+                            const float s = 1.0f + rand01() * 3.0f;// rock
+                            out.push_back({ { wx, y + 0.2f * s, wz }, rand01() * 6.2832f, s, 1 });
                         }
-                        return out;
-                    },
-                .spawnEntityFn =
-                    [this](Application* app, const TerrainEntityPlacement& p) {
-                        auto* go = app->CreateGameObject(glm::vec3(0.0f));
-                        go->SetName(p.type == 0 ? "tree" : "rock");
-                        go->AddComponent<MeshComponent>(p.type == 0 ? _treeMesh : _rockMesh);
-                        return go;
-                    },
-                .entityRadiusTiles = 3,
-            },
-            _terrainRoot
-        );
+                    }
+                    return out;
+                },
+            .spawnEntityFn =
+                [this](Application* app, const TerrainEntityPlacement& p) {
+                    auto* go = app->CreateGameObject(glm::vec3(0.0f));
+                    go->SetName(p.type == 0 ? "tree" : "rock");
+                    go->AddComponent<MeshComponent>(p.type == 0 ? _treeMesh : _rockMesh);
+                    return go;
+                },
+            .entityRadiusTiles = 3,
+        };
+
+        // The terrain GameObject roots every tile/collider/entity; the
+        // component's OnAttach prewarms the world (synchronous, ~1 frame) and
+        // its OnTick streams thereafter — no per-frame work left in the app.
+        auto* terrainGO = CreateGameObject(glm::vec3(0.0f));
+        terrainGO->SetName("Terrain");
+        _terrain =
+            static_cast<TerrainStreamerComponent*>(terrainGO->AddComponent<TerrainStreamerComponent>(terrainProps));
 
         const auto bootMs =
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _bootTime).count();
@@ -191,7 +193,7 @@ class TerrainStreamingDemo : public Application {
 
         // Spawn high enough for an establishing vista over the valley — at
         // ground+40 you only see the local mountainside.
-        const float groundY = _terrain.GetHeight(0.0f, 0.0f);
+        const float groundY = _terrain->GetHeight(0.0f, 0.0f);
         _camGO->SetPosition(glm::vec3(0.0f, groundY + 200.0f, 0.0f));
 
         // Unified fly camera. 12 m/s base ~ a sprinting character (crossing
@@ -201,7 +203,7 @@ class TerrainStreamingDemo : public Application {
         _camGO->AddComponent<CameraController3D>(
             /*moveSpeed=*/12.0f, /*lookSpeed=*/1.5f, /*slowMultiplier=*/0.2f, /*fastMultiplier=*/50.0f
         );
-        _groundClamp = static_cast<GroundClampComponent*>(_camGO->AddComponent<GroundClampComponent>(&_terrain));
+        _groundClamp = static_cast<GroundClampComponent*>(_camGO->AddComponent<GroundClampComponent>(_terrain));
 
         ConsoleSubsystem::Get()->Info(
             "WASD move, arrows look, X sprint, Z slow, R/F up/down, G ground-clamp, T teleport, L LOD tint, I "
@@ -210,22 +212,23 @@ class TerrainStreamingDemo : public Application {
     }
 
     void OnUpdate(float dt, float /*time*/) override {
-        if (!_cam) return;
+        if (!_cam || !_terrain) return;
         auto* input = InputSubsystem::Get();
 
         // Movement/look/sprint live in CameraController3D; the ground clamp in
         // GroundClampComponent. Only demo-specific keys remain here.
+        TerrainStreamer& terrain = _terrain->Streamer();
         if (input->IsKeyPressed(Key::T)) {
             // Teleport 2km along the view direction, kept inside the world —
             // stepping past the edge leaves nothing but void in front of you.
-            const float bound = 0.5f * _terrain.Props().worldSize - _terrain.Props().tileSize;
+            const float bound = 0.5f * terrain.Props().worldSize - terrain.Props().tileSize;
             glm::vec3 fwd = _cam->GetEyeDirection();
             fwd.y = 0.0f;
             fwd = glm::length(fwd) > 1e-3f ? glm::normalize(fwd) : glm::vec3(1, 0, 0);
             glm::vec3 pos = _camGO->GetPosition() + fwd * 2000.0f;
             pos.x = std::clamp(pos.x, -bound, bound);
             pos.z = std::clamp(pos.z, -bound, bound);
-            pos.y = _terrain.GetHeight(pos.x, pos.z) + 200.0f;
+            pos.y = terrain.GetHeight(pos.x, pos.z) + 200.0f;
             _camGO->SetPosition(pos);
             ConsoleSubsystem::Get()->Info(
                 "Teleported to (" + std::to_string(static_cast<int>(pos.x)) + ", "
@@ -234,10 +237,10 @@ class TerrainStreamingDemo : public Application {
         }
         if (input->IsKeyPressed(Key::G) && _groundClamp) _groundClamp->enabled = !_groundClamp->enabled;
         if (input->IsKeyPressed(Key::L)) {
-            _terrain.SetLodTintDebug(!_terrain.GetLodTintDebug());
+            terrain.SetLodTintDebug(!terrain.GetLodTintDebug());
             ConsoleSubsystem::Get()->Info(
-                _terrain.GetLodTintDebug() ? "LOD tint ON — each color is a detail ring; tiles recolor as they refine"
-                                           : "LOD tint OFF"
+                terrain.GetLodTintDebug() ? "LOD tint ON — each color is a detail ring; tiles recolor as they refine"
+                                          : "LOD tint OFF"
             );
         }
         if (input->IsKeyPressed(Key::I)) {
@@ -246,10 +249,9 @@ class TerrainStreamingDemo : public Application {
         }
         if (input->IsKeyPressed(Key::ESCAPE)) Quit();
 
-        const glm::mat4 viewProj = _cam->GetProjectionMatrix() * _cam->GetViewMatrix();
-        _terrain.Update(_camGO->GetPosition(), viewProj);
-
-        const auto& stats = _terrain.GetStats();
+        // Streaming is driven by TerrainStreamerComponent::OnTick now; the app
+        // only reads stats.
+        const auto& stats = _terrain->GetStats();
         if (!_reportedStreamed && stats.initialLoadDone) {
             _reportedStreamed = true;
             const auto ms =
@@ -263,7 +265,7 @@ class TerrainStreamingDemo : public Application {
         if (_statsTimer >= 5.0f) {
             _statsTimer = 0.0f;
             const glm::vec3 pos = _camGO->GetPosition();
-            const float bound = 0.5f * _terrain.Props().worldSize;
+            const float bound = 0.5f * terrain.Props().worldSize;
             const bool inside = std::abs(pos.x) <= bound && std::abs(pos.z) <= bound;
             ConsoleSubsystem::Get()->Info(
                 "cam (" + std::to_string(static_cast<int>(pos.x)) + ", " + std::to_string(static_cast<int>(pos.z))
