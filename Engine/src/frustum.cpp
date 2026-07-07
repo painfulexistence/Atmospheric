@@ -48,7 +48,7 @@ bool Frustum::Intersects(std::array<glm::vec3, 8> points) const {
     for (const Plane* plane : { &_near, &_far, &_top, &_bottom, &_left, &_right }) {
         bool allOutside = true;
         for (int i = 0; i < 8; ++i) {
-            if (plane->Halfspace(points[i]) >= 0) {
+            if (plane->ClassifyPoint(points[i]) != Plane::Halfspace::NEGATIVE) {
                 allOutside = false;
                 break;
             }
