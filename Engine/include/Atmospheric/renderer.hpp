@@ -346,6 +346,8 @@ public:
     // brightness is sunIntensity * light->intensity, so the LightComponent
     // drives the level (set it on the light) and this stays a unit multiplier.
     float sunIntensity = 1.0f;
+    // Ambient gain, scaled by the main light's ambient magnitude (see
+    // MicroVoxelPass). The sky-hemisphere ambient shape is kept; this sets level.
     float ambient = 0.6f;
     float aoStrength = 0.7f;// Minecraft-style corner AO; 0 disables
     // Traced 1-bounce GI with temporal accumulation (GL path only for now;

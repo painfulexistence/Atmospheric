@@ -285,6 +285,11 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     const glm::vec3 sunColor = light ? light->diffuse : glm::vec3(1.0f, 0.96f, 0.9f);
     // Respect the main light's intensity; sunIntensity is just an artistic gain.
     const float sunIntensityEff = sunIntensity * (light ? light->intensity : 1.0f);
+    // Ambient level also follows the light. MicroVoxel keeps its sky-hemisphere
+    // gradient (nicer than a flat fill), so the pass 'ambient' scalar is a gain
+    // scaled by the light's ambient magnitude (its average channel).
+    const float ambientEff =
+        ambient * (light ? (light->ambient.r + light->ambient.g + light->ambient.b) / 3.0f : 1.0f);
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
@@ -321,7 +326,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             glm::vec4(cameraPos, 1.0f),
             glm::vec4(volumeOrigin, voxelSize),
             glm::vec4(sunDir, sunIntensityEff),
-            glm::vec4(sunColor, ambient),
+            glm::vec4(sunColor, ambientEff),
             glm::ivec4(gridDim, gridDim, gridDim, brickDim),
             glm::ivec4(maxRaySteps, shadowEnabled ? 1 : 0, reflectionsEnabled ? 1 : 0, lightCount),
             glm::vec4(aoStrength, emissiveStrength, 0.0f, 0.0f),
@@ -446,7 +451,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     shader->SetUniform(std::string("u_sunDir"), sunDir);
     shader->SetUniform(std::string("u_sunColor"), sunColor);
     shader->SetUniform(std::string("u_sunIntensity"), sunIntensityEff);
-    shader->SetUniform(std::string("u_ambient"), ambient);
+    shader->SetUniform(std::string("u_ambient"), ambientEff);
     shader->SetUniform(std::string("u_shadowEnabled"), shadowEnabled ? 1 : 0);
     shader->SetUniform(std::string("u_aoStrength"), aoStrength);
     shader->SetUniform(std::string("u_giStrength"), giActive ? giStrength : 0.0f);
