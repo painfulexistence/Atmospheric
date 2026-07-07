@@ -44,7 +44,8 @@ class MicroVoxelApp : public Application {
         ConsoleSubsystem::Get()->Info("MicroVoxel loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
         ConsoleSubsystem::Get()->Info("The terrain block ahead is raymarched 5cm voxels — no triangles.");
         ConsoleSubsystem::Get()->Info(
-            "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P toggle GI/AO/shadow/point light."
+            "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P/X toggle "
+            "GI/AO/shadow/point light/reflections."
         );
     }
 
@@ -84,6 +85,10 @@ class MicroVoxelApp : public Application {
         if (input->IsKeyPressed(Key::P)) {
             mv->pointLightCount = (mv->pointLightCount > 0) ? 0 : 1;
             console->Info(mv->pointLightCount > 0 ? "MicroVoxel point light: on" : "MicroVoxel point light: off");
+        }
+        if (input->IsKeyPressed(Key::X)) {
+            mv->reflectionsEnabled = !mv->reflectionsEnabled;
+            console->Info(mv->reflectionsEnabled ? "MicroVoxel reflections: on" : "MicroVoxel reflections: off");
         }
     }
 };

@@ -46,6 +46,7 @@ uniform float u_aoStrength;    // 0 disables corner AO
 uniform float u_giStrength;    // 0 = flat ambient, >0 = traced indirect
 uniform int   u_debugMode;     // 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
 uniform float u_emissiveStrength;  // HDR multiplier for palette-alpha emission
+uniform int   u_reflectionsEnabled;// per-material mirror reflections (row 1 of palette)
 
 // Local point lights (warm fill). Colors arrive pre-scaled by intensity;
 // falloff reaches 0 at the radius. u_pointLightCount <= MAX_POINT_LIGHTS.
@@ -58,6 +59,12 @@ uniform float u_pointLightRadius[MAX_POINT_LIGHTS];
 out vec4 fragColor;
 
 const float PI = 3.1415927;
+
+// Sky hemisphere gradient (matches the GI pass), used for ambient and as the
+// reflection ray's miss color.
+vec3 skyRadiance(vec3 dir) {
+    return mix(vec3(0.20, 0.22, 0.28), vec3(0.45, 0.55, 0.75), dir.y * 0.5 + 0.5);
+}
 
 // Per-voxel value hash for subtle albedo variation (keeps micro voxels legible).
 float voxelHash(ivec3 c) {
@@ -300,6 +307,30 @@ void main() {
     // self-lit, added after AO so glowing voxels stay bright in their crevices.
     vec3 emissive = albedo * emission * u_emissiveStrength;
     vec3 color = albedo * (direct * (0.7 + 0.3 * ao) + indirect * ao + pointLight * ao) + emissive;
+
+    // ── Per-material mirror reflections ─────────────────────────────────────
+    // Reflective materials (crystal/ore/snow; palette row 1) cast one extra
+    // reflection ray through the same DDA and blend the reflected radiance in
+    // by a Schlick Fresnel term (F0 = reflectivity), so grazing angles read as
+    // near-mirror. The reflected sample is cheaply shaded (sun + sky ambient +
+    // emission) — enough to mirror the glowing orbs, terrain, and sky.
+    float reflectivity = texelFetch(u_palette, ivec2(int(h.material), 1), 0).r;
+    if (u_reflectionsEnabled != 0 && reflectivity > 0.0) {
+        vec3 rdir = reflect(rd, h.normal);
+        vec3 rorig = hitPos + h.normal * u_voxelSize * 0.51;
+        Hit rh = raycast(rorig, rdir);
+        vec3 refl;
+        if (rh.hit) {
+            vec4 rpal = texelFetch(u_palette, ivec2(int(rh.material), 0), 0);
+            float rndl = max(dot(rh.normal, L), 0.0);
+            refl = rpal.rgb * (u_sunColor * u_sunIntensity * (1.0 / PI) * rndl + skyRadiance(rh.normal) * u_ambient)
+                 + rpal.rgb * rpal.a * u_emissiveStrength;
+        } else {
+            refl = skyRadiance(rdir);
+        }
+        float fres = reflectivity + (1.0 - reflectivity) * pow(1.0 - max(dot(-rd, h.normal), 0.0), 5.0);
+        color = mix(color, refl, clamp(fres, 0.0, 1.0));
+    }
 
     // Debug visualization of individual terms (keys in the MicroVoxel example)
     if (u_debugMode == 1) color = albedo;

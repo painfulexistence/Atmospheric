@@ -128,12 +128,23 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
         MatCrystal = 7,
         MatGlow = 8
     };
-    paletteRGBA.assign(256 * 4, 0);
+    // 2-row material table (256 x 2 RGBA8), uploaded as a 2-row 2D texture:
+    //   row 0: albedo.rgb, emission.a         (surface color + self-illumination)
+    //   row 1: reflectivity.r, roughness.g    (mirror reflection; roughness
+    //          reserved for future glossy jitter)
+    // The shader reads row 0 with texelFetch(u_palette, ivec2(mat, 0)) and the
+    // material params with ivec2(mat, 1).
+    paletteRGBA.assign(256 * 2 * 4, 0);
     auto setPalette = [this](uint8_t idx, uint8_t r, uint8_t g, uint8_t b, uint8_t emission = 0) {
         paletteRGBA[idx * 4 + 0] = r;
         paletteRGBA[idx * 4 + 1] = g;
         paletteRGBA[idx * 4 + 2] = b;
         paletteRGBA[idx * 4 + 3] = emission;
+    };
+    auto setMaterial = [this](uint8_t idx, uint8_t reflectivity, uint8_t roughness = 0) {
+        const int base = (256 + idx) * 4;// row 1
+        paletteRGBA[base + 0] = reflectivity;
+        paletteRGBA[base + 1] = roughness;
     };
     for (int i = 9; i < 256; i++)
         setPalette(static_cast<uint8_t>(i), 128, 128, 128);
@@ -145,6 +156,11 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
     setPalette(MatOre, 242, 191, 64);
     setPalette(MatCrystal, 115, 191, 242, 160);// cool cyan glow
     setPalette(MatGlow, 255, 140, 48, 255);// warm glowstone, full emission
+    // Reflective materials: crystals are near-mirror; ore and snow catch a
+    // faint sheen. Everything else stays matte (reflectivity 0).
+    setMaterial(MatCrystal, 210, 20);// glossy crystal — mirrors the scene
+    setMaterial(MatOre, 90, 60);// metallic-ish speckle
+    setMaterial(MatSnow, 40, 120);// faint wet sheen
 
     // Terrain heightfield: gradient-noise fbm with gentle amplitude (~0.28
     // height/width ratio) so the terrain reads as rolling hills rather than

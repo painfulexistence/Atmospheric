@@ -364,6 +364,10 @@ public:
     // GI pickup is GL-only.
     float emissiveStrength = 4.0f;
 
+    // Per-material mirror reflections (palette row 1 = reflectivity/roughness):
+    // one reflection ray blended by Fresnel. GL path only for now.
+    bool reflectionsEnabled = true;
+
     // Local point lights (warm fill). GL path only for now (mirrors the GI
     // split); colors are un-scaled here and multiplied by intensity on upload.
     static constexpr int kMaxPointLights = 4;

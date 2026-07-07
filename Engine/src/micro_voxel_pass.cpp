@@ -97,7 +97,8 @@ void MicroVoxelPass::_uploadGL(VoxelVolumeComponent* v) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, v->paletteRGBA.data());
+    // 256x2: row 0 albedo+emission, row 1 material params (reflectivity/roughness)
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, v->paletteRGBA.data());
 
     glBindTexture(GL_TEXTURE_3D, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -230,7 +231,7 @@ void MicroVoxelPass::_uploadGPU(VoxelVolumeComponent* v) {
 
     {
         WGPUTextureDescriptor td{};
-        td.size = { 256, 1, 1 };
+        td.size = { 256, 2, 1 };// row 0 albedo+emission, row 1 material params
         td.format = WGPUTextureFormat_RGBA8Unorm;
         td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
         td.dimension = WGPUTextureDimension_2D;
@@ -243,8 +244,8 @@ void MicroVoxelPass::_uploadGPU(VoxelVolumeComponent* v) {
         dst.aspect = WGPUTextureAspect_All;
         WGPUTexelCopyBufferLayout layout{};
         layout.bytesPerRow = 256 * 4;
-        layout.rowsPerImage = 1;
-        WGPUExtent3D extent{ 256, 1, 1 };
+        layout.rowsPerImage = 2;
+        WGPUExtent3D extent{ 256, 2, 1 };
         wgpuQueueWriteTexture(_gpuQueue, &dst, v->paletteRGBA.data(), v->paletteRGBA.size(), &layout, &extent);
     }
 
@@ -439,6 +440,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     shader->SetUniform(std::string("u_giStrength"), giActive ? giStrength : 0.0f);
     shader->SetUniform(std::string("u_debugMode"), debugMode);
     shader->SetUniform(std::string("u_emissiveStrength"), emissiveStrength);
+    shader->SetUniform(std::string("u_reflectionsEnabled"), reflectionsEnabled ? 1 : 0);
     const int lightCount = std::min(pointLightCount, kMaxPointLights);
     shader->SetUniform(std::string("u_pointLightCount"), lightCount);
     for (int i = 0; i < lightCount; i++) {
