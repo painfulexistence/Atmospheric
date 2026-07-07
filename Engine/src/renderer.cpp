@@ -936,10 +936,12 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
-        if (material->cullFaceEnabled)
+        if (material->renderState.cull != CullMode::None) {
+            glCullFace(material->renderState.cull == CullMode::Front ? GL_FRONT : GL_BACK);
             glEnable(GL_CULL_FACE);
-        else
+        } else {
             glDisable(GL_CULL_FACE);
+        }
 
         if (mesh->type == MeshType::PRIM) {
             glBindVertexArray(mesh->vao);
@@ -948,7 +950,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             // WebGL 2.0 Fallback: Non-instanced draw calls using World uniform
             for (const auto& inst : instances) {
                 depthShader->SetUniform(std::string("World"), inst.modelMatrix);
-                glDrawElements(GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0);
+                glDrawElements(GetGLPrimitiveType(material->renderState.topology), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0);
             }
 #else
             // Upload ALL instances for this batch once
@@ -957,7 +959,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
 
             // Instanced Draw
             glDrawElementsInstanced(
-                GetGLPrimitiveType(material->primitiveType),
+                GetGLPrimitiveType(material->renderState.topology),
                 mesh->triCount * 3,
                 GL_UNSIGNED_SHORT,
                 nullptr,
@@ -1007,10 +1009,12 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
                 glEnable(GL_DEPTH_TEST);
                 glDepthFunc(GL_LESS);
 
-                if (material->cullFaceEnabled)
+                if (material->renderState.cull != CullMode::None) {
+                    glCullFace(material->renderState.cull == CullMode::Front ? GL_FRONT : GL_BACK);
                     glEnable(GL_CULL_FACE);
-                else
+                } else {
                     glDisable(GL_CULL_FACE);
+                }
 
                 if (mesh->type == MeshType::PRIM) {
                     glBindVertexArray(mesh->vao);
@@ -1020,7 +1024,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
                     for (const auto& inst : instances) {
                         depthCubemapShader->SetUniform(std::string("World"), inst.modelMatrix);
                         glDrawElements(
-                            GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
+                            GetGLPrimitiveType(material->renderState.topology), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
                         );
                     }
 #else
@@ -1032,7 +1036,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
 
                     // Instanced Draw
                     glDrawElementsInstanced(
-                        GetGLPrimitiveType(material->primitiveType),
+                        GetGLPrimitiveType(material->renderState.topology),
                         mesh->triCount * 3,
                         GL_UNSIGNED_SHORT,
                         nullptr,
@@ -1446,7 +1450,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
         glDepthFunc(GL_LESS);
 
 #if !defined(__EMSCRIPTEN__) && !defined(ANDROID) && !(defined(__APPLE__) && TARGET_OS_IOS)
-        if (renderer.wireframeEnabled || material->polygonMode == PolygonMode::Line)
+        if (renderer.wireframeEnabled || material->renderState.polygon == PolygonMode::Line)
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         else
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -1455,10 +1459,12 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
         // Mirrored (reflection) view reverses winding — disable culling so no
         // surface is wrongly removed (terrain is single-sided; a flipped
         // back-face cull would erase it from the reflection entirely).
-        if (rv.flipCull || !material->cullFaceEnabled)
+        if (rv.flipCull || material->renderState.cull == CullMode::None) {
             glDisable(GL_CULL_FACE);
-        else
+        } else {
+            glCullFace(material->renderState.cull == CullMode::Front ? GL_FRONT : GL_BACK);
             glEnable(GL_CULL_FACE);
+        }
 
         switch (mesh->type) {
 
@@ -1694,7 +1700,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             AE_GL_PROBE(renderer, "Opaque pass: PRIM-GLES before non-instanced loop");
             for (const auto& inst : instances) {
                 colorShader->SetUniform(std::string("World"), inst.modelMatrix);
-                glDrawElements(GetGLPrimitiveType(material->primitiveType), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0);
+                glDrawElements(GetGLPrimitiveType(material->renderState.topology), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0);
                 AE_GL_PROBE(renderer, "Opaque pass: PRIM-GLES after glDrawElements");
             }
 #else
@@ -1705,7 +1711,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                 );
                 AE_GL_PROBE(renderer, "Opaque pass: PRIM after upload instance VBO");
                 glDrawElementsInstanced(
-                    GetGLPrimitiveType(material->primitiveType),
+                    GetGLPrimitiveType(material->renderState.topology),
                     mesh->triCount * 3,
                     GL_UNSIGNED_SHORT,
                     nullptr,
@@ -1781,10 +1787,12 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
 
-        if (material->cullFaceEnabled)
+        if (material->renderState.cull != CullMode::None) {
+            glCullFace(material->renderState.cull == CullMode::Front ? GL_FRONT : GL_BACK);
             glEnable(GL_CULL_FACE);
-        else
+        } else {
             glDisable(GL_CULL_FACE);
+        }
 
         geometryShader->SetUniform(
             "ProjectionView", ctx->GetMainCamera()->GetProjectionMatrix() * ctx->GetMainCamera()->GetViewMatrix()
@@ -1870,7 +1878,7 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
                     GL_ARRAY_BUFFER, instances.size() * sizeof(InstanceData), instances.data(), GL_DYNAMIC_DRAW
                 );
                 glDrawElementsInstanced(
-                    GetGLPrimitiveType(material->primitiveType),
+                    GetGLPrimitiveType(material->renderState.topology),
                     mesh->triCount * 3,
                     GL_UNSIGNED_SHORT,
                     nullptr,
