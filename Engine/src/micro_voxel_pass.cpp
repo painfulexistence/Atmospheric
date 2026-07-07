@@ -625,8 +625,12 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     glBindTexture(GL_TEXTURE_3D, _occupancyTexGL);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, _paletteTexGL);
+    // Always bind a valid 2D texture to unit 3: macOS GL validates every
+    // declared sampler even when its branch is dead (u_giStrength == 0), and
+    // warns + substitutes a zero texture otherwise. Palette stands in when GI
+    // is off (the composite doesn't sample u_giTex in that path).
     glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, giActive ? _giTexGL[_giCur] : 0);
+    glBindTexture(GL_TEXTURE_2D, (giActive && _giTexGL[_giCur]) ? _giTexGL[_giCur] : _paletteTexGL);
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
