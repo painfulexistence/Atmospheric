@@ -17,12 +17,22 @@ class MicroVoxelApp : public Application {
     }
 
     void OnLoad() override {
-        // A voxel volume attached to a GameObject at the origin. The grid is
-        // centred over the object in x/z (spanning [-6.4, 6.4]) and rises from
-        // y=0; it shows up in the scene tree like any other component.
-        auto* volumeObj = CreateGameObject();
-        volumeObj->SetPosition(glm::vec3(0.0f, 0.0f, 0.0f));
-        volumeObj->AddComponent<VoxelVolumeComponent>(/*seed=*/1337u);
+        // Several independent voxel volumes, each attached to its own
+        // GameObject. Each grid is centred over its object in x/z and rises from
+        // y=0; MicroVoxelPass draws one bounding box per volume, so they
+        // depth-composite with each other. Different seeds give different
+        // terrain — proof the renderer handles many independent volumes.
+        struct { glm::vec3 pos; uint32_t seed; const char* name; } kVolumes[] = {
+            { glm::vec3(0.0f, 0.0f, 0.0f), 1337u, "Volume.Center" },
+            { glm::vec3(13.5f, 0.0f, -1.0f), 7u, "Volume.Right" },
+            { glm::vec3(-13.5f, 0.0f, 2.0f), 99u, "Volume.Left" },
+        };
+        for (const auto& vd : kVolumes) {
+            auto* volumeObj = CreateGameObject();
+            volumeObj->SetName(vd.name);
+            volumeObj->SetPosition(vd.pos);
+            volumeObj->AddComponent<VoxelVolumeComponent>(vd.seed);
+        }
 
         // An angled warm sun. Without one the engine falls back to its default
         // directional light, which points straight down (0,-1,0) — that lights
@@ -47,8 +57,8 @@ class MicroVoxelApp : public Application {
             }
         ));
 
-        mainCamera->gameObject->SetPosition(glm::vec3(0.0f, 9.0f, 20.0f));
-        mainCamera->Pitch(glm::radians(-14.0f));
+        mainCamera->gameObject->SetPosition(glm::vec3(0.0f, 11.0f, 26.0f));
+        mainCamera->Pitch(glm::radians(-16.0f));
         mainCamera->gameObject->AddComponent<CameraController3D>(/*moveSpeed=*/6.0f, /*lookSpeed=*/1.5f);
 
         // A warm local point light pooling over the terrain, to show off local
