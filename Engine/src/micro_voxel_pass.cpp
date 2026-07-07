@@ -288,8 +288,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     // Ambient level also follows the light. MicroVoxel keeps its sky-hemisphere
     // gradient (nicer than a flat fill), so the pass 'ambient' scalar is a gain
     // scaled by the light's ambient magnitude (its average channel).
-    const float ambientEff =
-        ambient * (light ? (light->ambient.r + light->ambient.g + light->ambient.b) / 3.0f : 1.0f);
+    const float ambientEff = ambient * (light ? (light->ambient.r + light->ambient.g + light->ambient.b) / 3.0f : 1.0f);
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
