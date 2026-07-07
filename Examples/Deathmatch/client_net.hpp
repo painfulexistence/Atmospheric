@@ -8,54 +8,44 @@
 #include <string>
 #include <vector>
 
-// ClientNet — client side of the Deathmatch protocol. Where HideAndSeek's
-// ClientNet reconciled with error-smoothing (blend a fraction toward the
-// server each snapshot), this one does the textbook exact rewind-replay:
+// ClientNet — client side of the 3D Deathmatch protocol.
 //
-//   - keeps every un-acked input in _pending;
-//   - on each snapshot, resets the predicted position to the server's
-//     authoritative value as of ackedInputTick, then re-applies every pending
-//     input after that tick via the same sim::StepPlayer the server ran.
+// Prediction has three faces, same as the 2D lineage but now in 3D:
+//   1. Own movement — predicted with yaw-relative sim::StepPlayer and
+//      reconciled by exact rewind-replay: on each snapshot, reset to the
+//      server's authoritative foot as of ackedInputTick and re-apply every
+//      pending input. Zero residual on a clean link.
+//   2. The enemy — not predicted; interpolated between the last two snapshots
+//      in BOTH position and orientation (yaw via shortest-arc, pitch linear),
+//      with a fixed render delay. That delay also defines renderTick, the tick
+//      the server rewinds to for lag compensation.
+//   3. Own rockets — cosmetic prediction, shown leaving the muzzle immediately.
 //
-// Because the server consumes each input exactly once in order (see
-// authority.hpp), on a clean link the replay reproduces the prediction with
-// zero residual — the correction is invisible. This is the reconciliation a
-// competitive game wants and the "path not taken" HideAndSeek's README points
-// at.
-//
-// Three faces of prediction live here, deliberately:
-//   1. own movement   — predicted + exact rewind-replay reconciliation (above)
-//   2. the enemy      — NOT predicted; interpolated between the last two
-//                       snapshots with a fixed render delay (no local input to
-//                       predict it from). This render delay is also what
-//                       defines renderTick, the value the server rewinds to
-//                       for lag compensation.
-//   3. own rockets    — cosmetic prediction: a local rocket is shown leaving
-//                       the barrel immediately so firing feels responsive,
-//                       while the server's authoritative rocket (replicated in
-//                       snapshots) is the one that actually deals damage.
+// The client owns its own view (yaw/pitch from the mouse); the server never
+// sends it back. It IS sent up every tick because movement is yaw-relative and
+// each fire latches the view it was aimed with.
 class ClientNet {
 public:
     struct AuthRocket {
         uint16_t id = 0;
         int owner = 0;
-        sim::Vec2 pos;
+        sim::Vec3 pos;
     };
     struct CosmeticRocket {
-        sim::Vec2 pos;
-        sim::Vec2 vel;
+        sim::Vec3 pos;
+        sim::Vec3 vel;
         float life = 0.0f;
     };
 
     bool Connect(const std::string& serverIp, uint16_t serverPort);
 
-    // Predicts one tick of own movement, latches any fire this tick, and sends
-    // the input. aim is the (unnormalized) aim direction used by whichever
-    // weapon fired this tick.
-    void SubmitInput(uint32_t tick, float mx, float my, bool fireRail, bool fireRocket, float aimx, float aimy);
+    // Predicts one tick of yaw-relative movement, latches any fire this tick
+    // (aimed along the current view), and sends the input.
+    void
+        SubmitInput(uint32_t tick, float forward, float strafe, float yaw, float pitch, bool fireRail, bool fireRocket);
 
-    void Pump(uint32_t nowMs);// receive + process snapshots
-    void UpdateCosmetic(float dt);// advance cosmetic own-rockets for rendering
+    void Pump(uint32_t nowMs);
+    void UpdateCosmetic(float dt);
 
     bool IsWelcomed() const {
         return _welcomed;
@@ -63,8 +53,8 @@ public:
     int PlayerId() const {
         return _playerId;
     }
-    sim::Vec2 GetOwnPos() const {
-        return _predictedPos;
+    sim::Vec3 GetOwnFoot() const {
+        return _predictedFoot;
     }
     int GetHealth() const {
         return _health;
@@ -81,7 +71,9 @@ public:
     bool HasEnemy() const {
         return _enemyAlive && _haveEnemyB;
     }
-    sim::Vec2 GetEnemyPos(uint32_t nowMs) const;
+    sim::Vec3 GetEnemyFoot(uint32_t nowMs) const;
+    float GetEnemyYaw(uint32_t nowMs) const;
+    float GetEnemyPitch(uint32_t nowMs) const;
 
     const std::vector<AuthRocket>& AuthoritativeRockets() const {
         return _authRockets;
@@ -92,7 +84,7 @@ public:
 
 private:
     struct Move {
-        float mx = 0.0f, my = 0.0f;
+        float forward = 0.0f, strafe = 0.0f, yaw = 0.0f;
     };
 
     static constexpr uint32_t kInterpDelayMs = 100;
@@ -106,29 +98,32 @@ private:
     int _playerId = 0;
     uint32_t _lastServerTick = 0;
 
-    sim::Vec2 _predictedPos;
+    sim::Vec3 _predictedFoot;
+    float _viewYaw = 0.0f, _viewPitch = 0.0f;
     int _health = sim::kMaxHealth;
     bool _alive = true;
     int _score = 0;
     int _enemyScore = 0;
 
-    std::map<uint32_t, Move> _pending;// un-acked inputs, for exact replay
+    std::map<uint32_t, Move> _pending;
 
     uint16_t _railSeq = 0;
     uint16_t _rocketSeq = 0;
-    sim::Vec2 _railAim{ 1.0f, 0.0f };
-    sim::Vec2 _rocketAim{ 1.0f, 0.0f };
+    float _railYaw = 0.0f, _railPitch = 0.0f;
+    float _rocketYaw = 0.0f, _rocketPitch = 0.0f;
 
     struct Sample {
-        sim::Vec2 pos;
+        sim::Vec3 foot;
+        float yaw = 0.0f, pitch = 0.0f;
         uint32_t recvMs = 0;
     };
-    Sample _enemyA, _enemyB;// A older, B newer
+    Sample _enemyA, _enemyB;
     bool _haveEnemyA = false, _haveEnemyB = false;
     bool _enemyAlive = false;
 
     std::vector<AuthRocket> _authRockets;
     std::vector<CosmeticRocket> _cosRockets;
 
+    float InterpT(uint32_t nowMs) const;
     void HandleSnapshot(const uint8_t* data, int len, uint32_t nowMs);
 };

@@ -1,39 +1,41 @@
 #pragma once
+#include "sim_common.hpp"
 #include <cstdint>
 #include <cstring>
 
 // Wire protocol for Deathmatch — a 2-player, server-authoritative, Quake-style
-// arena shooter whose whole reason to exist is demonstrating lag compensation
-// and the favor-the-shooter vs favor-the-target tradeoff (see authority.hpp).
+// 3D arena shooter built to demonstrate lag compensation, the favor-the-shooter
+// vs favor-the-target tradeoff, and (new in the 3D version) view-angle
+// replication and quantization.
 //
-// Client-server, like HideAndSeek and unlike MultiplayerSandbox's lockstep:
-// clients send input, the server is the sole simulator, clients receive
-// snapshots. Two things this protocol carries that HideAndSeek's didn't:
+// Things this protocol carries that a 2D version doesn't:
 //
-//   1. renderTick — the server tick the client was actually *looking at* when
-//      it fired (its latest received snapshot tick minus the interpolation
-//      delay). The server rewinds targets to this tick for hit detection.
-//      That single field is the entire mechanism of favor-the-shooter lag
-//      compensation: the server judges the shot against the world the shooter
-//      saw, not the newer world the server has moved on to.
+//   1. View angles (yaw/pitch), quantized. Every real FPS replicates where
+//      each player is looking, and packs it tightly — Quake used a single byte
+//      per angle (~1.4° steps), Source uses ~16 bits. We use 16-bit yaw and
+//      16-bit pitch (~0.005° steps): visually lossless, still a fraction of a
+//      float. The client's *own* view is never sent back to it (it owns its
+//      camera); the enemy's yaw/pitch are replicated so its model faces the
+//      right way and can be interpolated.
 //
-//   2. per-weapon fire sequence numbers (railSeq / rocketSeq) — a fire is an
-//      *event*, and losing it is unacceptable (a dropped "I shot" packet is a
-//      shot that never happened). Unlike movement, which HideAndSeek could let
-//      go stale for a tick, each fire is repeated in every input packet until
-//      the next fire supersedes it; the server processes one when its sequence
-//      advances and dedups the repeats. A minimal reliable-events-over-UDP
-//      layer, distinct from the reliable-*stream* redundancy MultiplayerSandbox
-//      uses for lockstep inputs.
+//   2. renderTick — the server tick the client was looking at when it fired
+//      (latest snapshot tick minus interpolation delay). The server rewinds
+//      the target to renderTick for hit detection: favor-the-shooter lag comp.
+//
+//   3. Per-weapon fire sequences with a *latched* view angle. A fire is an
+//      event (losing it = a shot that never happened), so each fire's sequence
+//      AND the yaw/pitch it was fired at are repeated in every input packet
+//      until the next fire supersedes them — surviving packet loss without the
+//      shot direction drifting as the player keeps turning.
 namespace proto {
 
-    constexpr uint32_t kMagic = 0x444D4131;// "DMA1"
+    constexpr uint32_t kMagic = 0x444D4132;// "DMA2" (3D revision)
 
     enum class PacketType : uint8_t {
-        ClientHello = 1,// client -> server: join a slot
-        ServerWelcome = 2,// server -> client: {playerId, tickRateHz}
-        ClientInput = 3,// client -> server: {clientTick, renderTick, move, fires}
-        ServerSnapshot = 4,// server -> client: authoritative state for this client
+        ClientHello = 1,
+        ServerWelcome = 2,
+        ClientInput = 3,
+        ServerSnapshot = 4,
     };
 
     // ── byte helpers (little-endian) ─────────────────────────────────────────
@@ -62,9 +64,34 @@ namespace proto {
         std::memcpy(&v, p, sizeof(float));
         return v;
     }
+    inline void PutVec3(uint8_t* p, sim::Vec3 v) {
+        PutF32(p, v.x);
+        PutF32(p + 4, v.y);
+        PutF32(p + 8, v.z);
+    }
+    inline sim::Vec3 GetVec3(const uint8_t* p) {
+        return { GetF32(p), GetF32(p + 4), GetF32(p + 8) };
+    }
 
-    // Direction axis quantized to a signed byte (-127..127 == -1..1). The
-    // server owns speed/damage, so lying about magnitude here buys nothing.
+    // Angle quantization. Yaw over [0, 2π) into 16 bits; pitch over
+    // [-π/2, π/2] into 16 bits.
+    inline uint16_t QuantizeYaw(float yaw) {
+        float t = std::fmod(yaw, sim::kTwoPi);
+        if (t < 0.0f) t += sim::kTwoPi;
+        return static_cast<uint16_t>((t / sim::kTwoPi) * 65535.0f + 0.5f);
+    }
+    inline float DequantizeYaw(uint16_t q) {
+        return (static_cast<float>(q) / 65535.0f) * sim::kTwoPi;
+    }
+    inline uint16_t QuantizePitch(float pitch) {
+        float t = sim::Clamp(pitch, -sim::kPi * 0.5f, sim::kPi * 0.5f);
+        return static_cast<uint16_t>(((t + sim::kPi * 0.5f) / sim::kPi) * 65535.0f + 0.5f);
+    }
+    inline float DequantizePitch(uint16_t q) {
+        return (static_cast<float>(q) / 65535.0f) * sim::kPi - sim::kPi * 0.5f;
+    }
+
+    // Movement forward/strafe quantized to a signed byte (-127..127 == -1..1).
     inline int8_t QuantizeAxis(float v) {
         if (v > 1.0f) v = 1.0f;
         if (v < -1.0f) v = -1.0f;
@@ -83,22 +110,21 @@ namespace proto {
 
     // ClientInput: magic(4) type(1)
     //   clientTick(u32) renderTick(u32)
-    //   moveX(i8) moveY(i8)
-    //   railSeq(u16)   railAimX(i8)   railAimY(i8)
-    //   rocketSeq(u16) rocketAimX(i8) rocketAimY(i8)
-    constexpr int kClientInputLen = 5 + 4 + 4 + 1 + 1 + (2 + 1 + 1) + (2 + 1 + 1);
+    //   forward(i8) strafe(i8) viewYaw(u16) viewPitch(u16)
+    //   railSeq(u16)   railYaw(u16)   railPitch(u16)
+    //   rocketSeq(u16) rocketYaw(u16) rocketPitch(u16)
+    constexpr int kClientInputLen = 5 + 4 + 4 + 1 + 1 + 2 + 2 + (2 + 2 + 2) + (2 + 2 + 2);
 
     // ServerSnapshot header: magic(4) type(1)
     //   serverTick(u32) ackedInputTick(u32)
-    //   selfX(f32) selfY(f32) selfHealth(u8) selfAlive(u8)
-    //   selfScore(u8) enemyScore(u8)
-    //   enemyAlive(u8) enemyX(f32) enemyY(f32) enemyHealth(u8)
+    //   selfPos(vec3) selfHealth(u8) selfAlive(u8) selfScore(u8) enemyScore(u8)
+    //   enemyAlive(u8) enemyPos(vec3) enemyYaw(u16) enemyPitch(u16) enemyHealth(u8)
     //   numRockets(u8)
-    // then numRockets * rocket entry (below)
-    constexpr int kServerSnapshotHeaderLen = 5 + 4 + 4 + 4 + 4 + 1 + 1 + 1 + 1 + 1 + 4 + 4 + 1 + 1;
+    // then numRockets * rocket entry
+    constexpr int kServerSnapshotHeaderLen = 5 + 4 + 4 + 12 + 1 + 1 + 1 + 1 + 1 + 12 + 2 + 2 + 1 + 1;
 
-    // Rocket entry: id(u16) ownerId(u8) x(f32) y(f32)
-    constexpr int kRocketEntryLen = 2 + 1 + 4 + 4;
+    // Rocket entry: id(u16) ownerId(u8) pos(vec3)
+    constexpr int kRocketEntryLen = 2 + 1 + 12;
     constexpr int kMaxRocketsInSnapshot = 16;
 
 }// namespace proto

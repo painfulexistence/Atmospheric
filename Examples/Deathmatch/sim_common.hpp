@@ -4,173 +4,292 @@
 #include <cstdint>
 
 // Movement / weapon / world geometry shared by the server (authoritative) and
-// the client (local prediction of its own movement, cosmetic prediction of
-// its own rockets). Sharing this math is what lets the client's prediction
-// agree with the server exactly — reconciliation here is textbook
-// rewind-replay (store inputs, on correction reset to the server's
-// authoritative state and replay stored inputs forward), not HideAndSeek's
-// error-smoothing, so "agree exactly" has to be literally true or the
-// prediction visibly fights the server.
+// the client (prediction of its own movement, cosmetic prediction of its own
+// rockets). Sharing this math is what lets client prediction agree with the
+// server exactly — reconciliation here is textbook rewind-replay, so "agree
+// exactly" has to be literally true or the prediction visibly fights the
+// server.
 //
-// No physics engine (Bullet/Box2D): server-authoritative, single simulator,
-// so no cross-machine bit-determinism requirement — plain kinematics is
-// enough and the server corrects any drift.
+// 3D arena shooter (Quake lineage). No physics engine on the authoritative
+// path (Bullet/Box2D): server-authoritative single simulator, hand-rolled
+// kinematics, so the server stays a lean dependency-free class and client and
+// server run the *same* movement code. Movement is on the XZ ground plane
+// (no jump/gravity in v1); Y is up. A player's authoritative position is its
+// foot point on the floor (y = 0); the capsule and eye rise from there.
+//
+// What this dimension buys over a 2D version, netcode-wise: view angles
+// (yaw/pitch) must now be replicated and quantized, movement is yaw-relative
+// so the input carries the view yaw, and hit detection is ray-vs-capsule in
+// 3D — the real "favor the shooter" surface.
 namespace sim {
 
-    constexpr float kArenaW = 800.0f;
-    constexpr float kArenaH = 600.0f;
+    constexpr float kPi = 3.14159265358979323846f;
+    constexpr float kTwoPi = 2.0f * kPi;
 
     constexpr float kTickRateHz = 60.0f;
     constexpr float kTickDt = 1.0f / kTickRateHz;
 
-    constexpr float kMoveSpeed = 220.0f;// units/sec
-    constexpr float kPlayerRadius = 14.0f;
+    constexpr float kArenaHalf = 12.0f;// arena spans [-12, 12] in X and Z
+    constexpr float kFloorY = 0.0f;
+    constexpr float kCeilingY = 6.0f;
 
-    // A single occluder wall (a vertical bar in the middle with gaps top and
-    // bottom). This is what makes the "killed behind cover" downside of
-    // favor-the-shooter lag compensation observable: duck behind this and a
-    // favor-shooter rocket can still hit the you-of-a-moment-ago out in the open.
-    constexpr float kWallX = 380.0f;
-    constexpr float kWallY = 200.0f;
-    constexpr float kWallW = 40.0f;
-    constexpr float kWallH = 200.0f;
+    constexpr float kMoveSpeed = 6.0f;// m/s
+    constexpr float kCapsuleRadius = 0.4f;
+    constexpr float kCapsuleHeight = 1.8f;// foot (y=0) to head (y=1.8)
+    constexpr float kEyeHeight = 1.6f;
 
-    constexpr float kRocketSpeed = 600.0f;// units/sec
-    constexpr float kRocketRadius = 8.0f;
+    constexpr float kRocketSpeed = 22.0f;// m/s
+    constexpr float kRocketRadius = 0.25f;
 
     constexpr int kMaxHealth = 100;
     constexpr int kRailDamage = 50;// 2 hits to down
     constexpr int kRocketDamage = 50;
-    constexpr float kRespawnDelay = 1.5f;// seconds
+    constexpr float kRespawnDelay = 1.5f;
 
-    struct Vec2 {
-        float x = 0.0f, y = 0.0f;
+    struct Vec3 {
+        float x = 0.0f, y = 0.0f, z = 0.0f;
     };
 
+    inline Vec3 operator+(Vec3 a, Vec3 b) {
+        return { a.x + b.x, a.y + b.y, a.z + b.z };
+    }
+    inline Vec3 operator-(Vec3 a, Vec3 b) {
+        return { a.x - b.x, a.y - b.y, a.z - b.z };
+    }
+    inline Vec3 operator*(Vec3 a, float s) {
+        return { a.x * s, a.y * s, a.z * s };
+    }
+    inline float Dot(Vec3 a, Vec3 b) {
+        return a.x * b.x + a.y * b.y + a.z * b.z;
+    }
     inline float Clamp(float v, float lo, float hi) {
         return v < lo ? lo : (v > hi ? hi : v);
     }
 
-    // Pushes a circle out of the wall AABB if it overlaps. Shared by client
-    // prediction and server authority so a player can never tunnel through the
-    // wall on one side but not the other.
-    inline Vec2 ResolveWall(Vec2 p, float r) {
-        const float minx = kWallX, miny = kWallY, maxx = kWallX + kWallW, maxy = kWallY + kWallH;
-        const float cx = Clamp(p.x, minx, maxx);
-        const float cy = Clamp(p.y, miny, maxy);
-        const float dx = p.x - cx, dy = p.y - cy;
-        const float d2 = dx * dx + dy * dy;
-        if (d2 > r * r) return p;// no overlap
+    // Axis-aligned box obstacle (full 3D extents). A tall central pillar plus
+    // a couple of low crates: the pillar is the cover whose shadow makes the
+    // "killed behind cover" downside of favor-the-shooter lag comp observable.
+    struct Box {
+        float minX, minY, minZ;
+        float maxX, maxY, maxZ;
+    };
+    constexpr int kNumBoxes = 3;
+    inline const Box* Boxes() {
+        static const Box boxes[kNumBoxes] = {
+            { -1.0f, 0.0f, -1.0f, 1.0f, 2.6f, 1.0f },// central pillar (occludes standing players)
+            { -7.0f, 0.0f, 3.5f, -5.0f, 1.0f, 5.5f },// low crate (does not occlude a standing capsule)
+            { 5.0f, 0.0f, -5.5f, 7.0f, 1.0f, -3.5f },// low crate
+        };
+        return boxes;
+    }
+
+    // Facing helpers. yaw=0 looks toward -Z; +yaw turns toward +X.
+    inline Vec3 ForwardDir(float yaw, float pitch) {
+        const float cp = std::cos(pitch);
+        return { std::sin(yaw) * cp, std::sin(pitch), -std::cos(yaw) * cp };
+    }
+    inline void GroundBasis(float yaw, float& fx, float& fz, float& rx, float& rz) {
+        fx = std::sin(yaw);
+        fz = -std::cos(yaw);// forward (ground)
+        rx = std::cos(yaw);
+        rz = std::sin(yaw);// right (ground)
+    }
+
+    // Circle (player radius, in XZ) pushed out of a box's XZ rectangle.
+    inline void ResolveBoxXZ(float& px, float& pz, float r, const Box& b) {
+        const float cx = Clamp(px, b.minX, b.maxX);
+        const float cz = Clamp(pz, b.minZ, b.maxZ);
+        const float dx = px - cx, dz = pz - cz;
+        const float d2 = dx * dx + dz * dz;
+        if (d2 > r * r) return;
         if (d2 > 1e-6f) {
             const float d = std::sqrt(d2);
             const float push = r - d;
-            p.x += dx / d * push;
-            p.y += dy / d * push;
+            px += dx / d * push;
+            pz += dz / d * push;
         } else {
-            // Center inside the AABB — push out along the least-penetration face.
-            const float left = p.x - minx, right = maxx - p.x, top = p.y - miny, bot = maxy - p.y;
-            const float m = std::min(std::min(left, right), std::min(top, bot));
+            const float left = px - b.minX, right = b.maxX - px, front = pz - b.minZ, back = b.maxZ - pz;
+            const float m = std::min(std::min(left, right), std::min(front, back));
             if (m == left)
-                p.x = minx - r;
+                px = b.minX - r;
             else if (m == right)
-                p.x = maxx + r;
-            else if (m == top)
-                p.y = miny - r;
+                px = b.maxX + r;
+            else if (m == front)
+                pz = b.minZ - r;
             else
-                p.y = maxy + r;
+                pz = b.maxZ + r;
         }
-        return p;
     }
 
-    // Advances a player position by one tick given a (possibly client-reported,
-    // therefore untrusted) move direction. Speed and dt are fixed server-owned
-    // constants: a modified client sending an inflated magnitude gains nothing,
-    // the direction is normalized to unit length first.
-    inline Vec2 StepPlayer(Vec2 p, float mx, float my) {
-        const float len = std::sqrt(mx * mx + my * my);
+    // Advances a foot position by one tick given a (client-reported, untrusted)
+    // move intent expressed as forward/strafe in the player's own view frame.
+    // Speed and dt are fixed server constants; yaw is taken from the input so
+    // the server reproduces exactly the movement the client predicted.
+    inline Vec3 StepPlayer(Vec3 foot, float forward, float strafe, float yaw) {
+        float fx, fz, rx, rz;
+        GroundBasis(yaw, fx, fz, rx, rz);
+        float mx = fx * forward + rx * strafe;
+        float mz = fz * forward + rz * strafe;
+        const float len = std::sqrt(mx * mx + mz * mz);
         if (len > 1.0f) {
             mx /= len;
-            my /= len;
+            mz /= len;
         }
-        p.x = Clamp(p.x + mx * kMoveSpeed * kTickDt, kPlayerRadius, kArenaW - kPlayerRadius);
-        p.y = Clamp(p.y + my * kMoveSpeed * kTickDt, kPlayerRadius, kArenaH - kPlayerRadius);
-        return ResolveWall(p, kPlayerRadius);
+        foot.x = Clamp(foot.x + mx * kMoveSpeed * kTickDt, -kArenaHalf + kCapsuleRadius, kArenaHalf - kCapsuleRadius);
+        foot.z = Clamp(foot.z + mz * kMoveSpeed * kTickDt, -kArenaHalf + kCapsuleRadius, kArenaHalf - kCapsuleRadius);
+        const Box* boxes = Boxes();
+        for (int i = 0; i < kNumBoxes; i++)
+            ResolveBoxXZ(foot.x, foot.z, kCapsuleRadius, boxes[i]);
+        foot.y = kFloorY;
+        return foot;
     }
 
-    inline Vec2 StepRocket(Vec2 p, Vec2 vel) {
-        return { p.x + vel.x * kTickDt, p.y + vel.y * kTickDt };
+    inline Vec3 StepRocket(Vec3 p, Vec3 vel) {
+        return p + vel * kTickDt;
     }
 
-    inline bool InBounds(Vec2 p) {
-        return p.x >= 0.0f && p.x <= kArenaW && p.y >= 0.0f && p.y <= kArenaH;
+    inline bool InBounds(Vec3 p) {
+        return p.x >= -kArenaHalf && p.x <= kArenaHalf && p.z >= -kArenaHalf && p.z <= kArenaHalf && p.y >= kFloorY
+               && p.y <= kCeilingY;
     }
 
-    inline bool CircleCircle(Vec2 a, float ra, Vec2 b, float rb) {
-        const float dx = a.x - b.x, dy = a.y - b.y;
-        const float rr = ra + rb;
-        return dx * dx + dy * dy <= rr * rr;
+    // Capsule spanning a foot position: a vertical segment [A,B] of radius
+    // kCapsuleRadius. Yaw-invariant (radially symmetric), which is why the
+    // server needs only *position* history to rewind a target for lag comp,
+    // not orientation history.
+    inline void CapsuleSegment(Vec3 foot, Vec3& a, Vec3& b) {
+        a = { foot.x, foot.y + kCapsuleRadius, foot.z };
+        b = { foot.x, foot.y + kCapsuleHeight - kCapsuleRadius, foot.z };
     }
 
-    inline bool CircleHitsWall(Vec2 c, float r) {
-        const float minx = kWallX, miny = kWallY, maxx = kWallX + kWallW, maxy = kWallY + kWallH;
-        const float qx = Clamp(c.x, minx, maxx);
-        const float qy = Clamp(c.y, miny, maxy);
-        const float dx = c.x - qx, dy = c.y - qy;
-        return dx * dx + dy * dy <= r * r;
+    inline float ClampF(float v, float lo, float hi) {
+        return Clamp(v, lo, hi);
     }
 
-    // Smallest t >= 0 where ray (o + t*d, d unit) enters the circle, if any.
-    inline bool RayCircle(Vec2 o, Vec2 d, Vec2 c, float r, float& tOut) {
-        const Vec2 m = { o.x - c.x, o.y - c.y };
-        const float b = m.x * d.x + m.y * d.y;
-        const float cc = m.x * m.x + m.y * m.y - r * r;
-        if (cc > 0.0f && b > 0.0f) return false;// origin outside, pointing away
-        const float disc = b * b - cc;
-        if (disc < 0.0f) return false;
-        float t = -b - std::sqrt(disc);
-        if (t < 0.0f) t = 0.0f;// origin already inside
-        tOut = t;
-        return true;
+    // Squared distance between segment [p1,q1] and segment [p2,q2] (Ericson,
+    // Real-Time Collision Detection). Also returns the closest-point params s,t.
+    inline float ClosestSegSeg(Vec3 p1, Vec3 q1, Vec3 p2, Vec3 q2, float& s, float& t) {
+        Vec3 d1 = q1 - p1, d2 = q2 - p2, r = p1 - p2;
+        float a = Dot(d1, d1), e = Dot(d2, d2), f = Dot(d2, r);
+        if (a <= 1e-8f && e <= 1e-8f) {
+            s = t = 0.0f;
+            Vec3 d = p1 - p2;
+            return Dot(d, d);
+        }
+        if (a <= 1e-8f) {
+            s = 0.0f;
+            t = ClampF(f / e, 0.0f, 1.0f);
+        } else {
+            float c = Dot(d1, r);
+            if (e <= 1e-8f) {
+                t = 0.0f;
+                s = ClampF(-c / a, 0.0f, 1.0f);
+            } else {
+                float bb = Dot(d1, d2);
+                float denom = a * e - bb * bb;
+                s = (denom != 0.0f) ? ClampF((bb * f - c * e) / denom, 0.0f, 1.0f) : 0.0f;
+                t = (bb * s + f) / e;
+                if (t < 0.0f) {
+                    t = 0.0f;
+                    s = ClampF(-c / a, 0.0f, 1.0f);
+                } else if (t > 1.0f) {
+                    t = 1.0f;
+                    s = ClampF((bb - c) / a, 0.0f, 1.0f);
+                }
+            }
+        }
+        Vec3 c1 = p1 + d1 * s, c2 = p2 + d2 * t;
+        Vec3 d = c1 - c2;
+        return Dot(d, d);
     }
 
-    // Slab test: smallest t >= 0 where the ray enters the wall AABB, if any.
-    inline bool RayWall(Vec2 o, Vec2 d, float& tOut) {
-        const float minx = kWallX, miny = kWallY, maxx = kWallX + kWallW, maxy = kWallY + kWallH;
+    // Ray (origin o, unit dir d) vs vertical capsule [A,B] radius kCapsuleRadius.
+    // Returns whether it hits and, if so, the approximate distance along the
+    // ray (tRay) at the closest approach — used to order against occluders.
+    inline bool RayCapsule(Vec3 o, Vec3 d, Vec3 a, Vec3 b, float& tRay) {
+        constexpr float kFar = 1000.0f;
+        Vec3 rayEnd = o + d * kFar;
+        float s, t;
+        float dist2 = ClosestSegSeg(o, rayEnd, a, b, s, t);
+        if (dist2 > kCapsuleRadius * kCapsuleRadius) return false;
+        tRay = s * kFar;
+        return tRay >= 0.0f;
+    }
+
+    // Ray vs box AABB (3-slab). Smallest t >= 0 of entry, if any.
+    inline bool RayBox(Vec3 o, Vec3 d, const Box& box, float& tOut) {
         float tmin = 0.0f, tmax = 1e30f;
-        if (std::fabs(d.x) < 1e-8f) {
-            if (o.x < minx || o.x > maxx) return false;
-        } else {
-            const float inv = 1.0f / d.x;
-            float t1 = (minx - o.x) * inv, t2 = (maxx - o.x) * inv;
-            if (t1 > t2) std::swap(t1, t2);
-            tmin = std::max(tmin, t1);
-            tmax = std::min(tmax, t2);
-        }
-        if (std::fabs(d.y) < 1e-8f) {
-            if (o.y < miny || o.y > maxy) return false;
-        } else {
-            const float inv = 1.0f / d.y;
-            float t1 = (miny - o.y) * inv, t2 = (maxy - o.y) * inv;
-            if (t1 > t2) std::swap(t1, t2);
-            tmin = std::max(tmin, t1);
-            tmax = std::min(tmax, t2);
+        const float bmin[3] = { box.minX, box.minY, box.minZ };
+        const float bmax[3] = { box.maxX, box.maxY, box.maxZ };
+        const float oo[3] = { o.x, o.y, o.z };
+        const float dd[3] = { d.x, d.y, d.z };
+        for (int i = 0; i < 3; i++) {
+            if (std::fabs(dd[i]) < 1e-8f) {
+                if (oo[i] < bmin[i] || oo[i] > bmax[i]) return false;
+            } else {
+                const float inv = 1.0f / dd[i];
+                float t1 = (bmin[i] - oo[i]) * inv, t2 = (bmax[i] - oo[i]) * inv;
+                if (t1 > t2) std::swap(t1, t2);
+                tmin = std::max(tmin, t1);
+                tmax = std::min(tmax, t2);
+            }
         }
         if (tmax < tmin) return false;
         tOut = tmin;
         return true;
     }
 
-    // Hitscan (railgun): infinite-range ray from shooter along a unit aim.
-    // Hits `target` only if the target is nearer than the wall along the ray
-    // (so the wall genuinely occludes). `target` is whatever position the
-    // caller decides to test — the server passes the lag-compensated
-    // (rewound) target position here, which is what makes it favor-the-shooter.
-    inline bool RailHits(Vec2 shooter, Vec2 aim, Vec2 target) {
+    // Hitscan (railgun): ray from the shooter's eye along its view direction.
+    // Hits the target capsule only if no box occludes it first. `targetFoot`
+    // is whatever the caller decides to test — the server passes the
+    // lag-compensated (rewound) foot position, which is what makes it
+    // favor-the-shooter.
+    inline bool RailHits(Vec3 eye, Vec3 viewDir, Vec3 targetFoot) {
+        Vec3 a, b;
+        CapsuleSegment(targetFoot, a, b);
         float tHit;
-        if (!RayCircle(shooter, aim, target, kPlayerRadius, tHit)) return false;
-        float tWall;
-        if (RayWall(shooter, aim, tWall) && tWall < tHit) return false;// occluded
+        if (!RayCapsule(eye, viewDir, a, b, tHit)) return false;
+        const Box* boxes = Boxes();
+        for (int i = 0; i < kNumBoxes; i++) {
+            float tBox;
+            if (RayBox(eye, viewDir, boxes[i], tBox) && tBox < tHit) return false;// occluded
+        }
         return true;
+    }
+
+    // Distance from a point (rocket center) to a vertical capsule; used for
+    // rocket-vs-player collision.
+    inline bool PointHitsCapsule(Vec3 p, Vec3 targetFoot, float extraRadius) {
+        Vec3 a, b;
+        CapsuleSegment(targetFoot, a, b);
+        Vec3 ab = b - a, ap = p - a;
+        float tp = Dot(ap, ab);
+        float denom = Dot(ab, ab);
+        float u = denom > 1e-8f ? ClampF(tp / denom, 0.0f, 1.0f) : 0.0f;
+        Vec3 c = a + ab * u;
+        Vec3 d = p - c;
+        const float rr = kCapsuleRadius + extraRadius;
+        return Dot(d, d) <= rr * rr;
+    }
+
+    inline bool PointHitsBox(Vec3 p, float r) {
+        const Box* boxes = Boxes();
+        for (int i = 0; i < kNumBoxes; i++) {
+            const Box& b = boxes[i];
+            const float cx = Clamp(p.x, b.minX, b.maxX);
+            const float cy = Clamp(p.y, b.minY, b.maxY);
+            const float cz = Clamp(p.z, b.minZ, b.maxZ);
+            const float dx = p.x - cx, dy = p.y - cy, dz = p.z - cz;
+            if (dx * dx + dy * dy + dz * dz <= r * r) return true;
+        }
+        return false;
+    }
+
+    // Shortest-arc interpolation of a yaw angle (handles the 2π wraparound
+    // that a naive lerp would get wrong when crossing 0/2π).
+    inline float LerpYaw(float a, float b, float t) {
+        float diff = std::fmod(b - a + kPi + kTwoPi, kTwoPi) - kPi;
+        return a + diff * t;
     }
 
 }// namespace sim

@@ -1,19 +1,13 @@
 #include "authority.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <spdlog/spdlog.h>
 
 namespace {
-    const sim::Vec2 kSpawn[2] = { { 80.0f, 300.0f }, { 720.0f, 300.0f } };
-
-    // Normalizes an aim vector; returns false if it's ~zero (no direction).
-    bool NormalizeAim(sim::Vec2& a) {
-        const float len = std::sqrt(a.x * a.x + a.y * a.y);
-        if (len < 1e-4f) return false;
-        a.x /= len;
-        a.y /= len;
-        return true;
-    }
+    // Opposite sides of the arena, facing each other across the central pillar.
+    const sim::Vec3 kSpawn[2] = { { -9.0f, 0.0f, 0.0f }, { 9.0f, 0.0f, 0.0f } };
+    const float kSpawnYaw[2] = { sim::kPi * 0.5f, -sim::kPi * 0.5f };
 }// namespace
 
 DeathmatchAuthority::~DeathmatchAuthority() {
@@ -46,8 +40,9 @@ void DeathmatchAuthority::Shutdown() {
 
 void DeathmatchAuthority::ResetPlayer(int idx) {
     PlayerSlot& p = _slots[idx];
-    // Preserve connection identity + score across a respawn; reset the rest.
-    p.pos = kSpawn[idx];
+    p.foot = kSpawn[idx];
+    p.viewYaw = kSpawnYaw[idx];
+    p.viewPitch = 0.0f;
     p.health = sim::kMaxHealth;
     p.alive = true;
     p.respawnTimer = 0.0f;
@@ -60,11 +55,11 @@ int DeathmatchAuthority::SlotForSender(uint32_t addr, uint16_t port) const {
     return -1;
 }
 
-sim::Vec2 DeathmatchAuthority::HistoricalPos(int idx, uint32_t tick) const {
+sim::Vec3 DeathmatchAuthority::HistoricalPos(int idx, uint32_t tick) const {
     const PlayerSlot& p = _slots[idx];
     const int slot = static_cast<int>(tick % kHistoryTicks);
     if (p.historyValid[slot] && p.historyTick[slot] == tick) return p.posHistory[slot];
-    return p.pos;// not in history (too old / not yet recorded) → best-effort current
+    return p.foot;// not in history → best-effort current
 }
 
 void DeathmatchAuthority::ApplyDamage(int targetIdx, int dmg, int killerIdx) {
@@ -80,31 +75,33 @@ void DeathmatchAuthority::ApplyDamage(int targetIdx, int dmg, int killerIdx) {
     }
 }
 
-void DeathmatchAuthority::FireRail(int shooterIdx, sim::Vec2 aim, uint32_t renderTick) {
-    if (!NormalizeAim(aim)) return;
+void DeathmatchAuthority::FireRail(int shooterIdx, float yaw, float pitch, uint32_t renderTick) {
     const PlayerSlot& shooter = _slots[shooterIdx];
     if (!shooter.alive) return;
     const int targetIdx = 1 - shooterIdx;
     if (!_slots[targetIdx].connected || !_slots[targetIdx].alive) return;
 
-    // Favor the shooter: test the ray against where the target was on the
-    // shooter's screen (rewound to renderTick), not where it is now.
-    const sim::Vec2 targetPos = HistoricalPos(targetIdx, renderTick);
-    if (sim::RailHits(shooter.pos, aim, targetPos)) {
+    const sim::Vec3 eye = shooter.foot + sim::Vec3{ 0.0f, sim::kEyeHeight, 0.0f };
+    const sim::Vec3 viewDir = sim::ForwardDir(yaw, pitch);
+    // Favor the shooter: test against where the target was on the shooter's
+    // screen (rewound to renderTick), not where it is now.
+    const sim::Vec3 targetFoot = HistoricalPos(targetIdx, renderTick);
+    if (sim::RailHits(eye, viewDir, targetFoot)) {
         ApplyDamage(targetIdx, sim::kRailDamage, shooterIdx);
     }
 }
 
-void DeathmatchAuthority::SpawnRocket(int shooterIdx, sim::Vec2 aim, uint32_t renderTick) {
-    if (!NormalizeAim(aim)) return;
+void DeathmatchAuthority::SpawnRocket(int shooterIdx, float yaw, float pitch, uint32_t renderTick) {
     const PlayerSlot& shooter = _slots[shooterIdx];
     if (!shooter.alive) return;
 
+    const sim::Vec3 eye = shooter.foot + sim::Vec3{ 0.0f, sim::kEyeHeight, 0.0f };
+    const sim::Vec3 viewDir = sim::ForwardDir(yaw, pitch);
     Rocket r;
     r.id = _nextRocketId++;
     r.ownerIdx = shooterIdx;
-    r.pos = shooter.pos;
-    r.vel = { aim.x * sim::kRocketSpeed, aim.y * sim::kRocketSpeed };
+    r.pos = eye;
+    r.vel = viewDir * sim::kRocketSpeed;
     r.favorShooter = favorShooterRockets;
     r.lagTicks = (_serverTick > renderTick) ? (_serverTick - renderTick) : 0;
     r.active = true;
@@ -150,30 +147,37 @@ void DeathmatchAuthority::HandlePacket(const uint8_t* data, int len, uint32_t fr
 
         const uint32_t clientTick = proto::GetU32(data + 5);
         const uint32_t renderTick = proto::GetU32(data + 9);
-        const float mx = proto::DequantizeAxis(static_cast<int8_t>(data[13]));
-        const float my = proto::DequantizeAxis(static_cast<int8_t>(data[14]));
-        const uint16_t railSeq = proto::GetU16(data + 15);
-        const sim::Vec2 railAim = { proto::DequantizeAxis(static_cast<int8_t>(data[17])),
-                                    proto::DequantizeAxis(static_cast<int8_t>(data[18])) };
-        const uint16_t rocketSeq = proto::GetU16(data + 19);
-        const sim::Vec2 rocketAim = { proto::DequantizeAxis(static_cast<int8_t>(data[21])),
-                                      proto::DequantizeAxis(static_cast<int8_t>(data[22])) };
+        const float forward = proto::DequantizeAxis(static_cast<int8_t>(data[13]));
+        const float strafe = proto::DequantizeAxis(static_cast<int8_t>(data[14]));
+        const float viewYaw = proto::DequantizeYaw(proto::GetU16(data + 15));
+        const float viewPitch = proto::DequantizePitch(proto::GetU16(data + 17));
+        const uint16_t railSeq = proto::GetU16(data + 19);
+        const float railYaw = proto::DequantizeYaw(proto::GetU16(data + 21));
+        const float railPitch = proto::DequantizePitch(proto::GetU16(data + 23));
+        const uint16_t rocketSeq = proto::GetU16(data + 25);
+        const float rocketYaw = proto::DequantizeYaw(proto::GetU16(data + 27));
+        const float rocketPitch = proto::DequantizePitch(proto::GetU16(data + 29));
+
+        p.viewYaw = viewYaw;
+        p.viewPitch = viewPitch;
 
         // Movement: buffer for in-order, once-only consumption (exact
-        // reconciliation). Ignore inputs we've already consumed.
+        // reconciliation). yaw travels with the input because movement is
+        // yaw-relative — the server must reproduce the exact yaw the client
+        // predicted with.
         if (!p.everConsumed || clientTick > p.lastConsumedTick) {
-            p.inputBuffer[clientTick] = Move{ mx, my };
+            p.inputBuffer[clientTick] = Move{ forward, strafe, viewYaw };
         }
 
-        // Fires: act on a sequence only when it advances; repeats (redundant
-        // resends that make a fire survive packet loss) are dedup'd here.
+        // Fires: act on a sequence only when it advances; the latched yaw/pitch
+        // ride along so a lost first packet doesn't drift the shot direction.
         if (railSeq != 0 && railSeq != p.lastRailSeq) {
             p.lastRailSeq = railSeq;
-            FireRail(idx, railAim, renderTick);
+            FireRail(idx, railYaw, railPitch, renderTick);
         }
         if (rocketSeq != 0 && rocketSeq != p.lastRocketSeq) {
             p.lastRocketSeq = rocketSeq;
-            SpawnRocket(idx, rocketAim, renderTick);
+            SpawnRocket(idx, rocketYaw, rocketPitch, renderTick);
         }
     }
 }
@@ -199,18 +203,18 @@ void DeathmatchAuthority::Tick() {
                 it = p.inputBuffer.erase(it);
                 continue;
             }
-            if (p.alive) p.pos = sim::StepPlayer(p.pos, it->second.mx, it->second.my);
+            if (p.alive) p.foot = sim::StepPlayer(p.foot, it->second.forward, it->second.strafe, it->second.yaw);
             p.lastConsumedTick = it->first;
             p.everConsumed = true;
             it = p.inputBuffer.erase(it);
         }
     }
 
-    // 3. Record authoritative positions for this tick (lag-comp history).
+    // 3. Record authoritative foot positions for this tick (lag-comp history).
     for (int i = 0; i < 2; i++) {
         PlayerSlot& p = _slots[i];
         const int slot = static_cast<int>(_serverTick % kHistoryTicks);
-        p.posHistory[slot] = p.pos;
+        p.posHistory[slot] = p.foot;
         p.historyTick[slot] = _serverTick;
         p.historyValid[slot] = true;
     }
@@ -219,7 +223,7 @@ void DeathmatchAuthority::Tick() {
     for (Rocket& r : _rockets) {
         if (!r.active) continue;
         r.pos = sim::StepRocket(r.pos, r.vel);
-        if (!sim::InBounds(r.pos) || sim::CircleHitsWall(r.pos, sim::kRocketRadius)) {
+        if (!sim::InBounds(r.pos) || r.pos.y <= sim::kFloorY || sim::PointHitsBox(r.pos, sim::kRocketRadius)) {
             r.active = false;
             continue;
         }
@@ -227,15 +231,12 @@ void DeathmatchAuthority::Tick() {
         PlayerSlot& target = _slots[targetIdx];
         if (!target.connected || !target.alive) continue;
 
-        // favor-shooter → judge against the target as it was lagTicks ago
-        // (the rolling rewind); favor-target → judge against the here-and-now
-        // the victim can actually see and dodge.
-        sim::Vec2 tp = target.pos;
+        sim::Vec3 tf = target.foot;
         if (r.favorShooter) {
             const uint32_t lookup = (_serverTick > r.lagTicks) ? (_serverTick - r.lagTicks) : 0;
-            tp = HistoricalPos(targetIdx, lookup);
+            tf = HistoricalPos(targetIdx, lookup);
         }
-        if (sim::CircleCircle(r.pos, sim::kRocketRadius, tp, sim::kPlayerRadius)) {
+        if (sim::PointHitsCapsule(r.pos, tf, sim::kRocketRadius)) {
             ApplyDamage(targetIdx, sim::kRocketDamage, r.ownerIdx);
             r.active = false;
         }
@@ -254,34 +255,33 @@ void DeathmatchAuthority::SendSnapshot(int idx) {
     const PlayerSlot& self = _slots[idx];
     const PlayerSlot& enemy = _slots[1 - idx];
 
-    uint8_t buf[256];
+    uint8_t buf[512];
     proto::PutU32(buf, proto::kMagic);
     buf[4] = static_cast<uint8_t>(proto::PacketType::ServerSnapshot);
     proto::PutU32(buf + 5, _serverTick);
     proto::PutU32(buf + 9, self.lastConsumedTick);
-    proto::PutF32(buf + 13, self.pos.x);
-    proto::PutF32(buf + 17, self.pos.y);
-    buf[21] = static_cast<uint8_t>(self.health);
-    buf[22] = self.alive ? 1 : 0;
-    buf[23] = static_cast<uint8_t>(self.score);
-    buf[24] = static_cast<uint8_t>(enemy.score);
-    buf[25] = (enemy.connected && enemy.alive) ? 1 : 0;
-    proto::PutF32(buf + 26, enemy.pos.x);
-    proto::PutF32(buf + 30, enemy.pos.y);
-    buf[34] = static_cast<uint8_t>(enemy.health);
+    proto::PutVec3(buf + 13, self.foot);
+    buf[25] = static_cast<uint8_t>(self.health);
+    buf[26] = self.alive ? 1 : 0;
+    buf[27] = static_cast<uint8_t>(self.score);
+    buf[28] = static_cast<uint8_t>(enemy.score);
+    buf[29] = (enemy.connected && enemy.alive) ? 1 : 0;
+    proto::PutVec3(buf + 30, enemy.foot);
+    proto::PutU16(buf + 42, proto::QuantizeYaw(enemy.viewYaw));
+    proto::PutU16(buf + 44, proto::QuantizePitch(enemy.viewPitch));
+    buf[46] = static_cast<uint8_t>(enemy.health);
 
-    int off = proto::kServerSnapshotHeaderLen;// 36
+    int off = proto::kServerSnapshotHeaderLen;// 48
     int count = 0;
     for (const Rocket& r : _rockets) {
         if (!r.active || count >= proto::kMaxRocketsInSnapshot) continue;
         proto::PutU16(buf + off, r.id);
         buf[off + 2] = static_cast<uint8_t>(r.ownerIdx);
-        proto::PutF32(buf + off + 3, r.pos.x);
-        proto::PutF32(buf + off + 7, r.pos.y);
+        proto::PutVec3(buf + off + 3, r.pos);
         off += proto::kRocketEntryLen;
         count++;
     }
-    buf[35] = static_cast<uint8_t>(count);
+    buf[47] = static_cast<uint8_t>(count);
     SendTo(self.addr, self.port, buf, off);
 }
 
