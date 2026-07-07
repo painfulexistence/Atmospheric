@@ -342,7 +342,10 @@ public:
 
     // Global lighting / GI settings shared by all volumes.
     int maxRaySteps = 256;
-    float sunIntensity = 3.0f;
+    // Artistic gain on top of the main light's own intensity. The effective sun
+    // brightness is sunIntensity * light->intensity, so the LightComponent
+    // drives the level (set it on the light) and this stays a unit multiplier.
+    float sunIntensity = 1.0f;
     float ambient = 0.6f;
     float aoStrength = 0.7f;// Minecraft-style corner AO; 0 disables
     // Traced 1-bounce GI with temporal accumulation (GL path only for now;

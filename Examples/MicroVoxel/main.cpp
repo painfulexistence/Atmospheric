@@ -28,8 +28,8 @@ class MicroVoxelApp : public Application {
         // directional light, which points straight down (0,-1,0) — that lights
         // the terrain flat from overhead with no raking shadows. A low, angled
         // sun gives long shadows and side-lit relief, and shows up as "Sun" in
-        // the scene tree. MicroVoxelPass reads its direction + diffuse (its own
-        // sunIntensity still drives brightness), and casts a raymarched shadow.
+        // the scene tree. MicroVoxelPass reads its direction, diffuse, and
+        // intensity, and casts a raymarched shadow against it.
         auto* sunGO = CreateGameObject(glm::vec3(0.0f));
         sunGO->SetName("Sun");
         sunGO->AddComponent(new LightComponent(
@@ -40,7 +40,7 @@ class MicroVoxelApp : public Application {
                 .diffuse = glm::vec3(1.0f, 0.95f, 0.85f),// warm daylight
                 .specular = glm::vec3(1.0f),
                 .direction = glm::normalize(glm::vec3(-0.45f, -0.82f, -0.35f)),
-                .intensity = 1.0f,
+                .intensity = 5.0f,
                 .castShadow = false,
             }
         ));
