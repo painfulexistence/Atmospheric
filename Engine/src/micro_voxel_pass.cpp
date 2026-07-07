@@ -338,7 +338,7 @@ void MicroVoxelPass::_ensureGIRenderTargets(int w, int h) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_HALF_FLOAT, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
         glBindFramebuffer(GL_FRAMEBUFFER, _giFBOGL[i]);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _giTexGL[i], 0);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -545,6 +545,11 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         glViewport(0, 0, width, height);
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
+        // CRITICAL: the GI target's alpha channel carries camera distance for
+        // history validation, not coverage. If an earlier pass (e.g. SunPass's
+        // additive billboard) left GL_BLEND enabled, that alpha would be used
+        // as a blend factor and the accumulation buffer diverges into noise.
+        glDisable(GL_BLEND);
 
         giShader->Activate();
         giShader->SetUniform(std::string("u_invViewProj"), invViewProj);
@@ -627,6 +632,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     glDepthFunc(GL_LESS);
     glDepthMask(GL_TRUE);
     glDisable(GL_CULL_FACE);
+    glDisable(GL_BLEND);// voxel fragments are opaque (alpha=1); don't inherit a blend state
 
     DrawScreenQuadVAO(renderer.gl.screenQuadVAO);
 
