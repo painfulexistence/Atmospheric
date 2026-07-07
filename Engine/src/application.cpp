@@ -20,7 +20,6 @@
 #include "job_system.hpp"
 #include "json_deserializer.hpp"
 #include "light_component.hpp"
-#include "voxel_volume_component.hpp"
 #include "material.hpp"
 #include "mesh_component.hpp"
 #include "rigidbody_2d_component.hpp"
@@ -36,6 +35,7 @@
 #include "transform_component.hpp"
 #include "ui_page_manager.hpp"
 #include "video_recorder.hpp"
+#include "voxel_volume_component.hpp"
 #include "window.hpp"
 #include <algorithm>
 #include <chrono>

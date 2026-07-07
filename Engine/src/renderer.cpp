@@ -199,7 +199,8 @@ void Renderer::Init(int width, int height) {
     _renderGraph->AddPass(std::make_unique<SkyboxPass>());// after clear, fills empty sky pixels
     _renderGraph->AddPass(std::make_unique<SunPass>());
     _renderGraph->AddPass(std::make_unique<VoxelChunkPass>());
-    _renderGraph->AddPass(std::make_unique<MicroVoxelPass>()
+    _renderGraph->AddPass(
+        std::make_unique<MicroVoxelPass>()
     );// raymarched micro voxels (renders registered VoxelVolumeComponents)
     _renderGraph->AddPass(std::make_unique<PortalSurfacePass>());// portal windows in the main view
     _renderGraph->AddPass(std::make_unique<MSAAResolvePass>());

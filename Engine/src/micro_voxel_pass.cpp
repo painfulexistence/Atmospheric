@@ -187,10 +187,22 @@ void MicroVoxelPass::_uploadGPU(VoxelVolumeComponent* v) {
 
     // Recreate on every upload: sizes can change with gridDim, and WebGPU
     // textures are immutable in size/format.
-    if (_texBG) { wgpuBindGroupRelease(_texBG); _texBG = nullptr; }
-    if (_volumeTexGPU) { wgpuTextureRelease(_volumeTexGPU); _volumeTexGPU = nullptr; }
-    if (_occupancyTexGPU) { wgpuTextureRelease(_occupancyTexGPU); _occupancyTexGPU = nullptr; }
-    if (_paletteTexGPU) { wgpuTextureRelease(_paletteTexGPU); _paletteTexGPU = nullptr; }
+    if (_texBG) {
+        wgpuBindGroupRelease(_texBG);
+        _texBG = nullptr;
+    }
+    if (_volumeTexGPU) {
+        wgpuTextureRelease(_volumeTexGPU);
+        _volumeTexGPU = nullptr;
+    }
+    if (_occupancyTexGPU) {
+        wgpuTextureRelease(_occupancyTexGPU);
+        _occupancyTexGPU = nullptr;
+    }
+    if (_paletteTexGPU) {
+        wgpuTextureRelease(_paletteTexGPU);
+        _paletteTexGPU = nullptr;
+    }
 
     auto make3D = [&](uint32_t dim, const uint8_t* data) -> WGPUTexture {
         WGPUTextureDescriptor td{};
@@ -267,8 +279,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     const glm::mat4 viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
     const glm::mat4 invViewProj = glm::inverse(viewProj);
     const glm::vec3 cameraPos = camera->GetEyePosition();
-    const glm::vec3 sunDir =
-        light ? glm::normalize(-light->direction) : glm::normalize(glm::vec3(0.4f, 0.8f, 0.3f));
+    const glm::vec3 sunDir = light ? glm::normalize(-light->direction) : glm::normalize(glm::vec3(0.4f, 0.8f, 0.3f));
     const glm::vec3 sunColor = light ? light->diffuse : glm::vec3(1.0f, 0.96f, 0.9f);
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
