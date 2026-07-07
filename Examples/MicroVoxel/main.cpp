@@ -24,7 +24,11 @@ class MicroVoxelApp : public Application {
         // y=0; MicroVoxelPass draws one bounding box per volume, so they
         // depth-composite with each other. Different seeds give different
         // terrain — proof the renderer handles many independent volumes.
-        struct { glm::vec3 pos; uint32_t seed; const char* name; } kVolumes[] = {
+        struct {
+            glm::vec3 pos;
+            uint32_t seed;
+            const char* name;
+        } kVolumes[] = {
             { glm::vec3(0.0f, 0.0f, 0.0f), 1337u, "Volume.Center" },
             { glm::vec3(13.5f, 0.0f, -1.0f), 7u, "Volume.Right" },
             { glm::vec3(-13.5f, 0.0f, 2.0f), 99u, "Volume.Left" },

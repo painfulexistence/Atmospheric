@@ -148,7 +148,6 @@ public:
         renderState.topology = props.primitiveType;
         renderState.polygon = props.polygonMode;
     }
-
 };
 
 class WaterMaterial : public Material {

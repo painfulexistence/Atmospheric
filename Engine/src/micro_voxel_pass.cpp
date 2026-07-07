@@ -505,8 +505,8 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         const glm::vec3 vOrigin = v->GetOrigin();
         const float boxExtent = static_cast<float>(vGrid) * vVox;
         const glm::vec3 boxCenter = vOrigin + glm::vec3(boxExtent * 0.5f);
-        const glm::mat4 model = glm::translate(glm::mat4(1.0f), boxCenter)
-                              * glm::scale(glm::mat4(1.0f), glm::vec3(boxExtent * 0.5f));
+        const glm::mat4 model =
+            glm::translate(glm::mat4(1.0f), boxCenter) * glm::scale(glm::mat4(1.0f), glm::vec3(boxExtent * 0.5f));
 
         // GI is traced against the primary volume only, so its screen-space
         // buffer is valid only for that volume's pixels; others use flat ambient.
