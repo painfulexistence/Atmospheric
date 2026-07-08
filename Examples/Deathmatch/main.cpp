@@ -220,14 +220,19 @@ class DeathmatchGame : public Application {
                 enemyAsset.mesh, std::move(enemyAsset.clip), VATProps{ .speed = 1.0f }
             ));
             // Preset metallic look: gunmetal base, full metalness, low roughness.
-            // The blob deforms enough to locally invert faces, so cull nothing.
+            // Keep back-face culling (the material default): the blob stays
+            // convex, and culling means when the player walks up to shoot the
+            // dummy and their camera clips inside the mesh, they see through it
+            // instead of the interior covering the screen.
             if (auto* mat = vat->GetMaterial()) {
-                MetalMaps m = MakePresetMetalMaps(glm::vec3(0.59f, 0.16f, 0.15f), /*roughness*/ 0.27f);
+                // Matte-ish roughness: without image-based lighting a near-mirror
+                // metal is one blown-out hotspot that BloomPass smears across the
+                // whole frame, so keep the highlight broad and dim.
+                MetalMaps m = MakePresetMetalMaps(glm::vec3(0.59f, 0.16f, 0.15f), /*roughness*/ 0.55f);
                 mat->baseMap = m.base;
                 mat->metallicMap = m.metallic;
                 mat->roughnessMap = m.roughness;
                 mat->diffuse = glm::vec3(1.0f);// tint comes from baseMap now
-                mat->renderState.cull = CullMode::None;
             }
         } else {
             // Networked opponent (or a bake failure): plain capsule.
