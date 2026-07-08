@@ -29,6 +29,7 @@
 #include "authority.hpp"
 #include "client_net.hpp"
 #include "sim_common.hpp"
+#include "vat_enemy.hpp"
 
 #include <chrono>
 #include <cmath>
@@ -201,10 +202,35 @@ class DeathmatchGame : public Application {
         for (int i = 0; i < sim::kNumBoxes; i++)
             MakeBox(boxes[i], cubeMesh);
 
-        auto capsuleMesh = am.CreateCapsuleMesh("dm_capsule", sim::kCapsuleRadius, sim::kCapsuleHeight);
-        am.GetMeshPtr(capsuleMesh)->SetMaterial(am.GetMaterialHandle("dm_enemy_mat"));
+        // Enemy avatar: an animated VAT "blob" with a preset metallic material
+        // instead of a flat capsule. The blob is sized to roughly fill the
+        // gameplay capsule (radius kCapsuleRadius, height kCapsuleHeight); the
+        // sim still collides/lag-compensates against the capsule — only the
+        // render mesh changed.
+        auto enemyAsset = BuildBlobVATAsset(
+            "dm_enemy_vat", /*radius*/ sim::kCapsuleRadius * 1.5f, /*division*/ 28, /*frames*/ 60, /*fps*/ 24.0f
+        );
         _enemyGO = CreateGameObject(kParked);
-        _enemyGO->AddComponent<MeshComponent>(capsuleMesh);
+        if (enemyAsset.clip) {
+            auto* vat = static_cast<VATComponent*>(_enemyGO->AddComponent<VATComponent>(
+                enemyAsset.mesh, std::move(enemyAsset.clip), VATProps{ .speed = 1.0f }
+            ));
+            // Preset metallic look: gunmetal base, full metalness, low roughness.
+            // The blob deforms enough to locally invert faces, so cull nothing.
+            if (auto* mat = vat->GetMaterial()) {
+                MetalMaps m = MakePresetMetalMaps(glm::vec3(0.59f, 0.16f, 0.15f), /*roughness*/ 0.27f);
+                mat->baseMap = m.base;
+                mat->metallicMap = m.metallic;
+                mat->roughnessMap = m.roughness;
+                mat->diffuse = glm::vec3(1.0f);// tint comes from baseMap now
+                mat->renderState.cull = CullMode::None;
+            }
+        } else {
+            // Bake failed — fall back to the capsule so the enemy stays visible.
+            auto capsuleMesh = am.CreateCapsuleMesh("dm_capsule", sim::kCapsuleRadius, sim::kCapsuleHeight);
+            am.GetMeshPtr(capsuleMesh)->SetMaterial(am.GetMaterialHandle("dm_enemy_mat"));
+            _enemyGO->AddComponent<MeshComponent>(capsuleMesh);
+        }
 
         auto rocketMesh = am.CreateSphereMesh("dm_rocket", sim::kRocketRadius, 10);
         am.GetMeshPtr(rocketMesh)->SetMaterial(am.GetMaterialHandle("dm_rocket_mat"));
