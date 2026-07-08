@@ -220,6 +220,7 @@ class DeathmatchGame : public Application {
         DeathmatchAuthority* localAuth = nullptr;
         if (gcli.local) {
             if (_localAuthority.Bind(0)) {
+                _localAuthority.SpawnTrainingBot();// a target to see/shoot when solo
                 gcli.serverIp = "127.0.0.1";
                 gcli.serverPort = _localAuthority.BoundPort();
                 localAuth = &_localAuthority;

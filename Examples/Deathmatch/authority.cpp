@@ -8,6 +8,9 @@ namespace {
     // Opposite sides of the arena, facing each other across the central pillar.
     const sim::Vec3 kSpawn[2] = { { -9.0f, 0.0f, 0.0f }, { 9.0f, 0.0f, 0.0f } };
     const float kSpawnYaw[2] = { sim::kPi * 0.5f, -sim::kPi * 0.5f };
+    // Training-dummy home: in the open, directly in front of player 0's spawn.
+    const sim::Vec3 kBotHome = { -4.0f, 0.0f, 0.0f };
+    const float kBotYaw = -sim::kPi * 0.5f;// face back toward the player
 }// namespace
 
 DeathmatchAuthority::~DeathmatchAuthority() {
@@ -41,13 +44,22 @@ void DeathmatchAuthority::Shutdown() {
 void DeathmatchAuthority::ResetPlayer(int idx) {
     PlayerSlot& p = _slots[idx];
     p.motion = sim::Motion{};
-    p.motion.foot = kSpawn[idx];
-    p.viewYaw = kSpawnYaw[idx];
+    p.motion.foot = p.isBot ? kBotHome : kSpawn[idx];
+    p.viewYaw = p.isBot ? kBotYaw : kSpawnYaw[idx];
     p.viewPitch = 0.0f;
     p.shield = false;
     p.health = sim::kMaxHealth;
     p.alive = true;
     p.respawnTimer = 0.0f;
+}
+
+void DeathmatchAuthority::SpawnTrainingBot() {
+    PlayerSlot& b = _slots[1];
+    b = PlayerSlot{};
+    b.connected = true;
+    b.isBot = true;// no socket; never consumes input or receives snapshots
+    ResetPlayer(1);
+    spdlog::info("DeathmatchAuthority: training dummy spawned");
 }
 
 int DeathmatchAuthority::SlotForSender(uint32_t addr, uint16_t port) const {
@@ -262,9 +274,9 @@ void DeathmatchAuthority::Tick() {
         std::remove_if(_rockets.begin(), _rockets.end(), [](const Rocket& r) { return !r.active; }), _rockets.end()
     );
 
-    // 5. One snapshot per connected client.
+    // 5. One snapshot per connected human client (bots have no socket).
     for (int i = 0; i < 2; i++) {
-        if (_slots[i].connected) SendSnapshot(i);
+        if (_slots[i].connected && !_slots[i].isBot) SendSnapshot(i);
     }
 }
 

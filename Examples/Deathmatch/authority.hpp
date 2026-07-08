@@ -43,6 +43,11 @@ public:
     void Shutdown();
     void Pump();
 
+    // Fills the second slot with a stationary training dummy — a visible,
+    // shootable capsule that respawns when downed. Used by --local so solo
+    // testing has a target (and something to confirm the capsule renders).
+    void SpawnTrainingBot();
+
     bool IsBound() const {
         return _socket.IsOpen();
     }
@@ -63,6 +68,7 @@ private:
 
     struct PlayerSlot {
         bool connected = false;
+        bool isBot = false;// stationary training dummy (no socket, never receives snapshots)
         uint32_t addr = 0;
         uint16_t port = 0;
 
