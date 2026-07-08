@@ -114,11 +114,30 @@ public:
             const bool fr = _pendingRail, fk = _pendingRocket;
             _pendingRail = _pendingRocket = _pendingDash = false;
             _net->SubmitInput(_tick++, forward, strafe, yaw, pitch, jump, dash, shield, fr, fk);
+
+            // Railgun is hitscan (instant) — give it a visible beam so it reads
+            // differently from the rocket's slow projectile.
+            if (fr) {
+                const glm::vec3 eye = _cam->GetEyePosition();
+                const glm::vec3 dir = _cam->GetEyeDirection();
+                _beamFrom = eye + dir * 0.5f;// nudge past the near plane
+                _beamTo = eye + dir * 100.0f;
+                _beamTimer = 0.08f;
+            }
         }
 
         // First-person camera at the eye of the predicted foot position.
         const sim::Vec3 foot = _net->GetOwnFoot();
         gameObject->SetPosition(glm::vec3(foot.x, foot.y + sim::kEyeHeight, foot.z));
+
+        // Draw the railgun beam (world-space debug line) while its flash lasts.
+        // Debug lines are cleared each frame, so re-push it every frame.
+        if (_beamTimer > 0.0f) {
+            _beamTimer -= dt;
+            GraphicsSubsystem::Get()->PushDebugLine(
+                { _beamFrom, glm::vec3(0.6f, 0.9f, 1.0f) }, { _beamTo, glm::vec3(0.6f, 0.9f, 1.0f) }
+            );
+        }
     }
 
 private:
@@ -130,6 +149,8 @@ private:
     bool _pendingRail = false, _pendingRocket = false, _pendingDash = false;
     glm::vec2 _lastMouse{ 0.0f, 0.0f };
     bool _haveMouse = false;
+    float _beamTimer = 0.0f;
+    glm::vec3 _beamFrom{ 0.0f }, _beamTo{ 0.0f };
 };
 
 // ── Application: world + render sync ─────────────────────────────────────────
