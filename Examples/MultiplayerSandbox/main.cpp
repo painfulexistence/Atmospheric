@@ -1,5 +1,7 @@
 #include "Atmospheric.hpp"
 #include "Atmospheric/gfx_factory.hpp"
+#include "Atmospheric/net_debug_controls.hpp"
+#include "Atmospheric/net_hud.hpp"
 #include "Atmospheric/rmlui_manager.hpp"
 #include "components.hpp"
 #include "game_sim.hpp"
@@ -25,6 +27,9 @@
 //
 // Controls: A/D move · W/Space jump+levitate · mouse aim · LMB cast
 //           1-7 select spell · ESC quit
+// Netgraph (top-right): the number row is spells here, so the link-emulator
+// keys are J/K latency · N/M jitter · U/I loss · O reset — lockstep reacts to
+// loss by stalling (waiting for the missing input), not by mispredicting.
 // ─────────────────────────────────────────────────────────────────────────────
 
 namespace {
@@ -351,6 +356,31 @@ class NoitaLikeGame : public Application {
         }
 
         UpdateHud();
+
+        // Netgraph: dial the inbound link emulator (J/K latency, N/M jitter,
+        // U/I loss, O reset — the number row is spells) and draw it. Only
+        // meaningful once networked; Solo has no peer traffic.
+        if (_netComp->GetNet().mode != LockstepNet::Mode::Solo) {
+            LockstepNet& net = _netComp->GetNet();
+            ConditionerKeys keys;
+            keys.latencyDown = Key::J;
+            keys.latencyUp = Key::K;
+            keys.jitterDown = Key::N;
+            keys.jitterUp = Key::M;
+            keys.lossDown = Key::U;
+            keys.lossUp = Key::I;
+            keys.reset = Key::O;
+            DialConditioner(InputSubsystem::Get(), net.Conditioner(), keys);
+            auto ws = Window::Get()->GetLogicalSize();
+            DrawNetHud(
+                GraphicsSubsystem::Get(),
+                _fontID,
+                net.Metrics(),
+                net.Conditioner(),
+                static_cast<float>(ws.width) - 258.0f,
+                20.0f
+            );
+        }
 
         if (gcli.autotestTicks > 0 && _netComp->IsStarted()) {
             const GameSim& sim = _netComp->GetSim();
