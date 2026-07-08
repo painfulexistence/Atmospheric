@@ -413,6 +413,8 @@ void AssetManager::LoadDefaultShaders() {
           { "microvoxel", { .vert = "assets/shaders/microvoxel_box.vert", .frag = "assets/shaders/microvoxel.frag" } },
           { "microvoxel_gi",
             { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/microvoxel_gi.frag" } },
+          { "microvoxel_atrous",
+            { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/microvoxel_atrous.frag" } },
           { "water", { .vert = "assets/shaders/water.vert", .frag = "assets/shaders/water.frag" } },
           { "portal", { .vert = "assets/shaders/portal.vert", .frag = "assets/shaders/portal.frag" } },
           { "bloom_threshold", { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_threshold.frag" } },

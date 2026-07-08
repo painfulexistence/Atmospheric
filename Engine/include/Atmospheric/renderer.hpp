@@ -358,6 +358,15 @@ public:
     // after the bilinear-filtered composite; temporal accumulation hides the
     // rest. 1.0 = full res.
     float giResolutionScale = 0.5f;
+    // Spatial GI denoiser (SVGF-lite): à-trous edge-stopping passes over the
+    // temporally-accumulated GI, so 1 spp looks clean and disocclusion / post-
+    // edit noise clears in one frame instead of over the temporal window. 0
+    // iterations disables it (raw temporal accumulation). Sigmas tune the
+    // normal / depth / luminance edge-stopping.
+    int giAtrousIterations = 3;
+    float giSigmaDepth = 0.5f;
+    float giSigmaNormal = 64.0f;
+    float giSigmaLuma = 8.0f;
     int debugMode = 0;// 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
     bool shadowEnabled = true;
 
@@ -402,6 +411,11 @@ private:
     // distance for history validation)
     GLuint _giTexGL[2] = { 0, 0 };
     GLuint _giFBOGL[2] = { 0, 0 };
+    // Primary-hit normal from the GI trace (MRT attachment 1, shared by both GI
+    // FBOs) and the à-trous denoiser ping-pong targets — all at GI resolution.
+    GLuint _giNormalTexGL = 0;
+    GLuint _atrousTexGL[2] = { 0, 0 };
+    GLuint _atrousFBOGL[2] = { 0, 0 };
     int _giW = 0, _giH = 0;
     int _giCur = 0;
     int _giFrame = 0;

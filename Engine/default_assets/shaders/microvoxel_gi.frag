@@ -45,7 +45,8 @@ uniform int   u_frameIndex;
 uniform float u_blend;             // history weight (e.g. 0.93)
 uniform float u_emissiveStrength;  // HDR multiplier for palette-alpha emission
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;// rgb = accumulated indirect, a = camera distance
+layout(location = 1) out vec4 outNormal;// xyz = primary hit normal (for the à-trous denoiser)
 
 const float PI = 3.1415927;
 
@@ -192,6 +193,7 @@ void main() {
     Hit h = raycast(ro, rd);
     if (!h.hit) {
         fragColor = vec4(0.0);// alpha 0 = no history
+        outNormal = vec4(0.0);// zero normal = no surface (à-trous rejects it)
         return;
     }
 
@@ -252,4 +254,5 @@ void main() {
     }
 
     fragColor = vec4(result, camDist);
+    outNormal = vec4(n, 1.0);
 }

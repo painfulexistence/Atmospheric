@@ -94,8 +94,8 @@ class MicroVoxelApp : public Application {
         ConsoleSubsystem::Get()->Info("MicroVoxel loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
         ConsoleSubsystem::Get()->Info("Three raymarched 5cm-voxel volumes — no triangles. Hold E to dig into them.");
         ConsoleSubsystem::Get()->Info(
-            "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P/X toggle "
-            "GI/AO/shadow/point light/reflections."
+            "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P/X/N toggle "
+            "GI/AO/shadow/point light/reflections/GI denoiser."
         );
     }
 
@@ -163,6 +163,13 @@ class MicroVoxelApp : public Application {
         if (input->IsKeyPressed(Key::X)) {
             mv->reflectionsEnabled = !mv->reflectionsEnabled;
             console->Info(mv->reflectionsEnabled ? "MicroVoxel reflections: on" : "MicroVoxel reflections: off");
+        }
+        if (input->IsKeyPressed(Key::N)) {
+            mv->giAtrousIterations = (mv->giAtrousIterations > 0) ? 0 : 3;
+            console->Info(
+                mv->giAtrousIterations > 0 ? "MicroVoxel GI denoiser: on (a-trous)"
+                                           : "MicroVoxel GI denoiser: off (raw temporal)"
+            );
         }
     }
 };
