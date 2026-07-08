@@ -4,23 +4,23 @@
 #include "globals.hpp"
 
 namespace {
-// Packs positions[f][v] / normals[f][v] into a flat, row-major RGBA float array
-// laid out as (frame, vertex): row f holds every vertex for that frame, which
-// matches the (u = vertex, v = frame) addressing in vat.vert / VAT_WGSL. Alpha
-// is unused padding (RGBA is required because WebGPU has no rgb32float format).
-std::vector<float> Flatten(const std::vector<std::vector<glm::vec3>>& frames, uint32_t vertCount) {
-    std::vector<float> out;
-    out.reserve(static_cast<size_t>(frames.size()) * vertCount * 4);
-    for (const auto& frame : frames) {
-        for (uint32_t v = 0; v < vertCount; ++v) {
-            out.push_back(frame[v].x);
-            out.push_back(frame[v].y);
-            out.push_back(frame[v].z);
-            out.push_back(0.0f);
+    // Packs positions[f][v] / normals[f][v] into a flat, row-major RGBA float array
+    // laid out as (frame, vertex): row f holds every vertex for that frame, which
+    // matches the (u = vertex, v = frame) addressing in vat.vert / VAT_WGSL. Alpha
+    // is unused padding (RGBA is required because WebGPU has no rgb32float format).
+    std::vector<float> Flatten(const std::vector<std::vector<glm::vec3>>& frames, uint32_t vertCount) {
+        std::vector<float> out;
+        out.reserve(static_cast<size_t>(frames.size()) * vertCount * 4);
+        for (const auto& frame : frames) {
+            for (uint32_t v = 0; v < vertCount; ++v) {
+                out.push_back(frame[v].x);
+                out.push_back(frame[v].y);
+                out.push_back(frame[v].z);
+                out.push_back(0.0f);
+            }
         }
+        return out;
     }
-    return out;
-}
 }// namespace
 
 VATClip::~VATClip() {
@@ -37,9 +37,13 @@ std::unique_ptr<VATClip> VATClip::Bake(const VATFrameData& data) {
         return nullptr;
     }
     if (data.normals.size() != frameCount) {
-        ConsoleSubsystem::Get()->Error(fmt::format(
-            "[Engine] VATClip::Bake: positions/normals frame count mismatch ({} vs {})", frameCount, data.normals.size()
-        ));
+        ConsoleSubsystem::Get()->Error(
+            fmt::format(
+                "[Engine] VATClip::Bake: positions/normals frame count mismatch ({} vs {})",
+                frameCount,
+                data.normals.size()
+            )
+        );
         return nullptr;
     }
 

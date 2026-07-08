@@ -281,9 +281,7 @@ uint32_t GfxFactory::UploadTextureRGBA32F(const float* rgba, int w, int h) {
         layout.bytesPerRow = static_cast<uint32_t>(w) * 4 * 4;// 4 channels * 4 bytes
         layout.rowsPerImage = static_cast<uint32_t>(h);
         WGPUExtent3D extent{ static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
-        wgpuQueueWriteTexture(
-            _wgpuQueue, &dst, rgba, static_cast<size_t>(w) * h * 4 * sizeof(float), &layout, &extent
-        );
+        wgpuQueueWriteTexture(_wgpuQueue, &dst, rgba, static_cast<size_t>(w) * h * 4 * sizeof(float), &layout, &extent);
 
         // rgba32float is non-filterable; record Nearest so any sampler-based
         // consumer picks a matching (non-filtering) sampler. VAT samples it with

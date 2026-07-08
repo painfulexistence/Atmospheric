@@ -8,7 +8,7 @@ class VATMaterial;
 
 struct VATProps {
     float speed = 1.0f;// playback rate multiplier (1.0 = clip's authored fps)
-    bool loop = true;  // wrap the playhead at the end vs. hold the last frame
+    bool loop = true;// wrap the playhead at the end vs. hold the last frame
     bool playing = true;
     float startTime = 0.0f;// initial normalized playhead in [0, 1]
 };

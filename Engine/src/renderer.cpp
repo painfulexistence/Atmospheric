@@ -1366,8 +1366,7 @@ WGPUBindGroup ForwardOpaquePass::_getOrCreateVATBG(uint32_t posTexID, uint32_t n
         _vatBGCache.erase(it);
     }
 
-    WGPUBindGroup bg =
-        GpuBindGroupBuilder(_gpuDevice, _vatBGL).texture(0, posTex).texture(1, normTex).build();
+    WGPUBindGroup bg = GpuBindGroupBuilder(_gpuDevice, _vatBGL).texture(0, posTex).texture(1, normTex).build();
     _vatBGCache[posTexID] = { bg, posTex, normTex };
     return bg;
 }
@@ -1575,8 +1574,8 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             if (!vatBG) vatReady = false;// texture not yet registered — draw static
 
             WGPURenderPipeline want = draws[i].type == MeshType::TERRAIN ? _terrainPipeline
-                : vatReady                                              ? _vatPipeline
-                                                                        : primPipeline;
+                                      : vatReady                         ? _vatPipeline
+                                                                         : primPipeline;
             if (want != boundPipeline) {
                 boundPipeline = want;
                 wgpuRenderPassEncoderSetPipeline(gpuEnc->pass, want);
@@ -1923,8 +1922,12 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                 meshShader->SetUniform(std::string("vat_normal_map"), 9);
 
                 meshShader->SetUniform(std::string("vat_enabled"), ready ? 1 : 0);
-                meshShader->SetUniform(std::string("vat_vert_count"), ready ? static_cast<int>(clip->GetVertCount()) : 0);
-                meshShader->SetUniform(std::string("vat_frame_count"), ready ? static_cast<int>(clip->GetFrameCount()) : 0);
+                meshShader->SetUniform(
+                    std::string("vat_vert_count"), ready ? static_cast<int>(clip->GetVertCount()) : 0
+                );
+                meshShader->SetUniform(
+                    std::string("vat_frame_count"), ready ? static_cast<int>(clip->GetFrameCount()) : 0
+                );
                 meshShader->SetUniform(std::string("vat_time"), vatMat->normalizedTime);
                 // Runtime/float bakes store raw object space; remap stays off.
                 meshShader->SetUniform(std::string("vat_remap"), 0);

@@ -45,7 +45,9 @@ void VATComponent::OnTick(float dt) {
 
 void VATComponent::DrawImGui() {
     if (!_clip) return;
-    ImGui::Text("Clip: %u verts x %u frames @ %.1f fps", _clip->GetVertCount(), _clip->GetFrameCount(), _clip->GetFrameRate());
+    ImGui::Text(
+        "Clip: %u verts x %u frames @ %.1f fps", _clip->GetVertCount(), _clip->GetFrameCount(), _clip->GetFrameRate()
+    );
     ImGui::Checkbox("Playing", &_props.playing);
     ImGui::SameLine();
     ImGui::Checkbox("Loop", &_props.loop);

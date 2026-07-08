@@ -2,8 +2,8 @@
 #include "Atmospheric.hpp"
 #include "Atmospheric/mesh.hpp"
 #include "Atmospheric/vertex.hpp"
-#include <glm/gtc/constants.hpp>
 #include <cmath>
+#include <glm/gtc/constants.hpp>
 #include <memory>
 #include <vector>
 
@@ -117,8 +117,8 @@ inline VATDemoAsset
         for (size_t k = 0; k < vertCount; ++k) {
             const glm::vec3& dir = dirs[k];
             float disp = 0.16f * std::sin(3.0f * dir.x * glm::pi<float>() + t)
-                       + 0.10f * std::sin(5.0f * dir.y * glm::pi<float>() + 2.0f * t)
-                       + 0.08f * std::sin(7.0f * dir.z * glm::pi<float>() - t);
+                         + 0.10f * std::sin(5.0f * dir.y * glm::pi<float>() + 2.0f * t)
+                         + 0.08f * std::sin(7.0f * dir.z * glm::pi<float>() - t);
             pos[k] = dir * (radius + disp);
         }
 
