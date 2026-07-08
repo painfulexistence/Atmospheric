@@ -1,6 +1,7 @@
 #include "mesh_builder.hpp"
 #include "asset_manager.hpp"
 #include "mesh.hpp"
+#include <algorithm>
 
 void CalculateNormalsAndTangents(std::vector<Vertex>& verts, std::vector<uint16_t>& tris) {
     for (int i = 0; i < tris.size(); i += 3) {
@@ -106,6 +107,50 @@ Mesh* MeshBuilder::CreatePlane(float width, float height) {
             glm::vec3(hw, 0.0f, -hh) } }
     );
     return plane;
+}
+
+Mesh* MeshBuilder::CreateDisc(float radius, int segments) {
+    if (segments < 3) segments = 3;
+    constexpr float TWO_PI = 6.28318530718f;
+
+    std::vector<Vertex> verts;
+    verts.reserve(segments + 1);
+    // Center first, then the rim ring. Concentric UVs: rim distance in the
+    // shader is length(uv - 0.5) * 2 (0 center, 1 at the edge).
+    verts.emplace_back(glm::vec3(0.0f), glm::vec2(0.5f, 0.5f), glm::vec3(0.0f, 0.0f, 1.0f));
+    for (int i = 0; i < segments; ++i) {
+        float a = static_cast<float>(i) / static_cast<float>(segments) * TWO_PI;
+        float c = std::cos(a), s = std::sin(a);
+        verts.emplace_back(
+            glm::vec3(c * radius, s * radius, 0.0f),
+            glm::vec2(0.5f + 0.5f * c, 0.5f + 0.5f * s),
+            glm::vec3(0.0f, 0.0f, 1.0f)
+        );
+    }
+
+    // Fan winding CCW as seen from +Z (the portal's facing side).
+    std::vector<uint16_t> tris;
+    tris.reserve(static_cast<size_t>(segments) * 3);
+    for (int i = 0; i < segments; ++i) {
+        tris.push_back(0);
+        tris.push_back(static_cast<uint16_t>(1 + i));
+        tris.push_back(static_cast<uint16_t>(1 + (i + 1) % segments));
+    }
+    CalculateNormalsAndTangents(verts, tris);
+
+    auto disc = new Mesh(MeshType::PRIM);
+    disc->Initialize(verts, tris);
+    disc->SetBoundingBox(
+        { { glm::vec3(radius, radius, 0.01f),
+            glm::vec3(-radius, radius, 0.01f),
+            glm::vec3(-radius, -radius, 0.01f),
+            glm::vec3(radius, -radius, 0.01f),
+            glm::vec3(radius, radius, -0.01f),
+            glm::vec3(-radius, radius, -0.01f),
+            glm::vec3(-radius, -radius, -0.01f),
+            glm::vec3(radius, -radius, -0.01f) } }
+    );
+    return disc;
 }
 
 Mesh* MeshBuilder::CreateSphere(const float& radius, const int& division) {
@@ -344,6 +389,92 @@ Mesh* MeshBuilder::CreateTerrain(const float& worldSize, const int& resolution) 
             glm::vec3(.5f * worldSize, -.5f, .5f * worldSize) } }
     );
     return terrain;
+}
+
+Mesh* MeshBuilder::CreateTerrainTile(
+    float size, int meshResolution, int heightResolution, float skirtDepth, float maxDisplacement
+) {
+    const int m = std::max(1, meshResolution);
+    const float half = size / 2.f;
+    const float cell = size / static_cast<float>(m);
+
+    // The tile's heightmap carries a 1-texel gutter on every side: the grid
+    // holds heightResolution+3 texels per edge and the tile interior spans
+    // samples 1..heightResolution+1. Bake the interior mapping into the UVs so
+    // borders land exactly on texel centers — neighboring tiles then displace
+    // and shade identically along shared edges (no seams).
+    const float texels = static_cast<float>(heightResolution + 3);
+    auto uvOf = [&](float t) { return (1.5f + t * static_cast<float>(heightResolution)) / texels; };
+
+    auto corner = [&](int col, int row) {
+        Vertex v{};
+        v.position = glm::vec3(-half + col * cell, 0.f, -half + row * cell);
+        v.uv = glm::vec2(uvOf(col / static_cast<float>(m)), uvOf(row / static_cast<float>(m)));
+        return v;
+    };
+    // Skirt vertices reuse the border UV, so displacement moves them with the
+    // edge and the quad hangs straight down by skirtDepth.
+    auto lowered = [&](Vertex v) {
+        v.position.y = -skirtDepth;
+        return v;
+    };
+
+    std::vector<Vertex> verts;
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+    verts.reserve(static_cast<size_t>(m) * m * 6 + static_cast<size_t>(m) * 4 * 6);
+#else
+    verts.reserve(static_cast<size_t>(m) * m * 4 + static_cast<size_t>(m) * 4 * 4);
+#endif
+    auto pushPatch = [&](const Vertex& v0, const Vertex& v1, const Vertex& v2, const Vertex& v3) {
+#if defined(__EMSCRIPTEN__) || defined(ANDROID)
+        verts.push_back(v0);
+        verts.push_back(v1);
+        verts.push_back(v2);
+        verts.push_back(v0);
+        verts.push_back(v2);
+        verts.push_back(v3);
+#else
+        verts.push_back(v0);
+        verts.push_back(v1);
+        verts.push_back(v2);
+        verts.push_back(v3);
+#endif
+    };
+
+    for (int row = 0; row < m; row++) {
+        for (int col = 0; col < m; col++) {
+            pushPatch(corner(col, row), corner(col, row + 1), corner(col + 1, row + 1), corner(col + 1, row));
+        }
+    }
+
+    if (skirtDepth > 0.f) {
+        for (int k = 0; k < m; ++k) {
+            // -X / +X edges (varying row), then -Z / +Z edges (varying col).
+            pushPatch(corner(0, k), corner(0, k + 1), lowered(corner(0, k + 1)), lowered(corner(0, k)));
+            pushPatch(corner(m, k), corner(m, k + 1), lowered(corner(m, k + 1)), lowered(corner(m, k)));
+            pushPatch(corner(k, 0), corner(k + 1, 0), lowered(corner(k + 1, 0)), lowered(corner(k, 0)));
+            pushPatch(corner(k, m), corner(k + 1, m), lowered(corner(k + 1, m)), lowered(corner(k, m)));
+        }
+    }
+
+    auto tile = new Mesh(MeshType::TERRAIN);
+    tile->Initialize(verts);
+    // Cover the full displaced volume: the culling in GraphicsSubsystem tests
+    // this box (transformed by the GameObject only), so it must span from the
+    // skirt bottom up to the displacement ceiling, not the flat base grid.
+    const float yTop = std::max(maxDisplacement, 0.5f);
+    const float yBottom = -std::max(skirtDepth, 0.5f);
+    tile->SetBoundingBox(
+        { { glm::vec3(.5f * size, yTop, .5f * size),
+            glm::vec3(-.5f * size, yTop, .5f * size),
+            glm::vec3(-.5f * size, yBottom, .5f * size),
+            glm::vec3(.5f * size, yBottom, .5f * size),
+            glm::vec3(.5f * size, yTop, -.5f * size),
+            glm::vec3(-.5f * size, yTop, -.5f * size),
+            glm::vec3(-.5f * size, yBottom, -.5f * size),
+            glm::vec3(.5f * size, yBottom, -.5f * size) } }
+    );
+    return tile;
 }
 
 Mesh* MeshBuilder::CreateCubeWithPhysics(const float& size) {

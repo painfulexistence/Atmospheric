@@ -171,6 +171,7 @@ set(SOURCES
     src/rigidbody_component.cpp
     src/light_component.cpp
     src/camera_component.cpp
+    src/material.cpp
     src/mesh.cpp
     src/gl_buffer.cpp
     src/gl_render_target.cpp
@@ -184,6 +185,8 @@ set(SOURCES
     src/text_3d_component.cpp
     src/height_field.cpp
     src/terrain_mesh_component.cpp
+    src/terrain_streamer.cpp
+    src/terrain_tile_cache.cpp
     src/height_field_collider_component.cpp
     src/water_component.cpp
     src/shader.cpp
@@ -215,7 +218,12 @@ set(SOURCES
     src/shape_renderer_component.cpp
     src/voxel_chunk_component.cpp
     src/voxel_world.cpp
+    src/voxel_world_component.cpp
     src/voxel_chunk_pass.cpp
+    src/micro_voxel_pass.cpp
+    src/voxel_volume_component.cpp
+    src/portal_pass.cpp
+    src/portal_component.cpp
     src/sun_component.cpp
     src/scene_loader.cpp
     src/scene_transition.cpp

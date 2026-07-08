@@ -21,6 +21,11 @@ public:
     static Mesh* CreateCube(const float& size = 1.0f);
     static Mesh* CreatePlane(float width, float height);
 
+    // Flat triangle-fan disc in the XY plane, normal +Z, centered at origin.
+    // UVs are concentric (center 0.5,0.5, rim on the unit circle) so shaders
+    // can derive the rim distance as length(uv - 0.5) * 2. Used by portals.
+    static Mesh* CreateDisc(float radius, int segments = 48);
+
     static Mesh* CreateSphere(const float& radius = 0.5f, const int& division = 18);
 
     // Vertical capsule of the given total height (a cylinder capped by two
@@ -30,6 +35,18 @@ public:
     static Mesh* CreateCapsule(const float& radius = 0.5f, const float& height = 2.0f, const int& division = 12);
 
     static Mesh* CreateTerrain(const float& size = 1024.f, const int& resolution = 10);
+
+    // Terrain tile for streamed worlds (see TerrainStreamer): a patch grid of
+    // meshResolution^2 cells whose UVs address the interior of a heightmap
+    // with a 1-texel gutter (texture is heightResolution+3 texels per edge),
+    // plus a perimeter skirt dropping skirtDepth metres to hide cracks
+    // between neighboring tiles of different LODs. maxDisplacement is the
+    // shader-side height displacement ceiling (heightScale) — the bounding
+    // box must cover it or the engine's frustum culling, which only sees the
+    // pre-displacement mesh, discards tiles whose mountains are on screen.
+    static Mesh* CreateTerrainTile(
+        float size, int meshResolution, int heightResolution, float skirtDepth, float maxDisplacement
+    );
 
     static Mesh* CreateCubeWithPhysics(const float& size = 1.0f);
 

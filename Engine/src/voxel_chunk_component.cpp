@@ -6,22 +6,10 @@
 #include <algorithm>
 #include <cstring>
 
-// Shared opaque material for all voxel chunks — no textures, just signals the
-// Opaque queue. Registered in (and owned by) the AssetManager under a
-// reserved name; re-created on demand after asset clears.
-static MaterialHandle GetVoxelMaterial() {
-    auto& assets = AssetManager::Get();
-    MaterialHandle handle = assets.GetMaterialHandle("__voxel");
-    if (!handle.IsValid()) {
-        Material* mat = assets.CreateMaterial("__voxel", MaterialProps{});
-        mat->renderQueue = RenderQueue::Opaque;
-        handle = assets.GetMaterialHandle("__voxel");
-    }
-    return handle;
-}
-
-VoxelChunkComponent::VoxelChunkComponent(GameObject* owner, GraphicsSubsystem* gfx, glm::ivec3 chunkPos)
-  : _gfx(gfx), _chunkPos(chunkPos) {
+VoxelChunkComponent::VoxelChunkComponent(
+    GameObject* owner, GraphicsSubsystem* gfx, glm::ivec3 chunkPos, MaterialHandle material
+)
+  : _gfx(gfx), _chunkPos(chunkPos), _material(material) {
     gameObject = owner;
     std::memset(_voxels, 0, sizeof(_voxels));
     std::memset(_neighbors, 0, sizeof(_neighbors));
@@ -139,7 +127,7 @@ std::vector<VoxelVertex> VoxelChunkComponent::GenerateMeshData() {
 void VoxelChunkComponent::UploadMesh(const std::vector<VoxelVertex>& verts) {
     if (!_mesh) {
         _mesh = std::make_unique<Mesh>(MeshType::VOXEL);
-        _mesh->SetMaterial(GetVoxelMaterial());
+        _mesh->SetMaterial(_material);
         _meshHandle = AssetManager::Get().RegisterMesh(_mesh.get());
     }
     if (!verts.empty()) {

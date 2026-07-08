@@ -21,6 +21,23 @@ TerrainMeshComponent::TerrainMeshComponent(
     auto& am = AssetManager::Get();
     _mesh = am.CreateTerrainMesh("Terrain_" + owner->GetName(), props.worldSize, props.resolution);
     Mesh* meshPtr = am.GetMeshPtr(_mesh);
+    if (meshPtr) {
+        // The grid mesh is flat; displacement happens in the shader. Frustum
+        // culling only sees this bounding box, so it must span the displaced
+        // range or the terrain vanishes when the flat base leaves the frustum.
+        const float half = 0.5f * props.worldSize;
+        const float top = std::max(props.heightScale, 0.5f);
+        meshPtr->SetBoundingBox(
+            { { glm::vec3(half, top, half),
+                glm::vec3(-half, top, half),
+                glm::vec3(-half, -0.5f, half),
+                glm::vec3(half, -0.5f, half),
+                glm::vec3(half, top, -half),
+                glm::vec3(-half, top, -half),
+                glm::vec3(-half, -0.5f, -half),
+                glm::vec3(half, -0.5f, -half) } }
+        );
+    }
 
     TerrainMaterial* terrainMat = am.CreateTerrainMaterial();
     terrainMat->heightScale = props.heightScale;
@@ -70,24 +87,7 @@ TerrainMeshComponent::TerrainMeshComponent(
 }
 
 void TerrainMeshComponent::DrawImGui() {
-    if (_material) {
-        ImGui::DragFloat("Height Scale", &_material->heightScale, 0.5f, 0.0f, 256.0f);
-        ImGui::DragFloat("Tessellation", &_material->tessellationFactor, 0.5f, 1.0f, 64.0f);
-        // Fallback height-palette selection (only visible without color/detail maps).
-        static const char* gpaletteNames[] = {
-            "1 - Warm Pink/Gold (default)", "2 - Cool Blue/Purple", "3 - Earthy Green", "4 - Forest", "5 - Soft Cool",
-            "6 - Vivid Mint/Coral"
-        };
-        ImGui::Combo("Palette", &_material->paletteIndex, gpaletteNames, 6);
-        if (_material->layerCount > 0) {
-            ImGui::SeparatorText("Layers");
-            for (int i = 0; i < _material->layerCount; ++i) {
-                ImGui::PushID(i);
-                ImGui::DragFloat("Tiling", &_material->layers[i].tiling, 0.5f, 1.0f, 512.0f);
-                ImGui::PopID();
-            }
-        }
-    }
+    if (_material) _material->DrawImGui();
 
     auto* noise = dynamic_cast<NoiseHeightField*>(_heightField.get());
     if (!noise) return;

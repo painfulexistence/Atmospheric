@@ -58,6 +58,11 @@ GpuPipeline GpuPipelineBuilder::build() {
             case GpuBGLEntry::Kind::ComparisonSampler:
                 we.sampler.type = WGPUSamplerBindingType_Comparison;
                 break;
+            case GpuBGLEntry::Kind::UintTexture3D:
+                we.texture.sampleType = WGPUTextureSampleType_Uint;
+                we.texture.viewDimension = WGPUTextureViewDimension_3D;
+                we.texture.multisampled = false;
+                break;
             }
             wgpuEntries.push_back(we);
         }

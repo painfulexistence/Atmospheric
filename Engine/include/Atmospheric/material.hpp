@@ -1,6 +1,9 @@
 #pragma once
+#include "batch_renderer_2d.hpp"
 #include "buffer.hpp"
 #include "globals.hpp"
+#include <cstddef>
+#include <functional>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
@@ -12,6 +15,62 @@ enum class RenderQueue {
     AlphaTest = 2450,// Objects with alpha testing (vegetation, etc.)
     Transparent = 3000,// Transparent objects (glass, particles, etc.)
     Overlay = 4000// UI, HUD, debug overlays
+};
+
+enum class CullMode {
+    None,// Draw both faces
+    Front,// Cull front-facing triangles
+    Back,// Cull back-facing triangles (default 3D)
+};
+
+enum class CompareFunc {
+    Never,
+    Less,
+    LessEqual,
+    Equal,
+    GreaterEqual,
+    Greater,
+    NotEqual,
+    Always,
+};
+
+struct DepthState {
+    bool testEnabled = true;
+    bool writeEnabled = true;
+    CompareFunc compare = CompareFunc::Less;
+
+    bool operator==(const DepthState& o) const {
+        return testEnabled == o.testEnabled && writeEnabled == o.writeEnabled && compare == o.compare;
+    }
+};
+
+// Consolidated render-state description. Lives on Material; pipelines for
+// batched draws (GPUCanvasPass) key their cache on RenderState::Hash().
+struct RenderState {
+    BlendMode blend = BlendMode::None;
+    CullMode cull = CullMode::Back;
+    DepthState depth = {};
+    PolygonMode polygon = PolygonMode::Fill;
+    PrimitiveTopology topology = PrimitiveTopology::Triangles;
+
+    bool operator==(const RenderState& o) const {
+        return blend == o.blend && cull == o.cull && depth == o.depth && polygon == o.polygon && topology == o.topology;
+    }
+
+    // Hash for pipeline cache dedup. Not cryptographic — just a spread of
+    // the enum fields into a size_t so `unordered_map<RenderState, ...>` is
+    // cheap and distinct states rarely collide.
+    size_t Hash() const {
+        size_t h = 0;
+        auto mix = [&h](size_t v) { h = h * 1315423911u + v; };
+        mix(static_cast<size_t>(blend));
+        mix(static_cast<size_t>(cull));
+        mix(static_cast<size_t>(depth.testEnabled) | (static_cast<size_t>(depth.writeEnabled) << 1));
+        mix(static_cast<size_t>(depth.compare));
+        mix(static_cast<size_t>(polygon));
+        mix(static_cast<size_t>(topology));
+        return h;
+    }
 };
 
 struct MaterialProps {
@@ -42,18 +101,44 @@ public:
     glm::vec3 specular = glm::vec3(.7, .7, .7);
     glm::vec3 ambient = glm::vec3(0, 0, 0);
     float shininess = .25;
-    bool cullFaceEnabled = true;
-    PrimitiveTopology primitiveType = PrimitiveTopology::Triangles;
-    PolygonMode polygonMode = PolygonMode::Fill;
+
+    // Consolidated render-state: blend, cull, depth, polygon, topology.
+    // MaterialProps still exposes cullFaceEnabled/primitiveType/polygonMode
+    // for JSON scene compatibility; the constructor maps those into
+    // renderState. Direct callers should read/write renderState only.
+    RenderState renderState;
 
     RenderQueue renderQueue = RenderQueue::Opaque;
     int renderQueueOffset = 0;// Fine-tune rendering order within queue
+
+    // ── Planar reflection (opt-in) ──────────────────────────────────────────
+    // When enabled, PlanarReflectionPass re-renders the scene mirrored about
+    // this object's plane — the plane through the object's position with the
+    // object transform's up (+Y) axis as its normal — into an offscreen
+    // RenderTarget the surface shader then samples. This lives on the base
+    // Material (not WaterMaterial) so any flat surface can become reflective:
+    // water today, a wall mirror later is just planarReflection=true plus a
+    // shader that samples PlanarReflectionPass's RT. The reflection RT itself
+    // is owned by the pass, never by a material (materials are shareable
+    // value-ish objects; GPU targets are per-backend resources).
+    // Current pass limitation: one reflection plane per frame (the first
+    // enabled draw wins); see PlanarReflectionPass.
+    bool planarReflection = false;
+    float reflectionStrength = 0.6f;// blend weight toward the mirror image at grazing angles
+    float reflectionDistortion = 0.02f;// normal-driven UV wobble (waves); 0 for a perfect mirror
 
     int GetFinalRenderQueue() const {
         return static_cast<int>(renderQueue) + renderQueueOffset;
     }
 
     virtual ~Material() = default;
+
+    // Owned material inspector. Base class draws the generic PBR/Phong fields
+    // (maps, colors, shininess, cull mode); subclasses call the base and add
+    // their own controls so per-type tunables (palette, wave strength, etc.)
+    // live with the material instead of leaking into every component's
+    // DrawImGui.
+    virtual void DrawImGui();
 
     Material(const MaterialProps& props) {
         baseMap = props.baseMap;
@@ -66,9 +151,9 @@ public:
         specular = props.specular;
         ambient = props.ambient;
         shininess = props.shininess;
-        cullFaceEnabled = props.cullFaceEnabled;
-        primitiveType = props.primitiveType;
-        polygonMode = props.polygonMode;
+        renderState.cull = props.cullFaceEnabled ? CullMode::Back : CullMode::None;
+        renderState.topology = props.primitiveType;
+        renderState.polygon = props.polygonMode;
     }
 };
 
@@ -86,7 +171,29 @@ public:
 
     WaterMaterial() : Material(MaterialProps{}) {
         renderQueue = RenderQueue::Transparent;
-        cullFaceEnabled = false;
+        renderState.cull = CullMode::None;
+        planarReflection = true;// water reflects the sky/terrain by default
+    }
+};
+
+// A "through the portal" window surface. PortalPass finds every PortalMaterial
+// draw in the transparent queue, pairs it with its partner, and renders the
+// recursive views the surface then samples (see PortalPass in renderer.hpp).
+// The disc mesh's local frame defines the portal: +Z faces out (the side you
+// look into / exit from), +Y is up. Pair two portals via PortalComponent::Link,
+// which sets `partner` on both materials.
+//
+// Sits in the Transparent queue only to stay out of ForwardOpaquePass's PRIM
+// drawing; WaterPass explicitly skips PortalMaterial and PortalSurfacePass
+// draws it (opaque, depth-written).
+class PortalMaterial : public Material {
+public:
+    PortalMaterial* partner = nullptr;// the linked exit portal; null = unlinked (renders as void)
+    glm::vec3 rimColor = { 0.35f, 0.65f, 1.0f };// HDR-scaled edge glow (feeds bloom)
+
+    PortalMaterial() : Material(MaterialProps{}) {
+        renderQueue = RenderQueue::Transparent;
+        renderState.cull = CullMode::None;// visible (as void) from behind too
     }
 };
 
@@ -122,8 +229,47 @@ public:
     TerrainLayer layers[MAX_LAYERS];
     int layerCount = 0;
 
+    // Aerial perspective: distant terrain fades toward fogColor with
+    // 1-exp(-fogDensity*distance). The single biggest lever for perceived
+    // world scale — without it a mountain 5km away reads like a hill 500m
+    // away. 0 disables (default, keeps legacy terrains unchanged); ~0.00018
+    // gives ~30% fade at 2km and ~80% at 10km.
+    glm::vec3 fogColor = glm::vec3(0.62f, 0.71f, 0.85f);
+    float fogDensity = 0.0f;
+
     TerrainMaterial() : Material(MaterialProps{}) {
     }
     explicit TerrainMaterial(const MaterialProps& props) : Material(props) {
+    }
+
+    void DrawImGui() override;
+};
+
+// Voxel-chunk surface. VoxelChunkPass samples one of 6 hard-coded palettes
+// keyed by paletteIndex; the ownership contract is that VoxelWorldComponent
+// creates one per world and pushes _world.paletteIndex into it each frame,
+// so multi-world scenes can hold different palettes concurrently. No
+// textures — voxel color comes entirely from the palette table.
+class VoxelMaterial : public Material {
+public:
+    int paletteIndex = 4;// 0-5; 4 = VX Palette 5 (soft cool blue-grey, matches old default)
+
+    VoxelMaterial() : Material(MaterialProps{}) {
+        renderQueue = RenderQueue::Opaque;
+    }
+
+    // VoxelChunkPass ignores every field the base inspector touches (maps,
+    // Phong colors, cull mode — the pass hardcodes back-face culling and
+    // reads palette off VoxelWorld); overriding to a no-op keeps the empty
+    // controls out of the UI. Palette lives on VoxelWorld and is edited from
+    // VoxelWorldComponent, not here.
+    void DrawImGui() override {
+    }
+};
+
+// std::hash specialization so `unordered_map<RenderState, T>` works out of the box.
+template<> struct std::hash<RenderState> {
+    size_t operator()(const RenderState& s) const noexcept {
+        return s.Hash();
     }
 };
