@@ -231,7 +231,9 @@ class DeathmatchGame : public Application {
 
         if (auto* cam = GraphicsSubsystem::Get()->GetMainCamera()) {
             auto ws = Window::Get()->GetLogicalSize();
-            cam->SetPerspective(glm::radians(90.0f), static_cast<float>(ws.width) / ws.height, 0.05f, 200.0f);
+            // SetPerspective takes vertical FOV in *degrees* (it converts to
+            // radians internally). 90 deg for an FPS-feeling wide view.
+            cam->SetPerspective(90.0f, static_cast<float>(ws.width) / ws.height, 0.05f, 200.0f);
             cam->gameObject->AddComponent<DeathmatchController>(&_net, localAuth);// the local player
         }
 
