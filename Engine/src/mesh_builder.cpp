@@ -183,7 +183,8 @@ Mesh* MeshBuilder::CreateCapsule(const float& radius, const float& height, const
 
     std::vector<Vertex> verts;
     std::vector<uint16_t> tris;
-    verts.resize((division + 1) * (2 * division + 1));
+    verts.resize((static_cast<std::vector<Vertex>::size_type>(division) + 1) *
+                (static_cast<std::vector<Vertex>::size_type>(2) * static_cast<std::vector<Vertex>::size_type>(division) + 1));
     for (int v = 0; v <= division; ++v) {
         const float vAngle = v * delta;
         for (int h = 0; h <= 2 * division; ++h) {
@@ -218,7 +219,7 @@ Mesh* MeshBuilder::CreateCapsule(const float& radius, const float& height, const
             );
         }
     }
-    tris.resize((6 * division - 6) * (2 * division));
+    tris.resize((static_cast<std::size_t>(6) * static_cast<std::size_t>(division) - 6u) * (2u * static_cast<std::size_t>(division)));
     for (int v = 0, i = 0; v <= division - 1; ++v) {
         for (int h = 0; h <= 2 * division - 1; ++h) {
             if (v != 0) {
