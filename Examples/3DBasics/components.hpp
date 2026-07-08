@@ -70,7 +70,7 @@ inline VATDemoAsset
     std::vector<Vertex> verts;
     std::vector<uint16_t> tris;
     std::vector<glm::vec3> dirs;// unit direction per vertex, reused every frame
-    verts.reserve((stacks + 1) * (sectors + 1));
+    verts.reserve((static_cast<std::size_t>(stacks) + 1u) * (static_cast<std::size_t>(sectors) + 1u));
     dirs.reserve(verts.capacity());
 
     for (int i = 0; i <= stacks; ++i) {
