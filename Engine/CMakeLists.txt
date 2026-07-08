@@ -277,6 +277,11 @@ list(APPEND SOURCES src/udp_relay.cpp)
 # UdpRelayClient: client-side counterpart — wraps outgoing datagrams for
 # delivery through a UdpRelay. Same zero-extra-dependency reasoning.
 list(APPEND SOURCES src/udp_relay_client.cpp)
+# NetConditioner: inbound-datagram link emulator (latency/jitter/loss/dup) for
+# exercising realtime netcode off the loopback. Pure logic, no sockets — not
+# empty on Emscripten, and dep-free so headless servers can use it too.
+# (NetMetrics is header-only — Engine/include/Atmospheric/net_metrics.hpp.)
+list(APPEND SOURCES src/net_conditioner.cpp)
 # RelaySubsystem: thin Application/AddSubsystem<T> wrapper around UdpRelay
 # (same zero-extra-dependency reasoning; empty TU on Emscripten).
 list(APPEND SOURCES src/relay_subsystem.cpp)
