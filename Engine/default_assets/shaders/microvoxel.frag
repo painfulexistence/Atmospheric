@@ -22,15 +22,15 @@ precision highp usampler3D;
 precision highp sampler2D;
 #endif
 
-in vec2 v_uv;
+in vec3 v_worldPos;            // interpolated bounding-box surface position
 
 uniform usampler3D u_volume;
 uniform usampler3D u_occupancy;
 uniform sampler2D  u_palette;
 uniform sampler2D  u_giTex;    // accumulated 1-bounce indirect (microvoxel_gi.frag)
 
-uniform mat4  u_invViewProj;   // clip -> world
 uniform mat4  u_viewProj;      // world -> clip (for depth output)
+uniform vec2  u_viewportSize;  // pixels, for screen-space GI lookup
 uniform vec3  u_cameraPos;
 uniform vec3  u_volumeOrigin;  // world-space min corner
 uniform float u_voxelSize;     // world edge length of one voxel
@@ -234,11 +234,12 @@ Hit raycast(vec3 ro, vec3 rd) {
 }
 
 void main() {
-    // Reconstruct the world-space ray for this pixel from clip space.
-    vec2 ndc = v_uv * 2.0 - 1.0;    // v_uv is 0..1 across the screen quad
-    vec4 farH = u_invViewProj * vec4(ndc, 1.0, 1.0);
+    // The bounding box was rasterized, so the view ray for this pixel goes from
+    // the camera through this box-surface fragment. Screen uv (for the
+    // screen-space GI texture) comes from the window-space fragment coordinate.
+    vec2 v_uv = gl_FragCoord.xy / u_viewportSize;
     vec3 ro = u_cameraPos;
-    vec3 rd = normalize(farH.xyz / farH.w - ro);
+    vec3 rd = normalize(v_worldPos - ro);
 
     Hit h = raycast(ro, rd);
     if (!h.hit) {

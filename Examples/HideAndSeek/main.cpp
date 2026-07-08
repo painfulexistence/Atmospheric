@@ -15,7 +15,13 @@
 // via ClientNet's interpolated position (see render_view.hpp).
 //
 // Controls: WASD / arrows move · ESC quit
+//
+// --local runs a single-process test mode: an embedded HideAndSeekAuthority is
+// pumped in-process and this client talks to it over loopback, so you can move
+// around and test without launching a separate server (you're alone until the
+// other role would join — enough to exercise movement/prediction/rendering).
 #include "Atmospheric.hpp"
+#include "authority.hpp"
 #include "client_net.hpp"
 #include "render_view.hpp"
 #include "sim_common.hpp"
@@ -28,6 +34,7 @@ namespace {
         std::string serverIp = "127.0.0.1";
         uint16_t serverPort = 9100;
         proto::Role role = proto::Role::Hider;
+        bool local = false;
     } gcli;
 
     uint32_t NowMs() {
@@ -41,6 +48,7 @@ class HideAndSeekGame : public Application {
     using Application::Application;
 
     ClientNet _net;
+    HideAndSeekAuthority _localAuthority;// only bound/pumped in --local mode
     FontHandle _fontID = 0;
     float _accum = 0.0f;
     uint32_t _tick = 0;
@@ -51,6 +59,15 @@ class HideAndSeekGame : public Application {
 
     void OnLoad() override {
         _fontID = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
+        if (gcli.local) {
+            // Embed the authority in this process and talk to it over loopback.
+            if (!_localAuthority.Bind(0)) {
+                ConsoleSubsystem::Get()->Error("Failed to bind embedded authority");
+                return;
+            }
+            gcli.serverIp = "127.0.0.1";
+            gcli.serverPort = _localAuthority.BoundPort();
+        }
         if (!_net.Connect(gcli.serverIp, gcli.serverPort, gcli.role)) {
             ConsoleSubsystem::Get()->Error(fmt::format("Failed to connect to {}:{}", gcli.serverIp, gcli.serverPort));
         }
@@ -58,6 +75,7 @@ class HideAndSeekGame : public Application {
 
     void OnUpdate(float dt, float /*time*/) override {
         uint32_t nowMs = NowMs();
+        if (gcli.local) _localAuthority.Pump();// drive the embedded server first
         _net.Pump(nowMs);
 
         _accum += std::min(dt, 0.25f);
@@ -86,6 +104,8 @@ int main(int argc, char* argv[]) {
         } else if (std::strcmp(argv[i], "--role") == 0 && i + 1 < argc) {
             std::string r = argv[++i];
             gcli.role = (r == "seeker") ? proto::Role::Seeker : proto::Role::Hider;
+        } else if (std::strcmp(argv[i], "--local") == 0) {
+            gcli.local = true;
         }
     }
 

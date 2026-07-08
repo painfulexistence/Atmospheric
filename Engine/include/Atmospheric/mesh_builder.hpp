@@ -28,6 +28,12 @@ public:
 
     static Mesh* CreateSphere(const float& radius = 0.5f, const int& division = 18);
 
+    // Vertical capsule of the given total height (a cylinder capped by two
+    // hemispheres of `radius`), centered at the origin. Built by taking the
+    // sphere topology and pushing the two hemispheres apart by the cylinder
+    // half-height, so the seam and indexing stay identical to CreateSphere.
+    static Mesh* CreateCapsule(const float& radius = 0.5f, const float& height = 2.0f, const int& division = 12);
+
     static Mesh* CreateTerrain(const float& size = 1024.f, const int& resolution = 10);
 
     // Terrain tile for streamed worlds (see TerrainStreamer): a patch grid of
