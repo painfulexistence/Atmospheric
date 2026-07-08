@@ -1,6 +1,9 @@
 #pragma once
+#include "batch_renderer_2d.hpp"
 #include "buffer.hpp"
 #include "globals.hpp"
+#include <cstddef>
+#include <functional>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
@@ -12,6 +15,62 @@ enum class RenderQueue {
     AlphaTest = 2450,// Objects with alpha testing (vegetation, etc.)
     Transparent = 3000,// Transparent objects (glass, particles, etc.)
     Overlay = 4000// UI, HUD, debug overlays
+};
+
+enum class CullMode {
+    None,// Draw both faces
+    Front,// Cull front-facing triangles
+    Back,// Cull back-facing triangles (default 3D)
+};
+
+enum class CompareFunc {
+    Never,
+    Less,
+    LessEqual,
+    Equal,
+    GreaterEqual,
+    Greater,
+    NotEqual,
+    Always,
+};
+
+struct DepthState {
+    bool testEnabled = true;
+    bool writeEnabled = true;
+    CompareFunc compare = CompareFunc::Less;
+
+    bool operator==(const DepthState& o) const {
+        return testEnabled == o.testEnabled && writeEnabled == o.writeEnabled && compare == o.compare;
+    }
+};
+
+// Consolidated render-state description. Lives on Material; pipelines for
+// batched draws (GPUCanvasPass) key their cache on RenderState::Hash().
+struct RenderState {
+    BlendMode blend = BlendMode::None;
+    CullMode cull = CullMode::Back;
+    DepthState depth = {};
+    PolygonMode polygon = PolygonMode::Fill;
+    PrimitiveTopology topology = PrimitiveTopology::Triangles;
+
+    bool operator==(const RenderState& o) const {
+        return blend == o.blend && cull == o.cull && depth == o.depth && polygon == o.polygon && topology == o.topology;
+    }
+
+    // Hash for pipeline cache dedup. Not cryptographic — just a spread of
+    // the enum fields into a size_t so `unordered_map<RenderState, ...>` is
+    // cheap and distinct states rarely collide.
+    size_t Hash() const {
+        size_t h = 0;
+        auto mix = [&h](size_t v) { h = h * 1315423911u + v; };
+        mix(static_cast<size_t>(blend));
+        mix(static_cast<size_t>(cull));
+        mix(static_cast<size_t>(depth.testEnabled) | (static_cast<size_t>(depth.writeEnabled) << 1));
+        mix(static_cast<size_t>(depth.compare));
+        mix(static_cast<size_t>(polygon));
+        mix(static_cast<size_t>(topology));
+        return h;
+    }
 };
 
 struct MaterialProps {
@@ -42,9 +101,12 @@ public:
     glm::vec3 specular = glm::vec3(.7, .7, .7);
     glm::vec3 ambient = glm::vec3(0, 0, 0);
     float shininess = .25;
-    bool cullFaceEnabled = true;
-    PrimitiveTopology primitiveType = PrimitiveTopology::Triangles;
-    PolygonMode polygonMode = PolygonMode::Fill;
+
+    // Consolidated render-state: blend, cull, depth, polygon, topology.
+    // MaterialProps still exposes cullFaceEnabled/primitiveType/polygonMode
+    // for JSON scene compatibility; the constructor maps those into
+    // renderState. Direct callers should read/write renderState only.
+    RenderState renderState;
 
     RenderQueue renderQueue = RenderQueue::Opaque;
     int renderQueueOffset = 0;// Fine-tune rendering order within queue
@@ -71,6 +133,13 @@ public:
 
     virtual ~Material() = default;
 
+    // Owned material inspector. Base class draws the generic PBR/Phong fields
+    // (maps, colors, shininess, cull mode); subclasses call the base and add
+    // their own controls so per-type tunables (palette, wave strength, etc.)
+    // live with the material instead of leaking into every component's
+    // DrawImGui.
+    virtual void DrawImGui();
+
     Material(const MaterialProps& props) {
         baseMap = props.baseMap;
         normalMap = props.normalMap;
@@ -82,9 +151,9 @@ public:
         specular = props.specular;
         ambient = props.ambient;
         shininess = props.shininess;
-        cullFaceEnabled = props.cullFaceEnabled;
-        primitiveType = props.primitiveType;
-        polygonMode = props.polygonMode;
+        renderState.cull = props.cullFaceEnabled ? CullMode::Back : CullMode::None;
+        renderState.topology = props.primitiveType;
+        renderState.polygon = props.polygonMode;
     }
 };
 
@@ -102,7 +171,7 @@ public:
 
     WaterMaterial() : Material(MaterialProps{}) {
         renderQueue = RenderQueue::Transparent;
-        cullFaceEnabled = false;
+        renderState.cull = CullMode::None;
         planarReflection = true;// water reflects the sky/terrain by default
     }
 };
@@ -124,7 +193,7 @@ public:
 
     PortalMaterial() : Material(MaterialProps{}) {
         renderQueue = RenderQueue::Transparent;
-        cullFaceEnabled = false;// visible (as void) from behind too
+        renderState.cull = CullMode::None;// visible (as void) from behind too
     }
 };
 
@@ -171,5 +240,36 @@ public:
     TerrainMaterial() : Material(MaterialProps{}) {
     }
     explicit TerrainMaterial(const MaterialProps& props) : Material(props) {
+    }
+
+    void DrawImGui() override;
+};
+
+// Voxel-chunk surface. VoxelChunkPass samples one of 6 hard-coded palettes
+// keyed by paletteIndex; the ownership contract is that VoxelWorldComponent
+// creates one per world and pushes _world.paletteIndex into it each frame,
+// so multi-world scenes can hold different palettes concurrently. No
+// textures — voxel color comes entirely from the palette table.
+class VoxelMaterial : public Material {
+public:
+    int paletteIndex = 4;// 0-5; 4 = VX Palette 5 (soft cool blue-grey, matches old default)
+
+    VoxelMaterial() : Material(MaterialProps{}) {
+        renderQueue = RenderQueue::Opaque;
+    }
+
+    // VoxelChunkPass ignores every field the base inspector touches (maps,
+    // Phong colors, cull mode — the pass hardcodes back-face culling and
+    // reads palette off VoxelWorld); overriding to a no-op keeps the empty
+    // controls out of the UI. Palette lives on VoxelWorld and is edited from
+    // VoxelWorldComponent, not here.
+    void DrawImGui() override {
+    }
+};
+
+// std::hash specialization so `unordered_map<RenderState, T>` works out of the box.
+template<> struct std::hash<RenderState> {
+    size_t operator()(const RenderState& s) const noexcept {
+        return s.Hash();
     }
 };

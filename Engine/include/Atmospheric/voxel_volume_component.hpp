@@ -26,6 +26,16 @@ public:
     // crystals) on the CPU and flag it for GPU re-upload.
     void Generate(uint32_t seed);
 
+    // Runtime editing (destruction). CarveSphere clears voxels to air inside a
+    // world-space sphere, recomputes the affected occupancy bricks, and flags
+    // the volume dirty so the pass re-uploads it (which also resets GI history).
+    // No remeshing is needed — the strength of the raymarch model.
+    void CarveSphere(const glm::vec3& worldCenter, float radius);
+
+    // First solid voxel along a world-space ray (for aiming a carve). Returns
+    // the world hit position in outHitWorld; false on a miss within maxDist.
+    bool RaycastVoxel(const glm::vec3& worldRo, const glm::vec3& worldRd, float maxDist, glm::vec3& outHitWorld) const;
+
     // World-space min corner. The GameObject position is the volume's
     // horizontal centre at its base: the grid is centred over the object in
     // x/z and rises from the object's y. (Stage 1 uses translation only;
@@ -36,7 +46,11 @@ public:
     }
 
     // Grid config (gridDim must be a multiple of brickDim; Generate enforces it).
-    int gridDim = 256;
+#ifdef __EMSCRIPTEN__
+    int gridDim = 128;// 6.4 m at 5 cm voxels (WebGL2 fragment raymarch is pricier per pixel)
+#else
+    int gridDim = 256;// 12.8 m at 5 cm voxels
+#endif
     int brickDim = 8;
     float voxelSize = 0.05f;// 5 cm voxels => 256^3 is a 12.8 m diorama
     uint32_t seed = 1337u;
@@ -44,7 +58,7 @@ public:
     // CPU data, consumed by MicroVoxelPass for GPU upload.
     std::vector<uint8_t> volume;// gridDim^3 palette indices, 0 = air
     std::vector<uint8_t> occupancy;// (gridDim/brickDim)^3, nonzero = brick occupied
-    std::vector<uint8_t> paletteRGBA;// 256 * 4, albedo per material index
+    std::vector<uint8_t> paletteRGBA;// 256x2 RGBA8: row0 albedo+emission, row1 reflectivity/roughness
     uint32_t solidCount = 0;
     bool dirty = true;// set by Generate, cleared by the pass after upload
 };

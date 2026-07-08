@@ -407,7 +407,7 @@ void AssetManager::LoadDefaultShaders() {
           { "skybox", { .vert = "assets/shaders/skybox.vert", .frag = "assets/shaders/skybox.frag" } },
           { "sun", { .vert = "assets/shaders/sun.vert", .frag = "assets/shaders/sun.frag" } },
           { "voxel", { .vert = "assets/shaders/voxel.vert", .frag = "assets/shaders/voxel.frag" } },
-          { "microvoxel", { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/microvoxel.frag" } },
+          { "microvoxel", { .vert = "assets/shaders/microvoxel_box.vert", .frag = "assets/shaders/microvoxel.frag" } },
           { "microvoxel_gi",
             { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/microvoxel_gi.frag" } },
           { "water", { .vert = "assets/shaders/water.vert", .frag = "assets/shaders/water.frag" } },
@@ -532,6 +532,14 @@ TerrainMaterial* AssetManager::CreateTerrainMaterial() {
     auto* ptr = material.get();
     materials.push_back(std::move(material));
     _materialCache["terrain_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return ptr;
+}
+
+VoxelMaterial* AssetManager::CreateVoxelMaterial() {
+    auto material = std::make_unique<VoxelMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
+    _materialCache["voxel_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
     return ptr;
 }
 

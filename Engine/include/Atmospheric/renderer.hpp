@@ -297,8 +297,6 @@ public:
 #endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
-    int paletteIndex = 4;// 0-5; 4 = VX Palette 5 (soft cool blue-grey)
-
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
     void _initGPU(
@@ -342,7 +340,12 @@ public:
 
     // Global lighting / GI settings shared by all volumes.
     int maxRaySteps = 256;
-    float sunIntensity = 3.0f;
+    // Artistic gain on top of the main light's own intensity. The effective sun
+    // brightness is sunIntensity * light->intensity, so the LightComponent
+    // drives the level (set it on the light) and this stays a unit multiplier.
+    float sunIntensity = 1.0f;
+    // Ambient gain, scaled by the main light's ambient magnitude (see
+    // MicroVoxelPass). The sky-hemisphere ambient shape is kept; this sets level.
     float ambient = 0.6f;
     float aoStrength = 0.7f;// Minecraft-style corner AO; 0 disables
     // Traced 1-bounce GI with temporal accumulation (GL path only for now;
@@ -350,19 +353,50 @@ public:
     // the flat ambient term.
     float giStrength = 1.0f;
     float giBlend = 0.93f;// history weight per frame
+    // GI trace resolution relative to the screen. Indirect light is low
+    // frequency, so half res (quarter the rays) is nearly indistinguishable
+    // after the bilinear-filtered composite; temporal accumulation hides the
+    // rest. 1.0 = full res.
+    float giResolutionScale = 0.5f;
     int debugMode = 0;// 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
     bool shadowEnabled = true;
+
+    // Emissive voxels: palette alpha is per-material emission strength; this
+    // HDR multiplier scales it in the main pass and the GI bounce (so glowing
+    // voxels also bleed indirect light onto neighbors). GL + WebGPU main pass;
+    // GI pickup is GL-only.
+    float emissiveStrength = 4.0f;
+
+    // Per-material mirror reflections (palette row 1 = reflectivity/roughness):
+    // one reflection ray blended by Fresnel. GL path only for now.
+    bool reflectionsEnabled = true;
+
+    // Local point lights (warm fill). GL path only for now (mirrors the GI
+    // split); colors are un-scaled here and multiplied by intensity on upload.
+    static constexpr int kMaxPointLights = 4;
+    int pointLightCount = 0;
+    glm::vec3 pointLightPos[kMaxPointLights]{};
+    glm::vec3 pointLightColor[kMaxPointLights]{ glm::vec3(1.0f) };
+    float pointLightIntensity[kMaxPointLights]{};
+    float pointLightRadius[kMaxPointLights]{};
 
 private:
     void _uploadGL(VoxelVolumeComponent* v);
     void _ensureGIRenderTargets(int w, int h);
 
     std::vector<VoxelVolumeComponent*> _volumes;
-    VoxelVolumeComponent* _uploadedVolume = nullptr;// which volume the GPU textures currently hold
 
-    GLuint _volumeTexGL = 0;
-    GLuint _occupancyTexGL = 0;
-    GLuint _paletteTexGL = 0;
+    // Per-volume GL textures (palette-index 3D + occupancy 3D + palette 2D),
+    // uploaded lazily and re-uploaded when the volume's dirty flag is set
+    // (regeneration or a runtime edit). Each registered volume gets its own set;
+    // the main pass draws one bounding box per volume, depth-composited.
+    struct GLVolume {
+        GLuint volumeTex = 0;
+        GLuint occupancyTex = 0;
+        GLuint paletteTex = 0;
+    };
+    std::unordered_map<VoxelVolumeComponent*, GLVolume> _glVolumes;
+    VoxelVolumeComponent* _uploadedVolume = nullptr;// WebGPU single-volume upload tracking
 
     // GI accumulation ping-pong (RGBA16F: rgb = indirect radiance, a = camera
     // distance for history validation)

@@ -112,7 +112,7 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
                  .depth(false, WGPUCompareFunction_Always)
                  .multisample(sceneSampleCount)
                  .build();
-    _pipelines[{ Variant::Canvas, GpuPipelineBuilder::Blend::Alpha }] = p.pipeline;
+    _pipelines[{ Variant::Canvas, _toRenderState(BlendMode::Alpha).Hash() }] = p.pipeline;
     _uniformBGL = p.bgl(0);
     _texBGL = p.bgl(1);
 
@@ -135,8 +135,9 @@ const std::vector<GpuVertexAttr>& GPUCanvasPass::_quadAttrs() {
     return attrs;
 }
 
-WGPURenderPipeline GPUCanvasPass::_getOrCreatePipeline(Variant v, GpuPipelineBuilder::Blend b) {
-    auto it = _pipelines.find({ v, b });
+WGPURenderPipeline GPUCanvasPass::_getOrCreatePipeline(Variant v, const RenderState& rs) {
+    const size_t rsHash = rs.Hash();
+    auto it = _pipelines.find({ v, rsHash });
     if (it != _pipelines.end()) return it->second;
 
     // Match _init's Canvas/Alpha pipeline in every axis except the varying two.
@@ -145,7 +146,7 @@ WGPURenderPipeline GPUCanvasPass::_getOrCreatePipeline(Variant v, GpuPipelineBui
                        .bgl(_uniformBGL)
                        .bgl(_texBGL)
                        .vertex((uint64_t)FLOATS_PER_VERT * sizeof(float), _quadAttrs())
-                       .blend(b);
+                       .blend(_mapBlend(rs.blend));
 
     switch (v) {
     case Variant::Canvas:
@@ -166,8 +167,18 @@ WGPURenderPipeline GPUCanvasPass::_getOrCreatePipeline(Variant v, GpuPipelineBui
     }
 
     WGPURenderPipeline pipe = builder.build().pipeline;
-    _pipelines[{ v, b }] = pipe;
+    _pipelines[{ v, rsHash }] = pipe;
     return pipe;
+}
+
+RenderState GPUCanvasPass::_toRenderState(BlendMode m) {
+    RenderState rs;
+    rs.blend = m;
+    // Canvas draws don't cull or test depth in the material sense — the
+    // variant-specific depth/cull state lives in the pipeline builder switch
+    // above, so leave the RenderState fields at their defaults. Only `blend`
+    // varies with the per-command state.
+    return rs;
 }
 
 GpuPipelineBuilder::Blend GPUCanvasPass::_mapBlend(BlendMode m) {
@@ -316,7 +327,7 @@ void GPUCanvasPass::Render(
     WGPURenderPipeline curPipeline = nullptr;
     for (const auto& batch : batches) {
         if (batch.idxCount == 0) continue;
-        WGPURenderPipeline pipe = _getOrCreatePipeline(variant, _mapBlend(batch.blend));
+        WGPURenderPipeline pipe = _getOrCreatePipeline(variant, _toRenderState(batch.blend));
         if (pipe != curPipeline) {
             wgpuRenderPassEncoderSetPipeline(pass, pipe);
             curPipeline = pipe;

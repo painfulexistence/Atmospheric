@@ -594,7 +594,20 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     auto* skybox = renderer.GetPass<SkyboxPass>();
     shader->SetUniform("u_fogColor", skybox ? skybox->skyColor : glm::vec3(0.686f, 0.933f, 0.933f));
     shader->SetUniform("u_fogDensity", 0.00001f);// VX: scene.py u_fog_density
-    shader->SetUniform("u_paletteIndex", paletteIndex);
+
+    // Palette lives on the first voxel command's VoxelMaterial (one palette per
+    // world per queue). Fallback keeps the historical default alive if a queue
+    // slipped in without a VoxelMaterial (test fixtures, out-of-tree examples).
+    int palette = 4;
+    for (const auto& sortable : queue) {
+        Mesh* m = AssetManager::Get().GetMeshPtr(sortable.cmd.mesh);
+        if (!m || m->type != MeshType::VOXEL) continue;
+        if (auto* vm = dynamic_cast<VoxelMaterial*>(AssetManager::Get().ResolveMaterial(m->GetMaterial()))) {
+            palette = vm->paletteIndex;
+        }
+        break;
+    }
+    shader->SetUniform("u_paletteIndex", palette);
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
@@ -1085,12 +1098,14 @@ void PlanarReflectionPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
     _reflViewProj = ov.proj * ov.view;
 
     // The private sub-pass instances mirror the graph instances' tunables.
+    // Palette no longer needs mirroring — it lives on the shared VoxelMaterial
+    // that both main and reflection VoxelChunkPass instances read via their
+    // render queue's first command.
     auto* mainSky = renderer.GetPass<SkyboxPass>();
     if (mainSky) {
         _skybox->skyColor = mainSky->skyColor;
         _skybox->horizonColor = mainSky->horizonColor;
     }
-    if (auto* mainVoxel = renderer.GetPass<VoxelChunkPass>()) _voxel->paletteIndex = mainVoxel->paletteIndex;
 
     // Mirror the main render graph's world order so the reflection contains the
     // same content: opaque terrain/meshes first (ForwardOpaquePass also clears

@@ -35,6 +35,7 @@
 #include "transform_component.hpp"
 #include "video_recorder.hpp"
 #include "voxel_volume_component.hpp"
+#include "voxel_world_component.hpp"
 #include "window.hpp"
 #include <algorithm>
 #include <chrono>
@@ -505,6 +506,13 @@ void Application::RegisterComponents() {
         d.Read("gridDim", c->gridDim);
         d.Read("voxelSize", c->voxelSize);
         return c;
+    });
+
+    // ── VoxelWorldComponent (streaming voxel terrain) ────────────────────────
+    ComponentFactory::Register("VoxelWorld", [](GameObject* o, Deserializer& d) -> Component* {
+        int seed = 42;
+        d.Read("seed", seed);
+        return new VoxelWorldComponent(o, seed);
     });
 
     // ── ShapeRendererComponent ────────────────────────────────────────────────
