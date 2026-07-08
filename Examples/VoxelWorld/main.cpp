@@ -56,17 +56,19 @@ class VoxelWorldApp : public Application {
             bloom->bloomStrength = 0.06f;
         }
 
-        ConsoleSubsystem::Get()->Info("VoxelWorld loaded. WASD move, RF up/down, Arrow keys look, Z slow, X sprint, P palette, I wireframe, ESC quit.");
+        ConsoleSubsystem::Get()->Info(
+            "VoxelWorld loaded. WASD move, RF up/down, Arrow keys look, Z slow, X sprint, P palette, I wireframe, ESC "
+            "quit."
+        );
         ConsoleSubsystem::Get()->Info(
             "Hold E to dig — greedy-meshed 1m voxels, so carving re-meshes the affected chunks."
         );
     }
 
     static constexpr int gpaletteCount = 6;
-    static constexpr const char* gpaletteNames[gpaletteCount] = {
-        "1 - Warm Pink/Gold", "2 - Cool Blue/Purple",    "3 - Earthy Green",
-        "4 - Forest",         "5 - Soft Cool (default)", "6 - Vivid Mint/Coral"
-    };
+    static constexpr const char* gpaletteNames[gpaletteCount] = { "1 - Warm Pink/Gold",      "2 - Cool Blue/Purple",
+                                                                  "3 - Earthy Green",        "4 - Forest",
+                                                                  "5 - Soft Cool (default)", "6 - Vivid Mint/Coral" };
 
     void OnUpdate(float /*dt*/, float /*time*/) override {
         if (_waterGO && mainCamera) {

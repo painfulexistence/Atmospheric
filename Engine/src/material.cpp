@@ -38,8 +38,10 @@ void TerrainMaterial::DrawImGui() {
     ImGui::DragFloat("Height Scale", &heightScale, 0.5f, 0.0f, 256.0f);
     ImGui::DragFloat("Tessellation", &tessellationFactor, 0.5f, 1.0f, 64.0f);
     // Fallback height-palette selection (only visible without color/detail maps).
-    static const char* gpaletteNames[] = { "1 - Warm Pink/Gold (default)", "2 - Cool Blue/Purple", "3 - Earthy Green",
-                                           "4 - Forest",                   "5 - Soft Cool",        "6 - Vivid Mint/Coral" };
+    static const char* gpaletteNames[] = {
+        "1 - Warm Pink/Gold (default)", "2 - Cool Blue/Purple", "3 - Earthy Green", "4 - Forest", "5 - Soft Cool",
+        "6 - Vivid Mint/Coral"
+    };
     ImGui::Combo("Palette", &paletteIndex, gpaletteNames, 6);
     if (layerCount > 0) {
         ImGui::SeparatorText("Layers");
