@@ -1239,9 +1239,7 @@ MeshHandle AssetManager::CreateSphereMesh(const std::string& name, float radius,
 }
 
 MeshHandle AssetManager::CreateCapsuleMesh(const std::string& name, float radius, float height) {
-    // TODO: Implement capsule mesh generation
-    Log::Info("Capsule mesh '{}' created (generation not yet implemented)", name);
-    auto* mesh = new Mesh();
+    auto mesh = MeshBuilder::CreateCapsule(radius, height);
     if (_materialCache.find("Default") != _materialCache.end()) {
         mesh->SetMaterial(GetMaterialHandle("Default"));
     }
