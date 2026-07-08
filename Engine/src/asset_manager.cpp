@@ -538,6 +538,14 @@ TerrainMaterial* AssetManager::CreateTerrainMaterial() {
     return ptr;
 }
 
+VoxelMaterial* AssetManager::CreateVoxelMaterial() {
+    auto material = std::make_unique<VoxelMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
+    _materialCache["voxel_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return ptr;
+}
+
 Material* AssetManager::GetMaterial(const std::string& name) const {
     auto it = _materialCache.find(name);
     if (it != _materialCache.end()) {

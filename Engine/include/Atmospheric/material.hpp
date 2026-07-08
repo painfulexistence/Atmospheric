@@ -133,6 +133,13 @@ public:
 
     virtual ~Material() = default;
 
+    // Owned material inspector. Base class draws the generic PBR/Phong fields
+    // (maps, colors, shininess, cull mode); subclasses call the base and add
+    // their own controls so per-type tunables (palette, wave strength, etc.)
+    // live with the material instead of leaking into every component's
+    // DrawImGui.
+    virtual void DrawImGui();
+
     Material(const MaterialProps& props) {
         baseMap = props.baseMap;
         normalMap = props.normalMap;
@@ -233,6 +240,30 @@ public:
     TerrainMaterial() : Material(MaterialProps{}) {
     }
     explicit TerrainMaterial(const MaterialProps& props) : Material(props) {
+    }
+
+    void DrawImGui() override;
+};
+
+// Voxel-chunk surface. VoxelChunkPass samples one of 6 hard-coded palettes
+// keyed by paletteIndex; the ownership contract is that VoxelWorldComponent
+// creates one per world and pushes _world.paletteIndex into it each frame,
+// so multi-world scenes can hold different palettes concurrently. No
+// textures — voxel color comes entirely from the palette table.
+class VoxelMaterial : public Material {
+public:
+    int paletteIndex = 4;// 0-5; 4 = VX Palette 5 (soft cool blue-grey, matches old default)
+
+    VoxelMaterial() : Material(MaterialProps{}) {
+        renderQueue = RenderQueue::Opaque;
+    }
+
+    // VoxelChunkPass ignores every field the base inspector touches (maps,
+    // Phong colors, cull mode — the pass hardcodes back-face culling and
+    // reads palette off VoxelWorld); overriding to a no-op keeps the empty
+    // controls out of the UI. Palette lives on VoxelWorld and is edited from
+    // VoxelWorldComponent, not here.
+    void DrawImGui() override {
     }
 };
 

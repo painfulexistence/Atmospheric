@@ -87,24 +87,7 @@ TerrainMeshComponent::TerrainMeshComponent(
 }
 
 void TerrainMeshComponent::DrawImGui() {
-    if (_material) {
-        ImGui::DragFloat("Height Scale", &_material->heightScale, 0.5f, 0.0f, 256.0f);
-        ImGui::DragFloat("Tessellation", &_material->tessellationFactor, 0.5f, 1.0f, 64.0f);
-        // Fallback height-palette selection (only visible without color/detail maps).
-        static const char* gpaletteNames[] = {
-            "1 - Warm Pink/Gold (default)", "2 - Cool Blue/Purple", "3 - Earthy Green", "4 - Forest", "5 - Soft Cool",
-            "6 - Vivid Mint/Coral"
-        };
-        ImGui::Combo("Palette", &_material->paletteIndex, gpaletteNames, 6);
-        if (_material->layerCount > 0) {
-            ImGui::SeparatorText("Layers");
-            for (int i = 0; i < _material->layerCount; ++i) {
-                ImGui::PushID(i);
-                ImGui::DragFloat("Tiling", &_material->layers[i].tiling, 0.5f, 1.0f, 512.0f);
-                ImGui::PopID();
-            }
-        }
-    }
+    if (_material) _material->DrawImGui();
 
     auto* noise = dynamic_cast<NoiseHeightField*>(_heightField.get());
     if (!noise) return;

@@ -297,8 +297,6 @@ public:
 #endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
-    int paletteIndex = 4;// 0-5; 4 = VX Palette 5 (soft cool blue-grey)
-
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
     void _initGPU(
