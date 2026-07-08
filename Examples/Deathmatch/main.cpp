@@ -29,6 +29,8 @@
 #include "authority.hpp"
 #include "client_net.hpp"
 #include "sim_common.hpp"
+#include <Atmospheric/net_debug_controls.hpp>
+#include <Atmospheric/net_hud.hpp>
 
 #include <chrono>
 #include <cmath>
@@ -96,6 +98,11 @@ public:
         if (inp->IsKeyPressed(Key::F)) _pendingRocket = true;
         if (inp->IsKeyPressed(Key::Q)) _pendingDash = true;
 
+        // Dial the inbound link emulator live (1/2 latency, 3/4 jitter, 5/6
+        // loss, 0 reset) so the netgraph's prediction/reconciliation/RTT lines
+        // respond on screen — works even in --local loopback play.
+        DialConditioner(inp, _net->Conditioner());
+
         const glm::vec3 vd = _cam->GetEyeDirection();
         const float yaw = std::atan2(vd.x, -vd.z);
         const float pitch = std::asin(sim::Clamp(vd.y, -1.0f, 1.0f));
@@ -113,7 +120,7 @@ public:
             const bool dash = _pendingDash;
             const bool fr = _pendingRail, fk = _pendingRocket;
             _pendingRail = _pendingRocket = _pendingDash = false;
-            _net->SubmitInput(_tick++, forward, strafe, yaw, pitch, jump, dash, shield, fr, fk);
+            _net->SubmitInput(nowMs, _tick++, forward, strafe, yaw, pitch, jump, dash, shield, fr, fk);
 
             // Railgun is hitscan (instant) — give it a visible beam so it reads
             // differently from the rocket's slow projectile.
@@ -311,6 +318,9 @@ class DeathmatchGame : public Application {
             ws.height * 0.5f + 8,
             glm::vec4(0.9f, 0.9f, 0.9f, 0.8f)
         );
+        // Netgraph (top-right): RTT / loss / bandwidth / prediction error /
+        // pending inputs + the live conditioner knobs (keys 1-6, 0 to reset).
+        DrawNetHud(gfx, _fontID, _net.Metrics(), _net.Conditioner(), ws.width - 258.0f, 20.0f);
     }
 };
 

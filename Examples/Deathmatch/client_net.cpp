@@ -28,6 +28,7 @@ bool ClientNet::Connect(const std::string& serverIp, uint16_t serverPort) {
 }
 
 void ClientNet::SubmitInput(
+    uint32_t nowMs,
     uint32_t tick,
     float forward,
     float strafe,
@@ -87,32 +88,65 @@ void ClientNet::SubmitInput(
     proto::PutU16(buf + 28, proto::QuantizeYaw(_rocketYaw));
     proto::PutU16(buf + 30, proto::QuantizePitch(_rocketPitch));
     _socket.SendTo(_serverAddr, _serverPort, buf, sizeof(buf));
+    _metrics.OnSent(sizeof(buf));
+    _inputSendMs[tick] = nowMs;// matched against ackedInputTick for RTT
+}
+
+void ClientNet::HandlePacket(const uint8_t* buf, int n, uint32_t fromAddr, uint16_t fromPort, uint32_t nowMs) {
+    if (fromAddr != _serverAddr || fromPort != _serverPort) return;
+    if (n < 5 || proto::GetU32(buf) != proto::kMagic) return;
+    const auto type = static_cast<proto::PacketType>(buf[4]);
+    if (type == proto::PacketType::ServerWelcome && n >= proto::kServerWelcomeLen) {
+        _welcomed = true;
+        _playerId = buf[5];
+        spdlog::info("ClientNet: welcomed as player {}", _playerId);
+    } else if (type == proto::PacketType::ServerSnapshot && n >= proto::kServerSnapshotHeaderLen) {
+        HandleSnapshot(buf, n, nowMs);
+    }
 }
 
 void ClientNet::Pump(uint32_t nowMs) {
     if (!_socket.IsOpen()) return;
+    _metrics.Roll(nowMs);
+
+    // Drain the real socket. Byte counting happens here (pre-conditioning) so
+    // bandwidth reflects actual link usage. On a clean link (conditioner idle)
+    // process straight through — no per-packet copy; when it's active, buffer
+    // arrivals for delayed/lossy/duplicated delivery below.
     uint8_t buf[512];
     for (;;) {
         uint32_t fromAddr = 0;
         uint16_t fromPort = 0;
         int n = _socket.RecvFrom(buf, static_cast<int>(sizeof(buf)), fromAddr, fromPort);
         if (n <= 0) break;
-        if (fromAddr != _serverAddr || fromPort != _serverPort) continue;
-        if (n < 5 || proto::GetU32(buf) != proto::kMagic) continue;
-        const auto type = static_cast<proto::PacketType>(buf[4]);
-        if (type == proto::PacketType::ServerWelcome && n >= proto::kServerWelcomeLen) {
-            _welcomed = true;
-            _playerId = buf[5];
-            spdlog::info("ClientNet: welcomed as player {}", _playerId);
-        } else if (type == proto::PacketType::ServerSnapshot && n >= proto::kServerSnapshotHeaderLen) {
-            HandleSnapshot(buf, n, nowMs);
-        }
+        _metrics.OnRecv(n);
+        if (_cond.Active())
+            _cond.Push(nowMs, fromAddr, fromPort, buf, n);
+        else
+            HandlePacket(buf, n, fromAddr, fromPort, nowMs);
     }
+    if (_cond.Active()) {
+        uint32_t fromAddr = 0;
+        uint16_t fromPort = 0;
+        int n = 0;
+        while (_cond.Pop(nowMs, fromAddr, fromPort, buf, static_cast<int>(sizeof(buf)), n))
+            HandlePacket(buf, n, fromAddr, fromPort, nowMs);
+    }
+
+    _metrics.pendingInputs = static_cast<int>(_pending.size());
+    _metrics.lossPct = _cond.Active() ? _cond.MeasuredLossPct() : 0.0f;
 }
 
 void ClientNet::HandleSnapshot(const uint8_t* data, int len, uint32_t nowMs) {
     _lastServerTick = proto::GetU32(data + 5);
     const uint32_t ackedInputTick = proto::GetU32(data + 9);
+
+    // RTT: this snapshot acks an input we timestamped on send. The measured
+    // round trip naturally includes any emulated latency the conditioner added.
+    auto sent = _inputSendMs.find(ackedInputTick);
+    if (sent != _inputSendMs.end()) _metrics.FeedRtt(static_cast<float>(nowMs - sent->second));
+    _inputSendMs.erase(_inputSendMs.begin(), _inputSendMs.upper_bound(ackedInputTick));
+
     sim::Motion serverMotion;
     serverMotion.foot = proto::GetVec3(data + 13);
     serverMotion.vy = proto::GetF32(data + 25);
@@ -132,6 +166,7 @@ void ClientNet::HandleSnapshot(const uint8_t* data, int len, uint32_t nowMs) {
     // Exact rewind-replay reconciliation: reset the full motion state to the
     // server's authoritative value as of ackedInputTick, then replay pending
     // inputs (vertical velocity and dash timers reconcile along with position).
+    const sim::Vec3 predBefore = _predictedMotion.foot;// head-of-prediction before correcting
     _predictedMotion = serverMotion;
     for (auto it = _pending.begin(); it != _pending.end();) {
         if (it->first <= ackedInputTick) {
@@ -149,6 +184,14 @@ void ClientNet::HandleSnapshot(const uint8_t* data, int len, uint32_t nowMs) {
             ++it;
         }
     }
+    // Prediction error = how far reconciliation had to snap the current
+    // predicted position. ~0 on a clean link (server agrees, replay reproduces
+    // the same head); spikes under loss/latency, then settles — the netgraph's
+    // money line for showing prediction/reconciliation actually working.
+    const sim::Vec3 corr = { _predictedMotion.foot.x - predBefore.x,
+                             _predictedMotion.foot.y - predBefore.y,
+                             _predictedMotion.foot.z - predBefore.z };
+    _metrics.predErrM = std::sqrt(corr.x * corr.x + corr.y * corr.y + corr.z * corr.z);
 
     // Enemy: two-sample interpolation of position AND orientation.
     if (_enemyAlive) {
