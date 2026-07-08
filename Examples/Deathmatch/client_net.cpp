@@ -191,7 +191,7 @@ void ClientNet::HandleSnapshot(const uint8_t* data, int len, uint32_t nowMs) {
     const sim::Vec3 corr = { _predictedMotion.foot.x - predBefore.x,
                              _predictedMotion.foot.y - predBefore.y,
                              _predictedMotion.foot.z - predBefore.z };
-    _metrics.predErrM = std::sqrt(corr.x * corr.x + corr.y * corr.y + corr.z * corr.z);
+    _metrics.predErr = std::sqrt(corr.x * corr.x + corr.y * corr.y + corr.z * corr.z);
 
     // Enemy: two-sample interpolation of position AND orientation.
     if (_enemyAlive) {

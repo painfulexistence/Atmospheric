@@ -17,9 +17,10 @@ struct NetMetrics {
     uint64_t bytesOut = 0, bytesIn = 0;
     float kbpsOut = 0.0f, kbpsIn = 0.0f;// over the last ~1 s window
 
-    float rttMs = 0.0f;    // EWMA of measured round trips (0 until first sample)
-    float lossPct = 0.0f;  // inbound loss estimate, 0..100
-    float predErrM = -1.0f;// |predicted - authoritative| at last reconcile; <0 = n/a for this model
+    float rttMs = 0.0f;   // EWMA of measured round trips (0 until first sample)
+    float lossPct = 0.0f; // inbound loss estimate, 0..100
+    float predErr = -1.0f;// prediction correction at last reconcile, in the model's own
+                          // distance units (metres, world units, ...); <0 = n/a for this model
     int pendingInputs = -1;// unacked predicted inputs in flight; <0 = n/a for this model
 
     void OnSent(int len) {

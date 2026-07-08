@@ -11,7 +11,7 @@
 //
 // Purely presentational: reads the two structs, draws via GraphicsSubsystem,
 // mutates nothing. Fields that don't apply to a model are omitted
-// (NetMetrics::predErrM < 0 or pendingInputs < 0). Anchored at (x, y) in
+// (NetMetrics::predErr < 0 or pendingInputs < 0). Anchored at (x, y) in
 // screen space. Lives in the engine (not per-example) because it needs
 // GraphicsSubsystem and is identical across all three consumers.
 void DrawNetHud(

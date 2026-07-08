@@ -22,6 +22,8 @@
 #include "client_net.hpp"
 #include "render_view.hpp"
 #include "sim_common.hpp"
+#include <Atmospheric/net_debug_controls.hpp>
+#include <Atmospheric/net_hud.hpp>
 
 #include <chrono>
 #include <cstring>
@@ -74,21 +76,25 @@ class HideAndSeekListenServerGame : public Application {
         uint32_t nowMs = NowMs();
         _net.Pump(nowMs);
 
+        auto* inp = InputSubsystem::Get();
+        DialConditioner(inp, _net.Conditioner());
+
         _accum += std::min(dt, 0.25f);
         while (_accum >= sim::kTickDt) {
             _accum -= sim::kTickDt;
-            auto* inp = InputSubsystem::Get();
             float dx = 0.0f, dy = 0.0f;
             if (inp->IsKeyDown(Key::A) || inp->IsKeyDown(Key::LEFT)) dx -= 1.0f;
             if (inp->IsKeyDown(Key::D) || inp->IsKeyDown(Key::RIGHT)) dx += 1.0f;
             if (inp->IsKeyDown(Key::W) || inp->IsKeyDown(Key::UP)) dy -= 1.0f;
             if (inp->IsKeyDown(Key::S) || inp->IsKeyDown(Key::DOWN)) dy += 1.0f;
-            _net.SubmitInput(_tick++, dx, dy);
+            _net.SubmitInput(nowMs, _tick++, dx, dy);
         }
 
         RenderHideAndSeekView(_net, _fontID, nowMs);
+        auto ws = Window::Get()->GetLogicalSize();
+        DrawNetHud(GraphicsSubsystem::Get(), _fontID, _net.Metrics(), _net.Conditioner(), ws.width - 258.0f, 20.0f);
 
-        if (InputSubsystem::Get()->IsKeyDown(Key::ESCAPE)) Quit();
+        if (inp->IsKeyDown(Key::ESCAPE)) Quit();
     }
 };
 

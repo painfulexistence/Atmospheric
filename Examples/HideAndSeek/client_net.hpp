@@ -1,9 +1,12 @@
 #pragma once
 #include "protocol.hpp"
 #include "sim_common.hpp"
+#include <Atmospheric/net_conditioner.hpp>
+#include <Atmospheric/net_metrics.hpp>
 #include <Atmospheric/udp_socket.hpp>
 
 #include <cstdint>
+#include <map>
 #include <string>
 
 // ClientNet — client side of the HideAndSeek protocol.
@@ -29,7 +32,8 @@ public:
 
     // Advances local prediction for this tick and sends the input to the
     // server. Call once per fixed tick with the sampled input direction.
-    void SubmitInput(uint32_t tick, float dx, float dy);
+    // nowMs timestamps the send so RTT can be measured when the input is acked.
+    void SubmitInput(uint32_t nowMs, uint32_t tick, float dx, float dy);
 
     // Non-blocking receive + processes any snapshots that arrived.
     void Pump(uint32_t nowMs);
@@ -49,12 +53,25 @@ public:
     // Interpolated position of the other entity, or {} if HasRemote() is false.
     sim::Vec2 GetRemotePos(uint32_t nowMs) const;
 
+    // Netgraph data + the live inbound link emulator (mutable so HUD keybinds
+    // can dial it). Sits on this client's snapshot path — works in --local too.
+    const NetMetrics& Metrics() const {
+        return _metrics;
+    }
+    NetConditioner& Conditioner() {
+        return _cond;
+    }
+
 private:
     UdpSocket _socket;
     uint32_t _serverAddr = 0;
     uint16_t _serverPort = 0;
     proto::Role _role = proto::Role::Seeker;
     bool _welcomed = false;
+
+    NetConditioner _cond;
+    NetMetrics _metrics;
+    std::map<uint32_t, uint32_t> _inputSendMs;// tick -> send time, for RTT on ack
 
     sim::Vec2 _predictedPos;
 
@@ -66,5 +83,6 @@ private:
     RemoteSample _remoteA, _remoteB;// A = older, B = newer
     bool _haveRemoteA = false, _haveRemoteB = false;
 
+    void HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, uint16_t fromPort, uint32_t nowMs);
     void HandleSnapshot(const uint8_t* data, int len, uint32_t nowMs);
 };

@@ -36,7 +36,7 @@ void DrawNetHud(
     // Count rows so the backing panel is sized to content.
     int rows = 3;// title + RTT + loss
     rows += 1;   // bandwidth
-    if (m.predErrM >= 0.0f) rows += 1;
+    if (m.predErr >= 0.0f) rows += 1;
     if (m.pendingInputs >= 0) rows += 1;
     rows += 1;// conditioner knobs line
 
@@ -65,18 +65,13 @@ void DrawNetHud(
     );
     row += lh;
 
-    if (m.predErrM >= 0.0f) {
+    if (m.predErr >= 0.0f) {
         gfx->DrawText(font, "predErr", x, row, scale, label);
-        // Millimetres read better than a tiny fractional metre. Green when the
-        // rewind-replay reconciliation leaves ~no residual.
-        gfx->DrawText(
-            font,
-            Fmt("%.0f mm", m.predErrM * 1000.0f),
-            x + 60.0f,
-            row,
-            scale,
-            RatingColor(m.predErrM, 0.05f, 0.30f)
-        );
+        // Unit-agnostic (metres for Deathmatch, world units for HideAndSeek):
+        // sub-1 values get two decimals, larger ones read as integers. Green
+        // when reconciliation leaves ~no residual correction.
+        const std::string v = m.predErr < 1.0f ? Fmt("%.2f", m.predErr) : Fmt("%.0f", m.predErr);
+        gfx->DrawText(font, v, x + 60.0f, row, scale, RatingColor(m.predErr, 0.05f, 0.30f));
         row += lh;
     }
 
