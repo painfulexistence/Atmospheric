@@ -1,46 +1,37 @@
 #include "../lua_application.hpp"
 #include "Atmospheric/audio_subsystem.hpp"
 
+// Binding convention (see bindings/README.md):
+// These are all plain forwards to AudioSubsystem, so we bind the member
+// function pointer directly via set_function(name, &Type::Method, instance)
+// instead of hand-writing a lambda. sol2 introspects the member pointer, so
+// the Lua signature auto-tracks the C++ one — if a method's parameters change
+// the binding follows automatically, and if a method is renamed/removed this
+// file fails to compile and points at the exact line. No silent drift.
 void BindAudioAPI(sol::state& lua, AudioSubsystem* audio) {
     sol::table atmos = lua["atmos"];
     sol::table audioTable = atmos.create("audio");
 
     // ===== Sound API (short sound effects) =====
-    audioTable["loadSound"] = [audio](const std::string& path) -> SoundID { return audio->LoadSound(path.c_str()); };
-
-    audioTable["unloadSound"] = [audio](SoundID id) { audio->UnloadSound(id); };
-
-    audioTable["playSound"] = [audio](SoundID id) { audio->PlaySound(id); };
-
-    audioTable["playSoundVariation"] = [audio](SoundID id, float pitchVar, float volVar) {
-        audio->PlaySoundVariation(id, pitchVar, volVar);
-    };
-
-    audioTable["stopSound"] = [audio](SoundID id) { audio->StopSound(id); };
-
-    audioTable["setSoundVolume"] = [audio](SoundID id, float volume) { audio->SetSoundVolume(id, volume); };
-
-    audioTable["isSoundPlaying"] = [audio](SoundID id) -> bool { return audio->IsSoundPlaying(id); };
+    audioTable.set_function("loadSound", &AudioSubsystem::LoadSound, audio);
+    audioTable.set_function("unloadSound", &AudioSubsystem::UnloadSound, audio);
+    audioTable.set_function("playSound", &AudioSubsystem::PlaySound, audio);
+    audioTable.set_function("playSoundVariation", &AudioSubsystem::PlaySoundVariation, audio);
+    audioTable.set_function("stopSound", &AudioSubsystem::StopSound, audio);
+    audioTable.set_function("setSoundVolume", &AudioSubsystem::SetSoundVolume, audio);
+    audioTable.set_function("isSoundPlaying", &AudioSubsystem::IsSoundPlaying, audio);
 
     // ===== Music API (streaming, for background music) =====
-    audioTable["loadMusic"] = [audio](const std::string& path) -> MusicID { return audio->LoadMusic(path.c_str()); };
-
-    audioTable["unloadMusic"] = [audio](MusicID id) { audio->UnloadMusic(id); };
-
-    audioTable["playMusic"] = [audio](MusicID id) { audio->PlayMusic(id); };
-
-    audioTable["stopMusic"] = [audio](MusicID id) { audio->StopMusic(id); };
-
-    audioTable["smoothStopMusic"] = [audio](MusicID id) { audio->SmoothStopMusic(id); };
-
-    audioTable["setMusicVolume"] = [audio](MusicID id, float volume) { audio->SetMusicVolume(id, volume); };
-
-    audioTable["isMusicPlaying"] = [audio](MusicID id) -> bool { return audio->IsMusicPlaying(id); };
+    audioTable.set_function("loadMusic", &AudioSubsystem::LoadMusic, audio);
+    audioTable.set_function("unloadMusic", &AudioSubsystem::UnloadMusic, audio);
+    audioTable.set_function("playMusic", &AudioSubsystem::PlayMusic, audio);
+    audioTable.set_function("stopMusic", &AudioSubsystem::StopMusic, audio);
+    audioTable.set_function("smoothStopMusic", &AudioSubsystem::SmoothStopMusic, audio);
+    audioTable.set_function("setMusicVolume", &AudioSubsystem::SetMusicVolume, audio);
+    audioTable.set_function("isMusicPlaying", &AudioSubsystem::IsMusicPlaying, audio);
 
     // ===== Global controls =====
-    audioTable["stopAllSounds"] = [audio]() { audio->StopAllSounds(); };
-
-    audioTable["stopAllMusic"] = [audio]() { audio->StopAllMusics(); };
-
-    audioTable["stopAll"] = [audio]() { audio->StopAll(); };
+    audioTable.set_function("stopAllSounds", &AudioSubsystem::StopAllSounds, audio);
+    audioTable.set_function("stopAllMusic", &AudioSubsystem::StopAllMusics, audio);
+    audioTable.set_function("stopAll", &AudioSubsystem::StopAll, audio);
 }
