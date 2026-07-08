@@ -219,16 +219,13 @@ class DeathmatchGame : public Application {
             auto* vat = static_cast<VATComponent*>(_enemyGO->AddComponent<VATComponent>(
                 enemyAsset.mesh, std::move(enemyAsset.clip), VATProps{ .speed = 1.0f }
             ));
-            // Preset metallic look: gunmetal base, full metalness, low roughness.
-            // Keep back-face culling (the material default): the blob stays
-            // convex, and culling means when the player walks up to shoot the
-            // dummy and their camera clips inside the mesh, they see through it
-            // instead of the interior covering the screen.
+            // Preset metallic look: gunmetal-red base, full metalness. Back-face
+            // culling is the material default and the blob is convex, so there's
+            // nothing to override. Without image-based lighting a pure metal is
+            // mostly dark except the directional highlight, so a mid roughness
+            // spreads that highlight enough to read as metal — tune to taste.
             if (auto* mat = vat->GetMaterial()) {
-                // Matte-ish roughness: without image-based lighting a near-mirror
-                // metal is one blown-out hotspot that BloomPass smears across the
-                // whole frame, so keep the highlight broad and dim.
-                MetalMaps m = MakePresetMetalMaps(glm::vec3(0.59f, 0.16f, 0.15f), /*roughness*/ 0.55f);
+                MetalMaps m = MakePresetMetalMaps(glm::vec3(0.59f, 0.16f, 0.15f), /*roughness*/ 0.4f);
                 mat->baseMap = m.base;
                 mat->metallicMap = m.metallic;
                 mat->roughnessMap = m.roughness;
