@@ -241,11 +241,6 @@ void GraphicsSubsystem::DrawImGui(float dt) {
             "Average frame rate: %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate
         );
         ImGui::ColorEdit3("Clear color", reinterpret_cast<float*>(&renderer->clearColor));
-        if (auto* vcp = renderer->GetPass<VoxelChunkPass>()) {
-            const char* paletteNames[] = { "1 - Warm Pink/Gold", "2 - Cool Blue/Purple",    "3 - Earthy Green",
-                                           "4 - Forest",         "5 - Soft Cool (default)", "6 - Vivid Mint/Coral" };
-            ImGui::Combo("Voxel Palette", &vcp->paletteIndex, paletteNames, 6);
-        }
         if (auto* bloom = renderer->GetPass<BloomPass>()) {
             ImGui::Checkbox("Bloom", &bloom->enabled);
         }

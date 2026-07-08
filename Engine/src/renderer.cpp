@@ -950,7 +950,9 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             // WebGL 2.0 Fallback: Non-instanced draw calls using World uniform
             for (const auto& inst : instances) {
                 depthShader->SetUniform(std::string("World"), inst.modelMatrix);
-                glDrawElements(GetGLPrimitiveType(material->renderState.topology), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0);
+                glDrawElements(
+                    GetGLPrimitiveType(material->renderState.topology), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
+                );
             }
 #else
             // Upload ALL instances for this batch once
@@ -1700,7 +1702,9 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             AE_GL_PROBE(renderer, "Opaque pass: PRIM-GLES before non-instanced loop");
             for (const auto& inst : instances) {
                 colorShader->SetUniform(std::string("World"), inst.modelMatrix);
-                glDrawElements(GetGLPrimitiveType(material->renderState.topology), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0);
+                glDrawElements(
+                    GetGLPrimitiveType(material->renderState.topology), mesh->triCount * 3, GL_UNSIGNED_SHORT, 0
+                );
                 AE_GL_PROBE(renderer, "Opaque pass: PRIM-GLES after glDrawElements");
             }
 #else

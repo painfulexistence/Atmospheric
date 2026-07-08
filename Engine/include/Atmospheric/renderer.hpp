@@ -297,8 +297,6 @@ public:
 #endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
-    int paletteIndex = 4;// 0-5; 4 = VX Palette 5 (soft cool blue-grey)
-
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
     void _initGPU(
@@ -387,11 +385,18 @@ private:
     void _ensureGIRenderTargets(int w, int h);
 
     std::vector<VoxelVolumeComponent*> _volumes;
-    VoxelVolumeComponent* _uploadedVolume = nullptr;// which volume the GPU textures currently hold
 
-    GLuint _volumeTexGL = 0;
-    GLuint _occupancyTexGL = 0;
-    GLuint _paletteTexGL = 0;
+    // Per-volume GL textures (palette-index 3D + occupancy 3D + palette 2D),
+    // uploaded lazily and re-uploaded when the volume's dirty flag is set
+    // (regeneration or a runtime edit). Each registered volume gets its own set;
+    // the main pass draws one bounding box per volume, depth-composited.
+    struct GLVolume {
+        GLuint volumeTex = 0;
+        GLuint occupancyTex = 0;
+        GLuint paletteTex = 0;
+    };
+    std::unordered_map<VoxelVolumeComponent*, GLVolume> _glVolumes;
+    VoxelVolumeComponent* _uploadedVolume = nullptr;// WebGPU single-volume upload tracking
 
     // GI accumulation ping-pong (RGBA16F: rgb = indirect radiance, a = camera
     // distance for history validation)
