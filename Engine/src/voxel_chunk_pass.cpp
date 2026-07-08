@@ -380,6 +380,16 @@ void SkyboxPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
     shader->SetUniform("u_skyColor", skyColor);
     shader->SetUniform("u_horizonColor", horizonColor);
 
+    // Equirectangular HDR environment (Renderer::environmentMap) takes over the
+    // sky when present; otherwise the gradient above is used.
+    const bool useEnv = renderer.environmentMap.IsValid() && static_cast<uint32_t>(renderer.environmentMap) != 0;
+    if (useEnv) {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(renderer.environmentMap));
+    }
+    shader->SetUniform("u_envMap", 0);
+    shader->SetUniform("u_useEnv", useEnv ? 1 : 0);
+
     glDepthFunc(GL_LEQUAL);
     glDepthMask(GL_FALSE);
     glDisable(GL_CULL_FACE);

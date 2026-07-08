@@ -921,6 +921,28 @@ TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>&
     return TextureHandle(texID);
 }
 
+TextureHandle AssetManager::LoadHDR(const std::string& path) {
+    // Equirectangular HDRs are authored top-down; flip on load so texture row 0
+    // (GL v=0) is the image bottom, matching the skybox shader's v = asin(dir.y).
+    stbi_set_flip_vertically_on_load(true);
+    int w = 0, h = 0, n = 0;
+    float* data = stbi_loadf(path.c_str(), &w, &h, &n, 4);// force RGBA
+    stbi_set_flip_vertically_on_load(false);
+    if (!data) {
+        ConsoleSubsystem::Get()->Error(fmt::format("AssetManager::LoadHDR: failed to load '{}'", path));
+        return TextureHandle{};
+    }
+    uint32_t id = GfxFactory::UploadTextureRGBA16F(data, w, h);
+    stbi_image_free(data);
+
+    _textureCache["hdr_" + path] = {
+        id, static_cast<uint32_t>(w), static_cast<uint32_t>(h), static_cast<size_t>(w) * h * 8
+    };
+    textures.push_back(id);
+    ENGINE_LOG("LoadHDR '{}': {}x{}", path, w, h);
+    return TextureHandle(id);
+}
+
 TextureHandle AssetManager::GetTexture(const std::string& name) const {
     auto it = _textureCache.find(name);
     if (it != _textureCache.end()) {

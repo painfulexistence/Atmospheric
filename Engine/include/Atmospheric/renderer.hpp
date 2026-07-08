@@ -892,6 +892,11 @@ public:
     glm::vec4 clearColor = glm::vec4(0.15f, 0.183f, 0.2f, 1.0f);
     bool wireframeEnabled = false;
 
+    // Equirectangular HDR environment map (RGBA16F, from AssetManager::LoadHDR).
+    // When valid, SkyboxPass renders it as the sky (and later IBL phases source
+    // irradiance/reflection from it); invalid falls back to the gradient sky.
+    TextureHandle environmentMap;
+
     // Non-null only while PlanarReflectionPass drives the scene passes with a
     // mirrored camera; passes fall back to the main camera + sceneRT when null.
     const RenderViewOverride* viewOverride = nullptr;

@@ -81,6 +81,13 @@ public:
     // `rgba` holds w*h*4 floats, row-major.
     static uint32_t UploadTextureRGBA32F(const float* rgba, int w, int h);
 
+    // Cross-backend filterable half-float RGBA texture (RGBA16F / rgba16float),
+    // wrapped horizontally and clamped vertically — for equirectangular HDR
+    // environment maps (skybox + IBL). Returns the GL handle on OpenGL or a
+    // synthetic ID on WebGPU (GetWGPUTexture/ReleaseTexture). `rgba` holds
+    // w*h*4 floats, row-major.
+    static uint32_t UploadTextureRGBA16F(const float* rgba, int w, int h);
+
     // Filter hint recorded for a texture at upload time. Returns Linear for
     // unknown IDs. Consulted by GPUCanvasPass to pick its sampler; on GL the
     // filter is already baked into the texture, so callers rarely need this.

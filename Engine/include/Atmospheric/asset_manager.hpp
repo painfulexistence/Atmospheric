@@ -121,6 +121,10 @@ public:
     TextureHandle CreateOrUpdateTextureRGBA8(const std::string& name, const unsigned char* data, int width, int height);
     std::shared_ptr<Mesh> LoadOBJ(const std::string& path);
     MeshHandle LoadGLTF(const std::string& path);
+    // Load an equirectangular HDR (.hdr) as a filterable RGBA16F texture for use
+    // as a skybox / IBL environment map. Returns an invalid handle on failure.
+    // Native path only for now (reads from disk via stb_image's float loader).
+    TextureHandle LoadHDR(const std::string& path);
 
     // ========== Resource Access ==========
     const std::vector<GLuint>& GetTextures() const {

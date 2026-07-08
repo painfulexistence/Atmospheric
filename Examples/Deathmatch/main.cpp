@@ -185,6 +185,14 @@ class DeathmatchGame : public Application {
     void OnLoad() override {
         _fontID = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
+        // Optional HDRI sky: drop an equirectangular .hdr at
+        // assets/textures/env.hdr to replace the gradient sky (and, once the IBL
+        // phases land, to light the metal blob). Absent → gradient fallback.
+        if (FileSystem::Get().Exists("assets/textures/env.hdr")) {
+            TextureHandle env = AssetManager::Get().LoadHDR("assets/textures/env.hdr");
+            if (env.IsValid()) GraphicsSubsystem::Get()->renderer->environmentMap = env;
+        }
+
         // Low-poly greybox palette (concrete grey + red accents).
         MakeMaterial("dm_floor_mat", glm::vec3(0.30f, 0.30f, 0.33f));
         MakeMaterial("dm_box_mat", glm::vec3(0.48f, 0.48f, 0.52f));
