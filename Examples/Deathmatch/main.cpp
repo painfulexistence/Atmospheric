@@ -202,15 +202,19 @@ class DeathmatchGame : public Application {
         for (int i = 0; i < sim::kNumBoxes; i++)
             MakeBox(boxes[i], cubeMesh);
 
-        // Enemy avatar: an animated VAT "blob" with a preset metallic material
-        // instead of a flat capsule. The blob is sized to roughly fill the
-        // gameplay capsule (radius kCapsuleRadius, height kCapsuleHeight); the
-        // sim still collides/lag-compensates against the capsule — only the
-        // render mesh changed.
-        auto enemyAsset = BuildBlobVATAsset(
-            "dm_enemy_vat", /*radius*/ sim::kCapsuleRadius * 1.5f, /*division*/ 28, /*frames*/ 60, /*fps*/ 24.0f
-        );
+        // Enemy avatar. In --local solo mode the "enemy" is the embedded
+        // server's training bot (a practice dummy), so render it as an animated
+        // VAT "blob" with a preset metallic material — a distinct target. A real
+        // networked opponent is another player, so it stays a plain capsule.
+        // Either way only the render mesh differs; the sim collides and
+        // lag-compensates against the gameplay capsule (kCapsuleRadius/Height).
         _enemyGO = CreateGameObject(kParked);
+        VATDemoAsset enemyAsset;
+        if (gcli.local) {
+            enemyAsset = BuildBlobVATAsset(
+                "dm_enemy_vat", /*radius*/ sim::kCapsuleRadius * 1.5f, /*division*/ 28, /*frames*/ 60, /*fps*/ 24.0f
+            );
+        }
         if (enemyAsset.clip) {
             auto* vat = static_cast<VATComponent*>(_enemyGO->AddComponent<VATComponent>(
                 enemyAsset.mesh, std::move(enemyAsset.clip), VATProps{ .speed = 1.0f }
@@ -226,7 +230,7 @@ class DeathmatchGame : public Application {
                 mat->renderState.cull = CullMode::None;
             }
         } else {
-            // Bake failed — fall back to the capsule so the enemy stays visible.
+            // Networked opponent (or a bake failure): plain capsule.
             auto capsuleMesh = am.CreateCapsuleMesh("dm_capsule", sim::kCapsuleRadius, sim::kCapsuleHeight);
             am.GetMeshPtr(capsuleMesh)->SetMaterial(am.GetMaterialHandle("dm_enemy_mat"));
             _enemyGO->AddComponent<MeshComponent>(capsuleMesh);
