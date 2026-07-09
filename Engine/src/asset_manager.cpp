@@ -9,6 +9,9 @@
 #include "shader.hpp"
 #include <algorithm>
 #include <cassert>
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
 #include <nlohmann/json.hpp>
 #include <unordered_set>
 
@@ -27,6 +30,13 @@ TextureHandle::TextureHandle(const std::string& path) {
 #define STBI_NO_SIMD
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+
+// Declarations only (implementation lives in exr_impl.cpp). Macros must match
+// that TU: no miniz, reuse stb's zlib codec. Without TINYEXR_USE_MINIZ 0 the
+// header's default would try to #include <miniz.h>.
+#define TINYEXR_USE_MINIZ 0
+#define TINYEXR_USE_STB_ZLIB 1
+#include "tinyexr.h"
 
 #define TINYGLTF_NO_INCLUDE_STB_IMAGE
 #define TINYGLTF_NO_STB_IMAGE_WRITE
@@ -921,25 +931,70 @@ TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>&
     return TextureHandle(texID);
 }
 
-TextureHandle AssetManager::LoadHDR(const std::string& path) {
-    // Equirectangular HDRs are authored top-down; flip on load so texture row 0
-    // (GL v=0) is the image bottom, matching the skybox shader's v = asin(dir.y).
-    stbi_set_flip_vertically_on_load(true);
-    int w = 0, h = 0, n = 0;
-    float* data = stbi_loadf(path.c_str(), &w, &h, &n, 4);// force RGBA
-    stbi_set_flip_vertically_on_load(false);
-    if (!data) {
-        ConsoleSubsystem::Get()->Error(fmt::format("AssetManager::LoadHDR: failed to load '{}'", path));
-        return TextureHandle{};
+namespace {
+    // Flip an RGBA float image vertically in place (row 0 <-> last row).
+    void FlipRGBAVerticallyInPlace(float* rgba, int w, int h) {
+        const size_t rowFloats = static_cast<size_t>(w) * 4;
+        std::vector<float> tmp(rowFloats);
+        for (int y = 0; y < h / 2; ++y) {
+            float* top = rgba + static_cast<size_t>(y) * rowFloats;
+            float* bot = rgba + static_cast<size_t>(h - 1 - y) * rowFloats;
+            std::memcpy(tmp.data(), top, rowFloats * sizeof(float));
+            std::memcpy(top, bot, rowFloats * sizeof(float));
+            std::memcpy(bot, tmp.data(), rowFloats * sizeof(float));
+        }
     }
+
+    bool HasExtension(const std::string& path, const char* ext) {
+        const size_t n = std::strlen(ext);
+        if (path.size() < n) return false;
+        return std::equal(path.end() - static_cast<std::ptrdiff_t>(n), path.end(), ext, [](char a, char b) {
+            return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+        });
+    }
+}// namespace
+
+TextureHandle AssetManager::LoadHDR(const std::string& path) {
+    // Both loaders end up with texture row 0 (GL v=0) = image bottom, so the
+    // skybox shader's v = asin(dir.y) mapping is consistent: .hdr via stb's
+    // flip-on-load, .exr via an explicit flip (tinyexr returns top-down).
+    int w = 0, h = 0;
+    float* data = nullptr;
+    const bool fromEXR = HasExtension(path, ".exr");
+
+    if (fromEXR) {
+        const char* err = nullptr;
+        int ret = LoadEXR(&data, &w, &h, path.c_str(), &err);// always RGBA
+        if (ret != TINYEXR_SUCCESS) {
+            ConsoleSubsystem::Get()->Error(
+                fmt::format("AssetManager::LoadHDR(EXR) '{}': {}", path, err ? err : "unknown error")
+            );
+            if (err) FreeEXRErrorMessage(err);
+            return TextureHandle{};
+        }
+        FlipRGBAVerticallyInPlace(data, w, h);
+    } else {
+        stbi_set_flip_vertically_on_load(true);
+        int n = 0;
+        data = stbi_loadf(path.c_str(), &w, &h, &n, 4);// force RGBA
+        stbi_set_flip_vertically_on_load(false);
+        if (!data) {
+            ConsoleSubsystem::Get()->Error(fmt::format("AssetManager::LoadHDR: failed to load '{}'", path));
+            return TextureHandle{};
+        }
+    }
+
     uint32_t id = GfxFactory::UploadTextureRGBA16F(data, w, h);
-    stbi_image_free(data);
+    if (fromEXR)
+        free(data);// tinyexr allocates with malloc
+    else
+        stbi_image_free(data);
 
     _textureCache["hdr_" + path] = {
         id, static_cast<uint32_t>(w), static_cast<uint32_t>(h), static_cast<size_t>(w) * h * 8
     };
     textures.push_back(id);
-    ENGINE_LOG("LoadHDR '{}': {}x{}", path, w, h);
+    ENGINE_LOG("LoadHDR '{}': {}x{} ({})", path, w, h, fromEXR ? "exr" : "hdr");
     return TextureHandle(id);
 }
 

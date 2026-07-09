@@ -191,6 +191,7 @@ set(SOURCES
     src/water_component.cpp
     src/vat.cpp
     src/vat_component.cpp
+    src/exr_impl.cpp
     src/shader.cpp
     src/graphics_subsystem.cpp
     src/graphics_subsystem_tile.cpp
@@ -408,6 +409,7 @@ target_include_directories(AtmosphericEngine
         ${BULLET_INCLUDE_DIR}
         # lua_static has PUBLIC include dirs → Lua headers propagate automatically
         ${CMAKE_CURRENT_SOURCE_DIR}/external/stb
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/tinyexr
         ${CMAKE_CURRENT_SOURCE_DIR}/include/Atmospheric
         ${FLATBUFFERS_GENERATED_DIR}
         ${fastnoiselite_SOURCE_DIR}/Cpp
