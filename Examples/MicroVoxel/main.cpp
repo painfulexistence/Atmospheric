@@ -2,6 +2,7 @@
 #include "Atmospheric/camera_controller_3d.hpp"
 #include "Atmospheric/light_component.hpp"
 #include "Atmospheric/voxel_volume_component.hpp"
+#include "Atmospheric/window.hpp"
 
 // Micro voxel rendering demo: a raymarched 12.8m diorama of 5cm voxels
 // (procedural terrain + caves + ore + floating crystals), depth-composited
@@ -174,9 +175,16 @@ class MicroVoxelApp : public Application {
         if (input->IsKeyPressed(Key::B)) {
             mv->giSplitCompare = (mv->giSplitCompare >= 0.0f) ? -1.0f : 0.5f;
             console->Info(
-                mv->giSplitCompare >= 0.0f ? "MicroVoxel GI split: on (left raw | right denoised)"
+                mv->giSplitCompare >= 0.0f ? "MicroVoxel GI split: on (left raw | right denoised), drag to move"
                                            : "MicroVoxel GI split: off"
             );
+        }
+        // Drag the split divider with the mouse while the compare is on.
+        if (mv->giSplitCompare >= 0.0f && input->IsMouseButtonDown() && !input->IsMouseOverUI()) {
+            const glm::vec2 m = input->GetMousePosition();
+            const auto [lw, lh] = Window::Get()->GetLogicalSize();
+            (void)lh;
+            if (lw > 0) mv->giSplitCompare = glm::clamp(m.x / static_cast<float>(lw), 0.0f, 1.0f);
         }
     }
 };
