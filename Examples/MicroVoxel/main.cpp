@@ -180,11 +180,14 @@ class MicroVoxelApp : public Application {
             );
         }
         // Drag the split divider with the mouse while the compare is on.
+        // GetMousePosition is in physical/framebuffer pixels (see InputSubsystem),
+        // matching the shader's gl_FragCoord-based uv, so divide by the physical
+        // width — dividing by the logical width lands 2x off on Retina.
         if (mv->giSplitCompare >= 0.0f && input->IsMouseButtonDown() && !input->IsMouseOverUI()) {
             const glm::vec2 m = input->GetMousePosition();
-            const auto [lw, lh] = Window::Get()->GetLogicalSize();
-            (void)lh;
-            if (lw > 0) mv->giSplitCompare = glm::clamp(m.x / static_cast<float>(lw), 0.0f, 1.0f);
+            const auto [pw, ph] = Window::Get()->GetPhysicalSize();
+            (void)ph;
+            if (pw > 0) mv->giSplitCompare = glm::clamp(m.x / static_cast<float>(pw), 0.0f, 1.0f);
         }
     }
 };
