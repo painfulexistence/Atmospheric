@@ -367,6 +367,11 @@ public:
     float giSigmaDepth = 0.5f;
     float giSigmaNormal = 64.0f;
     float giSigmaLuma = 8.0f;
+    // Split-screen GI compare (observation aid): <0 disables; else the screen-x
+    // split in [0,1] where the left half shows the raw temporal GI and the right
+    // half the à-trous-denoised GI, so the denoiser's effect is visible in one
+    // frame. The example toggles it (0.5) with B.
+    float giSplitCompare = -1.0f;
     int debugMode = 0;// 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
     bool shadowEnabled = true;
 

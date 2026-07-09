@@ -540,6 +540,8 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     shader->SetUniform(std::string("u_occupancy"), 1);
     shader->SetUniform(std::string("u_palette"), 2);
     shader->SetUniform(std::string("u_giTex"), 3);
+    shader->SetUniform(std::string("u_giRaw"), 4);
+    shader->SetUniform(std::string("u_giSplitX"), giActive ? giSplitCompare : -1.0f);
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
@@ -587,6 +589,10 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         // stands in when GI is off (the composite doesn't sample u_giTex then).
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, (useGI && giResultTex) ? giResultTex : gv.paletteTex);
+        // Unit 4: raw (un-denoised) GI for the split-screen compare. Fall back to
+        // this volume's palette when GI is off (macOS validates every sampler).
+        glActiveTexture(GL_TEXTURE4);
+        glBindTexture(GL_TEXTURE_2D, (useGI && _giTexGL[_giCur]) ? _giTexGL[_giCur] : gv.paletteTex);
 
         glBindVertexArray(renderer.gl.skyboxVAO);
         glDrawArrays(GL_TRIANGLES, 0, 36);// unit cube -> volume AABB via u_model

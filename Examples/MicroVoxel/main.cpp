@@ -95,7 +95,7 @@ class MicroVoxelApp : public Application {
         ConsoleSubsystem::Get()->Info("Three raymarched 5cm-voxel volumes — no triangles. Hold E to dig into them.");
         ConsoleSubsystem::Get()->Info(
             "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P/X/N toggle "
-            "GI/AO/shadow/point light/reflections/GI denoiser."
+            "GI/AO/shadow/point light/reflections/GI denoiser | B = split raw|denoised."
         );
     }
 
@@ -169,6 +169,13 @@ class MicroVoxelApp : public Application {
             console->Info(
                 mv->giAtrousIterations > 0 ? "MicroVoxel GI denoiser: on (a-trous)"
                                            : "MicroVoxel GI denoiser: off (raw temporal)"
+            );
+        }
+        if (input->IsKeyPressed(Key::B)) {
+            mv->giSplitCompare = (mv->giSplitCompare >= 0.0f) ? -1.0f : 0.5f;
+            console->Info(
+                mv->giSplitCompare >= 0.0f ? "MicroVoxel GI split: on (left raw | right denoised)"
+                                           : "MicroVoxel GI split: off"
             );
         }
     }
