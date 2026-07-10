@@ -984,9 +984,7 @@ TextureHandle AssetManager::LoadHDR(const std::string& path) {
     } else {
         stbi_set_flip_vertically_on_load(true);
         int n = 0;
-        data = stbi_loadf_from_memory(
-            fileData.data(), static_cast<int>(fileData.size()), &w, &h, &n, 4
-        );// force RGBA
+        data = stbi_loadf_from_memory(fileData.data(), static_cast<int>(fileData.size()), &w, &h, &n, 4);// force RGBA
         stbi_set_flip_vertically_on_load(false);
         if (!data) {
             ConsoleSubsystem::Get()->Error(fmt::format("AssetManager::LoadHDR: failed to decode '{}'", path));
