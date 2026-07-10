@@ -955,13 +955,24 @@ TextureHandle AssetManager::LoadHDR(const std::string& path) {
     // Both loaders end up with texture row 0 (GL v=0) = image bottom, so the
     // skybox shader's v = asin(dir.y) mapping is consistent: .hdr via stb's
     // flip-on-load, .exr via an explicit flip (tinyexr returns top-down).
+    // Source bytes through FileSystem (asset resolution + transparent web
+    // prefetching) rather than letting stb/tinyexr fopen() the raw path, which
+    // bypasses that and fails outside the process CWD / on web.
+    FileSystem::Bytes fileData = FileSystem::Get().ReadSync(path);
+    if (fileData.empty()) {
+        ConsoleSubsystem::Get()->Error(
+            fmt::format("AssetManager::LoadHDR: failed to read file bytes via FileSystem at '{}'", path)
+        );
+        return TextureHandle{};
+    }
+
     int w = 0, h = 0;
     float* data = nullptr;
     const bool fromEXR = HasExtension(path, ".exr");
 
     if (fromEXR) {
         const char* err = nullptr;
-        int ret = LoadEXR(&data, &w, &h, path.c_str(), &err);// always RGBA
+        int ret = LoadEXRFromMemory(&data, &w, &h, fileData.data(), fileData.size(), &err);// always RGBA
         if (ret != TINYEXR_SUCCESS) {
             ConsoleSubsystem::Get()->Error(
                 fmt::format("AssetManager::LoadHDR(EXR) '{}': {}", path, err ? err : "unknown error")
@@ -973,10 +984,12 @@ TextureHandle AssetManager::LoadHDR(const std::string& path) {
     } else {
         stbi_set_flip_vertically_on_load(true);
         int n = 0;
-        data = stbi_loadf(path.c_str(), &w, &h, &n, 4);// force RGBA
+        data = stbi_loadf_from_memory(
+            fileData.data(), static_cast<int>(fileData.size()), &w, &h, &n, 4
+        );// force RGBA
         stbi_set_flip_vertically_on_load(false);
         if (!data) {
-            ConsoleSubsystem::Get()->Error(fmt::format("AssetManager::LoadHDR: failed to load '{}'", path));
+            ConsoleSubsystem::Get()->Error(fmt::format("AssetManager::LoadHDR: failed to decode '{}'", path));
             return TextureHandle{};
         }
     }
