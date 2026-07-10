@@ -33,6 +33,7 @@ class ShaderProgram;
 class Renderer;
 class CameraComponent;
 class VoxelVolumeComponent;
+class VoxelWorld;
 
 struct RenderCommand {
     MeshHandle mesh;
@@ -302,6 +303,21 @@ public:
     // (the WebGPU path applies it unconditionally). Toggle it live from an app.
     float aoStrength = 1.0f;
 
+    // Global illumination mode for the voxel world. VoxelGI cone-traces the
+    // world's VoxelConeGI radiance grid (world-space, forward-friendly); SSGI is
+    // screen-space (reserved — next increment). Off leaves flat ambient. Exposed
+    // in the GI panel (GraphicsSubsystem::DrawImGui). GL path only.
+    enum class GIMode { Off = 0, SSGI = 1, VoxelGI = 2 };
+    GIMode giMode = GIMode::Off;
+    float giStrength = 1.0f;  // scales the indirect contribution
+    int giVoxelDim = 64;      // VCT cascade resolution (== world extent in metres)
+
+    // Worlds whose VoxelConeGI grid this pass drives/binds for VoxelGI. Worlds
+    // register themselves (VoxelWorldComponent) so the pass can reach the raw
+    // voxels for CPU injection without owning the scene graph.
+    void RegisterWorld(VoxelWorld* w);
+    void UnregisterWorld(VoxelWorld* w);
+
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
     void _initGPU(
@@ -323,6 +339,12 @@ private:
     WGPUBuffer _drawUniformBuf = nullptr;
     uint32_t _drawSlotCapacity = 0;
 #endif
+
+private:
+    std::vector<VoxelWorld*> _giWorlds;
+    // 1x1x1 3D texture bound to u_giRadiance whenever VoxelGI is off or no grid
+    // is ready, so strict drivers (macOS) always see a valid sampler3D binding.
+    GLuint _giFallbackTex = 0;
 };
 
 // Micro voxel raymarch (experimental): a fullscreen two-level DDA over a

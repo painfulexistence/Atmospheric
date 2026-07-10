@@ -58,7 +58,7 @@ class VoxelWorldApp : public Application {
 
         ConsoleSubsystem::Get()->Info(
             "VoxelWorld loaded. WASD move, RF up/down, Arrow keys look, Z slow, X sprint, P palette, I wireframe, O "
-            "corner AO, ESC quit."
+            "corner AO, G cycle GI (VoxelGI/SSGI), ESC quit."
         );
         ConsoleSubsystem::Get()->Info(
             "Hold E to dig — greedy-meshed 1m voxels, so carving re-meshes the affected chunks."
@@ -90,6 +90,25 @@ class VoxelWorldApp : public Application {
             if (auto* vp = GraphicsSubsystem::Get()->renderer->GetPass<VoxelChunkPass>()) {
                 vp->aoStrength = (vp->aoStrength > 0.0f) ? 0.0f : 1.0f;
                 ConsoleSubsystem::Get()->Info(vp->aoStrength > 0.0f ? "Corner AO: on" : "Corner AO: off");
+            }
+        }
+        // Cycle global illumination: Off -> VoxelGI -> SSGI -> Off. Also
+        // selectable in the GI panel (Engine Subsystems > Graphics).
+        if (InputSubsystem::Get()->IsKeyPressed(Key::G)) {
+            if (auto* vp = GraphicsSubsystem::Get()->renderer->GetPass<VoxelChunkPass>()) {
+                using GIMode = VoxelChunkPass::GIMode;
+                const char* name = "off";
+                if (vp->giMode == GIMode::Off) {
+                    vp->giMode = GIMode::VoxelGI;
+                    name = "VoxelGI (cone tracing)";
+                } else if (vp->giMode == GIMode::VoxelGI) {
+                    vp->giMode = GIMode::SSGI;
+                    name = "SSGI (not yet implemented)";
+                } else {
+                    vp->giMode = GIMode::Off;
+                    name = "off";
+                }
+                ConsoleSubsystem::Get()->Info(std::string("Voxel GI: ") + name);
             }
         }
         if (InputSubsystem::Get()->IsKeyDown(Key::E)) {

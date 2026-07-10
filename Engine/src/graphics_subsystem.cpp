@@ -260,6 +260,34 @@ void GraphicsSubsystem::DrawImGui(float dt) {
             ImGui::SameLine();
             ImGui::Checkbox("Vignette", &pp->vignetteEnabled);
         }
+
+        // Global illumination for the voxel world (VoxelChunkPass). Enabled
+        // defaults to VoxelGI (cone tracing) — the mode that fits this forward
+        // renderer; SSGI is reserved for a later increment.
+        if (auto* vp = renderer->GetPass<VoxelChunkPass>()) {
+            if (ImGui::TreeNode("Global Illumination")) {
+                using GIMode = VoxelChunkPass::GIMode;
+                bool enabled = vp->giMode != GIMode::Off;
+                if (ImGui::Checkbox("Enabled", &enabled)) {
+                    vp->giMode = enabled ? GIMode::VoxelGI : GIMode::Off;
+                }
+                if (vp->giMode != GIMode::Off) {
+                    int idx = (vp->giMode == GIMode::VoxelGI) ? 1 : 0;
+                    if (ImGui::Combo("Mode", &idx, "SSGI (screen-space)\0VoxelGI (cone tracing)\0")) {
+                        vp->giMode = (idx == 1) ? GIMode::VoxelGI : GIMode::SSGI;
+                    }
+                    ImGui::SliderFloat("Strength", &vp->giStrength, 0.0f, 3.0f);
+                    if (vp->giMode == GIMode::VoxelGI) {
+                        ImGui::SliderInt("Cascade dim (m)", &vp->giVoxelDim, 32, 128);
+                        ImGui::TextDisabled("World-space voxel cone tracing");
+                    } else {
+                        ImGui::TextDisabled("SSGI not yet implemented (next increment)");
+                    }
+                }
+                ImGui::TreePop();
+            }
+        }
+
         ImGui::Text("Opaque Queue Size: %d", static_cast<int>(renderer->GetOpaqueQueue().size()));
 
 #ifdef AE_GPU_TIMER_ENABLED

@@ -251,6 +251,7 @@ void VoxelWorld::CarveSphere(const glm::vec3& center, float radius) {
             }
         }
     }
+    giDirty = true;// carving changed the voxels; the VCT grid must re-inject
 }
 
 // ── private ──────────────────────────────────────────────────────────────────
@@ -282,6 +283,7 @@ void VoxelWorld::LoadChunk(glm::ivec3 pos) {
     VoxelChunkComponent* chunk = AcquireSlot(pos);
     _chunkMap[pos] = chunk;
     GenerateChunkTerrain(chunk);
+    giDirty = true;// new voxels streamed in; refresh the VCT grid
 }
 
 void VoxelWorld::UnloadChunk(glm::ivec3 pos) {

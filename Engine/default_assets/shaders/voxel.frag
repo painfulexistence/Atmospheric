@@ -20,7 +20,54 @@ uniform int   u_paletteIndex;  // 0-5, default 4 (VX Palette 5)
 // geometry below the mirror plane; all-zero disables (dot == 0 is kept).
 uniform vec4  u_clipPlane;
 
+// Global illumination: 0 = off, 1 = SSGI (reserved), 2 = VoxelGI (VCT).
+// The VoxelConeGI radiance grid: rgb = injected radiance, a = opacity. Placed
+// in world space by origin (min corner) + dim cells of cellSize metres.
+uniform int       u_giMode;
+uniform float     u_giStrength;
+uniform sampler3D u_giRadiance;
+uniform vec3      u_giOrigin;
+uniform float     u_giCellSize;
+uniform int       u_giDim;
+uniform float     u_giMaxMip;
+
 out vec4 fragColor;
+
+// Trace one diffuse cone through the radiance grid, accumulating front-to-back
+// and stepping the mip level up with the cone's widening footprint.
+vec3 coneTrace(vec3 startWorld, vec3 dir, float aperture) {
+    float gridSize = float(u_giDim) * u_giCellSize;
+    vec4 acc = vec4(0.0);
+    float dist = u_giCellSize * 1.5;// skip the origin voxel
+    for (int i = 0; i < 32; ++i) {
+        if (acc.a >= 0.98 || dist >= gridSize) break;
+        float diameter = max(u_giCellSize, 2.0 * aperture * dist);
+        float mip = clamp(log2(diameter / u_giCellSize), 0.0, u_giMaxMip);
+        vec3 wp = startWorld + dir * dist;
+        vec3 uvw = (wp - u_giOrigin) / gridSize;
+        if (any(lessThan(uvw, vec3(0.0))) || any(greaterThan(uvw, vec3(1.0)))) break;
+        vec4 s = textureLod(u_giRadiance, uvw, mip);
+        acc.rgb += (1.0 - acc.a) * s.a * s.rgb;
+        acc.a += (1.0 - acc.a) * s.a;
+        dist += diameter * 0.5;
+    }
+    return acc.rgb;
+}
+
+// Five-cone diffuse gather over the hemisphere around the surface normal.
+vec3 voxelGI(vec3 worldPos, vec3 n) {
+    vec3 start = worldPos + n * u_giCellSize * 1.5;
+    vec3 up = abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    vec3 t = normalize(cross(up, n));
+    vec3 b = cross(n, t);
+    float aperture = 0.577;// ~60° cone
+    vec3 gi = coneTrace(start, n, aperture);
+    gi += coneTrace(start, normalize(n * 0.5 + t), aperture);
+    gi += coneTrace(start, normalize(n * 0.5 - t), aperture);
+    gi += coneTrace(start, normalize(n * 0.5 + b), aperture);
+    gi += coneTrace(start, normalize(n * 0.5 - b), aperture);
+    return gi / 5.0;
+}
 
 // Cosine colour palette: a + b * cos(2π * (c*t + d))
 // All 6 palettes ported from VX shaders/chunk.vert
@@ -71,6 +118,13 @@ void main() {
     vec3 ambient = u_ambientColor * baseColor;
     vec3 diffuse = diff * u_lightColor * baseColor;
     vec3 color   = (ambient + diffuse) * ao;
+
+    // VoxelGI (VCT): add cone-traced indirect bounce, modulated by receiver
+    // albedo and the corner AO. SSGI (mode 1) is not wired yet — no-op.
+    if (u_giMode == 2) {
+        vec3 indirect = voxelGI(v_worldPos, norm);
+        color += u_giStrength * indirect * baseColor * ao;
+    }
 
     float dist      = length(v_worldPos - u_cameraPos);
     float fogFactor = clamp(exp(-u_fogDensity * dist), 0.0, 1.0);
