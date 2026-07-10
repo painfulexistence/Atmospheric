@@ -171,6 +171,96 @@ void MicroVoxelPass::_ensureGIRenderTargets(int w, int h) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+void MicroVoxelPass::_buildGlobalGrid() {
+    if (_volumes.empty()) return;
+
+    // Combined world AABB over all non-empty volumes.
+    glm::vec3 mn(1e30f), mx(-1e30f);
+    for (auto* v : _volumes) {
+        if (v->volume.empty()) continue;
+        const glm::vec3 o = v->GetOrigin();
+        const glm::vec3 e = glm::vec3(static_cast<float>(v->gridDim) * v->voxelSize);
+        mn = glm::min(mn, o);
+        mx = glm::max(mx, o + e);
+    }
+    if (mn.x > mx.x) return;// no non-empty volume
+
+    const int GD = kGlobalDim;
+    const int B = 8;// same brick size the volumes use, so occupancy DDA matches
+    const glm::vec3 ext = mx - mn;
+    const float maxExt = glm::max(ext.x, glm::max(ext.y, ext.z));
+    _globalCellSize = (maxExt / static_cast<float>(GD)) * 1.001f;// tiny pad so far edges fit
+    _globalOrigin = mn;
+
+    // Sample each coarse cell's centre from whichever volume contains it (first
+    // solid wins). Storing the palette index means the GI shader reads albedo +
+    // emission from the shared palette exactly as for a single volume — so
+    // emissive voxels (e.g. glowstone) still act as area lights across volumes.
+    std::vector<uint8_t> vol(static_cast<size_t>(GD) * GD * GD, 0);
+    for (int z = 0; z < GD; z++) {
+        for (int y = 0; y < GD; y++) {
+            for (int x = 0; x < GD; x++) {
+                const glm::vec3 wp = _globalOrigin + (glm::vec3(x, y, z) + 0.5f) * _globalCellSize;
+                uint8_t mat = 0;
+                for (auto* v : _volumes) {
+                    if (v->volume.empty()) continue;
+                    const glm::vec3 lc = (wp - v->GetOrigin()) / v->voxelSize;
+                    const int N = v->gridDim;
+                    if (lc.x < 0.0f || lc.y < 0.0f || lc.z < 0.0f || lc.x >= N || lc.y >= N || lc.z >= N) continue;
+                    const int lx = static_cast<int>(lc.x), ly = static_cast<int>(lc.y), lz = static_cast<int>(lc.z);
+                    const uint8_t m = v->volume[(static_cast<size_t>(lz) * N + ly) * N + lx];
+                    if (m != 0) {
+                        mat = m;
+                        break;
+                    }
+                }
+                vol[(static_cast<size_t>(z) * GD + y) * GD + x] = mat;
+            }
+        }
+    }
+
+    // Occupancy bricks (any-solid per brick).
+    const int BG = GD / B;
+    std::vector<uint8_t> occ(static_cast<size_t>(BG) * BG * BG, 0);
+    for (int bz = 0; bz < BG; bz++) {
+        for (int by = 0; by < BG; by++) {
+            for (int bx = 0; bx < BG; bx++) {
+                bool solid = false;
+                for (int z = bz * B; z < (bz + 1) * B && !solid; z++)
+                    for (int y = by * B; y < (by + 1) * B && !solid; y++)
+                        for (int x = bx * B; x < (bx + 1) * B; x++)
+                            if (vol[(static_cast<size_t>(z) * GD + y) * GD + x]) {
+                                solid = true;
+                                break;
+                            }
+                occ[(static_cast<size_t>(bz) * BG + by) * BG + bx] = solid ? 1 : 0;
+            }
+        }
+    }
+
+    if (_giGlobalVolumeGL == 0) {
+        glGenTextures(1, &_giGlobalVolumeGL);
+        glGenTextures(1, &_giGlobalOccGL);
+    }
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    auto setupInt = [](GLenum t) {
+        glTexParameteri(t, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(t, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(t, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(t, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(t, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    };
+    glBindTexture(GL_TEXTURE_3D, _giGlobalVolumeGL);
+    setupInt(GL_TEXTURE_3D);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_R8UI, GD, GD, GD, 0, GL_RED_INTEGER, GL_UNSIGNED_BYTE, vol.data());
+    glBindTexture(GL_TEXTURE_3D, _giGlobalOccGL);
+    setupInt(GL_TEXTURE_3D);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_R8UI, BG, BG, BG, 0, GL_RED_INTEGER, GL_UNSIGNED_BYTE, occ.data());
+    glBindTexture(GL_TEXTURE_3D, 0);
+
+    _globalDirty = false;
+}
+
 // ---- WebGPU init / upload ------------------------------------------------------
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
@@ -394,9 +484,12 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         if (v->dirty || _glVolumes.find(v) == _glVolumes.end()) {
             _uploadGL(v);
             v->dirty = false;
+            _globalDirty = true;// any volume change invalidates the merged global grid
         }
     }
-    const GLVolume& primaryTex = _glVolumes[vol];// vol == _volumes[0]; GI traces this one
+    const GLVolume& primaryTex = _glVolumes[vol];// vol == _volumes[0]; primary/palette source
+    // Cross-volume GI traces a coarse grid merging all volumes; rebuild on change.
+    if (giCrossVolume && (_globalDirty || _giGlobalVolumeGL == 0)) _buildGlobalGrid();
 
     auto [width, height] = Window::Get()->GetPhysicalSize();
 
@@ -428,14 +521,17 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         glDisable(GL_BLEND);
 
         giShader->Activate();
+        // Cross-volume GI traces the coarse merged global grid (same format), so
+        // light bleeds between volumes; otherwise it traces the primary volume.
+        const bool useGlobal = giCrossVolume && _giGlobalVolumeGL != 0;
         giShader->SetUniform(std::string("u_invViewProj"), invViewProj);
         giShader->SetUniform(std::string("u_prevViewProj"), _prevViewProj);
         giShader->SetUniform(std::string("u_cameraPos"), cameraPos);
         giShader->SetUniform(std::string("u_prevCameraPos"), _prevCameraPos);
-        giShader->SetUniform(std::string("u_volumeOrigin"), volumeOrigin);
-        giShader->SetUniform(std::string("u_voxelSize"), voxelSize);
-        giShader->SetUniform(std::string("u_gridDim"), gridDim);
-        giShader->SetUniform(std::string("u_brickDim"), brickDim);
+        giShader->SetUniform(std::string("u_volumeOrigin"), useGlobal ? _globalOrigin : volumeOrigin);
+        giShader->SetUniform(std::string("u_voxelSize"), useGlobal ? _globalCellSize : voxelSize);
+        giShader->SetUniform(std::string("u_gridDim"), useGlobal ? kGlobalDim : gridDim);
+        giShader->SetUniform(std::string("u_brickDim"), brickDim);// both use brick size 8
         giShader->SetUniform(std::string("u_maxRaySteps"), maxRaySteps);
         giShader->SetUniform(std::string("u_sunDir"), sunDir);
         giShader->SetUniform(std::string("u_sunColor"), sunColor);
@@ -449,11 +545,11 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         giShader->SetUniform(std::string("u_history"), 3);
 
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_3D, primaryTex.volumeTex);
+        glBindTexture(GL_TEXTURE_3D, useGlobal ? _giGlobalVolumeGL : primaryTex.volumeTex);
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_3D, primaryTex.occupancyTex);
+        glBindTexture(GL_TEXTURE_3D, useGlobal ? _giGlobalOccGL : primaryTex.occupancyTex);
         glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, primaryTex.paletteTex);
+        glBindTexture(GL_TEXTURE_2D, primaryTex.paletteTex);// palette is shared across volumes
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, _giTexGL[prev]);
 
@@ -566,9 +662,10 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         const glm::mat4 model =
             glm::translate(glm::mat4(1.0f), boxCenter) * glm::scale(glm::mat4(1.0f), glm::vec3(boxExtent * 0.5f));
 
-        // GI is traced against the primary volume only, so its screen-space
-        // buffer is valid only for that volume's pixels; others use flat ambient.
-        const bool useGI = giActive && v == vol;
+        // Cross-volume GI traces the merged global grid, so its screen-space
+        // buffer is valid for every volume's pixels; single-volume GI is valid
+        // only for the primary, and others fall back to flat ambient.
+        const bool useGI = giActive && (giCrossVolume || v == vol);
 
         shader->SetUniform(std::string("u_model"), model);
         shader->SetUniform(std::string("u_volumeOrigin"), vOrigin);

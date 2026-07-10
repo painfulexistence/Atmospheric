@@ -95,8 +95,8 @@ class MicroVoxelApp : public Application {
         ConsoleSubsystem::Get()->Info("MicroVoxel loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
         ConsoleSubsystem::Get()->Info("Three raymarched 5cm-voxel volumes — no triangles. Hold E to dig into them.");
         ConsoleSubsystem::Get()->Info(
-            "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P/X/N toggle "
-            "GI/AO/shadow/point light/reflections/GI denoiser | B = split raw|denoised."
+            "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P/X/N/V toggle "
+            "GI/AO/shadow/point light/reflections/denoiser/cross-volume | B = split raw|denoised."
         );
     }
 
@@ -177,6 +177,13 @@ class MicroVoxelApp : public Application {
             console->Info(
                 mv->giSplitCompare >= 0.0f ? "MicroVoxel GI split: on (left raw | right denoised), drag to move"
                                            : "MicroVoxel GI split: off"
+            );
+        }
+        if (input->IsKeyPressed(Key::V)) {
+            mv->giCrossVolume = !mv->giCrossVolume;
+            console->Info(
+                mv->giCrossVolume ? "MicroVoxel GI: cross-volume (merged global grid, light bleeds between volumes)"
+                                  : "MicroVoxel GI: primary volume only"
             );
         }
         // Drag the split divider with the mouse while the compare is on.
