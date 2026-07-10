@@ -13,7 +13,8 @@
 // binary is a playable test arena without launching a separate server.
 //
 // Controls: WASD move · mouse look · LMB railgun · F rocket · SPACE jump
-//           (hold in air to levitate) · Q dash · C shield (hold) · ESC quit.
+//           (hold in air to levitate) · Q dash · C shield (hold) · ESC toggle
+//           mouse capture (close the window / Cmd-Q to quit).
 //
 // The local player is a DeathmatchController Component (mirroring the engine's
 // CameraController3D): it owns input sampling, the first-person camera, and
@@ -22,9 +23,9 @@
 //
 // NOTE: This render/input layer needs the full engine and is NOT built in the
 // netcode CI lane; the netcode it drives is the headless-verified ClientNet.
-// The engine has no relative-mouse/cursor-lock, so mouse-look reads the
-// absolute cursor delta (the cursor can escape at window edges). Low-poly
-// "Control"-style materials + particle juice are a planned polish pass.
+// Mouse-look uses the engine's relative (pointer-lock) mouse mode; ESC toggles
+// the capture. Low-poly "Control"-style materials + particle juice are a
+// planned polish pass.
 #include "Atmospheric.hpp"
 #include "authority.hpp"
 #include "client_net.hpp"
@@ -82,15 +83,13 @@ public:
         _net->Pump(nowMs);
         _net->UpdateCosmetic(dt);
 
-        // Mouse-look via absolute-cursor delta (no relative mouse in-engine).
-        const glm::vec2 mouse = inp->GetMousePosition();
-        if (_haveMouse) {
-            const glm::vec2 d = mouse - _lastMouse;
+        // Mouse-look via relative (pointer-lock) motion. Only while captured, so
+        // an unlocked cursor (ESC released) doesn't keep spinning the view.
+        if (Window::Get()->IsRelativeMouseMode()) {
+            const glm::vec2 d = Window::Get()->GetMouseDelta();
             _cam->Yaw(d.x * 0.003f);
             _cam->Pitch(-d.y * 0.003f);
         }
-        _lastMouse = mouse;
-        _haveMouse = true;
 
         // Edge-triggered actions latched between fixed ticks.
         if (inp->IsMouseButtonPressed()) _pendingRail = true;
@@ -148,8 +147,6 @@ private:
     float _accum = 0.0f;
     uint32_t _tick = 0;
     bool _pendingRail = false, _pendingRocket = false, _pendingDash = false;
-    glm::vec2 _lastMouse{ 0.0f, 0.0f };
-    bool _haveMouse = false;
     float _beamTimer = 0.0f;
     glm::vec3 _beamFrom{ 0.0f }, _beamTo{ 0.0f };
 };
@@ -368,6 +365,10 @@ class DeathmatchGame : public Application {
             cam->gameObject->AddComponent<DeathmatchController>(&_net, localAuth);// the local player
         }
 
+        // Capture the mouse for FPS look (cursor hidden + locked). ESC toggles
+        // it; the window close button / Cmd-Q quits.
+        Window::Get()->SetRelativeMouseMode(true);
+
         if (!_net.Connect(gcli.serverIp, gcli.serverPort)) {
             ConsoleSubsystem::Get()->Error(fmt::format("Failed to connect to {}:{}", gcli.serverIp, gcli.serverPort));
         }
@@ -400,7 +401,12 @@ class DeathmatchGame : public Application {
 
         DrawHud();
 
-        if (InputSubsystem::Get()->IsKeyDown(Key::ESCAPE)) Quit();
+        // ESC toggles pointer lock (release / recapture the cursor) instead of
+        // quitting; close the window (or Cmd-Q) to quit.
+        if (InputSubsystem::Get()->IsKeyPressed(Key::ESCAPE)) {
+            auto* win = Window::Get();
+            win->SetRelativeMouseMode(!win->IsRelativeMouseMode());
+        }
     }
 
     void DrawHud() {
