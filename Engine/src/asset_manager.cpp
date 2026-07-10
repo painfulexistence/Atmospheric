@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <glm/gtc/matrix_transform.hpp>
 #include <nlohmann/json.hpp>
 #include <unordered_set>
 
@@ -343,8 +344,7 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
 
     int width, height, numChannels;
     if (!stbi_info_from_memory(fileData.data(), static_cast<int>(fileData.size()), &width, &height, &numChannels)) {
-        ConsoleSubsystem::Get()->Warn(
-            fmt::format("stbi_info_from_memory: Failed to read image metadata at '{}'", path)
+        ConsoleSubsystem::Get()->Warn(fmt::format("stbi_info_from_memory: Failed to read image metadata at '{}'", path)
         );
         return nullptr;
     }
@@ -623,21 +623,17 @@ void AssetManager::LoadDefaultTextures() {
     // and to store textures on the GPU in ETC2 format (~4× less VRAM than RGBA).
     // These bytes must already be in FileSystem cache before this function is called
     // — populate them with FileSystem::Get().Prefetch() before Application::Run().
-    LoadTextures(
-        { "assets/textures/default_diff.ktx2",
-          "assets/textures/default_norm.ktx2",
-          "assets/textures/default_ao.ktx2",
-          "assets/textures/default_rough.ktx2",
-          "assets/textures/default_metallic.ktx2" }
-    );
+    LoadTextures({ "assets/textures/default_diff.ktx2",
+                   "assets/textures/default_norm.ktx2",
+                   "assets/textures/default_ao.ktx2",
+                   "assets/textures/default_rough.ktx2",
+                   "assets/textures/default_metallic.ktx2" });
 #else
-    LoadTextures(
-        { "assets/textures/default_diff.jpg",
-          "assets/textures/default_norm.jpg",
-          "assets/textures/default_ao.jpg",
-          "assets/textures/default_rough.jpg",
-          "assets/textures/default_metallic.jpg" }
-    );
+    LoadTextures({ "assets/textures/default_diff.jpg",
+                   "assets/textures/default_norm.jpg",
+                   "assets/textures/default_ao.jpg",
+                   "assets/textures/default_rough.jpg",
+                   "assets/textures/default_metallic.jpg" });
 #endif
 
     // Store as default textures
@@ -841,12 +837,9 @@ TextureHandle AssetManager::CreateTexture(const std::string& path) {
     // Regular image (PNG / JPG / etc.) via stb_image.
     auto image = LoadImage(redirectedPath);
     if (!image) {
-        ConsoleSubsystem::Get()->Warn(
-            fmt::format(
-                "AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.",
-                redirectedPath
-            )
-        );
+        ConsoleSubsystem::Get()->Warn(fmt::format(
+            "AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.", redirectedPath
+        ));
         GLuint fallbackTex = defaultTextures.empty() ? 0u : defaultTextures[0];
         _textureCache[redirectedPath] = { fallbackTex, 0, 0, 0 };
         return TextureHandle(fallbackTex);
@@ -1563,13 +1556,11 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
             const size_t vertCount = posAcc.count;
 
             if (vertBase + vertCount > 65535) {
-                ConsoleSubsystem::Get()->Warn(
-                    fmt::format(
-                        "LoadGLTF '{}': vertex count exceeds uint16_t limit, primitive skipped. "
-                        "Consider splitting the mesh or upgrading to 32-bit indices.",
-                        path
-                    )
-                );
+                ConsoleSubsystem::Get()->Warn(fmt::format(
+                    "LoadGLTF '{}': vertex count exceeds uint16_t limit, primitive skipped. "
+                    "Consider splitting the mesh or upgrading to 32-bit indices.",
+                    path
+                ));
                 continue;
             }
 
@@ -1647,6 +1638,188 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     return CreateMesh(path, mesh);
 }
 
+// ── glTF import (geometry + node hierarchy → ModelData; no texture build) ─────
+// Unlike LoadGLTF (which builds one textured Material and flattens to a single
+// mesh), this keeps the node tree and emits one MeshData per primitive tagged
+// with the glTF material name, so glTF rides the same unified line as .map/.usd.
+static glm::mat4 GLTFNodeMatrix(const tinygltf::Node& n) {
+    if (n.matrix.size() == 16) {
+        glm::mat4 m(1.0f);
+        for (int c = 0; c < 4; ++c)
+            for (int r = 0; r < 4; ++r)
+                m[c][r] = static_cast<float>(n.matrix[c * 4 + r]);
+        return m;
+    }
+    glm::mat4 m(1.0f);
+    if (n.translation.size() == 3)
+        m = glm::translate(m, glm::vec3(n.translation[0], n.translation[1], n.translation[2]));
+    if (n.rotation.size() == 4) {
+        glm::quat q(
+            static_cast<float>(n.rotation[3]),
+            static_cast<float>(n.rotation[0]),
+            static_cast<float>(n.rotation[1]),
+            static_cast<float>(n.rotation[2])
+        );
+        m = m * glm::mat4_cast(q);
+    }
+    if (n.scale.size() == 3) m = glm::scale(m, glm::vec3(n.scale[0], n.scale[1], n.scale[2]));
+    return m;
+}
+
+static ModelNode
+    BuildGLTFNode(const tinygltf::Model& model, const std::vector<std::vector<int>>& meshPrims, int nodeIdx) {
+    const tinygltf::Node& n = model.nodes[nodeIdx];
+    ModelNode node;
+    node.name = n.name.empty() ? ("node_" + std::to_string(nodeIdx)) : n.name;
+    node.transform = GLTFNodeMatrix(n);
+    if (n.mesh >= 0 && n.mesh < static_cast<int>(meshPrims.size())) node.meshes = meshPrims[n.mesh];
+    for (int c : n.children)
+        if (c >= 0 && c < static_cast<int>(model.nodes.size()))
+            node.children.push_back(BuildGLTFNode(model, meshPrims, c));
+    return node;
+}
+
+ModelData ImportGLTFModel(const std::string& path) {
+    tinygltf::Model model;
+    tinygltf::TinyGLTF loader;
+    std::string err, warn;
+    // Geometry + hierarchy only: no SetImageLoader, so no texture is decoded.
+    const bool result = path.ends_with(".glb") ? loader.LoadBinaryFromFile(&model, &err, &warn, path)
+                                               : loader.LoadASCIIFromFile(&model, &err, &warn, path);
+    if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportGLTFModel '{}': {}", path, warn));
+    if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportGLTFModel '{}' error: {}", path, err));
+    if (!result) return ModelData{};
+
+    // Accessor readers with byteStride support (same semantics as LoadGLTF).
+    auto readFloat3 = [&](const tinygltf::Accessor& acc) {
+        const auto& bv = model.bufferViews[acc.bufferView];
+        const auto& buf = model.buffers[bv.buffer];
+        const size_t stride = bv.byteStride ? bv.byteStride : sizeof(float) * 3;
+        const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
+        std::vector<glm::vec3> o(acc.count);
+        for (size_t i = 0; i < acc.count; ++i) {
+            const auto* v = reinterpret_cast<const float*>(base + i * stride);
+            o[i] = { v[0], v[1], v[2] };
+        }
+        return o;
+    };
+    auto readFloat4 = [&](const tinygltf::Accessor& acc) {
+        const auto& bv = model.bufferViews[acc.bufferView];
+        const auto& buf = model.buffers[bv.buffer];
+        const size_t stride = bv.byteStride ? bv.byteStride : sizeof(float) * 4;
+        const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
+        std::vector<glm::vec4> o(acc.count);
+        for (size_t i = 0; i < acc.count; ++i) {
+            const auto* v = reinterpret_cast<const float*>(base + i * stride);
+            o[i] = { v[0], v[1], v[2], v[3] };
+        }
+        return o;
+    };
+    auto readTexcoord = [&](const tinygltf::Accessor& acc) {
+        const auto& bv = model.bufferViews[acc.bufferView];
+        const auto& buf = model.buffers[bv.buffer];
+        const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
+        std::vector<glm::vec2> o(acc.count);
+        if (acc.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+            const size_t stride = bv.byteStride ? bv.byteStride : sizeof(float) * 2;
+            for (size_t i = 0; i < acc.count; ++i) {
+                const auto* v = reinterpret_cast<const float*>(base + i * stride);
+                o[i] = { v[0], v[1] };
+            }
+        } else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
+            const size_t stride = bv.byteStride ? bv.byteStride : 2u;
+            for (size_t i = 0; i < acc.count; ++i) {
+                const uint8_t* v = base + i * stride;
+                o[i] = { v[0] / 255.0f, v[1] / 255.0f };
+            }
+        } else if (acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+            const size_t stride = bv.byteStride ? bv.byteStride : sizeof(uint16_t) * 2;
+            for (size_t i = 0; i < acc.count; ++i) {
+                const auto* v = reinterpret_cast<const uint16_t*>(base + i * stride);
+                o[i] = { v[0] / 65535.0f, v[1] / 65535.0f };
+            }
+        }
+        return o;
+    };
+
+    // One MeshData per (glTF mesh, primitive); meshPrims[m] indexes out.meshes so
+    // nodes sharing a glTF mesh reuse the same geometry.
+    ModelData out;
+    std::vector<std::vector<int>> meshPrims(model.meshes.size());
+    for (size_t mi = 0; mi < model.meshes.size(); ++mi) {
+        for (const auto& prim : model.meshes[mi].primitives) {
+            if (!prim.attributes.contains("POSITION")) continue;
+            const auto& posAcc = model.accessors[prim.attributes.at("POSITION")];
+            const size_t vertCount = posAcc.count;
+            if (vertCount == 0 || vertCount > 65535) continue;// 16-bit ceiling per primitive
+
+            auto positions = readFloat3(posAcc);
+            std::vector<glm::vec3> normals(vertCount, glm::vec3(0, 1, 0));
+            if (prim.attributes.contains("NORMAL")) normals = readFloat3(model.accessors[prim.attributes.at("NORMAL")]);
+            std::vector<glm::vec2> uvs(vertCount, glm::vec2(0));
+            if (prim.attributes.contains("TEXCOORD_0"))
+                uvs = readTexcoord(model.accessors[prim.attributes.at("TEXCOORD_0")]);
+            std::vector<glm::vec4> tangents4(vertCount, glm::vec4(1, 0, 0, 1));
+            if (prim.attributes.contains("TANGENT"))
+                tangents4 = readFloat4(model.accessors[prim.attributes.at("TANGENT")]);
+
+            MeshData md;
+            md.vertices.reserve(vertCount);
+            for (size_t i = 0; i < vertCount; ++i) {
+                const glm::vec3 t = glm::vec3(tangents4[i]);
+                const glm::vec3 b = glm::cross(normals[i], t) * tangents4[i].w;
+                md.vertices.push_back({ positions[i], uvs[i], normals[i], t, b });
+            }
+
+            if (prim.indices >= 0) {
+                const auto& idxAcc = model.accessors[prim.indices];
+                const auto& bv = model.bufferViews[idxAcc.bufferView];
+                const auto& buf = model.buffers[bv.buffer];
+                const uint8_t* base = buf.data.data() + bv.byteOffset + idxAcc.byteOffset;
+                for (size_t i = 0; i < idxAcc.count; ++i) {
+                    uint32_t v = 0;
+                    if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT)
+                        std::memcpy(&v, base + i * sizeof(uint32_t), sizeof(uint32_t));
+                    else if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+                        uint16_t s;
+                        std::memcpy(&s, base + i * sizeof(uint16_t), sizeof(uint16_t));
+                        v = s;
+                    } else if (idxAcc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE)
+                        v = base[i];
+                    md.indices.push_back(static_cast<uint16_t>(v));
+                }
+            } else {
+                for (size_t i = 0; i < vertCount; ++i)
+                    md.indices.push_back(static_cast<uint16_t>(i));
+            }
+
+            if (prim.material >= 0 && prim.material < static_cast<int>(model.materials.size()))
+                md.material = model.materials[prim.material].name;
+
+            meshPrims[mi].push_back(static_cast<int>(out.meshes.size()));
+            out.meshes.push_back(std::move(md));
+        }
+    }
+
+    const size_t slash = path.find_last_of("/\\");
+    out.root.name = (slash == std::string::npos) ? path : path.substr(slash + 1);
+
+    const int sceneIdx = (model.defaultScene >= 0) ? model.defaultScene : 0;
+    if (sceneIdx < static_cast<int>(model.scenes.size())) {
+        for (int rootNode : model.scenes[sceneIdx].nodes)
+            if (rootNode >= 0 && rootNode < static_cast<int>(model.nodes.size()))
+                out.root.children.push_back(BuildGLTFNode(model, meshPrims, rootNode));
+    } else {
+        // No scene graph: attach every primitive directly under the root.
+        for (const auto& prims : meshPrims)
+            for (int mp : prims)
+                out.root.meshes.push_back(mp);
+    }
+
+    out.ok = !out.meshes.empty();
+    return out;
+}
+
 // TrenchBroom / Quake ".map" brush loader — a thin wrapper over the pure-CPU
 // ImportMapModel (model_import.cpp). It flattens every imported brush entity's
 // mesh into one 16-bit-indexed Mesh for the single-handle API. Declaring a
@@ -1705,26 +1878,25 @@ MeshHandle AssetManager::LoadTBMap(const std::string& path, float scale) {
     return CreateMesh(path, mesh);
 }
 
-MeshHandle AssetManager::LoadUSD(const std::string& path) {
+ModelData ImportUSDModel(const std::string& path) {
 #ifndef AE_USE_TINYUSDZ
     ConsoleSubsystem::Get()->Warn(
-        fmt::format("LoadUSD '{}': USD support not compiled in (build with -DAE_USE_TINYUSDZ=ON)", path)
+        fmt::format("ImportUSDModel '{}': USD support not compiled in (build with -DAE_USE_TINYUSDZ=ON)", path)
     );
-    return MeshHandle{};
+    return ModelData{};
 #else
     tinyusdz::Stage stage;
     std::string warn, err;
     if (!tinyusdz::LoadUSDFromFile(path, &stage, &warn, &err)) {
-        if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("LoadUSD '{}': {}", path, warn));
-        if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("LoadUSD '{}' error: {}", path, err));
-        return MeshHandle{};
+        if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDModel '{}': {}", path, warn));
+        if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDModel '{}' error: {}", path, err));
+        return ModelData{};
     }
-    if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("LoadUSD '{}': {}", path, warn));
+    if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDModel '{}': {}", path, warn));
 
     // Tydra flattens the USD scene graph into renderer-friendly meshes, applying
-    // triangulation, single-index rebuild, and normal/tangent synthesis (see
-    // MeshConverterConfig defaults). We don't touch USD textures yet, so skip
-    // asset loading to avoid needless file access.
+    // triangulation, single-index rebuild, and normal/tangent synthesis. We
+    // don't wire USD materials/textures yet, so skip texture asset loading.
     tinyusdz::tydra::RenderSceneConverter converter;
     tinyusdz::tydra::RenderSceneConverterEnv env(stage);
     const size_t slash = path.find_last_of("/\\");
@@ -1733,21 +1905,20 @@ MeshHandle AssetManager::LoadUSD(const std::string& path) {
 
     tinyusdz::tydra::RenderScene rscene;
     if (!converter.ConvertToRenderScene(env, &rscene)) {
-        ConsoleSubsystem::Get()->Warn(fmt::format("LoadUSD '{}' convert error: {}", path, converter.GetError()));
-        return MeshHandle{};
+        ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDModel '{}' convert error: {}", path, converter.GetError()));
+        return ModelData{};
     }
 
-    std::vector<Vertex> allVerts;
-    std::vector<uint16_t> allIndices;
-    bool truncated = false;
+    ModelData model;
+    model.root.name = (slash == std::string::npos) ? path : path.substr(slash + 1);
 
     for (const auto& rmesh : rscene.meshes) {
         const std::vector<uint32_t>& idx = rmesh.faceVertexIndices();// triangulated
         const size_t pointCount = rmesh.points.size();
+        if (idx.empty() || pointCount == 0) continue;
 
         // Attribute readers cope with either 'vertex' (count == points) or
-        // 'facevarying' (count == face-vertices) variability by choosing the
-        // right index at each face-vertex.
+        // 'facevarying' (count == face-vertices) variability.
         auto normalAt = [&](size_t k, uint32_t pointIndex) -> glm::vec3 {
             const auto& a = rmesh.normals;
             const size_t vc = a.vertex_count();
@@ -1769,44 +1940,81 @@ MeshHandle AssetManager::LoadUSD(const std::string& path) {
             return glm::vec2(f[at * 2 + 0], f[at * 2 + 1]);
         };
 
-        if (allVerts.size() + idx.size() > 65535) {
-            truncated = true;
-            break;
-        }
-
-        const auto vertBase = static_cast<uint32_t>(allVerts.size());
-        for (size_t k = 0; k < idx.size(); ++k) {
+        // Expand to a non-indexed triangle list (one vertex per face-vertex),
+        // capped at the 16-bit ceiling. 65535 is a multiple of 3, so the cap
+        // never splits a triangle.
+        const size_t take = std::min<size_t>(idx.size(), 65535);
+        MeshData md;
+        md.vertices.reserve(take);
+        for (size_t k = 0; k < take; ++k) {
             const uint32_t pointIndex = idx[k];
-            if (pointIndex >= pointCount) continue;
-            const auto& p = rmesh.points[pointIndex];
+            glm::vec3 pos(0.0f);
+            if (pointIndex < pointCount) {
+                // Tydra's points are std::array<float,3>, not a .x/.y/.z struct.
+                const auto& p = rmesh.points[pointIndex];
+                pos = glm::vec3(p[0], p[1], p[2]);
+            }
             Vertex vert;
-            vert.position = glm::vec3(p.x, p.y, p.z);
+            vert.position = pos;
             vert.normal = normalAt(k, pointIndex);
             vert.uv = uvAt(k, pointIndex);
             vert.tangent = glm::vec3(1, 0, 0);
             vert.bitangent = glm::cross(vert.normal, vert.tangent);
-            allVerts.push_back(vert);
+            md.vertices.push_back(vert);
         }
-        for (uint32_t k = 0; k + 2 < static_cast<uint32_t>(idx.size()); k += 3) {
-            allIndices.push_back(static_cast<uint16_t>(vertBase + k));
-            allIndices.push_back(static_cast<uint16_t>(vertBase + k + 1));
-            allIndices.push_back(static_cast<uint16_t>(vertBase + k + 2));
+        for (uint16_t k = 0; k + 2 < static_cast<uint16_t>(md.vertices.size()); k += 3) {
+            md.indices.push_back(k);
+            md.indices.push_back(static_cast<uint16_t>(k + 1));
+            md.indices.push_back(static_cast<uint16_t>(k + 2));
         }
+        if (md.vertices.empty()) continue;
+
+        ModelNode node;
+        node.name = rmesh.prim_name.empty() ? "mesh" : rmesh.prim_name;
+        node.meshes.push_back(static_cast<int>(model.meshes.size()));
+        model.meshes.push_back(std::move(md));
+        model.root.children.push_back(std::move(node));
     }
 
-    if (truncated)
-        ConsoleSubsystem::Get()->Warn(
-            fmt::format("LoadUSD '{}': geometry exceeds the 16-bit index limit; remaining meshes skipped.", path)
-        );
+    model.ok = !model.meshes.empty();
+    return model;
+#endif
+}
 
-    if (allVerts.empty()) {
+MeshHandle AssetManager::LoadUSD(const std::string& path) {
+#ifndef AE_USE_TINYUSDZ
+    ConsoleSubsystem::Get()->Warn(
+        fmt::format("LoadUSD '{}': USD support not compiled in (build with -DAE_USE_TINYUSDZ=ON)", path)
+    );
+    return MeshHandle{};
+#else
+    ModelData model = ImportUSDModel(path);
+    if (!model.ok) {
         ConsoleSubsystem::Get()->Warn(fmt::format("LoadUSD: no mesh geometry found in '{}'", path));
         return MeshHandle{};
     }
 
+    std::vector<Vertex> allVerts;
+    std::vector<uint16_t> allIndices;
+    bool truncated = false;
+    for (const auto& md : model.meshes) {
+        if (allVerts.size() + md.vertices.size() > 65535) {
+            truncated = true;
+            break;
+        }
+        const auto base = static_cast<uint16_t>(allVerts.size());
+        allVerts.insert(allVerts.end(), md.vertices.begin(), md.vertices.end());
+        for (uint16_t idx : md.indices)
+            allIndices.push_back(static_cast<uint16_t>(base + idx));
+    }
+    if (truncated)
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format("LoadUSD '{}': geometry exceeds the 16-bit index limit; remaining meshes skipped.", path)
+        );
+    if (allVerts.empty()) return MeshHandle{};
+
     auto* mesh = new Mesh(MeshType::PRIM);
     mesh->Initialize(allVerts, allIndices);
-
     glm::vec3 lo = allVerts[0].position, hi = allVerts[0].position;
     for (const auto& v : allVerts) {
         lo = glm::min(lo, v.position);
@@ -1820,9 +2028,8 @@ MeshHandle AssetManager::LoadUSD(const std::string& path) {
                            glm::vec3(hi.x, lo.y, hi.z),
                            glm::vec3(lo.x, hi.y, hi.z),
                            glm::vec3(hi.x, hi.y, hi.z) });
-
     ENGINE_LOG(
-        "LoadUSD '{}': {} meshes, {} verts, {} indices", path, rscene.meshes.size(), allVerts.size(), allIndices.size()
+        "LoadUSD '{}': {} meshes, {} verts, {} indices", path, model.meshes.size(), allVerts.size(), allIndices.size()
     );
     return CreateMesh(path, mesh);
 #endif

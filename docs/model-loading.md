@@ -168,9 +168,21 @@ format `ImportModel` dispatches:
 
 `ParseEntity` calls `ImportModel` + `InstantiateModel`, parenting the imported
 subtree under the entity so the entity's transform positions the whole model.
-`modelScale` only affects `.map` (Quake units; default `1/32`). Today
-`ImportModel` routes `.map`; `.gltf`/`.usd` importers land next, at which point
-the same `"model"` field imports them with no scene-format change.
+`modelScale` only affects `.map` (Quake units; default `1/32`).
+
+`ImportModel` dispatches all three formats by extension:
+
+- **`.map`** → `ImportMapModel`: one MeshData per texture batch per brush entity.
+- **`.gltf` / `.glb`** → `ImportGLTFModel`: the glTF node hierarchy becomes the
+  ModelNode tree, one MeshData per primitive tagged with the glTF material name.
+  Geometry + hierarchy only — glTF textures are not decoded here (use `LoadGLTF`
+  for the single-mesh, textured path).
+- **`.usd*`** → `ImportUSDModel`: one MeshData per Tydra RenderMesh (requires
+  `AE_USE_TINYUSDZ`; USD materials not wired yet).
+
+So the same `"model"` field imports any of the three with no scene-format change.
+Materials resolve by name via `GetMaterialHandle` in `InstantiateModel`, falling
+back to the default when the named material doesn't exist.
 
 ---
 

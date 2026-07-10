@@ -64,3 +64,14 @@ ModelData ImportMapModel(const std::string& path, float scale = 1.0f / 32.0f);
 // Same, but parsing already-loaded ".map" text — the pure, I/O-free core (also
 // used by tests). `name` becomes the root node's name.
 ModelData ImportMapModelFromText(const std::string& text, const std::string& name, float scale = 1.0f / 32.0f);
+
+// glTF / GLB via tinygltf: the scene node hierarchy becomes a ModelNode tree and
+// each primitive becomes a MeshData tagged with the glTF material name. Geometry
+// and hierarchy only — glTF textures are not built here (use LoadGLTF for the
+// single-mesh, textured path). Implemented in asset_manager.cpp.
+ModelData ImportGLTFModel(const std::string& path);
+
+// USD (.usd/.usda/.usdc/.usdz) via TinyUSDZ + Tydra: one MeshData per RenderMesh.
+// Returns ModelData{ ok = false } unless built with AE_USE_TINYUSDZ.
+// Implemented in asset_manager.cpp.
+ModelData ImportUSDModel(const std::string& path);

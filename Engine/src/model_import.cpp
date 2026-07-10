@@ -14,8 +14,8 @@ ModelData ImportModel(const std::string& path, float scale) {
                && path.compare(path.size() - std::strlen(ext), std::strlen(ext), ext) == 0;
     };
     if (endsWith(".map")) return ImportMapModel(path, scale);
-    // glTF and USD importers are wired in a later step; for now only .map is
-    // routed through the unified line. The legacy LoadGLTF / LoadUSD still work.
+    if (endsWith(".gltf") || endsWith(".glb")) return ImportGLTFModel(path);
+    if (endsWith(".usd") || endsWith(".usda") || endsWith(".usdc") || endsWith(".usdz")) return ImportUSDModel(path);
     return ModelData{};
 }
 
