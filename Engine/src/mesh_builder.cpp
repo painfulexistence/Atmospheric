@@ -89,7 +89,11 @@ Mesh* MeshBuilder::CreatePlane(float width, float height) {
                           { { -hw, 0.0f, -hh }, { 0.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },
                           { { hw, 0.0f, -hh }, { 1.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },
                           { { hw, 0.0f, hh }, { 1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } } };
-    uint16_t indices[] = { 0, 1, 2, 0, 2, 3 };
+    // Wind so the surface faces +Y: CalculateNormalsAndTangents derives the
+    // normal from cross(edge2, edge1), so {0,1,2,...} would yield a downward
+    // (-Y) normal — the plane would be back-face culled and unlit when viewed
+    // from above. {0,2,1,...} matches CreatePlaneMeshSubdivided's up-facing wind.
+    uint16_t indices[] = { 0, 2, 1, 0, 3, 2 };
     std::vector<Vertex> verts(vertices, vertices + 4);
     std::vector<uint16_t> tris(indices, indices + 6);
     CalculateNormalsAndTangents(verts, tris);

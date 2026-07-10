@@ -13,7 +13,8 @@
 // binary is a playable test arena without launching a separate server.
 //
 // Controls: WASD move · mouse look · LMB railgun · F rocket · SPACE jump
-//           (hold in air to levitate) · Q dash · C shield (hold) · ESC quit.
+//           (hold in air to levitate) · Q dash · C shield (hold) · ESC toggle
+//           mouse capture (close the window / Cmd-Q to quit).
 //
 // The local player is a DeathmatchController Component (mirroring the engine's
 // CameraController3D): it owns input sampling, the first-person camera, and
@@ -22,13 +23,14 @@
 //
 // NOTE: This render/input layer needs the full engine and is NOT built in the
 // netcode CI lane; the netcode it drives is the headless-verified ClientNet.
-// The engine has no relative-mouse/cursor-lock, so mouse-look reads the
-// absolute cursor delta (the cursor can escape at window edges). Low-poly
-// "Control"-style materials + particle juice are a planned polish pass.
+// Mouse-look uses the engine's relative (pointer-lock) mouse mode; ESC toggles
+// the capture. Low-poly "Control"-style materials + particle juice are a
+// planned polish pass.
 #include "Atmospheric.hpp"
 #include "authority.hpp"
 #include "client_net.hpp"
 #include "sim_common.hpp"
+#include "vat_enemy.hpp"
 #include <Atmospheric/net_debug_controls.hpp>
 #include <Atmospheric/net_hud.hpp>
 
@@ -83,15 +85,13 @@ public:
         _net->Pump(nowMs);
         _net->UpdateCosmetic(dt);
 
-        // Mouse-look via absolute-cursor delta (no relative mouse in-engine).
-        const glm::vec2 mouse = inp->GetMousePosition();
-        if (_haveMouse) {
-            const glm::vec2 d = mouse - _lastMouse;
+        // Mouse-look via relative (pointer-lock) motion. Only while captured, so
+        // an unlocked cursor (ESC released) doesn't keep spinning the view.
+        if (Window::Get()->IsRelativeMouseMode()) {
+            const glm::vec2 d = Window::Get()->GetMouseDelta();
             _cam->Yaw(d.x * 0.003f);
             _cam->Pitch(-d.y * 0.003f);
         }
-        _lastMouse = mouse;
-        _haveMouse = true;
 
         // Edge-triggered actions latched between fixed ticks.
         if (inp->IsMouseButtonPressed()) _pendingRail = true;
@@ -154,8 +154,6 @@ private:
     float _accum = 0.0f;
     uint32_t _tick = 0;
     bool _pendingRail = false, _pendingRocket = false, _pendingDash = false;
-    glm::vec2 _lastMouse{ 0.0f, 0.0f };
-    bool _haveMouse = false;
     float _beamTimer = 0.0f;
     glm::vec3 _beamFrom{ 0.0f }, _beamTo{ 0.0f };
 };
@@ -174,10 +172,48 @@ class DeathmatchGame : public Application {
         GoScene("main", [this] { OnLoad(); });
     }
 
-    void MakeMaterial(const std::string& name, glm::vec3 diffuse) {
+    Material* MakeMaterial(const std::string& name, glm::vec3 diffuse) {
         MaterialProps props;
         props.diffuse = diffuse;
-        AssetManager::Get().CreateMaterial(name, props);
+        return AssetManager::Get().CreateMaterial(name, props);
+    }
+
+    // Solid 1x1 texture — used to pin a floor/prop to a specific roughness or
+    // metalness (pbr.frag reads those from maps, not scalars).
+    TextureHandle MakeSolidTexture(glm::vec3 rgb) {
+        auto b = [](float x) { return static_cast<unsigned char>(std::round(glm::clamp(x, 0.0f, 1.0f) * 255.0f)); };
+        unsigned char px[3] = { b(rgb.r), b(rgb.g), b(rgb.b) };
+        return AssetManager::Get().CreateTextureFromImage(std::make_shared<Image>(1, 1, 3, px));
+    }
+
+    // Blueprint-style grid baked into a single 0..1-UV texture: gives the floor
+    // a strong motion reference (a flat matte plane reads as no self-motion).
+    TextureHandle MakeGridTexture(int cells, glm::vec3 fill, glm::vec3 line) {
+        const int S = 512;
+        const int cell = S / cells;
+        const int lw = 2;
+        auto b = [](float x) { return static_cast<unsigned char>(std::round(glm::clamp(x, 0.0f, 1.0f) * 255.0f)); };
+        std::vector<unsigned char> px(static_cast<size_t>(S) * S * 3);
+        for (int y = 0; y < S; ++y) {
+            for (int x = 0; x < S; ++x) {
+                const bool onLine = (x % cell) < lw || (y % cell) < lw;
+                const glm::vec3 c = onLine ? line : fill;
+                const size_t i = (static_cast<size_t>(y) * S + x) * 3;
+                px[i] = b(c.r);
+                px[i + 1] = b(c.g);
+                px[i + 2] = b(c.b);
+            }
+        }
+        return AssetManager::Get().CreateTextureFromImage(std::make_shared<Image>(S, S, 3, px.data()));
+    }
+
+    // Decorative box instance (material comes from the shared mesh). Scale per
+    // instance like MakeBox, so one cube mesh spawns pillars and landmarks.
+    GameObject* MakeProp(glm::vec3 center, glm::vec3 size, MeshHandle mesh) {
+        auto* go = CreateGameObject(center);
+        go->SetScale(size);
+        go->AddComponent<MeshComponent>(mesh);
+        return go;
     }
 
     GameObject* MakeBox(const sim::Box& b, MeshHandle cube) {
@@ -191,16 +227,44 @@ class DeathmatchGame : public Application {
     void OnLoad() override {
         _fontID = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
+        // Optional HDRI sky: drop an equirectangular .hdr/.exr at
+        // assets/textures/ to replace the gradient sky (and, once the IBL
+        // phases land, to light the metal blob). Absent → gradient fallback.
+        if (FileSystem::Get().Exists("assets/textures/ushaka_sea_world_aquarium_2k.exr")) {
+            TextureHandle env = AssetManager::Get().LoadHDR("assets/textures/ushaka_sea_world_aquarium_2k.exr");
+            if (env.IsValid()) GraphicsSubsystem::Get()->renderer->environmentMap = env;
+        }
+
         // Low-poly greybox palette (concrete grey + red accents).
-        MakeMaterial("dm_floor_mat", glm::vec3(0.30f, 0.30f, 0.33f));
         MakeMaterial("dm_box_mat", glm::vec3(0.48f, 0.48f, 0.52f));
         MakeMaterial("dm_enemy_mat", glm::vec3(0.80f, 0.18f, 0.16f));
         MakeMaterial("dm_rocket_mat", glm::vec3(1.0f, 0.55f, 0.12f));
 
         auto& am = AssetManager::Get();
+
+        // ── Ground ──────────────────────────────────────────────────────────
+        // Play floor gets a blueprint grid so self-motion is legible (a flat
+        // matte plane reads as standing still). Kept matte — solid high
+        // roughness / zero metalness — so IBL tints it instead of mirroring the
+        // sky; diffuse=white lets the grid texture show through unmodulated.
+        Material* floorMat = MakeMaterial("dm_floor_mat", glm::vec3(1.0f));
+        floorMat->baseMap = MakeGridTexture(24, glm::vec3(0.26f, 0.28f, 0.32f), glm::vec3(0.50f, 0.54f, 0.62f));
+        floorMat->roughnessMap = MakeSolidTexture(glm::vec3(0.85f));
+        floorMat->metallicMap = MakeSolidTexture(glm::vec3(0.0f));
         auto floorMesh = am.CreatePlaneMesh("dm_floor", 2.0f * sim::kArenaHalf, 2.0f * sim::kArenaHalf);
         am.GetMeshPtr(floorMesh)->SetMaterial(am.GetMaterialHandle("dm_floor_mat"));
         CreateGameObject(glm::vec3(0.0f))->AddComponent<MeshComponent>(floorMesh);
+
+        // Surrounding plaza: a large, darker plane just below the play floor,
+        // reaching out toward the HDRI horizon so objects sit on ground rather
+        // than floating over a 24x24 platform.
+        Material* groundMat = MakeMaterial("dm_ground_mat", glm::vec3(0.14f, 0.15f, 0.17f));
+        groundMat->roughnessMap = MakeSolidTexture(glm::vec3(0.9f));
+        groundMat->metallicMap = MakeSolidTexture(glm::vec3(0.0f));
+        const float groundSize = 16.0f * sim::kArenaHalf;// ~192 units
+        auto groundMesh = am.CreatePlaneMesh("dm_ground", groundSize, groundSize);
+        am.GetMeshPtr(groundMesh)->SetMaterial(am.GetMaterialHandle("dm_ground_mat"));
+        CreateGameObject(glm::vec3(0.0f, -0.02f, 0.0f))->AddComponent<MeshComponent>(groundMesh);
 
         auto cubeMesh = am.CreateCubeMesh("dm_cube", 1.0f);
         am.GetMeshPtr(cubeMesh)->SetMaterial(am.GetMaterialHandle("dm_box_mat"));
@@ -208,10 +272,74 @@ class DeathmatchGame : public Application {
         for (int i = 0; i < sim::kNumBoxes; i++)
             MakeBox(boxes[i], cubeMesh);
 
-        auto capsuleMesh = am.CreateCapsuleMesh("dm_capsule", sim::kCapsuleRadius, sim::kCapsuleHeight);
-        am.GetMeshPtr(capsuleMesh)->SetMaterial(am.GetMaterialHandle("dm_enemy_mat"));
+        // ── Parallax structure ──────────────────────────────────────────────
+        // Perimeter pillars just outside the movement clamp (±kArenaHalf): they
+        // sweep across the view as the player strafes — the parallax/scale cue a
+        // flat arena lacks. Decorative only (beyond the play area, no collision).
+        MakeMaterial("dm_pillar_mat", glm::vec3(0.40f, 0.42f, 0.47f));
+        auto pillarMesh = am.CreateCubeMesh("dm_pillar", 1.0f);
+        am.GetMeshPtr(pillarMesh)->SetMaterial(am.GetMaterialHandle("dm_pillar_mat"));
+        const float ringR = sim::kArenaHalf + 1.5f;
+        const float pillarH = 4.5f;
+        for (int i = 0; i <= 4; i++) {
+            const float t = -sim::kArenaHalf + i * (sim::kArenaHalf * 0.5f);// -12..12 step 6
+            const glm::vec3 s(0.7f, pillarH, 0.7f);
+            MakeProp(glm::vec3(t, pillarH * 0.5f, ringR), s, pillarMesh);
+            MakeProp(glm::vec3(t, pillarH * 0.5f, -ringR), s, pillarMesh);
+            MakeProp(glm::vec3(ringR, pillarH * 0.5f, t), s, pillarMesh);
+            MakeProp(glm::vec3(-ringR, pillarH * 0.5f, t), s, pillarMesh);
+        }
+
+        // Distant landmarks: a mid-to-far parallax layer between the pillars and
+        // the infinitely-far HDRI, so moving reads as covering distance.
+        MakeMaterial("dm_far_mat", glm::vec3(0.20f, 0.21f, 0.24f));
+        auto farMesh = am.CreateCubeMesh("dm_far", 1.0f);
+        am.GetMeshPtr(farMesh)->SetMaterial(am.GetMaterialHandle("dm_far_mat"));
+        struct Landmark {
+            float x, z, w, h;
+        };
+        const Landmark marks[] = {
+            { -38.0f, -30.0f, 8.0f, 14.0f }, { 34.0f, -42.0f, 10.0f, 18.0f }, { 44.0f, 26.0f, 7.0f, 11.0f },
+            { -30.0f, 46.0f, 9.0f, 16.0f },  { 2.0f, -58.0f, 14.0f, 22.0f },  { -54.0f, 10.0f, 6.0f, 10.0f },
+        };
+        for (const auto& m : marks)
+            MakeProp(glm::vec3(m.x, m.h * 0.5f, m.z), glm::vec3(m.w, m.h, m.w), farMesh);
+
+        // Enemy avatar. In --local solo mode the "enemy" is the embedded
+        // server's training bot (a practice dummy), so render it as an animated
+        // VAT "blob" with a preset metallic material — a distinct target. A real
+        // networked opponent is another player, so it stays a plain capsule.
+        // Either way only the render mesh differs; the sim collides and
+        // lag-compensates against the gameplay capsule (kCapsuleRadius/Height).
         _enemyGO = CreateGameObject(kParked);
-        _enemyGO->AddComponent<MeshComponent>(capsuleMesh);
+        VATDemoAsset enemyAsset;
+        if (gcli.local) {
+            enemyAsset = BuildBlobVATAsset(
+                "dm_enemy_vat", /*radius*/ sim::kCapsuleRadius * 1.5f, /*division*/ 28, /*frames*/ 60, /*fps*/ 24.0f
+            );
+        }
+        if (enemyAsset.clip) {
+            auto* vat = static_cast<VATComponent*>(_enemyGO->AddComponent<VATComponent>(
+                enemyAsset.mesh, std::move(enemyAsset.clip), VATProps{ .speed = 1.0f }
+            ));
+            // Preset metallic look: gunmetal-red base, full metalness. Back-face
+            // culling is the material default and the blob is convex, so there's
+            // nothing to override. Without image-based lighting a pure metal is
+            // mostly dark except the directional highlight, so a mid roughness
+            // spreads that highlight enough to read as metal — tune to taste.
+            if (auto* mat = vat->GetMaterial()) {
+                MetalMaps m = MakePresetMetalMaps(glm::vec3(0.59f, 0.16f, 0.15f), /*roughness*/ 0.4f);
+                mat->baseMap = m.base;
+                mat->metallicMap = m.metallic;
+                mat->roughnessMap = m.roughness;
+                mat->diffuse = glm::vec3(1.0f);// tint comes from baseMap now
+            }
+        } else {
+            // Networked opponent (or a bake failure): plain capsule.
+            auto capsuleMesh = am.CreateCapsuleMesh("dm_capsule", sim::kCapsuleRadius, sim::kCapsuleHeight);
+            am.GetMeshPtr(capsuleMesh)->SetMaterial(am.GetMaterialHandle("dm_enemy_mat"));
+            _enemyGO->AddComponent<MeshComponent>(capsuleMesh);
+        }
 
         auto rocketMesh = am.CreateSphereMesh("dm_rocket", sim::kRocketRadius, 10);
         am.GetMeshPtr(rocketMesh)->SetMaterial(am.GetMaterialHandle("dm_rocket_mat"));
@@ -243,6 +371,10 @@ class DeathmatchGame : public Application {
             cam->SetPerspective(90.0f, static_cast<float>(ws.width) / ws.height, 0.05f, 200.0f);
             cam->gameObject->AddComponent<DeathmatchController>(&_net, localAuth);// the local player
         }
+
+        // Capture the mouse for FPS look (cursor hidden + locked). ESC toggles
+        // it; the window close button / Cmd-Q quits.
+        Window::Get()->SetRelativeMouseMode(true);
 
         if (!_net.Connect(gcli.serverIp, gcli.serverPort)) {
             ConsoleSubsystem::Get()->Error(fmt::format("Failed to connect to {}:{}", gcli.serverIp, gcli.serverPort));
@@ -276,7 +408,12 @@ class DeathmatchGame : public Application {
 
         DrawHud();
 
-        if (InputSubsystem::Get()->IsKeyDown(Key::ESCAPE)) Quit();
+        // ESC toggles pointer lock (release / recapture the cursor) instead of
+        // quitting; close the window (or Cmd-Q) to quit.
+        if (InputSubsystem::Get()->IsKeyPressed(Key::ESCAPE)) {
+            auto* win = Window::Get();
+            win->SetRelativeMouseMode(!win->IsRelativeMouseMode());
+        }
     }
 
     void DrawHud() {

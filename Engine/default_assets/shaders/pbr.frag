@@ -58,6 +58,13 @@ uniform sampler2D shadow_map_unit;
 uniform samplerCube omni_shadow_map_unit;
 uniform float time;
 
+// Image-based lighting: equirectangular HDR environment (Renderer::environmentMap).
+// u_useEnv gates it (0 -> flat ambient fallback); u_envMaxLod is the top mip level
+// used as the fully-blurred (roughest / diffuse) sample. Sampling matches skybox.frag.
+uniform sampler2D u_envMap;
+uniform int u_useEnv;
+uniform float u_envMaxLod;
+
 // World-space clip plane (n, d) used by PlanarReflectionPass to cut away
 // geometry below the mirror plane; all-zero disables (dot == 0 is kept).
 uniform vec4 u_clipPlane;
@@ -160,6 +167,40 @@ vec3 FresnelSchlick(float vh, vec3 f0) {
     return f0 + (1.0 - f0) * pow(1.0 - vh, 5.0);
 }
 
+// Fresnel with a roughness term so grazing angles on rough surfaces don't
+// over-brighten the environment reflection (Sébastien Lagarde's formulation).
+vec3 FresnelSchlickRoughness(float ct, vec3 f0, float roughness) {
+    return f0 + (max(vec3(1.0 - roughness), f0) - f0) * pow(clamp(1.0 - ct, 0.0, 1.0), 5.0);
+}
+
+// atan(z, x) / asin(y) equirectangular mapping — identical to skybox.frag so the
+// reflected environment lines up with the drawn sky.
+vec2 dirToEquirectUV(vec3 dir) {
+    vec2 uv = vec2(atan(dir.z, dir.x), asin(clamp(dir.y, -1.0, 1.0)));
+    return uv * vec2(0.1591549, 0.3183099) + 0.5;
+}
+
+// Split-sum-style IBL approximated with the environment map's own mip chain:
+// the top mip stands in for the diffuse irradiance, and roughness selects a
+// specular LOD. No dedicated irradiance / prefilter / BRDF-LUT passes (yet).
+vec3 ComputeIBL(vec3 norm, vec3 viewDir, Surface surf) {
+    float nv = clamp(dot(norm, viewDir), 0.0, 1.0);
+    vec3 f0 = mix(vec3(0.04), surf.color, surf.metallic);
+    vec3 F = FresnelSchlickRoughness(nv, f0, surf.roughness);
+    vec3 kd = (1.0 - F) * (1.0 - surf.metallic);
+
+    // Diffuse: heavily-blurred environment (top mip ~ average) tinted by albedo.
+    vec3 irradiance = textureLod(u_envMap, dirToEquirectUV(norm), u_envMaxLod).rgb;
+    vec3 diffuse = irradiance * surf.color;
+
+    // Specular: reflection vector, LOD scaled by roughness.
+    vec3 R = reflect(-viewDir, norm);
+    vec3 prefiltered = textureLod(u_envMap, dirToEquirectUV(R), surf.roughness * u_envMaxLod).rgb;
+    vec3 specular = prefiltered * F;
+
+    return (kd * diffuse + specular) * surf.ao;
+}
+
 vec3 SurfaceColor(vec3 base) {
     vec3 texColor = pow(texture(base_map_unit, tex_uv).rgb, vec3(gamma));
     return base * texColor;
@@ -250,7 +291,11 @@ void main() {
     // result += CalculatePointLight(aux_lights[1], norm, viewDir, surf);
     // result += CalculatePointLight(aux_lights[2], norm, viewDir, surf);
     // result += CalculatePointLight(aux_lights[3], norm, viewDir, surf);
-    result += vec3(0.2) * surf.ao * surf.color;
+    if (u_useEnv == 1) {
+        result += ComputeIBL(norm, viewDir, surf);
+    } else {
+        result += vec3(0.2) * surf.ao * surf.color;
+    }
 
     result = pow(result, vec3(1.0 / gamma));
 

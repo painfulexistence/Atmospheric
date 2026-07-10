@@ -572,6 +572,30 @@ bool Window::GetMouseButtonState() {
     return glfwGetMouseButton(static_cast<GLFWwindow*>(_internal), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
 }
 
+void Window::SetRelativeMouseMode(bool enabled) {
+    // GLFW_CURSOR_DISABLED hides the cursor and gives unbounded virtual motion
+    // (the browser's Pointer Lock under Emscripten).
+    glfwSetInputMode(
+        static_cast<GLFWwindow*>(_internal), GLFW_CURSOR, enabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL
+    );
+    _relativeMouse = enabled;
+    _haveLastCursor = false;// restart delta tracking so the toggle doesn't jump
+}
+
+bool Window::IsRelativeMouseMode() const {
+    return _relativeMouse;
+}
+
+glm::vec2 Window::GetMouseDelta() {
+    double cx = 0.0, cy = 0.0;
+    glfwGetCursorPos(static_cast<GLFWwindow*>(_internal), &cx, &cy);
+    const glm::vec2 cur(static_cast<float>(cx), static_cast<float>(cy));
+    const glm::vec2 delta = _haveLastCursor ? cur - _lastCursor : glm::vec2(0.0f);
+    _lastCursor = cur;
+    _haveLastCursor = true;
+    return delta;
+}
+
 bool Window::GetKeyDown(Key key) {
     int glfwKey = convertToGlfwKey(key);
     if (glfwKey == GLFW_KEY_UNKNOWN) {
