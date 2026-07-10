@@ -182,7 +182,7 @@ class MicroVoxelApp : public Application {
         if (input->IsKeyPressed(Key::V)) {
             mv->giCrossVolume = !mv->giCrossVolume;
             console->Info(
-                mv->giCrossVolume ? "MicroVoxel GI: cross-volume (merged global grid, light bleeds between volumes)"
+                mv->giCrossVolume ? "MicroVoxel GI: cross-volume (brute-force all volumes, light bleeds between them)"
                                   : "MicroVoxel GI: primary volume only"
             );
         }

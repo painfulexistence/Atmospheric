@@ -373,10 +373,11 @@ public:
     // frame. The example toggles it (0.5) with B.
     float giSplitCompare = -1.0f;
 
-    // Cross-volume GI: trace the GI against a coarse global grid that merges all
-    // volumes (in the same palette-index format, so the GI shader is unchanged),
-    // so light bleeds between volumes (A's glowstone lights B) and every
-    // volume's pixels get GI. When off, GI traces only the primary volume.
+    // Cross-volume GI: the GI bounce ray brute-force tests every registered
+    // volume (up to kMaxGiVolumes) and keeps the nearest hit, so light bleeds
+    // between volumes (A's glowstone lights B) and every volume's pixels get GI.
+    // When off, GI traces only the pixel's own volume. Brute-force replaced the
+    // coarse merged-global-grid approach, which lost too much detail.
     bool giCrossVolume = true;
     int debugMode = 0;// 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
     bool shadowEnabled = true;
@@ -403,10 +404,6 @@ public:
 private:
     void _uploadGL(VoxelVolumeComponent* v);
     void _ensureGIRenderTargets(int w, int h);
-    // Rebuild the coarse merged global grid (for cross-volume GI) from all
-    // registered volumes, sampled into the same R8UI palette-index + occupancy
-    // format a single volume uses, so the GI trace needs no shader change.
-    void _buildGlobalGrid();
 
     std::vector<VoxelVolumeComponent*> _volumes;
 
@@ -432,15 +429,6 @@ private:
     GLuint _atrousTexGL[2] = { 0, 0 };
     GLuint _atrousFBOGL[2] = { 0, 0 };
 
-    // Coarse merged global grid for cross-volume GI (same format as a volume:
-    // R8UI palette index + R8UI occupancy bricks). Rebuilt when any volume
-    // changes; the palette is shared from the primary volume.
-    GLuint _giGlobalVolumeGL = 0;
-    GLuint _giGlobalOccGL = 0;
-    glm::vec3 _globalOrigin{ 0.0f };
-    float _globalCellSize = 0.1f;
-    static constexpr int kGlobalDim = 96;// coarse; GI is low frequency (also bounds rebuild cost)
-    bool _globalDirty = true;
     int _giW = 0, _giH = 0;
     int _giCur = 0;
     int _giFrame = 0;
