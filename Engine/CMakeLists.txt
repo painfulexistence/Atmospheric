@@ -469,26 +469,25 @@ elseif(NOT AE_USE_FFMPEG)
 endif()
 if(AE_USE_TINYUSDZ)
     # TinyUSDZ: dependency-free USD (USDA/USDC/USDZ) reader plus its Tydra
-    # render-data converter, vendored as a git submodule under external/. It's a
-    # heavy dependency, so it lives behind an option (default OFF) to keep the
-    # baseline build small per the project vision. The static target's include
-    # dir is only exposed PRIVATE, so add external/tinyusdz/src ourselves for
-    # <tinyusdz.hh> / <tydra/render-data.hh>.
-    if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/external/tinyusdz/CMakeLists.txt)
-        message(FATAL_ERROR
-            "AE_USE_TINYUSDZ=ON but external/tinyusdz is empty. Run "
-            "`git submodule update --init --recursive Engine/external/tinyusdz`.")
-    endif()
+    # render-data converter. Fetched at configure time (like SDL3/lua/sol2) so
+    # there is no submodule to init, and only when this option is on — the
+    # baseline build stays small per the project vision. The static target's
+    # include dir is only exposed PRIVATE, so we add ${tinyusdz_SOURCE_DIR}/src
+    # ourselves for <tinyusdz.hh> / <tydra/render-data.hh>.
     set(TINYUSDZ_WITH_TYDRA ON CACHE BOOL "" FORCE)
     set(TINYUSDZ_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(TINYUSDZ_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(TINYUSDZ_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
-    add_subdirectory(external/tinyusdz EXCLUDE_FROM_ALL)
+    FetchContent_Declare(
+        tinyusdz
+        GIT_REPOSITORY https://github.com/lighttransport/tinyusdz.git
+        GIT_TAG 11a2d361a9b6a0c4bf8918027233858d80ed17c5
+    )
+    FetchContent_MakeAvailable(tinyusdz)
     target_link_libraries(AtmosphericEngine PUBLIC tinyusdz::tinyusdz_static)
-    target_include_directories(AtmosphericEngine PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/external/tinyusdz/src)
+    target_include_directories(AtmosphericEngine PRIVATE ${tinyusdz_SOURCE_DIR}/src)
     target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_TINYUSDZ)
-    message(STATUS "TinyUSDZ enabled (AE_USE_TINYUSDZ=ON). AssetManager::LoadUSD available.")
+    message(STATUS "TinyUSDZ enabled (AE_USE_TINYUSDZ=ON, fetched). AssetManager::LoadUSD available.")
 endif()
 if(EMSCRIPTEN OR ANDROID OR IOS)
     # IMGUI_IMPL_OPENGL_ES3 : tell Dear ImGui's OpenGL3 backend to use GLES3

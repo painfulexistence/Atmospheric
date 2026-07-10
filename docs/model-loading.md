@@ -65,10 +65,10 @@ central pillar (7 brushes).
 
 ## `LoadUSD` — Universal Scene Description
 
-Opt-in. Build with `-DAE_USE_TINYUSDZ=ON` after fetching the submodule:
+Opt-in. Build with `-DAE_USE_TINYUSDZ=ON`; TinyUSDZ is fetched at configure time
+(via CMake FetchContent, like SDL3/lua), so there is no submodule to init:
 
 ```bash
-git submodule update --init --recursive Engine/external/tinyusdz
 cmake --preset=dev -DAE_USE_TINYUSDZ=ON
 ```
 
