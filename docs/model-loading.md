@@ -9,7 +9,7 @@ should drive the design of a future native scene format.
 | API | Format | Backing | Coord space | Hierarchy | Materials |
 |-----|--------|---------|-------------|-----------|-----------|
 | `LoadGLTF(path)` | `.gltf` / `.glb` | tinygltf (vcpkg) | Y-up | flattened | PBR built from textures |
-| `LoadMap(path, scale)` | Quake `.map` | hand-written parser | Z-up → Y-up | brush entities (flattened) | ignored (name only) |
+| `LoadTBMap(path, scale)` | Quake `.map` | hand-written parser | Z-up → Y-up | brush entities (flattened) | ignored (name only) |
 | `LoadUSD(path)` | `.usd/.usda/.usdc/.usdz` | TinyUSDZ + Tydra (opt-in) | Y-up | Xform graph (flattened) | not wired yet |
 
 All three currently **flatten** their scene graph into one mesh. That is the
@@ -26,10 +26,10 @@ every mesh into one `Mesh`, builds a `Material` from the first primitive's PBR
 textures, and handles interleaved buffers / all the GLTF accessor component
 types. Vertex count is capped at 65535 (uint16 indices).
 
-## `LoadMap` — Quake brush format
+## `LoadTBMap` — Quake brush format
 
 ```cpp
-MeshHandle level = AssetManager::Get().LoadMap("docs/example-maps/room.map");
+MeshHandle level = AssetManager::Get().LoadTBMap("docs/example-maps/room.map");
 // scale defaults to 1/32 (Quake units → engine units); pass your own if needed
 ```
 
@@ -95,7 +95,7 @@ and the 65535-vertex ceiling applies here too.
 
 Both importers have been checked end-to-end outside the full engine build:
 
-- **`LoadMap`** — its geometry/UV math (the brace-parser, plane derivation,
+- **`LoadTBMap`** — its geometry/UV math (the brace-parser, plane derivation,
   Sutherland-Hodgman clip, Z-up→Y-up transform) was compiled against real GLM
   and run on `docs/example-maps/room.map`, producing 7 brushes → 168 verts / 84
   triangles with engine-space bounds `(-4,-0.5,-4)…(4,4,4)` — exactly the room's
@@ -111,12 +111,12 @@ the resulting mesh, e.g. in an example's setup:
 
 ```cpp
 auto& am = AssetManager::Get();
-MeshHandle room = am.LoadMap("docs/example-maps/room.map");   // any build
+MeshHandle room = am.LoadTBMap("docs/example-maps/room.map");   // any build
 MeshHandle cube = am.LoadUSD("docs/example-usd/cube.usda");   // needs AE_USE_TINYUSDZ=ON
 // Attach to a GameObject via a MeshComponent and confirm the geometry renders.
 ```
 
-The loaders log a summary line (`LoadMap '…': N brushes, V verts, I indices` /
+The loaders log a summary line (`LoadTBMap '…': N brushes, V verts, I indices` /
 `LoadUSD '…': N meshes, …`) on success and a `Warn` on failure, so the console
 output is the quickest sanity check before anything reaches the screen.
 

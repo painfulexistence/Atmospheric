@@ -1747,10 +1747,10 @@ namespace {
 
 }// namespace
 
-MeshHandle AssetManager::LoadMap(const std::string& path, float scale) {
+MeshHandle AssetManager::LoadTBMap(const std::string& path, float scale) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        ConsoleSubsystem::Get()->Warn(fmt::format("LoadMap: cannot open '{}'", path));
+        ConsoleSubsystem::Get()->Warn(fmt::format("LoadTBMap: cannot open '{}'", path));
         return MeshHandle{};
     }
     std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -1949,11 +1949,11 @@ MeshHandle AssetManager::LoadMap(const std::string& path, float scale) {
 
     if (truncated)
         ConsoleSubsystem::Get()->Warn(
-            fmt::format("LoadMap '{}': geometry exceeds the 16-bit index limit; remaining brushes skipped.", path)
+            fmt::format("LoadTBMap '{}': geometry exceeds the 16-bit index limit; remaining brushes skipped.", path)
         );
 
     if (allVerts.empty()) {
-        ConsoleSubsystem::Get()->Warn(fmt::format("LoadMap: no brush geometry found in '{}'", path));
+        ConsoleSubsystem::Get()->Warn(fmt::format("LoadTBMap: no brush geometry found in '{}'", path));
         return MeshHandle{};
     }
 
@@ -1975,7 +1975,7 @@ MeshHandle AssetManager::LoadMap(const std::string& path, float scale) {
                            glm::vec3(hi.x, hi.y, hi.z) });
 
     ENGINE_LOG(
-        "LoadMap '{}': {} brushes, {} verts, {} indices", path, brushes.size(), allVerts.size(), allIndices.size()
+        "LoadTBMap '{}': {} brushes, {} verts, {} indices", path, brushes.size(), allVerts.size(), allIndices.size()
     );
     return CreateMesh(path, mesh);
 }

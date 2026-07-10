@@ -200,15 +200,6 @@ class DeathmatchGame : public Application {
         return AssetManager::Get().CreateTextureFromImage(std::make_shared<Image>(S, S, 3, px.data()));
     }
 
-    // Decorative box instance (material comes from the shared mesh). Scale per
-    // instance like MakeBox, so one cube mesh spawns pillars and landmarks.
-    GameObject* MakeProp(glm::vec3 center, glm::vec3 size, MeshHandle mesh) {
-        auto* go = CreateGameObject(center);
-        go->SetScale(size);
-        go->AddComponent<MeshComponent>(mesh);
-        return go;
-    }
-
     GameObject* MakeBox(const sim::Box& b, MeshHandle cube) {
         auto* go =
             CreateGameObject(glm::vec3((b.minX + b.maxX) * 0.5f, (b.minY + b.maxY) * 0.5f, (b.minZ + b.maxZ) * 0.5f));
@@ -265,38 +256,28 @@ class DeathmatchGame : public Application {
         for (int i = 0; i < sim::kNumBoxes; i++)
             MakeBox(boxes[i], cubeMesh);
 
-        // ── Parallax structure ──────────────────────────────────────────────
-        // Perimeter pillars just outside the movement clamp (±kArenaHalf): they
-        // sweep across the view as the player strafes — the parallax/scale cue a
-        // flat arena lacks. Decorative only (beyond the play area, no collision).
-        MakeMaterial("dm_pillar_mat", glm::vec3(0.40f, 0.42f, 0.47f));
-        auto pillarMesh = am.CreateCubeMesh("dm_pillar", 1.0f);
-        am.GetMeshPtr(pillarMesh)->SetMaterial(am.GetMaterialHandle("dm_pillar_mat"));
-        const float ringR = sim::kArenaHalf + 1.5f;
-        const float pillarH = 4.5f;
-        for (int i = 0; i <= 4; i++) {
-            const float t = -sim::kArenaHalf + i * (sim::kArenaHalf * 0.5f);// -12..12 step 6
-            const glm::vec3 s(0.7f, pillarH, 0.7f);
-            MakeProp(glm::vec3(t, pillarH * 0.5f, ringR), s, pillarMesh);
-            MakeProp(glm::vec3(t, pillarH * 0.5f, -ringR), s, pillarMesh);
-            MakeProp(glm::vec3(ringR, pillarH * 0.5f, t), s, pillarMesh);
-            MakeProp(glm::vec3(-ringR, pillarH * 0.5f, t), s, pillarMesh);
+        // ── Parallax structure (imported from a TrenchBroom .map) ────────────
+        // The decorative perimeter pillars (just outside the ±kArenaHalf
+        // movement clamp) and the distant landmarks that give a moving player a
+        // parallax/scale cue now live in assets/maps/arena.map instead of being
+        // spawned procedurally — a demonstration of AssetManager::LoadTBMap
+        // inside a real example. The .map is authored in engine units, so it is
+        // loaded at scale 1.0; the loader flattens every brush into one mesh, to
+        // which we assign a single greybox material (it has no per-face
+        // materials yet). Purely decorative: no collision, beyond the play area.
+        //
+        // Gameplay boxes and the grid floor deliberately stay procedural — the
+        // authoritative sim owns box collision (see sim::Boxes()), and the play
+        // floor needs its blueprint-grid texture that a single-material import
+        // can't carry.
+        Material* structMat = MakeMaterial("dm_structure_mat", glm::vec3(0.40f, 0.42f, 0.47f));
+        structMat->roughnessMap = MakeSolidTexture(glm::vec3(0.9f));
+        structMat->metallicMap = MakeSolidTexture(glm::vec3(0.0f));
+        auto arenaMesh = am.LoadTBMap("assets/maps/arena.map", 1.0f);
+        if (arenaMesh.IsValid()) {
+            am.GetMeshPtr(arenaMesh)->SetMaterial(am.GetMaterialHandle("dm_structure_mat"));
+            CreateGameObject(glm::vec3(0.0f))->AddComponent<MeshComponent>(arenaMesh);
         }
-
-        // Distant landmarks: a mid-to-far parallax layer between the pillars and
-        // the infinitely-far HDRI, so moving reads as covering distance.
-        MakeMaterial("dm_far_mat", glm::vec3(0.20f, 0.21f, 0.24f));
-        auto farMesh = am.CreateCubeMesh("dm_far", 1.0f);
-        am.GetMeshPtr(farMesh)->SetMaterial(am.GetMaterialHandle("dm_far_mat"));
-        struct Landmark {
-            float x, z, w, h;
-        };
-        const Landmark marks[] = {
-            { -38.0f, -30.0f, 8.0f, 14.0f }, { 34.0f, -42.0f, 10.0f, 18.0f }, { 44.0f, 26.0f, 7.0f, 11.0f },
-            { -30.0f, 46.0f, 9.0f, 16.0f },  { 2.0f, -58.0f, 14.0f, 22.0f },  { -54.0f, 10.0f, 6.0f, 10.0f },
-        };
-        for (const auto& m : marks)
-            MakeProp(glm::vec3(m.x, m.h * 0.5f, m.z), glm::vec3(m.w, m.h, m.w), farMesh);
 
         // Enemy avatar. In --local solo mode the "enemy" is the embedded
         // server's training bot (a practice dummy), so render it as an animated

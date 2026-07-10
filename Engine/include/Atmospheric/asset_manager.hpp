@@ -121,15 +121,16 @@ public:
     TextureHandle CreateOrUpdateTextureRGBA8(const std::string& name, const unsigned char* data, int width, int height);
     std::shared_ptr<Mesh> LoadOBJ(const std::string& path);
     MeshHandle LoadGLTF(const std::string& path);
-    // Load a Quake-family brush map (idTech2/idTech3 ".map" text format, incl.
-    // Valve 220 texture axes). Every brush across every entity is converted
+    // Load a TrenchBroom / Quake-family brush map (idTech2/idTech3 ".map" text
+    // format, including the Valve 220 texture axes TrenchBroom emits). Every
+    // brush across every entity is converted
     // from its convex half-space intersection into triangles and flattened
     // into a single Mesh, converting Quake's Z-up space to the engine's Y-up
     // and applying a uniform `scale` (Quake units are large — 1/32 maps one
     // 32-unit grid step to one engine unit). Point entities (info_player_start,
     // lights, …) are ignored. Returns an invalid handle on parse failure or if
     // the geometry exceeds the engine's 16-bit index limit.
-    MeshHandle LoadMap(const std::string& path, float scale = 1.0f / 32.0f);
+    MeshHandle LoadTBMap(const std::string& path, float scale = 1.0f / 32.0f);
     // Load a USD stage (.usd/.usda/.usdc/.usdz) through TinyUSDZ + Tydra and
     // flatten every mesh in the scene into a single Mesh. Requires the engine
     // to be built with AE_USE_TINYUSDZ; otherwise logs a warning and returns an
