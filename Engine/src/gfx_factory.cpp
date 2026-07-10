@@ -302,12 +302,15 @@ uint32_t GfxFactory::UploadTextureRGBA16F(const float* rgba, int w, int h) {
     GLuint texID;
     glGenTextures(1, &texID);
     glBindTexture(GL_TEXTURE_2D, texID);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    // Mip chain doubles as a cheap IBL prefilter: the PBR shader samples higher
+    // LODs for rougher surfaces (roughness -> textureLod bias).
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);// longitude wraps
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);// latitude clamps
     // Source is 32-bit float; the driver converts to the RGBA16F internal format.
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, rgba);
+    glGenerateMipmap(GL_TEXTURE_2D);// build the LOD chain sampled by the IBL specular term
     glBindTexture(GL_TEXTURE_2D, 0);
     return static_cast<uint32_t>(texID);
 }

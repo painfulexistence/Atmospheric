@@ -896,6 +896,10 @@ public:
     // When valid, SkyboxPass renders it as the sky (and later IBL phases source
     // irradiance/reflection from it); invalid falls back to the gradient sky.
     TextureHandle environmentMap;
+    // Top mip level of environmentMap, used by the PBR IBL term as the fully
+    // blurred (diffuse / roughest specular) sample. GL clamps textureLod beyond
+    // the real mip count, so a generous default is safe for any map size.
+    float environmentMaxLod = 10.0f;
 
     // Non-null only while PlanarReflectionPass drives the scene passes with a
     // mirrored camera; passes fall back to the main camera + sceneRT when null.

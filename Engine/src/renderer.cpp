@@ -1908,6 +1908,19 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             }
             meshShader->SetUniform(std::string("metallic_map_unit"), 6);
 
+            // Environment map for image-based lighting (Unit 7). Shares the
+            // equirect map that SkyboxPass draws; the PBR shader samples its mip
+            // chain as a cheap IBL prefilter. Invalid handle -> flat ambient.
+            {
+                const bool useEnv =
+                    renderer.environmentMap.IsValid() && static_cast<uint32_t>(renderer.environmentMap) != 0;
+                glActiveTexture(GL_TEXTURE7);
+                glBindTexture(GL_TEXTURE_2D, useEnv ? static_cast<uint32_t>(renderer.environmentMap) : 0);
+                meshShader->SetUniform(std::string("u_envMap"), 7);
+                meshShader->SetUniform(std::string("u_useEnv"), useEnv ? 1 : 0);
+                meshShader->SetUniform(std::string("u_envMaxLod"), renderer.environmentMaxLod);
+            }
+
             // VAT animation textures (units 8-9) + playback uniforms. vat.vert
             // treats vat_enabled == 0 as "use the static attributes", so a VAT
             // material with a null/invalid clip degrades to a static mesh.
