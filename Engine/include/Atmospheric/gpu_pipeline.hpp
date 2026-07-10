@@ -36,6 +36,7 @@ struct GpuBGLEntry {
         Uniform,
         DynamicUniform,
         Texture,
+        UnfilterableTexture,// texture_2d<f32>, non-filterable (e.g. rgba32float VAT data)
         Sampler,
         DepthTexture,// texture_depth_2d (e.g. shadow map)
         ComparisonSampler,// sampler_comparison (for textureSampleCompare)
@@ -52,6 +53,11 @@ inline GpuBGLEntry gpuDynUniform(uint32_t b, WGPUShaderStage v, uint64_t sz) {
 }
 inline GpuBGLEntry gpuTexture(uint32_t b, WGPUShaderStage v = WGPUShaderStage_Fragment) {
     return { b, v, GpuBGLEntry::Kind::Texture, 0 };
+}
+// Non-filterable float texture (e.g. rgba32float): sample with textureLoad, not
+// a sampler. Defaults to vertex visibility — its main use is VAT displacement.
+inline GpuBGLEntry gpuUnfilterableTexture(uint32_t b, WGPUShaderStage v = WGPUShaderStage_Vertex) {
+    return { b, v, GpuBGLEntry::Kind::UnfilterableTexture, 0 };
 }
 inline GpuBGLEntry gpuSampler(uint32_t b, WGPUShaderStage v = WGPUShaderStage_Fragment) {
     return { b, v, GpuBGLEntry::Kind::Sampler, 0 };

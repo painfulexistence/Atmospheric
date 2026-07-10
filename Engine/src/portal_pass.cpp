@@ -121,7 +121,6 @@ void PortalPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
     const int rh = std::max(1, static_cast<int>(static_cast<float>(ph) * resolutionScale));
 
     auto* mainSky = renderer.GetPass<SkyboxPass>();
-    auto* mainVoxel = renderer.GetPass<VoxelChunkPass>();
     glm::vec3 skyColor = mainSky ? mainSky->skyColor : glm::vec3(0.686f, 0.933f, 0.933f);
 
     size_t replayIndex = 0;
@@ -216,7 +215,8 @@ void PortalPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             WorldReplay& replay = _replaySlot(replayIndex + static_cast<size_t>(i));
             replay.skybox->skyColor = skyColor;
             if (mainSky) replay.skybox->horizonColor = mainSky->horizonColor;
-            if (mainVoxel) replay.voxel->paletteIndex = mainVoxel->paletteIndex;
+            // Voxel palette rides on VoxelMaterial and reaches replay.voxel
+            // through the shared render queue — no per-pass mirroring needed.
 
             renderer.viewOverride = &ov;
             v.rts[i]->Clear(glm::vec4(skyColor, 1.0f));

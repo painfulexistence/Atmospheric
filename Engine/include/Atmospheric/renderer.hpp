@@ -91,6 +91,7 @@ public:
 private:
     void _initGPU(WGPUDevice device, WGPUQueue queue);
     void _ensureDrawCapacity(uint32_t drawCount);
+    WGPUBindGroup _getOrCreateVATBG(uint32_t posTexID);
     WGPUDevice _gpuDevice = nullptr;
     WGPUQueue _gpuQueue = nullptr;
     WGPURenderPipeline _pipeline = nullptr;
@@ -103,6 +104,18 @@ private:
     // for ForwardOpaquePass to sample; this pass owns both handles.
     WGPUTexture _shadowTex = nullptr;
     WGPUTextureView _shadowView = nullptr;
+    // VAT casters: displacing depth pipeline (SHADOW_VAT_WGSL). Its draw slot is
+    // wider (model + vatParams), so it needs its own bind group over the shared
+    // draw buffer; group 1 binds the clip's position texture.
+    WGPURenderPipeline _vatPipeline = nullptr;
+    WGPUBindGroupLayout _vatUniformBGL = nullptr;
+    WGPUBindGroup _vatUniformBG = nullptr;
+    WGPUBindGroupLayout _vatTexBGL = nullptr;
+    struct CachedShadowVATBG {
+        WGPUBindGroup bg = nullptr;
+        WGPUTexture posTex = nullptr;
+    };
+    std::unordered_map<uint32_t, CachedShadowVATBG> _vatBGCache;
 #endif
 };
 
@@ -122,6 +135,9 @@ private:
     void _initGPU(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat colorFormat, uint32_t sampleCount);
     void _ensureDrawCapacity(uint32_t drawCount);
     WGPUBindGroup _getOrCreateTexBG(uint32_t texID);
+    // Group-3 bind group (VAT position+normal textures) for a clip, keyed by the
+    // position texture ID; rebuilt if GfxFactory recreates either texture.
+    WGPUBindGroup _getOrCreateVATBG(uint32_t posTexID, uint32_t normTexID);
 
     WGPUDevice _gpuDevice = nullptr;
     WGPUQueue _gpuQueue = nullptr;
@@ -129,6 +145,16 @@ private:
     // Heightmap-displacement terrain (TERRAIN_WGSL); shares group 0/1 layouts
     // with _pipeline so _uniformBG and the texture BG cache are reused.
     WGPURenderPipeline _terrainPipeline = nullptr;
+    // VAT displacement (VAT_WGSL); shares group 0/1/2 layouts with _pipeline and
+    // adds group 3 (_vatBGL) for the animation textures.
+    WGPURenderPipeline _vatPipeline = nullptr;
+    WGPUBindGroupLayout _vatBGL = nullptr;
+    struct CachedVATBG {
+        WGPUBindGroup bg = nullptr;
+        WGPUTexture posTex = nullptr;
+        WGPUTexture normTex = nullptr;
+    };
+    std::unordered_map<uint32_t, CachedVATBG> _vatBGCache;
     // PRIM variant with cull=None, used when PlanarReflectionPass drives this
     // pass with a mirrored (winding-reversed) camera. Terrain already culls
     // None, so it reuses _terrainPipeline for both views.
@@ -297,8 +323,6 @@ public:
 #endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
-    int paletteIndex = 4;// 0-5; 4 = VX Palette 5 (soft cool blue-grey)
-
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
     void _initGPU(
@@ -387,11 +411,18 @@ private:
     void _ensureGIRenderTargets(int w, int h);
 
     std::vector<VoxelVolumeComponent*> _volumes;
-    VoxelVolumeComponent* _uploadedVolume = nullptr;// which volume the GPU textures currently hold
 
-    GLuint _volumeTexGL = 0;
-    GLuint _occupancyTexGL = 0;
-    GLuint _paletteTexGL = 0;
+    // Per-volume GL textures (palette-index 3D + occupancy 3D + palette 2D),
+    // uploaded lazily and re-uploaded when the volume's dirty flag is set
+    // (regeneration or a runtime edit). Each registered volume gets its own set;
+    // the main pass draws one bounding box per volume, depth-composited.
+    struct GLVolume {
+        GLuint volumeTex = 0;
+        GLuint occupancyTex = 0;
+        GLuint paletteTex = 0;
+    };
+    std::unordered_map<VoxelVolumeComponent*, GLVolume> _glVolumes;
+    VoxelVolumeComponent* _uploadedVolume = nullptr;// WebGPU single-volume upload tracking
 
     // GI accumulation ping-pong (RGBA16F: rgb = indirect radiance, a = camera
     // distance for history validation)
@@ -860,6 +891,15 @@ public:
 
     glm::vec4 clearColor = glm::vec4(0.15f, 0.183f, 0.2f, 1.0f);
     bool wireframeEnabled = false;
+
+    // Equirectangular HDR environment map (RGBA16F, from AssetManager::LoadHDR).
+    // When valid, SkyboxPass renders it as the sky (and later IBL phases source
+    // irradiance/reflection from it); invalid falls back to the gradient sky.
+    TextureHandle environmentMap;
+    // Top mip level of environmentMap, used by the PBR IBL term as the fully
+    // blurred (diffuse / roughest specular) sample. GL clamps textureLod beyond
+    // the real mip count, so a generous default is safe for any map size.
+    float environmentMaxLod = 10.0f;
 
     // Non-null only while PlanarReflectionPass drives the scene passes with a
     // mirrored camera; passes fall back to the main camera + sceneRT when null.

@@ -11,7 +11,9 @@ class Mesh;
 class Material;
 class WaterMaterial;
 class TerrainMaterial;
+class VATMaterial;
 class PortalMaterial;
+class VoxelMaterial;
 class ShaderProgram;
 struct ShaderProgramProps;
 struct MaterialProps;
@@ -58,6 +60,8 @@ public:
     WaterMaterial* CreateWaterMaterial();
     PortalMaterial* CreatePortalMaterial();
     TerrainMaterial* CreateTerrainMaterial();
+    VATMaterial* CreateVATMaterial();
+    VoxelMaterial* CreateVoxelMaterial();
     Material* GetMaterial(const std::string& name) const;
     Material* GetMaterialByID(uint32_t id) const;
     // Handle-based access: handles are stable references that survive scene
@@ -132,6 +136,10 @@ public:
     // invalid handle. USD is Y-up like glTF, so positions pass through
     // unchanged. Material/texture binding is not wired up yet.
     MeshHandle LoadUSD(const std::string& path);
+    // Load an equirectangular HDR (.hdr) as a filterable RGBA16F texture for use
+    // as a skybox / IBL environment map. Returns an invalid handle on failure.
+    // Native path only for now (reads from disk via stb_image's float loader).
+    TextureHandle LoadHDR(const std::string& path);
 
     // ========== Resource Access ==========
     const std::vector<GLuint>& GetTextures() const {

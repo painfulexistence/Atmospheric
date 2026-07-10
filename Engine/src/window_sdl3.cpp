@@ -538,6 +538,24 @@ bool Window::GetMouseButtonState() {
     return SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK;
 }
 
+void Window::SetRelativeMouseMode(bool enabled) {
+    // SDL3 folds cursor-hide + window-lock + relative motion reporting into one
+    // call (SDL2's SDL_SetRelativeMouseMode, renamed and now window-scoped).
+    SDL_SetWindowRelativeMouseMode(static_cast<SDL_Window*>(_internal), enabled);
+    _relativeMouse = enabled;
+}
+
+bool Window::IsRelativeMouseMode() const {
+    return _relativeMouse;
+}
+
+glm::vec2 Window::GetMouseDelta() {
+    // Accumulated motion since the previous call — meaningful in relative mode.
+    float dx = 0.0f, dy = 0.0f;
+    SDL_GetRelativeMouseState(&dx, &dy);
+    return glm::vec2(dx, dy);
+}
+
 bool Window::GetKeyDown(Key key) {
     int sdlKey = ConvertToSdlKey(key);
     if (sdlKey == SDL_SCANCODE_UNKNOWN) {

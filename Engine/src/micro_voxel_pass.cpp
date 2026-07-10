@@ -14,6 +14,7 @@
 #include <cstring>
 #include <fmt/format.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "command_encoder.hpp"
@@ -60,17 +61,25 @@ void MicroVoxelPass::UnregisterVolume(VoxelVolumeComponent* v) {
             break;
         }
     }
+    auto it = _glVolumes.find(v);
+    if (it != _glVolumes.end()) {
+        glDeleteTextures(1, &it->second.volumeTex);
+        glDeleteTextures(1, &it->second.occupancyTex);
+        glDeleteTextures(1, &it->second.paletteTex);
+        _glVolumes.erase(it);
+    }
     if (_uploadedVolume == v) _uploadedVolume = nullptr;// force re-upload of whatever renders next
 }
 
 void MicroVoxelPass::_uploadGL(VoxelVolumeComponent* v) {
+    GLVolume& gv = _glVolumes[v];// creates the entry on first upload
     const auto N = static_cast<GLsizei>(v->gridDim);
     const auto BG = static_cast<GLsizei>(v->gridDim / v->brickDim);
 
-    if (_volumeTexGL == 0) {
-        glGenTextures(1, &_volumeTexGL);
-        glGenTextures(1, &_occupancyTexGL);
-        glGenTextures(1, &_paletteTexGL);
+    if (gv.volumeTex == 0) {
+        glGenTextures(1, &gv.volumeTex);
+        glGenTextures(1, &gv.occupancyTex);
+        glGenTextures(1, &gv.paletteTex);
     }
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -84,15 +93,15 @@ void MicroVoxelPass::_uploadGL(VoxelVolumeComponent* v) {
         glTexParameteri(target, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
     };
 
-    glBindTexture(GL_TEXTURE_3D, _volumeTexGL);
+    glBindTexture(GL_TEXTURE_3D, gv.volumeTex);
     setupIntTexParams(GL_TEXTURE_3D);
     glTexImage3D(GL_TEXTURE_3D, 0, GL_R8UI, N, N, N, 0, GL_RED_INTEGER, GL_UNSIGNED_BYTE, v->volume.data());
 
-    glBindTexture(GL_TEXTURE_3D, _occupancyTexGL);
+    glBindTexture(GL_TEXTURE_3D, gv.occupancyTex);
     setupIntTexParams(GL_TEXTURE_3D);
     glTexImage3D(GL_TEXTURE_3D, 0, GL_R8UI, BG, BG, BG, 0, GL_RED_INTEGER, GL_UNSIGNED_BYTE, v->occupancy.data());
 
-    glBindTexture(GL_TEXTURE_2D, _paletteTexGL);
+    glBindTexture(GL_TEXTURE_2D, gv.paletteTex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -272,7 +281,6 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     const int brickDim = vol->brickDim;
     const float voxelSize = vol->voxelSize;
     const glm::vec3 volumeOrigin = vol->GetOrigin();
-    const bool needUpload = vol->dirty || _uploadedVolume != vol;
 
     CameraComponent* camera = ctx->GetMainCamera();
     if (!camera) return;
@@ -299,7 +307,8 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             if (!dev) return;
             _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, static_cast<uint32_t>(renderer.sceneRT->GetNumSamples()));
         }
-        if (needUpload) {
+        // WebGPU stays single-volume (renders _volumes[0]) for now.
+        if (vol->dirty || _uploadedVolume != vol) {
             _uploadGPU(vol);
             vol->dirty = false;
             _uploadedVolume = vol;
@@ -357,11 +366,15 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     ShaderProgram* shader = AssetManager::Get().GetShader("microvoxel");
     if (!shader) return;
 
-    if (needUpload) {
-        _uploadGL(vol);
-        vol->dirty = false;
-        _uploadedVolume = vol;
+    // Upload every registered volume's textures (lazy; re-upload on dirty).
+    for (auto* v : _volumes) {
+        if (v->volume.empty()) continue;
+        if (v->dirty || _glVolumes.find(v) == _glVolumes.end()) {
+            _uploadGL(v);
+            v->dirty = false;
+        }
     }
+    const GLVolume& primaryTex = _glVolumes[vol];// vol == _volumes[0]; GI traces this one
 
     auto [width, height] = Window::Get()->GetPhysicalSize();
 
@@ -413,11 +426,11 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         giShader->SetUniform(std::string("u_history"), 3);
 
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_3D, _volumeTexGL);
+        glBindTexture(GL_TEXTURE_3D, primaryTex.volumeTex);
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_3D, _occupancyTexGL);
+        glBindTexture(GL_TEXTURE_3D, primaryTex.occupancyTex);
         glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, _paletteTexGL);
+        glBindTexture(GL_TEXTURE_2D, primaryTex.paletteTex);
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, _giTexGL[prev]);
 
@@ -438,14 +451,15 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     // against the rasterized scene, and hits write depth for later passes)
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
 
+    // ── Main pass: one bounding box per volume, depth-composited ─────────────
+    // Frame-global uniforms are set once; per-volume grid/transform/textures are
+    // set inside the loop. Each volume draws its world AABB (unit cube scaled by
+    // u_model); the shader writes gl_FragDepth so overlapping volumes and the
+    // rasterized scene composite correctly.
     shader->Activate();
-    shader->SetUniform(std::string("u_invViewProj"), invViewProj);
     shader->SetUniform(std::string("u_viewProj"), viewProj);
+    shader->SetUniform(std::string("u_viewportSize"), glm::vec2(width, height));
     shader->SetUniform(std::string("u_cameraPos"), cameraPos);
-    shader->SetUniform(std::string("u_volumeOrigin"), volumeOrigin);
-    shader->SetUniform(std::string("u_voxelSize"), voxelSize);
-    shader->SetUniform(std::string("u_gridDim"), gridDim);
-    shader->SetUniform(std::string("u_brickDim"), brickDim);
     shader->SetUniform(std::string("u_maxRaySteps"), maxRaySteps);
     shader->SetUniform(std::string("u_sunDir"), sunDir);
     shader->SetUniform(std::string("u_sunColor"), sunColor);
@@ -453,7 +467,6 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     shader->SetUniform(std::string("u_ambient"), ambientEff);
     shader->SetUniform(std::string("u_shadowEnabled"), shadowEnabled ? 1 : 0);
     shader->SetUniform(std::string("u_aoStrength"), aoStrength);
-    shader->SetUniform(std::string("u_giStrength"), giActive ? giStrength : 0.0f);
     shader->SetUniform(std::string("u_debugMode"), debugMode);
     shader->SetUniform(std::string("u_emissiveStrength"), emissiveStrength);
     shader->SetUniform(std::string("u_reflectionsEnabled"), reflectionsEnabled ? 1 : 0);
@@ -472,26 +485,57 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     shader->SetUniform(std::string("u_palette"), 2);
     shader->SetUniform(std::string("u_giTex"), 3);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_3D, _volumeTexGL);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_3D, _occupancyTexGL);
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, _paletteTexGL);
-    // Always bind a valid 2D texture to unit 3: macOS GL validates every
-    // declared sampler even when its branch is dead (u_giStrength == 0), and
-    // warns + substitutes a zero texture otherwise. Palette stands in when GI
-    // is off (the composite doesn't sample u_giTex in that path).
-    glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, (giActive && _giTexGL[_giCur]) ? _giTexGL[_giCur] : _paletteTexGL);
-
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glDepthMask(GL_TRUE);
+    // Cull disabled so each box still covers its footprint when the camera is
+    // inside it (front faces would be clipped); the shader writes gl_FragDepth
+    // from the DDA hit, so the late depth test composites correctly regardless.
     glDisable(GL_CULL_FACE);
     glDisable(GL_BLEND);// voxel fragments are opaque (alpha=1); don't inherit a blend state
 
-    DrawScreenQuadVAO(renderer.gl.screenQuadVAO);
+    for (auto* v : _volumes) {
+        if (v->volume.empty()) continue;
+        auto texIt = _glVolumes.find(v);
+        if (texIt == _glVolumes.end()) continue;
+        const GLVolume& gv = texIt->second;
+
+        const int vGrid = v->gridDim;
+        const float vVox = v->voxelSize;
+        const glm::vec3 vOrigin = v->GetOrigin();
+        const float boxExtent = static_cast<float>(vGrid) * vVox;
+        const glm::vec3 boxCenter = vOrigin + glm::vec3(boxExtent * 0.5f);
+        const glm::mat4 model =
+            glm::translate(glm::mat4(1.0f), boxCenter) * glm::scale(glm::mat4(1.0f), glm::vec3(boxExtent * 0.5f));
+
+        // GI is traced against the primary volume only, so its screen-space
+        // buffer is valid only for that volume's pixels; others use flat ambient.
+        const bool useGI = giActive && v == vol;
+
+        shader->SetUniform(std::string("u_model"), model);
+        shader->SetUniform(std::string("u_volumeOrigin"), vOrigin);
+        shader->SetUniform(std::string("u_voxelSize"), vVox);
+        shader->SetUniform(std::string("u_gridDim"), vGrid);
+        shader->SetUniform(std::string("u_brickDim"), v->brickDim);
+        shader->SetUniform(std::string("u_giStrength"), useGI ? giStrength : 0.0f);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_3D, gv.volumeTex);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_3D, gv.occupancyTex);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, gv.paletteTex);
+        // Always bind a valid 2D texture to unit 3: macOS GL validates every
+        // declared sampler even when its branch is dead (giStrength == 0), and
+        // warns + substitutes a zero texture otherwise. This volume's palette
+        // stands in when GI is off (the composite doesn't sample u_giTex then).
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, (useGI && _giTexGL[_giCur]) ? _giTexGL[_giCur] : gv.paletteTex);
+
+        glBindVertexArray(renderer.gl.skyboxVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 36);// unit cube -> volume AABB via u_model
+        glBindVertexArray(0);
+    }
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_3D, 0);
