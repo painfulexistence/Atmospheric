@@ -223,11 +223,11 @@ class DeathmatchGame : public Application {
     void OnLoad() override {
         _fontID = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
-        // Optional HDRI sky: drop an equirectangular .hdr at
-        // assets/textures/env.hdr to replace the gradient sky (and, once the IBL
+        // Optional HDRI sky: drop an equirectangular .hdr/.exr at
+        // assets/textures/ to replace the gradient sky (and, once the IBL
         // phases land, to light the metal blob). Absent → gradient fallback.
-        if (FileSystem::Get().Exists("assets/textures/env.hdr")) {
-            TextureHandle env = AssetManager::Get().LoadHDR("assets/textures/env.hdr");
+        if (FileSystem::Get().Exists("assets/textures/ushaka_sea_world_aquarium_2k.exr")) {
+            TextureHandle env = AssetManager::Get().LoadHDR("assets/textures/ushaka_sea_world_aquarium_2k.exr");
             if (env.IsValid()) GraphicsSubsystem::Get()->renderer->environmentMap = env;
         }
 
