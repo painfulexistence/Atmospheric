@@ -24,6 +24,7 @@ class AssetManager;
 class RmlUiManager;
 class UIPageManager;
 struct SceneBlueprint;
+struct ModelData;
 
 struct FrameData {
     FrameData(uint64_t number, float time, float deltaTime) {
@@ -176,6 +177,12 @@ public:
     );
 
     GameObject* CreateGameObject(glm::vec2 position, float rotation = 0.0f);
+
+    // Upload an imported ModelData's meshes and spawn a GameObject subtree
+    // mirroring its node hierarchy, parented under `parent`. Meshes are
+    // registered under "<baseName>#<i>". This is the Phase-2 (main-thread)
+    // instantiation shared by every model format. Returns the spawned root.
+    GameObject* InstantiateModel(const ModelData& model, GameObject* parent, const std::string& baseName);
 
     // Queue a factory lambda to run at the start of the next frame, outside any
     // entity-tick loop. Use this from Component::OnTick to safely create new

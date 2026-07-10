@@ -21,7 +21,9 @@
 #include "json_deserializer.hpp"
 #include "light_component.hpp"
 #include "material.hpp"
+#include "mesh.hpp"
 #include "mesh_component.hpp"
+#include "model_import.hpp"
 #include "rigidbody_2d_component.hpp"
 #include "rigidbody_component.hpp"
 #include "rmlui_manager.hpp"
@@ -888,6 +890,21 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
         }
     }
 
+    // Declarative model import: `"model": "assets/x.map"` imports a model and
+    // spawns its node subtree under this entity, positioned by the entity's own
+    // transform. One field handles every format ImportModel dispatches (.map
+    // today; .gltf / .usd once those importers land). `modelScale` only affects
+    // .map (Quake units); default matches AssetManager::LoadTBMap.
+    const std::string modelSrc = entityVal.value("model", "");
+    if (!modelSrc.empty()) {
+        const float modelScale = entityVal.value("modelScale", 1.0f / 32.0f);
+        ModelData model = ImportModel(modelSrc, modelScale);
+        if (model.ok)
+            app->InstantiateModel(model, go, name.empty() ? modelSrc : name);
+        else
+            ConsoleSubsystem::Get()->Warn(fmt::format("ParseEntity '{}': failed to import model '{}'", name, modelSrc));
+    }
+
     if (entityVal.contains("children") && entityVal["children"].is_array()) {
         for (const auto& childVal : entityVal["children"])
             ParseEntity(app, childVal, go);
@@ -1031,6 +1048,58 @@ void Application::InstantiateScene(const SceneBlueprint& bp) {
 
     mainCamera = _graphics->GetMainCamera();
     mainLight = _graphics->GetMainLight();
+}
+
+// Phase 2 instantiation shared by every model format: upload each MeshData to a
+// Mesh, then spawn a GameObject subtree mirroring the import node hierarchy.
+GameObject* Application::InstantiateModel(const ModelData& model, GameObject* parent, const std::string& baseName) {
+    auto& am = AssetManager::Get();
+
+    // One engine Mesh per MeshData, registered under "<baseName>#<i>" so repeated
+    // instantiation of the same asset reuses the cached mesh by name.
+    std::vector<MeshHandle> handles(model.meshes.size());
+    for (size_t i = 0; i < model.meshes.size(); ++i) {
+        const MeshData& md = model.meshes[i];
+        if (md.vertices.empty()) continue;
+        auto* mesh = new Mesh(MeshType::PRIM);
+        mesh->Initialize(md.vertices, md.indices);
+        glm::vec3 lo = md.vertices[0].position, hi = lo;
+        for (const auto& v : md.vertices) {
+            lo = glm::min(lo, v.position);
+            hi = glm::max(hi, v.position);
+        }
+        mesh->SetBoundingBox({ glm::vec3(lo.x, lo.y, lo.z),
+                               glm::vec3(hi.x, lo.y, lo.z),
+                               glm::vec3(lo.x, hi.y, lo.z),
+                               glm::vec3(hi.x, hi.y, lo.z),
+                               glm::vec3(lo.x, lo.y, hi.z),
+                               glm::vec3(hi.x, lo.y, hi.z),
+                               glm::vec3(lo.x, hi.y, hi.z),
+                               glm::vec3(hi.x, hi.y, hi.z) });
+        MeshHandle h = am.CreateMesh(fmt::format("{}#{}", baseName, i), mesh);
+        if (!md.material.empty()) {
+            if (Mesh* mp = am.GetMeshPtr(h)) mp->SetMaterial(am.GetMaterialHandle(md.material));
+        }
+        handles[i] = h;
+    }
+
+    // Spawn one GameObject per node. A node's meshes become MeshComponents on it;
+    // children recurse. The entity's own transform (from ParseEntity) positions
+    // the whole subtree since `parent` is that entity's GameObject.
+    std::function<GameObject*(const ModelNode&, GameObject*)> spawn = [&](const ModelNode& node,
+                                                                          GameObject* p) -> GameObject* {
+        GameObject* go = CreateGameObject();
+        go->SetName(node.name.empty() ? baseName : node.name);
+        if (p) go->parent = p;
+        go->SetLocalTransform(node.transform);
+        for (int mi : node.meshes)
+            if (mi >= 0 && mi < static_cast<int>(handles.size()) && handles[mi].IsValid())
+                go->AddComponent<MeshComponent>(handles[mi]);
+        for (const auto& child : node.children)
+            spawn(child, go);
+        return go;
+    };
+    return spawn(model.root, parent);
 }
 
 void Application::ShowLoadingScreen() {

@@ -12,10 +12,9 @@ should drive the design of a future native scene format.
 | `LoadTBMap(path, scale)` | Quake `.map` | hand-written parser | Z-up → Y-up | brush entities (flattened) | ignored (name only) |
 | `LoadUSD(path)` | `.usd/.usda/.usdc/.usdz` | TinyUSDZ + Tydra (opt-in) | Y-up | Xform graph (flattened) | not wired yet |
 
-All three currently **flatten** their scene graph into one mesh. That is the
-right first step — it gets geometry on screen — but it also throws away exactly
-the structure a scene format needs to preserve. See
-[Implications for the scene format](#implications-for-the-scene-format).
+The single-handle `Load*` calls flatten to one mesh, but there is now also a
+unified, hierarchy-preserving import line — see
+[The unified import line](#the-unified-import-line).
 
 ---
 
@@ -119,6 +118,51 @@ MeshHandle cube = am.LoadUSD("docs/example-usd/cube.usda");   // needs AE_USE_TI
 The loaders log a summary line (`LoadTBMap '…': N brushes, V verts, I indices` /
 `LoadUSD '…': N meshes, …`) on success and a `Warn` on failure, so the console
 output is the quickest sanity check before anything reaches the screen.
+
+---
+
+## The unified import line
+
+`Load*` returning one flattened `MeshHandle` is the resource-layer shortcut. The
+structured path — the one glTF, USD, and `.map` all funnel through — is
+`ImportModel` (`model_import.hpp`):
+
+```
+file ──[ImportModel — pure CPU, no GL, off-thread-safe]──▶ ModelData
+     ──[Application::InstantiateModel — main thread]──▶ GameObject subtree
+```
+
+- **`ModelData`** is the reusable "prefab": a flat `std::vector<MeshData>` plus a
+  `ModelNode` transform tree that references those meshes by index. No GPU state,
+  so `ImportModel` fits the engine's Phase-1 "pure parse" step (it can run off
+  the main thread, like `ParseSceneBlueprint`).
+- **`InstantiateModel`** is the Phase-2 (main-thread) half shared by every
+  format: it uploads each `MeshData` to a `Mesh` (registered as `"<base>#<i>"`)
+  and spawns one `GameObject` per node, attaching a `MeshComponent` per mesh and
+  recursing into children. The node tree — not a flattened blob — reaches the
+  scene, so per-part transforms and the 65535-vertex-per-mesh ceiling both work
+  out (a big model is many sub-meshes, each well under the cap).
+
+Scene vs prefab is a role, not a type: a `ModelData` is a prefab (reusable,
+instanceable); a scene is the root you load and run. No separate `PrefabBlueprint`
+is needed.
+
+### Declaring a model in a scene
+
+An entity in `main.json` can name a model file directly — one field covers every
+format `ImportModel` dispatches:
+
+```jsonc
+{ "name": "Arena", "position": [0, 0, 0],
+  "components": [ { "type": "CameraController3D" } ],
+  "model": "assets/maps/arena.map", "modelScale": 1.0 }
+```
+
+`ParseEntity` calls `ImportModel` + `InstantiateModel`, parenting the imported
+subtree under the entity so the entity's transform positions the whole model.
+`modelScale` only affects `.map` (Quake units; default `1/32`). Today
+`ImportModel` routes `.map`; `.gltf`/`.usd` importers land next, at which point
+the same `"model"` field imports them with no scene-format change.
 
 ---
 
