@@ -192,6 +192,7 @@ set(SOURCES
     src/vat.cpp
     src/vat_component.cpp
     src/exr_impl.cpp
+    external/miniz/miniz.c
     src/shader.cpp
     src/graphics_subsystem.cpp
     src/graphics_subsystem_tile.cpp
@@ -403,6 +404,16 @@ endif()
 
 add_library(AtmosphericEngine STATIC ${SOURCES} ${SOURCES_EXT})
 
+# Vendored EXR/zlib code (tinyexr via exr_impl.cpp, miniz.c): silence its
+# warnings like lua_static does — it isn't our code, and it trips the global
+# -Werror=reorder-init-list otherwise (and emits sprintf-deprecation noise on
+# recent Apple SDKs).
+if(MSVC)
+    set_source_files_properties(src/exr_impl.cpp external/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "/w")
+else()
+    set_source_files_properties(src/exr_impl.cpp external/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "-w")
+endif()
+
 target_include_directories(AtmosphericEngine
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -410,6 +421,7 @@ target_include_directories(AtmosphericEngine
         # lua_static has PUBLIC include dirs → Lua headers propagate automatically
         ${CMAKE_CURRENT_SOURCE_DIR}/external/stb
         ${CMAKE_CURRENT_SOURCE_DIR}/external/tinyexr
+        ${CMAKE_CURRENT_SOURCE_DIR}/external/miniz
         ${CMAKE_CURRENT_SOURCE_DIR}/include/Atmospheric
         ${FLATBUFFERS_GENERATED_DIR}
         ${fastnoiselite_SOURCE_DIR}/Cpp

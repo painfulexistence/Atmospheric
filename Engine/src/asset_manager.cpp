@@ -31,11 +31,8 @@ TextureHandle::TextureHandle(const std::string& path) {
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-// Declarations only (implementation lives in exr_impl.cpp). Macros must match
-// that TU: no miniz, reuse stb's zlib codec. Without TINYEXR_USE_MINIZ 0 the
-// header's default would try to #include <miniz.h>.
-#define TINYEXR_USE_MINIZ 0
-#define TINYEXR_USE_STB_ZLIB 1
+// Declarations only (implementation lives in exr_impl.cpp). Default
+// TINYEXR_USE_MINIZ=1 pulls in <miniz.h> (declarations) from external/miniz.
 #include "tinyexr.h"
 
 #define TINYGLTF_NO_INCLUDE_STB_IMAGE
