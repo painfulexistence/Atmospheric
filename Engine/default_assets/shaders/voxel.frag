@@ -4,6 +4,7 @@ in vec3 v_worldPos;
 in vec3 v_normal;
 flat in uint v_voxelId;
 flat in uint v_faceId;
+in float v_ao;// baked corner AO, 0 (occluded) .. 1 (open)
 
 uniform vec3  u_lightDir;
 uniform vec3  u_lightColor;
@@ -11,6 +12,7 @@ uniform vec3  u_ambientColor;
 uniform vec3  u_fogColor;
 uniform float u_fogDensity;
 uniform vec3  u_cameraPos;
+uniform float u_aoStrength;  // 0 disables corner AO, 1 = full
 
 uniform int   u_paletteIndex;  // 0-5, default 4 (VX Palette 5)
 
@@ -62,9 +64,13 @@ void main() {
     float faceShade = (v_faceId == 0u) ? 1.0 : (v_faceId == 1u ? 0.5 : 0.9);
     baseColor *= faceShade;
 
+    // Corner AO darkens creases/contact edges. Remap the 0..1 level to a
+    // gentler [1-strength .. 1] range so open faces stay full-bright.
+    float ao = mix(1.0, v_ao, u_aoStrength);
+
     vec3 ambient = u_ambientColor * baseColor;
     vec3 diffuse = diff * u_lightColor * baseColor;
-    vec3 color   = ambient + diffuse;
+    vec3 color   = (ambient + diffuse) * ao;
 
     float dist      = length(v_worldPos - u_cameraPos);
     float fogFactor = clamp(exp(-u_fogDensity * dist), 0.0, 1.0);

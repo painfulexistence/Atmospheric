@@ -297,6 +297,11 @@ public:
 #endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
+    // Per-vertex corner AO baked by the greedy mesher (VoxelVertex::ao); this
+    // scales its influence at shade time. 0 disables, 1 = full. GL path only
+    // (the WebGPU path applies it unconditionally). Toggle it live from an app.
+    float aoStrength = 1.0f;
+
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
     void _initGPU(

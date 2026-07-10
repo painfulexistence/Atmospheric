@@ -594,6 +594,7 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     auto* skybox = renderer.GetPass<SkyboxPass>();
     shader->SetUniform("u_fogColor", skybox ? skybox->skyColor : glm::vec3(0.686f, 0.933f, 0.933f));
     shader->SetUniform("u_fogDensity", 0.00001f);// VX: scene.py u_fog_density
+    shader->SetUniform("u_aoStrength", aoStrength);
 
     // Palette lives on the first voxel command's VoxelMaterial (one palette per
     // world per queue). Fallback keeps the historical default alive if a queue

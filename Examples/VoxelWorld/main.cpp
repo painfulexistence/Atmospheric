@@ -57,8 +57,8 @@ class VoxelWorldApp : public Application {
         }
 
         ConsoleSubsystem::Get()->Info(
-            "VoxelWorld loaded. WASD move, RF up/down, Arrow keys look, Z slow, X sprint, P palette, I wireframe, ESC "
-            "quit."
+            "VoxelWorld loaded. WASD move, RF up/down, Arrow keys look, Z slow, X sprint, P palette, I wireframe, O "
+            "corner AO, ESC quit."
         );
         ConsoleSubsystem::Get()->Info(
             "Hold E to dig — greedy-meshed 1m voxels, so carving re-meshes the affected chunks."
@@ -83,6 +83,14 @@ class VoxelWorldApp : public Application {
         if (InputSubsystem::Get()->IsKeyPressed(Key::I)) {
             _wireframe = !_wireframe;
             GraphicsSubsystem::Get()->renderer->EnableWireframe(_wireframe);
+        }
+        // Toggle the greedy mesher's baked corner AO (contact-edge darkening).
+        // The mesh already carries it per vertex; this just scales its influence.
+        if (InputSubsystem::Get()->IsKeyPressed(Key::O)) {
+            if (auto* vp = GraphicsSubsystem::Get()->renderer->GetPass<VoxelChunkPass>()) {
+                vp->aoStrength = (vp->aoStrength > 0.0f) ? 0.0f : 1.0f;
+                ConsoleSubsystem::Get()->Info(vp->aoStrength > 0.0f ? "Corner AO: on" : "Corner AO: off");
+            }
         }
         if (InputSubsystem::Get()->IsKeyDown(Key::E)) {
             const glm::vec3 ro = mainCamera->GetEyePosition();

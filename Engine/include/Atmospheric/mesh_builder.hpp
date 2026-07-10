@@ -96,7 +96,12 @@ public:
     // h        : extent along v_axis
     // u_axis   : 0=X, 1=Y, 2=Z
     // v_axis   : 0=X, 1=Y, 2=Z  (u_axis != v_axis, both != normal axis)
-    void PushGreedyFace(glm::ivec3 pos, FaceDir dir, uint8_t voxelId, int w, int h, int u_axis, int v_axis);
+    // ao       : the four corner AO values (0..3) in canonical order
+    //            C00, Cw0, Cwh, C0h (u then v), baked per vertex; nullptr =
+    //            fully open (3). Merged quads must be AO-uniform (see caller).
+    void PushGreedyFace(
+        glm::ivec3 pos, FaceDir dir, uint8_t voxelId, int w, int h, int u_axis, int v_axis, const uint8_t* ao = nullptr
+    );
 
     // Build and return vertex data
     const std::vector<VoxelVertex>& Build() {
