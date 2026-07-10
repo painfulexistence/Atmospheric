@@ -31,9 +31,9 @@ TextureHandle::TextureHandle(const std::string& path) {
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-// Declarations only (implementation lives in exr_impl.cpp). Default
-// TINYEXR_USE_MINIZ=1 pulls in <miniz.h> (declarations) from external/miniz.
-#include "tinyexr.h"
+// Declarations only; the implementation is compiled into the vcpkg tinyexr
+// static library (linked as unofficial::tinyexr::tinyexr, which pulls in miniz).
+#include <tinyexr.h>
 
 #define TINYGLTF_NO_INCLUDE_STB_IMAGE
 #define TINYGLTF_NO_STB_IMAGE_WRITE

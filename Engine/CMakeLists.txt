@@ -63,6 +63,7 @@ find_package(fmt REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(RmlUi REQUIRED)
 find_package(flatbuffers CONFIG REQUIRED)
+find_package(tinyexr CONFIG REQUIRED)
 
 # ── Lua 5.4 (built from source) ───────────────────────────────────────────────────────────────
 # Building from source rather than find_package(lua) because:
@@ -191,8 +192,6 @@ set(SOURCES
     src/water_component.cpp
     src/vat.cpp
     src/vat_component.cpp
-    src/exr_impl.cpp
-    external/miniz/miniz.c
     src/shader.cpp
     src/graphics_subsystem.cpp
     src/graphics_subsystem_tile.cpp
@@ -404,29 +403,12 @@ endif()
 
 add_library(AtmosphericEngine STATIC ${SOURCES} ${SOURCES_EXT})
 
-# Vendored EXR/zlib code (tinyexr via exr_impl.cpp, miniz.c): silence its
-# warnings like lua_static does — it isn't our code, and it trips the global
-# -Werror=reorder-init-list otherwise (and emits sprintf-deprecation noise on
-# recent Apple SDKs).
-if(MSVC)
-    set_source_files_properties(src/exr_impl.cpp external/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "/w")
-else()
-    set_source_files_properties(src/exr_impl.cpp external/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "-w")
-endif()
-
-# miniz.c is a C translation unit; the target's precompiled header (src/pch.hpp)
-# is C++, so force-including it into the C compile fails ("'array' file not
-# found"). Skip the PCH for the vendored C source.
-set_source_files_properties(external/miniz/miniz.c PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
-
 target_include_directories(AtmosphericEngine
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${BULLET_INCLUDE_DIR}
         # lua_static has PUBLIC include dirs → Lua headers propagate automatically
         ${CMAKE_CURRENT_SOURCE_DIR}/external/stb
-        ${CMAKE_CURRENT_SOURCE_DIR}/external/tinyexr
-        ${CMAKE_CURRENT_SOURCE_DIR}/external/miniz
         ${CMAKE_CURRENT_SOURCE_DIR}/include/Atmospheric
         ${FLATBUFFERS_GENERATED_DIR}
         ${fastnoiselite_SOURCE_DIR}/Cpp
@@ -440,6 +422,7 @@ target_link_libraries(AtmosphericEngine
         glm::glm fmt::fmt BulletSoftBody BulletDynamics BulletCollision LinearMath
         lua_static sol2::sol2
         RmlUi::RmlUi box2d::box2d flatbuffers::flatbuffers
+        unofficial::tinyexr::tinyexr
 )
 if(NOT EMSCRIPTEN)
     target_link_libraries(AtmosphericEngine PUBLIC raudio)
