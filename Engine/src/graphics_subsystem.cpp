@@ -241,12 +241,9 @@ void GraphicsSubsystem::DrawImGui(float dt) {
             "Average frame rate: %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate
         );
         ImGui::ColorEdit3("Clear color", reinterpret_cast<float*>(&renderer->clearColor));
-        if (auto* bloom = renderer->GetPass<BloomPass>()) {
-            ImGui::Checkbox("Bloom", &bloom->enabled);
-        }
 
         // Voxel-world lighting (VoxelChunkPass): corner AO + GI, both default
-        // off. Kept above the post-process effect toggles below.
+        // off. Kept above bloom and the post-process effect toggles below.
         if (auto* vp = renderer->GetPass<VoxelChunkPass>()) {
             if (ImGui::TreeNode("Ambient Occlusion")) {
                 ImGui::Checkbox("Enabled", &vp->aoEnabled);
@@ -282,6 +279,9 @@ void GraphicsSubsystem::DrawImGui(float dt) {
             }
         }
 
+        if (auto* bloom = renderer->GetPass<BloomPass>()) {
+            ImGui::Checkbox("Bloom", &bloom->enabled);
+        }
         if (auto* pp = renderer->GetPass<PostProcessPass>()) {
             ImGui::Checkbox("Tonemap", &pp->tonemapEnabled);
             ImGui::Checkbox("Chromatic Aberration", &pp->caEnabled);
