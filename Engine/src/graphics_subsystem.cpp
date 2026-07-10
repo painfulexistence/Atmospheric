@@ -279,6 +279,9 @@ void GraphicsSubsystem::DrawImGui(float dt) {
                     ImGui::SliderFloat("Strength", &vp->giStrength, 0.0f, 3.0f);
                     if (vp->giMode == GIMode::VoxelGI) {
                         ImGui::SliderInt("Cascade dim (m)", &vp->giVoxelDim, 32, 128);
+                        // Injection is amortized across frames; fewer slabs/frame
+                        // = smoother (no hitch) but the grid refreshes slower.
+                        ImGui::SliderInt("Inject slabs/frame", &vp->giInjectSlabs, 1, 16);
                         ImGui::TextDisabled("World-space voxel cone tracing");
                     } else {
                         ImGui::TextDisabled("SSGI not yet implemented (next increment)");

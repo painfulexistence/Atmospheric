@@ -636,6 +636,7 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     int giModeInt = static_cast<int>(giMode);
     if (giMode == GIMode::VoxelGI && !_giWorlds.empty()) {
         VoxelWorld* w = _giWorlds[0];
+        w->coneGI.slabsPerFrame = std::max(1, giInjectSlabs);
         // sunStrength 1.0: the rasterizer shades with lightColor directly (no
         // intensity multiply), so injected direct light stays consistent.
         const bool ready =

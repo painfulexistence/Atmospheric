@@ -309,8 +309,9 @@ public:
     // in the GI panel (GraphicsSubsystem::DrawImGui). GL path only.
     enum class GIMode { Off = 0, SSGI = 1, VoxelGI = 2 };
     GIMode giMode = GIMode::Off;
-    float giStrength = 1.0f;  // scales the indirect contribution
-    int giVoxelDim = 64;      // VCT cascade resolution (== world extent in metres)
+    float giStrength = 1.0f;   // scales the indirect contribution
+    int giVoxelDim = 64;       // VCT cascade resolution (== world extent in metres)
+    int giInjectSlabs = 4;     // VCT z-slabs injected per frame (lower = smoother, no hitch)
 
     // Worlds whose VoxelConeGI grid this pass drives/binds for VoxelGI. Worlds
     // register themselves (VoxelWorldComponent) so the pass can reach the raw

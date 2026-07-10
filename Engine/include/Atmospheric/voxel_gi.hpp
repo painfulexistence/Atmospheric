@@ -15,17 +15,22 @@ class ShaderProgram;
 // radiance, a = opacity), mip it with glGenerateMipmap, and cone-trace it in
 // voxel.frag. That keeps the whole path inside GL 4.1 (no imageStore/compute).
 //
-// Injection runs on the CPU when the world is edited or the camera has moved a
-// full re-inject step, so a static sun costs nothing per frame. A single
-// cascade (camera-centered cube) is enough for local color bleed / soft AO;
+// A full re-inject (dim^3 voxel samples + shadow walks + upload + mip) is far
+// too much for one frame, so injection is AMORTIZED: each Update() processes a
+// bounded number of z-slabs into a double-buffered back texture, uploading them
+// as it goes. The front texture (last completed grid) keeps being sampled until
+// the back finishes, then they swap. Nothing ever stalls the render thread, so
+// there is no hitch on camera move or carve. A single camera-centered cascade;
 // cascaded clipmaps are a later increment.
 class VoxelConeGI {
 public:
     ~VoxelConeGI();
 
-    // Rebuild the grid if the world changed or the camera crossed into a new
-    // re-inject step. dim = cube resolution (also world extent in metres, since
-    // VoxelWorld voxels are 1 m). Returns true if the grid is valid to bind.
+    // Advance injection: (re)start a build when the world changed, the camera
+    // crossed a re-inject step, or the resolution changed; otherwise push the
+    // in-flight build forward by a few slabs. dim = cube resolution (also world
+    // extent in metres, since VoxelWorld voxels are 1 m). Returns true if a
+    // completed grid is available to bind (the front texture).
     bool Update(
         const VoxelWorld& world,
         const glm::vec3& cameraPos,
@@ -38,39 +43,54 @@ public:
         int dim = 64
     );
 
-    // Bind the radiance texture on texUnit and set the sampler + placement
-    // uniforms (u_giRadiance, u_giOrigin, u_giCellSize, u_giDim, u_giMaxMip).
+    // Bind the (completed) front radiance texture on texUnit and set the sampler
+    // + placement uniforms (u_giRadiance, u_giOrigin, u_giCellSize, u_giDim,
+    // u_giMaxMip).
     void Bind(ShaderProgram* shader, int texUnit) const;
 
     bool Valid() const {
-        return _tex != 0 && _valid;
+        return _texFront != 0 && _valid;
     }
-    glm::ivec3 Origin() const {
-        return _origin;
-    }
-    int Dim() const {
-        return _dim;
-    }
+
+    // Slabs injected per Update() while a build is in flight. Lower = smoother
+    // (more frames to converge), higher = the grid refreshes sooner.
+    int slabsPerFrame = 4;
 
 private:
-    void Inject(
-        const VoxelWorld& world,
-        const glm::ivec3& origin,
-        const glm::vec3& sunDir,
-        const glm::vec3& sunColor,
-        float sunStrength,
-        const glm::vec3& ambient,
-        int paletteIndex
-    );
+    void StartBuild(const glm::ivec3& origin, int dim);
+    void EnsureTexture(GLuint& tex, int dim) const;
+    // Fill one z-slab of the back texture from the live world + captured lights.
+    void InjectSlab(const VoxelWorld& world, int z);
 
-    GLuint _tex = 0;
+    // Committed (front) grid — what Bind() exposes.
+    GLuint _texFront = 0;
     int _dim = 0;
     int _maxMip = 0;
     glm::ivec3 _origin{ 0 };// world-space min corner (integer metres)
     bool _valid = false;
-    bool _haveOrigin = false;
+
+    // In-flight (back) build.
+    GLuint _texBack = 0;
+    bool _building = false;
+    // Latched world-edit flag: a carve during an in-flight build is remembered
+    // and honored by a fresh build once the current one completes, so builds
+    // always run to completion (no restart thrash) yet never miss an edit.
+    bool _pendingDirty = false;
+    glm::ivec3 _injOrigin{ 0 };
+    int _injDim = 0;
+    int _injZ = 0;// next z-slab to process
+    // Lighting captured when the build started, so the grid is internally
+    // consistent even if the sun shifts mid-build.
+    glm::vec3 _injSunDir{ 0.0f };
+    glm::vec3 _injSunColor{ 1.0f };
+    glm::vec3 _injAmbient{ 0.0f };
+    float _injSunStrength = 1.0f;
+    int _injPalette = 4;
+
+    std::vector<glm::vec4> _slab;// reused CPU buffer for one z-slab (dim*dim)
+
     // Re-inject when the camera moves at least this many cells from the grid
-    // center, to bound CPU injection cost (one inject = dim^3 voxel samples).
+    // center. A short shadow walk length keeps per-cell cost down.
     static constexpr int kReinjectStep = 8;
-    std::vector<glm::vec4> _scratch;// reused CPU injection buffer (dim^3 texels)
+    static constexpr int kShadowSteps = 4;
 };
