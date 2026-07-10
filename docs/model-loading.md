@@ -87,6 +87,39 @@ Not handled yet: USD materials/textures (Tydra exposes them; wiring them to
 engine `Material` is follow-up work), `upAxis == Z` stages, skeletal animation,
 and the 65535-vertex ceiling applies here too.
 
+`docs/example-usd/cube.usda` is a ready-to-load sample (an 8-vertex cube).
+
+---
+
+## Verifying the importers
+
+Both importers have been checked end-to-end outside the full engine build:
+
+- **`LoadMap`** — its geometry/UV math (the brace-parser, plane derivation,
+  Sutherland-Hodgman clip, Z-up→Y-up transform) was compiled against real GLM
+  and run on `docs/example-maps/room.map`, producing 7 brushes → 168 verts / 84
+  triangles with engine-space bounds `(-4,-0.5,-4)…(4,4,4)` — exactly the room's
+  256-unit footprint scaled by 1/32, with all face normals axis-aligned and
+  outward.
+- **`LoadUSD`** — the exact TinyUSDZ + Tydra call path was compiled and run on
+  `docs/example-usd/cube.usda`, yielding 1 mesh, 8 points, 12 triangles, 8
+  per-vertex normals, and zero out-of-range indices (Tydra triangulated the 6
+  quads and rebuilt a single index buffer, as expected).
+
+To verify inside the engine on your own machine, call the importer and inspect
+the resulting mesh, e.g. in an example's setup:
+
+```cpp
+auto& am = AssetManager::Get();
+MeshHandle room = am.LoadMap("docs/example-maps/room.map");   // any build
+MeshHandle cube = am.LoadUSD("docs/example-usd/cube.usda");   // needs AE_USE_TINYUSDZ=ON
+// Attach to a GameObject via a MeshComponent and confirm the geometry renders.
+```
+
+The loaders log a summary line (`LoadMap '…': N brushes, V verts, I indices` /
+`LoadUSD '…': N meshes, …`) on success and a `Warn` on failure, so the console
+output is the quickest sanity check before anything reaches the screen.
+
 ---
 
 ## Implications for the scene format
