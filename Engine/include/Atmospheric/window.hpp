@@ -163,6 +163,13 @@ public:
 
     bool GetMouseButtonState();
 
+    // Relative (pointer-lock) mouse mode: hides and locks the cursor to the
+    // window and reports motion as per-frame deltas via GetMouseDelta(). This is
+    // the FPS mouse-look convention; toggling it off restores the normal cursor.
+    void SetRelativeMouseMode(bool enabled);
+    bool IsRelativeMouseMode() const;
+    glm::vec2 GetMouseDelta();
+
     // Legacy
     bool GetKeyDown(Key key);
     // Legacy
@@ -199,6 +206,9 @@ private:
     int _windowedHeight = 0;
     float _scaleX = 1.0f;
     float _scaleY = 1.0f;
+    bool _relativeMouse = false;
+    glm::vec2 _lastCursor{ 0.0f, 0.0f };// GLFW delta bookkeeping (unused on SDL3)
+    bool _haveLastCursor = false;
     WindowEventCallbackID _nextCallbackID = 0;
     std::unordered_map<WindowEventCallbackID, MouseMoveCallback> _mouseMoveCallbacks;
     std::unordered_map<WindowEventCallbackID, MouseEnterCallback> _mouseEnterCallbacks;

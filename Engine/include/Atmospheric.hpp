@@ -28,6 +28,8 @@
 #include "Atmospheric/text_3d_component.hpp"
 #include "Atmospheric/ui_page.hpp"
 #include "Atmospheric/ui_page_manager.hpp"
+#include "Atmospheric/vat.hpp"
+#include "Atmospheric/vat_component.hpp"
 #include "Atmospheric/video_player.hpp"
 #include "Atmospheric/video_recorder.hpp"
 #include "Atmospheric/voxel_chunk_component.hpp"

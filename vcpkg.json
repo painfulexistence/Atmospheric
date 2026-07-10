@@ -14,6 +14,7 @@
     "fmt",
     "spdlog",
     "tinygltf",
+    "tinyexr",
     "tracy",
     "rmlui",
     "box2d",
