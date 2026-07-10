@@ -1,8 +1,8 @@
 #include "model_import.hpp"
+#include "file_system.hpp"
 #include <cctype>
 #include <cmath>
 #include <cstring>
-#include <fstream>
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
 #include <glm/vec2.hpp>
@@ -324,14 +324,22 @@ namespace {
 }// namespace
 
 ModelData ImportMapModel(const std::string& path, float scale) {
-    ModelData model;
-    std::ifstream file(path, std::ios::binary);
-    if (!file) return model;// ok = false; caller logs
+    // Read through FileSystem so `path` resolves against the executable dir
+    // (SDL_GetBasePath), consistent with every other engine asset. A raw
+    // std::ifstream would resolve against the process cwd and miss the file
+    // whenever the two differ (the cause of "no brush geometry found").
+    const FileSystem::Bytes bytes = FileSystem::Get().ReadSync(path);
+    if (bytes.empty()) return ModelData{};// ok = false; caller logs
 
-    std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    const std::string text(bytes.begin(), bytes.end());
+    return ImportMapModelFromText(text, BaseName(path), scale);
+}
+
+ModelData ImportMapModelFromText(const std::string& text, const std::string& name, float scale) {
+    ModelData model;
     const std::vector<MapEntity> entities = ParseMap(TokenizeMap(text));
 
-    model.root.name = BaseName(path);
+    model.root.name = name;
     for (size_t i = 0; i < entities.size(); ++i) {
         MeshData md = BuildEntityMesh(entities[i].brushes, scale);
         if (md.vertices.empty()) continue;

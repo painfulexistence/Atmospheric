@@ -57,5 +57,10 @@ ModelData ImportModel(const std::string& path, float scale = 1.0f / 32.0f);
 
 // TrenchBroom / Quake ".map" brush format. Every brush entity becomes one mesh
 // under a child node named after its classname; Quake Z-up is converted to the
-// engine's Y-up and scaled by `scale`. Pure geometry — no logging, no GL.
+// engine's Y-up and scaled by `scale`. Reads the file through the engine
+// FileSystem (paths resolve against the executable dir, like every other asset).
 ModelData ImportMapModel(const std::string& path, float scale = 1.0f / 32.0f);
+
+// Same, but parsing already-loaded ".map" text — the pure, I/O-free core (also
+// used by tests). `name` becomes the root node's name.
+ModelData ImportMapModelFromText(const std::string& text, const std::string& name, float scale = 1.0f / 32.0f);
