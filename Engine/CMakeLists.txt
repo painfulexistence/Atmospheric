@@ -414,6 +414,11 @@ else()
     set_source_files_properties(src/exr_impl.cpp external/miniz/miniz.c PROPERTIES COMPILE_OPTIONS "-w")
 endif()
 
+# miniz.c is a C translation unit; the target's precompiled header (src/pch.hpp)
+# is C++, so force-including it into the C compile fails ("'array' file not
+# found"). Skip the PCH for the vendored C source.
+set_source_files_properties(external/miniz/miniz.c PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+
 target_include_directories(AtmosphericEngine
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
