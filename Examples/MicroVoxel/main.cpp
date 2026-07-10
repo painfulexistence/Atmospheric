@@ -65,7 +65,11 @@ class MicroVoxelApp : public Application {
             }
         ));
 
-        mainCamera->gameObject->SetPosition(glm::vec3(0.0f, 11.0f, 26.0f));
+        // Start on the far (-z) side looking back toward the diorama: yaw 180°
+        // from the default -z forward so the initial facing is +z, and mirror
+        // the position so the volumes stay framed instead of falling behind us.
+        mainCamera->gameObject->SetPosition(glm::vec3(0.0f, 11.0f, -26.0f));
+        mainCamera->Yaw(glm::radians(180.0f));
         mainCamera->Pitch(glm::radians(-16.0f));
         mainCamera->gameObject->AddComponent<CameraController3D>(/*moveSpeed=*/6.0f, /*lookSpeed=*/1.5f);
 
