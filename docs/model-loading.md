@@ -9,7 +9,7 @@ should drive the design of a future native scene format.
 | API | Format | Backing | Coord space | Hierarchy | Materials |
 |-----|--------|---------|-------------|-----------|-----------|
 | `LoadGLTF(path)` | `.gltf` / `.glb` | tinygltf (vcpkg) | Y-up | flattened | PBR built from textures |
-| `LoadTBMap(path, scale)` | Quake `.map` | hand-written parser | Z-up → Y-up | brush entities (flattened) | ignored (name only) |
+| `LoadTBMap(path, scale)` | Quake `.map` | hand-written parser | Z-up → Y-up | brush entities (flattened) | per-texture batches (by name) |
 | `LoadUSD(path)` | `.usd/.usda/.usdc/.usdz` | TinyUSDZ + Tydra (opt-in) | Y-up | Xform graph (flattened) | not wired yet |
 
 The single-handle `Load*` calls flatten to one mesh, but there is now also a
@@ -52,9 +52,17 @@ Not handled (deliberately, for a first cut):
 
 - Point entities (`info_player_start`, lights, …) are parsed as key/values and
   ignored — there is no scene concept to attach them to yet.
-- Per-face materials: face texture names are read but not resolved to engine
-  materials; the mesh uses the default material.
-- Maps whose brush geometry exceeds 65535 vertices are truncated with a warning.
+- Maps whose brush geometry exceeds 65535 vertices per material batch are
+  truncated with a warning.
+
+**Per-face materials** *are* supported through the import line: `ImportMapModel`
+groups every brush entity's faces by texture name into one `MeshData` batch each,
+tagged with that texture name. `InstantiateModel` then resolves a like-named
+engine material (`GetMaterialHandle(texture)`), so a `.map` textured with
+`floor` / `wall` renders each surface with the engine material of the same name
+(falling back to the default when none exists). The single-handle `LoadTBMap`
+still flattens all batches into one mesh, so its caller sets one material — use
+the `"model"` scene field or `InstantiateModel` directly for multi-material maps.
 
 This importer maps naturally onto the engine's existing CSG blockout system
 (`csg.hpp`, `level_blockout.hpp`) — a `.map` is essentially the on-disk,

@@ -223,11 +223,22 @@ namespace {
         return entities;
     }
 
-    // Convert one brush entity's brushes into a single MeshData (local, 0-based
-    // 16-bit indices). Verified out-of-engine against real TrenchBroom output.
-    MeshData BuildEntityMesh(const std::vector<MapBrush>& brushes, float scale) {
+    // Convert one brush entity's brushes into one MeshData per distinct texture
+    // (a per-material batch — material == the .map texture name). Verified
+    // out-of-engine against real TrenchBroom output.
+    std::vector<MeshData> BuildEntityMeshes(const std::vector<MapBrush>& brushes, float scale) {
         constexpr double kTexSize = 64.0;// classic Quake textures are 64² by default
-        MeshData md;
+        std::vector<MeshData> batches;
+
+        // Insertion-ordered find-or-create by texture name (few per entity, so a
+        // linear scan keeps output deterministic without a hash map).
+        auto batchFor = [&](const std::string& tex) -> MeshData& {
+            for (auto& b : batches)
+                if (b.material == tex) return b;
+            batches.push_back(MeshData{});
+            batches.back().material = tex;
+            return batches.back();
+        };
 
         for (const auto& brush : brushes) {
             for (size_t fi = 0; fi < brush.faces.size(); ++fi) {
@@ -280,8 +291,9 @@ namespace {
                 const double cosR = std::cos(glm::radians(face.rotation));
                 const double sinR = std::sin(glm::radians(face.rotation));
 
+                MeshData& md = batchFor(face.texture);
                 const auto vertBase = static_cast<uint32_t>(md.vertices.size());
-                if (vertBase + poly.size() > 65535) return md;// per-entity 16-bit ceiling
+                if (vertBase + poly.size() > 65535) continue;// this material batch is full
 
                 for (const glm::dvec3& q : poly) {
                     double u = glm::dot(q, texU) / face.scaleX;
@@ -313,7 +325,12 @@ namespace {
                 }
             }
         }
-        return md;
+
+        // Drop batches whose faces were all clipped away.
+        std::vector<MeshData> out;
+        for (auto& b : batches)
+            if (!b.vertices.empty()) out.push_back(std::move(b));
+        return out;
     }
 
     std::string BaseName(const std::string& path) {
@@ -341,14 +358,17 @@ ModelData ImportMapModelFromText(const std::string& text, const std::string& nam
 
     model.root.name = name;
     for (size_t i = 0; i < entities.size(); ++i) {
-        MeshData md = BuildEntityMesh(entities[i].brushes, scale);
-        if (md.vertices.empty()) continue;
-        const int meshIndex = static_cast<int>(model.meshes.size());
-        model.meshes.push_back(std::move(md));
+        std::vector<MeshData> batches = BuildEntityMeshes(entities[i].brushes, scale);
+        if (batches.empty()) continue;
 
+        // One node per brush entity; its per-texture batches become sibling
+        // meshes on that node (each keeps its own material == texture name).
         ModelNode node;
         node.name = entities[i].classname.empty() ? ("brushentity_" + std::to_string(i)) : entities[i].classname;
-        node.meshes.push_back(meshIndex);
+        for (MeshData& md : batches) {
+            node.meshes.push_back(static_cast<int>(model.meshes.size()));
+            model.meshes.push_back(std::move(md));
+        }
         model.root.children.push_back(std::move(node));
     }
 
