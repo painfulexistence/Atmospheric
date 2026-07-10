@@ -239,16 +239,21 @@ class DeathmatchGame : public Application {
         am.GetMeshPtr(floorMesh)->SetMaterial(am.GetMaterialHandle("dm_floor_mat"));
         CreateGameObject(glm::vec3(0.0f))->AddComponent<MeshComponent>(floorMesh);
 
-        // Surrounding plaza: a large, darker plane just below the play floor,
-        // reaching out toward the HDRI horizon so objects sit on ground rather
-        // than floating over a 24x24 platform.
+        // The surrounding plaza, perimeter pillars, and distant landmarks — the
+        // whole static environment shell — are authored in assets/maps/arena.map
+        // and imported below. Their materials are created here so the .map's
+        // per-face texture names resolve to them (InstantiateModel looks each
+        // material up by name). The plaza is darker and reaches to the HDRI
+        // horizon so objects sit on ground rather than on a 24x24 platform.
         Material* groundMat = MakeMaterial("dm_ground_mat", glm::vec3(0.14f, 0.15f, 0.17f));
         groundMat->roughnessMap = MakeSolidTexture(glm::vec3(0.9f));
         groundMat->metallicMap = MakeSolidTexture(glm::vec3(0.0f));
-        const float groundSize = 16.0f * sim::kArenaHalf;// ~192 units
-        auto groundMesh = am.CreatePlaneMesh("dm_ground", groundSize, groundSize);
-        am.GetMeshPtr(groundMesh)->SetMaterial(am.GetMaterialHandle("dm_ground_mat"));
-        CreateGameObject(glm::vec3(0.0f, -0.02f, 0.0f))->AddComponent<MeshComponent>(groundMesh);
+        Material* pillarMat = MakeMaterial("dm_pillar_mat", glm::vec3(0.40f, 0.42f, 0.47f));
+        pillarMat->roughnessMap = MakeSolidTexture(glm::vec3(0.9f));
+        pillarMat->metallicMap = MakeSolidTexture(glm::vec3(0.0f));
+        Material* farMat = MakeMaterial("dm_far_mat", glm::vec3(0.20f, 0.21f, 0.24f));
+        farMat->roughnessMap = MakeSolidTexture(glm::vec3(0.9f));
+        farMat->metallicMap = MakeSolidTexture(glm::vec3(0.0f));
 
         auto cubeMesh = am.CreateCubeMesh("dm_cube", 1.0f);
         am.GetMeshPtr(cubeMesh)->SetMaterial(am.GetMaterialHandle("dm_box_mat"));
@@ -256,28 +261,17 @@ class DeathmatchGame : public Application {
         for (int i = 0; i < sim::kNumBoxes; i++)
             MakeBox(boxes[i], cubeMesh);
 
-        // ── Parallax structure (imported from a TrenchBroom .map) ────────────
-        // The decorative perimeter pillars (just outside the ±kArenaHalf
-        // movement clamp) and the distant landmarks that give a moving player a
-        // parallax/scale cue now live in assets/maps/arena.map instead of being
-        // spawned procedurally — a demonstration of AssetManager::LoadTBMap
-        // inside a real example. The .map is authored in engine units, so it is
-        // loaded at scale 1.0; the loader flattens every brush into one mesh, to
-        // which we assign a single greybox material (it has no per-face
-        // materials yet). Purely decorative: no collision, beyond the play area.
-        //
-        // Gameplay boxes and the grid floor deliberately stay procedural — the
-        // authoritative sim owns box collision (see sim::Boxes()), and the play
-        // floor needs its blueprint-grid texture that a single-material import
-        // can't carry.
-        Material* structMat = MakeMaterial("dm_structure_mat", glm::vec3(0.40f, 0.42f, 0.47f));
-        structMat->roughnessMap = MakeSolidTexture(glm::vec3(0.9f));
-        structMat->metallicMap = MakeSolidTexture(glm::vec3(0.0f));
-        auto arenaMesh = am.LoadTBMap("assets/maps/arena.map", 1.0f);
-        if (arenaMesh.IsValid()) {
-            am.GetMeshPtr(arenaMesh)->SetMaterial(am.GetMaterialHandle("dm_structure_mat"));
-            CreateGameObject(glm::vec3(0.0f))->AddComponent<MeshComponent>(arenaMesh);
-        }
+        // ── Static environment shell (imported from a TrenchBroom .map) ──────
+        // The plaza, the perimeter pillars (just outside the ±kArenaHalf movement
+        // clamp), and the distant parallax landmarks all live in arena.map. It is
+        // authored in engine units (loaded at scale 1.0) and instantiated as a
+        // node subtree; the loader's per-texture batches resolve to the materials
+        // created above, so each surface keeps its own look. The grid play floor
+        // and the gameplay boxes stay procedural — the authoritative sim owns box
+        // collision (see sim::Boxes()), and the floor needs its blueprint-grid
+        // UVs that a brush texture projection can't reproduce.
+        ModelData arena = ImportMapModel("assets/maps/arena.map", 1.0f);
+        if (arena.ok) InstantiateModel(arena, nullptr, "arena");
 
         // Enemy avatar. In --local solo mode the "enemy" is the embedded
         // server's training bot (a practice dummy), so render it as an animated
