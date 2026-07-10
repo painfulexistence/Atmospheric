@@ -218,6 +218,7 @@ set(SOURCES
     src/physics_subsystem_2d.cpp
     src/rigidbody_2d_component.cpp
     src/mesh_builder.cpp
+    src/model_import.cpp
     src/shape_renderer_component.cpp
     src/voxel_chunk_component.cpp
     src/voxel_world.cpp
