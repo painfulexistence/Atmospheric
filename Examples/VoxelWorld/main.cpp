@@ -88,8 +88,8 @@ class VoxelWorldApp : public Application {
         // The mesh already carries it per vertex; this just scales its influence.
         if (InputSubsystem::Get()->IsKeyPressed(Key::O)) {
             if (auto* vp = GraphicsSubsystem::Get()->renderer->GetPass<VoxelChunkPass>()) {
-                vp->aoStrength = (vp->aoStrength > 0.0f) ? 0.0f : 1.0f;
-                ConsoleSubsystem::Get()->Info(vp->aoStrength > 0.0f ? "Corner AO: on" : "Corner AO: off");
+                vp->aoEnabled = !vp->aoEnabled;
+                ConsoleSubsystem::Get()->Info(vp->aoEnabled ? "Corner AO: on" : "Corner AO: off");
             }
         }
         // Cycle global illumination: Off -> VoxelGI -> SSGI -> Off. Also

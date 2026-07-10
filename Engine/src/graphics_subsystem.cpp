@@ -244,27 +244,18 @@ void GraphicsSubsystem::DrawImGui(float dt) {
         if (auto* bloom = renderer->GetPass<BloomPass>()) {
             ImGui::Checkbox("Bloom", &bloom->enabled);
         }
-        if (auto* pp = renderer->GetPass<PostProcessPass>()) {
-            ImGui::Checkbox("Tonemap", &pp->tonemapEnabled);
-            ImGui::Checkbox("Chromatic Aberration", &pp->caEnabled);
-            ImGui::Checkbox("CRT", &pp->crtEnabled);
-            ImGui::SameLine();
-            ImGui::Checkbox("VHS", &pp->vhsEnabled);
-            ImGui::SameLine();
-            ImGui::Checkbox("Color Grading", &pp->gradingEnabled);
-            ImGui::Checkbox("Posterize", &pp->posterizeEnabled);
-            ImGui::SameLine();
-            ImGui::Checkbox("Sobel", &pp->sobelEnabled);
-            ImGui::SameLine();
-            ImGui::Checkbox("Edges", &pp->edgesEnabled);
-            ImGui::SameLine();
-            ImGui::Checkbox("Vignette", &pp->vignetteEnabled);
-        }
 
-        // Global illumination for the voxel world (VoxelChunkPass). Enabled
-        // defaults to VoxelGI (cone tracing) — the mode that fits this forward
-        // renderer; SSGI is reserved for a later increment.
+        // Voxel-world lighting (VoxelChunkPass): corner AO + GI, both default
+        // off. Kept above the post-process effect toggles below.
         if (auto* vp = renderer->GetPass<VoxelChunkPass>()) {
+            if (ImGui::TreeNode("Ambient Occlusion")) {
+                ImGui::Checkbox("Enabled", &vp->aoEnabled);
+                if (vp->aoEnabled) {
+                    ImGui::SliderFloat("Strength", &vp->aoStrength, 0.0f, 1.0f);
+                    ImGui::TextDisabled("Baked per-vertex corner AO");
+                }
+                ImGui::TreePop();
+            }
             if (ImGui::TreeNode("Global Illumination")) {
                 using GIMode = VoxelChunkPass::GIMode;
                 bool enabled = vp->giMode != GIMode::Off;
@@ -289,6 +280,23 @@ void GraphicsSubsystem::DrawImGui(float dt) {
                 }
                 ImGui::TreePop();
             }
+        }
+
+        if (auto* pp = renderer->GetPass<PostProcessPass>()) {
+            ImGui::Checkbox("Tonemap", &pp->tonemapEnabled);
+            ImGui::Checkbox("Chromatic Aberration", &pp->caEnabled);
+            ImGui::Checkbox("CRT", &pp->crtEnabled);
+            ImGui::SameLine();
+            ImGui::Checkbox("VHS", &pp->vhsEnabled);
+            ImGui::SameLine();
+            ImGui::Checkbox("Color Grading", &pp->gradingEnabled);
+            ImGui::Checkbox("Posterize", &pp->posterizeEnabled);
+            ImGui::SameLine();
+            ImGui::Checkbox("Sobel", &pp->sobelEnabled);
+            ImGui::SameLine();
+            ImGui::Checkbox("Edges", &pp->edgesEnabled);
+            ImGui::SameLine();
+            ImGui::Checkbox("Vignette", &pp->vignetteEnabled);
         }
 
         ImGui::Text("Opaque Queue Size: %d", static_cast<int>(renderer->GetOpaqueQueue().size()));

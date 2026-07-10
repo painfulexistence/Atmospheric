@@ -298,9 +298,11 @@ public:
 #endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
-    // Per-vertex corner AO baked by the greedy mesher (VoxelVertex::ao); this
-    // scales its influence at shade time. 0 disables, 1 = full. GL path only
-    // (the WebGPU path applies it unconditionally). Toggle it live from an app.
+    // Per-vertex corner AO baked by the greedy mesher (VoxelVertex::ao).
+    // aoEnabled gates it (default off); aoStrength scales its influence when on
+    // (0..1). GL path only (the WebGPU path applies AO unconditionally). Exposed
+    // in the GI panel (GraphicsSubsystem::DrawImGui) alongside the GI toggle.
+    bool aoEnabled = false;
     float aoStrength = 1.0f;
 
     // Global illumination mode for the voxel world. VoxelGI cone-traces the
