@@ -65,10 +65,9 @@ class MicroVoxelApp : public Application {
             }
         ));
 
-        // Initial camera: yaw 180° from the default -z forward (so it faces +z),
-        // positioned at (1, 10, 20), pitched down 16°.
+        // Initial camera at (1, 10, 20), pitched down 16°, using the default -z
+        // forward so it looks back toward the diorama at the origin.
         mainCamera->gameObject->SetPosition(glm::vec3(1.0f, 10.0f, 20.0f));
-        mainCamera->Yaw(glm::radians(180.0f));
         mainCamera->Pitch(glm::radians(-16.0f));
         mainCamera->gameObject->AddComponent<CameraController3D>(/*moveSpeed=*/6.0f, /*lookSpeed=*/1.5f);
 
