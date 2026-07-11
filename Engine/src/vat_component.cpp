@@ -4,7 +4,7 @@
 #include "imgui.h"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "mesh_component.hpp"
+#include "mesh_renderer.hpp"
 #include <algorithm>
 #include <cmath>
 #include <utility>
@@ -20,7 +20,7 @@ VATComponent::VATComponent(GameObject* owner, MeshHandle mesh, std::unique_ptr<V
 
     if (Mesh* meshPtr = am.GetMeshPtr(_mesh)) meshPtr->SetMaterial(am.GetMaterialHandle(_material));
 
-    owner->AddComponent<MeshComponent>(_mesh);
+    owner->AddComponent<MeshRenderer>(_mesh);
 }
 
 void VATComponent::OnAttach() {

@@ -6,7 +6,7 @@
 #include "imgui.h"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "mesh_component.hpp"
+#include "mesh_renderer.hpp"
 #include <algorithm>
 
 TerrainMeshComponent::TerrainMeshComponent(
@@ -81,7 +81,7 @@ TerrainMeshComponent::TerrainMeshComponent(
 
     _material = terrainMat;
     if (meshPtr) meshPtr->SetMaterial(am.GetMaterialHandle(terrainMat));
-    owner->AddComponent<MeshComponent>(_mesh);
+    owner->AddComponent<MeshRenderer>(_mesh);
 
     if (auto* noise = dynamic_cast<NoiseHeightField*>(_heightField.get())) _appliedParams = noise->Params();
 }

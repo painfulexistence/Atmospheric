@@ -4,7 +4,7 @@
 #include "imgui.h"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "mesh_component.hpp"
+#include "mesh_renderer.hpp"
 
 WaterComponent::WaterComponent(GameObject* owner, const WaterProps& props) : _props(props) {
     gameObject = owner;
@@ -15,7 +15,7 @@ WaterComponent::WaterComponent(GameObject* owner, const WaterProps& props) : _pr
     _material = am.CreateWaterMaterial();
     if (Mesh* meshPtr = am.GetMeshPtr(_mesh)) meshPtr->SetMaterial(am.GetMaterialHandle(_material));
 
-    owner->AddComponent<MeshComponent>(_mesh);
+    owner->AddComponent<MeshRenderer>(_mesh);
 }
 
 void WaterComponent::OnTick(float /*dt*/) {

@@ -120,7 +120,7 @@ the resulting mesh, e.g. in an example's setup:
 auto& am = AssetManager::Get();
 MeshHandle room = am.LoadTBMap("docs/example-maps/room.map");   // any build
 MeshHandle cube = am.LoadUSD("docs/example-usd/cube.usda");   // needs AE_USE_TINYUSDZ=ON
-// Attach to a GameObject via a MeshComponent and confirm the geometry renders.
+// Attach to a GameObject via a MeshRenderer and confirm the geometry renders.
 ```
 
 The loaders log a summary line (`LoadTBMap '…': N brushes, V verts, I indices` /
@@ -146,7 +146,7 @@ file ──[ImportPrefab — pure CPU, no GL, off-thread-safe]──▶ Prefab
   the main thread, like `ParseSceneBlueprint`).
 - **`Instantiate`** is the Phase-2 (main-thread) half shared by every
   format: it uploads each `MeshData` to a `Mesh` (registered as `"<base>#<i>"`)
-  and spawns one `GameObject` per node, attaching a `MeshComponent` per mesh and
+  and spawns one `GameObject` per node, attaching a `MeshRenderer` per mesh and
   recursing into children. The node tree — not a flattened blob — reaches the
   scene, so per-part transforms and the 65535-vertex-per-mesh ceiling both work
   out (a big model is many sub-meshes, each well under the cap).

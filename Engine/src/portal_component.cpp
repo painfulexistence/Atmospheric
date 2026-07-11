@@ -6,7 +6,7 @@
 #include "imgui.h"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "mesh_component.hpp"
+#include "mesh_renderer.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -20,7 +20,7 @@ PortalComponent::PortalComponent(GameObject* owner, const PortalProps& props) : 
     _material->rimColor = props.rimColor;
     if (Mesh* meshPtr = am.GetMeshPtr(_mesh)) meshPtr->SetMaterial(am.GetMaterialHandle(_material));
 
-    owner->AddComponent<MeshComponent>(_mesh);
+    owner->AddComponent<MeshRenderer>(_mesh);
 }
 
 void PortalComponent::Link(PortalComponent* a, PortalComponent* b) {

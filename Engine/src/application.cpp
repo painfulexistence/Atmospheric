@@ -22,7 +22,7 @@
 #include "light_component.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "mesh_component.hpp"
+#include "mesh_renderer.hpp"
 #include "prefab.hpp"
 #include "rigidbody_2d_component.hpp"
 #include "rigidbody_component.hpp"
@@ -1085,7 +1085,7 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
     }
 
     // Spawn one GameObject per node. Internal nodes are pure transforms; every
-    // mesh becomes a leaf child GameObject with a single MeshComponent, so the
+    // mesh becomes a leaf child GameObject with a single MeshRenderer, so the
     // invariant "one GameObject = one drawable" holds (a multi-material node
     // yields sibling leaves rather than several MeshComponents stacked on it).
     // The node's own transform (and, at the root, the entity that referenced the
@@ -1104,7 +1104,7 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
             const std::string& mat = prefab.meshes[mi].material;
             leaf->SetName(mat.empty() ? fmt::format("{}#{}", nodeName, j) : mat);
             leaf->parent = go;
-            leaf->AddComponent<MeshComponent>(handles[mi]);
+            leaf->AddComponent<MeshRenderer>(handles[mi]);
         }
         for (const auto& child : node.children)
             spawn(child, go);
@@ -1327,7 +1327,7 @@ void Application::UnloadCurrentScene() {
     _graphics->directionalLights.clear();
     _graphics->pointLights.clear();
     _graphics->sunComponents.clear();
-    _graphics->renderables.clear();// MeshComponent
+    _graphics->renderables.clear();// MeshRenderer
     _graphics->canvasDrawables.clear();// SpriteComponent / Text2DComponent / ...
 
     _audio->StopAll();

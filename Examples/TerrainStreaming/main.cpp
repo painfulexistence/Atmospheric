@@ -3,7 +3,7 @@
 #include "Atmospheric/material.hpp"
 #include "Atmospheric/mesh.hpp"
 #include "Atmospheric/mesh_builder.hpp"
-#include "Atmospheric/mesh_component.hpp"
+#include "Atmospheric/mesh_renderer.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -175,7 +175,7 @@ class TerrainStreamingDemo : public Application {
                     [this](Application* app, const TerrainEntityPlacement& p) {
                         auto* go = app->CreateGameObject(glm::vec3(0.0f));
                         go->SetName(p.type == 0 ? "tree" : "rock");
-                        go->AddComponent<MeshComponent>(p.type == 0 ? _treeMesh : _rockMesh);
+                        go->AddComponent<MeshRenderer>(p.type == 0 ? _treeMesh : _rockMesh);
                         return go;
                     },
                 .entityRadiusTiles = 3,

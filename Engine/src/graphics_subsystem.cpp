@@ -11,7 +11,7 @@
 #include "light_component.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "mesh_component.hpp"
+#include "mesh_renderer.hpp"
 #include "renderer.hpp"
 #include "sprite_component.hpp"
 #include "stb_image.h"
@@ -487,7 +487,7 @@ void GraphicsSubsystem::PushCanvasQuadTiled(
 }
 
 
-MeshComponent* GraphicsSubsystem::RegisterMesh(MeshComponent* mesh) {
+MeshRenderer* GraphicsSubsystem::RegisterMesh(MeshRenderer* mesh) {
     renderables.push_back(mesh);
     return mesh;
 }
@@ -537,7 +537,7 @@ void GraphicsSubsystem::UnregisterLight(LightComponent* light) {
     }
 }
 
-void GraphicsSubsystem::UnregisterMesh(MeshComponent* mesh) {
+void GraphicsSubsystem::UnregisterMesh(MeshRenderer* mesh) {
     auto it = std::find(renderables.begin(), renderables.end(), mesh);
     if (it != renderables.end()) {
         renderables.erase(it);

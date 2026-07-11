@@ -9,7 +9,7 @@
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_builder.hpp"
-#include "mesh_component.hpp"
+#include "mesh_renderer.hpp"
 #include "rigidbody_component.hpp"
 #include "terrain_tile_cache.hpp"
 
@@ -362,7 +362,7 @@ TerrainStreamer::TileSlot* TerrainStreamer::AcquireSlot(int lod) {
     mat->heightMap = slot->heightTex;
     slot->material = mat;
     mesh->SetMaterial(am.GetMaterialHandle(mat));
-    go->AddComponent<MeshComponent>(slot->mesh);
+    go->AddComponent<MeshRenderer>(slot->mesh);
 
     _stats.gpuHeightmapBytes += static_cast<size_t>(w) * w * 2;
     _allSlots.push_back(std::move(owned));

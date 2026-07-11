@@ -5,7 +5,7 @@
 #include "font_manager.hpp"
 #include "light_component.hpp"
 #include "mesh.hpp"
-#include "mesh_component.hpp"
+#include "mesh_renderer.hpp"
 #include "render_target.hpp"
 #include "shader.hpp"
 #include "subsystem.hpp"
@@ -42,7 +42,7 @@ struct InstanceData {
 
 class Renderer;
 
-class MeshComponent;
+class MeshRenderer;
 class CanvasDrawable;
 class SpriteComponent;
 class CameraComponent;
@@ -59,7 +59,7 @@ public:
         return _instance;
     }
     std::vector<GLuint> canvasTextures;
-    std::vector<MeshComponent*> renderables;
+    std::vector<MeshRenderer*> renderables;
     std::vector<CanvasDrawable*> canvasDrawables;
     std::vector<LightComponent*> directionalLights;
     std::vector<LightComponent*> pointLights;
@@ -112,7 +112,7 @@ public:
     ShaderProgram* GetShaderByID(uint32_t id) const;
     MeshHandle GetMesh(const std::string& name) const;
 
-    MeshComponent* RegisterMesh(MeshComponent* mesh);
+    MeshRenderer* RegisterMesh(MeshRenderer* mesh);
     CameraComponent* RegisterCamera(CameraComponent* camera);
     LightComponent* RegisterLight(LightComponent* light);
     SunComponent* RegisterSun(SunComponent* sun);
@@ -120,7 +120,7 @@ public:
 
     void UnregisterCamera(CameraComponent* camera);
     void UnregisterLight(LightComponent* light);
-    void UnregisterMesh(MeshComponent* mesh);
+    void UnregisterMesh(MeshRenderer* mesh);
     void UnregisterCanvasDrawable(CanvasDrawable* drawable);
 
     // ===== Render Target Management =====

@@ -179,7 +179,7 @@ set(SOURCES
     src/gl_pipeline.cpp
     src/csg.cpp
     src/frustum.cpp
-    src/mesh_component.cpp
+    src/mesh_renderer.cpp
     src/sprite_component.cpp
     src/sprite_3d_component.cpp
     src/text_2d_component.cpp
