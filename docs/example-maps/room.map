@@ -63,3 +63,9 @@
 "origin" "0 0 32"
 }
 
+{
+"classname" "light"
+"origin" "0 0 64"
+"light" "450"
+"_color" "255 220 180"
+}

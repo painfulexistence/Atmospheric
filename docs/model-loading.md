@@ -1,228 +1,121 @@
 # Model & Level Loading
 
-`AssetManager` now exposes three importers, each backed by a different asset
-model. They all funnel into the same runtime primitive — a single flattened
-`Mesh` (16-bit indices) referenced by a `MeshHandle` — but the *source* data
-models differ enough to be worth comparing, because that comparison is what
-should drive the design of a future native scene format.
-
-| API | Format | Backing | Coord space | Hierarchy | Materials |
-|-----|--------|---------|-------------|-----------|-----------|
-| `LoadGLTF(path)` | `.gltf` / `.glb` | tinygltf (vcpkg) | Y-up | flattened | PBR built from textures |
-| `LoadTBMap(path, scale)` | Quake `.map` | hand-written parser | Z-up → Y-up | brush entities (flattened) | per-texture batches (by name) |
-| `LoadUSD(path)` | `.usd/.usda/.usdc/.usdz` | TinyUSDZ + Tydra (opt-in) | Y-up | Xform graph (flattened) | not wired yet |
-
-The single-handle `Load*` calls flatten to one mesh, but there is now also a
-unified, hierarchy-preserving import line — see
-[The unified import line](#the-unified-import-line).
-
----
-
-## `LoadGLTF`
-
-Already covered by the existing implementation. Concatenates every primitive of
-every mesh into one `Mesh`, builds a `Material` from the first primitive's PBR
-textures, and handles interleaved buffers / all the GLTF accessor component
-types. Vertex count is capped at 65535 (uint16 indices).
-
-## `LoadTBMap` — Quake brush format
-
-```cpp
-MeshHandle level = AssetManager::Get().LoadTBMap("docs/example-maps/room.map");
-// scale defaults to 1/32 (Quake units → engine units); pass your own if needed
-```
-
-A `.map` is a list of entities `{ … }`. A brush entity additionally holds
-brushes `{ … }`, and each brush is a set of **face planes** — three points plus
-texture info per line. A brush is the convex solid formed by intersecting every
-face's half-space, so the loader recovers each face's polygon by seeding a large
-quad on the plane and clipping it against all the other planes of the brush
-(the same approach id's `qbsp` uses). The result is triangulated as a fan.
-
-Supported:
-
-- Classic idTech2/idTech3 face format (`TEX xoff yoff rot sx sy`) with the
-  canonical base-axis UV projection.
-- Valve 220 face format (explicit `[ ux uy uz uoff ]` texture axes).
-- `//` line comments, quoted key/values.
-- Z-up → Y-up conversion via `(x, y, z) → (x, z, -y)` (a proper rotation, so
-  winding — and therefore face culling — is preserved).
-
-Not handled (deliberately, for a first cut):
-
-- Point entities (`info_player_start`, lights, …) are parsed as key/values and
-  ignored — there is no scene concept to attach them to yet.
-- Maps whose brush geometry exceeds 65535 vertices per material batch are
-  truncated with a warning.
-
-**Per-face materials** *are* supported through the import line: `ImportMapPrefab`
-groups every brush entity's faces by texture name into one `MeshData` batch each,
-tagged with that texture name. `Instantiate` then resolves a like-named
-engine material (`GetMaterialHandle(texture)`), so a `.map` textured with
-`floor` / `wall` renders each surface with the engine material of the same name
-(falling back to the default when none exists). The single-handle `LoadTBMap`
-still flattens all batches into one mesh, so its caller sets one material — use
-the `"prefab"` scene field or `Instantiate` directly for multi-material maps.
-
-This importer maps naturally onto the engine's existing CSG blockout system
-(`csg.hpp`, `level_blockout.hpp`) — a `.map` is essentially the on-disk,
-tool-authorable version of what `CSG::Box`/`Union`/`Subtract` build in code.
-
-`docs/example-maps/room.map` is a ready-to-load example: a walled room with a
-central pillar (7 brushes).
-
-## `LoadUSD` — Universal Scene Description
-
-Opt-in. Build with `-DAE_USE_TINYUSDZ=ON`; TinyUSDZ is fetched at configure time
-(via CMake FetchContent, like SDL3/lua), so there is no submodule to init:
-
-```bash
-cmake --preset=dev -DAE_USE_TINYUSDZ=ON
-```
-
-When the flag is off, `LoadUSD` logs a warning and returns an invalid handle, so
-the baseline build stays small (per the project vision, USD is a heavy dep).
-
-Under the hood it loads the stage with `tinyusdz::LoadUSDFromFile` and runs
-TinyUSDZ's **Tydra** `RenderSceneConverter`, which flattens the composed stage
-(references/payloads/variants resolved), triangulates, rebuilds a single index
-buffer, and synthesizes normals/tangents. The loader then reads Tydra's
-`RenderMesh` points/normals/texcoords — coping with both `vertex`- and
-`facevarying`-variability attributes — and flattens all meshes into one `Mesh`.
-
-Not handled yet: USD materials/textures (Tydra exposes them; wiring them to
-engine `Material` is follow-up work), `upAxis == Z` stages, skeletal animation,
-and the 65535-vertex ceiling applies here too.
-
-`docs/example-usd/cube.usda` is a ready-to-load sample (an 8-vertex cube).
-
----
-
-## Verifying the importers
-
-Both importers have been checked end-to-end outside the full engine build:
-
-- **`LoadTBMap`** — its geometry/UV math (the brace-parser, plane derivation,
-  Sutherland-Hodgman clip, Z-up→Y-up transform) was compiled against real GLM
-  and run on `docs/example-maps/room.map`, producing 7 brushes → 168 verts / 84
-  triangles with engine-space bounds `(-4,-0.5,-4)…(4,4,4)` — exactly the room's
-  256-unit footprint scaled by 1/32, with all face normals axis-aligned and
-  outward.
-- **`LoadUSD`** — the exact TinyUSDZ + Tydra call path was compiled and run on
-  `docs/example-usd/cube.usda`, yielding 1 mesh, 8 points, 12 triangles, 8
-  per-vertex normals, and zero out-of-range indices (Tydra triangulated the 6
-  quads and rebuilt a single index buffer, as expected).
-
-To verify inside the engine on your own machine, call the importer and inspect
-the resulting mesh, e.g. in an example's setup:
-
-```cpp
-auto& am = AssetManager::Get();
-MeshHandle room = am.LoadTBMap("docs/example-maps/room.map");   // any build
-MeshHandle cube = am.LoadUSD("docs/example-usd/cube.usda");   // needs AE_USE_TINYUSDZ=ON
-// Attach to a GameObject via a MeshRenderer and confirm the geometry renders.
-```
-
-The loaders log a summary line (`LoadTBMap '…': N brushes, V verts, I indices` /
-`LoadUSD '…': N meshes, …`) on success and a `Warn` on failure, so the console
-output is the quickest sanity check before anything reaches the screen.
-
----
-
-## The unified import line
-
-`Load*` returning one flattened `MeshHandle` is the resource-layer shortcut. The
-structured path — the one glTF, USD, and `.map` all funnel through — is
-`ImportPrefab` (`prefab.hpp`):
+All three import formats ride one line:
 
 ```
 file ──[ImportPrefab — pure CPU, no GL, off-thread-safe]──▶ Prefab
      ──[Application::Instantiate — main thread]──▶ GameObject subtree
 ```
 
-- **`Prefab`** is the reusable "prefab": a flat `std::vector<MeshData>` plus a
-  `PrefabNode` transform tree that references those meshes by index. No GPU state,
-  so `ImportPrefab` fits the engine's Phase-1 "pure parse" step (it can run off
-  the main thread, like `ParseSceneBlueprint`).
-- **`Instantiate`** is the Phase-2 (main-thread) half shared by every
-  format: it uploads each `MeshData` to a `Mesh` (registered as `"<base>#<i>"`)
-  and spawns one `GameObject` per node, attaching a `MeshRenderer` per mesh and
-  recursing into children. The node tree — not a flattened blob — reaches the
-  scene, so per-part transforms and the 65535-vertex-per-mesh ceiling both work
-  out (a big model is many sub-meshes, each well under the cap).
-
-Scene vs prefab is a role, not a type: a `Prefab` is a prefab (reusable,
-instanceable); a scene is the root you load and run. No separate `PrefabBlueprint`
-is needed.
-
-### Declaring a model in a scene
-
-An entity in `main.json` can name a model file directly — one field covers every
-format `ImportPrefab` dispatches:
+A **`Prefab`** (`prefab.hpp`) is the engine's imported, read-only prefab: mesh
+batches, decoded images, material definitions, punctual lights, convex
+colliders, and a node tree of transforms — plus, for `.map`, every entity's
+key/values. **`Instantiate`** uploads the GPU resources and spawns the subtree:
+one leaf GameObject per drawable (`MeshRenderer`), one static rigidbody per
+collider-carrying node, `LightComponent`s for lights, named empties for point
+entities. Scene JSON references it declaratively:
 
 ```jsonc
-{ "name": "Arena", "position": [0, 0, 0],
-  "components": [ { "type": "CameraController3D" } ],
+{ "name": "Level", "position": [0,0,0],
   "prefab": "assets/maps/arena.map", "prefabScale": 1.0 }
 ```
 
-`ParseEntity` calls `ImportPrefab` + `Instantiate`, parenting the imported
-subtree under the entity so the entity's transform positions the whole model.
-`modelScale` only affects `.map` (Quake units; default `1/32`).
+`prefabScale` only affects `.map` (Quake units; default 1/32). The single-handle
+`LoadTBMap` / `LoadGLTF` / `LoadUSD` remain as flatten-to-one-mesh wrappers.
 
-`ImportPrefab` dispatches all three formats by extension:
+## Format coverage
 
-- **`.map`** → `ImportMapPrefab`: one MeshData per texture batch per brush entity.
-- **`.gltf` / `.glb`** → `ImportGLTFPrefab`: the glTF node hierarchy becomes the
-  PrefabNode tree, one MeshData per primitive tagged with the glTF material name.
-  Geometry + hierarchy only — glTF textures are not decoded here (use `LoadGLTF`
-  for the single-mesh, textured path).
-- **`.usd*`** → `ImportUSDPrefab`: one MeshData per Tydra RenderMesh (requires
-  `AE_USE_TINYUSDZ`; USD materials not wired yet).
+| | `.map` (TrenchBroom/Quake) | `.gltf` / `.glb` | `.usd*` (TinyUSDZ, opt-in) |
+|---|---|---|---|
+| Geometry | classic + Valve 220 + `brushDef` faces, `patchDef2/3` Bezier patches | triangle primitives (byteStride-aware) | Tydra-triangulated GeomMeshes |
+| Hierarchy | worldspawn→root, brush entities as group nodes, point entities as transform nodes | full node tree (TRS + matrix) | full Xform tree (local matrices) |
+| Materials | per-face texture name → engine material or `textures/<name>.*` | full PBR factors + textures | UsdPreviewSurface factors + textures |
+| Textures | TrenchBroom `textures/` convention, texel UVs rescaled by real size | embedded + external, decoded at import | embedded (usdz) + external, decoded via Tydra |
+| Lights | `light` entities (intensity/_color) | `KHR_lights_punctual` | — (not wired yet) |
+| Colliders | one convex hull per brush → static rigidbody | — | — |
+| Entities/metadata | **all** key/values preserved (`Prefab::FindEntities`) | — | — |
+| Coord fixes | Z-up→Y-up, uniform scale | native Y-up | stage `upAxis` (X/Z→Y) + `metersPerUnit` at root |
+| >65535 verts | per-material batches split | primitives chunked | RenderMeshes chunked |
+| Extensions | special textures `nodraw/caulk/skip/hint/clip/trigger/origin` filtered (solid where appropriate); `func_group` merged | `KHR_texture_transform` (baked into UVs), `KHR_materials_emissive_strength` | `preserve_texel_bitdepth` + fp32→u8 fallback |
+| Known gaps | UVs not pixel-validated against real renderers; `angle` only (no `angles`/`mangle`) | Draco/meshopt, specular-glossiness, skinning | USD lights/cameras/skels; per-GeomSubset materials |
 
-So the same `"prefab"` field imports any of the three with no scene-format change.
-Materials resolve by name via `GetMaterialHandle` in `Instantiate`, falling
-back to the default when the named material doesn't exist.
+## `.map` notes
 
----
+A brush is the convex intersection of its face half-spaces; face polygons are
+recovered by clipping a large plane quad against the other planes (as qbsp
+does). Brush-primitive UVs use GtkRadiant's `ComputeAxisBase` texture-matrix
+mapping; patches tessellate at 8×8 per 3×3 control sub-patch with
+finite-difference normals. Classic/Valve UVs are authored in texels
+(`MeshData::uvInTexels`) and divided by the real texture size at Instantiate
+(64 fallback — the Quake default). Every brush contributes a convex collider
+(clip/caulk/nodraw included; hint/areaportal/trigger/origin are non-solid).
 
-## Implications for the scene format
+Gameplay reads entity data *before* instantiating:
 
-The reason to have three importers side by side is that each answers a design
-question the engine will eventually have to answer for its **own** scene format:
+```cpp
+Prefab level = ImportMapPrefab("assets/maps/arena.map", 1.0f);
+for (const PrefabNode* s : level.FindEntities("info_player_start")) {
+    glm::vec3 pos = glm::vec3(s->transform[3]);     // engine space
+    float yaw = std::stof(s->properties.at("angle"));
+}
+Instantiate(level, nullptr, "arena");
+```
 
-- **glTF** is a *flat asset* model: nodes exist, but the format is really about
-  "here is a mesh + a PBR material." It's the right reference for how to
-  serialize a single authored model and its materials.
-- **Quake `.map`** is a *constructive* model: geometry is defined by convex
-  brushes and boolean-ish half-space intersections, authored to be edited by
-  hand or in a level editor. It's the right reference for **editable level
-  geometry** and lines up with the existing CSG system — a strong hint that the
-  scene format should keep brush/CSG volumes as first-class, not just baked
-  triangles.
-- **USD** is a *composition* model: an Xform hierarchy with references,
-  payloads, variants, and layering. It's the right reference for how to compose
-  large scenes from reusable pieces and how to express instancing and overrides.
+`docs/example-maps/room.map` — walled room + pillar + `light` +
+`info_player_start`. Deathmatch's `assets/maps/arena.map` is the in-game use:
+plaza, pillar ring, perimeter walls, parallax landmarks, and two spawns —
+31 brush colliders, three named materials.
 
-The common limitation across all three importers today — flattening to one mesh
-— is precisely the thing a real scene format must *not* do. The concrete
-takeaways for the next iteration:
+## glTF notes
 
-1. **Preserve hierarchy.** Both USD (Xform) and `.map` (entities/brushes) carry
-   a node tree the engine currently discards. A scene format wants a node graph
-   with transforms, mapping cleanly onto the component/GameObject model in
-   `VISION.md`.
-2. **Keep sub-meshes and per-part materials.** The uint16, single-material,
-   single-mesh flattening is a rendering shortcut, not a scene model. Multiple
-   materials per imported asset should survive as separate draw ranges.
-3. **Separate authored volumes from baked geometry.** `.map` brushes and CSG
-   nodes should round-trip as volumes; triangulation is a build step, not the
-   storage format.
-4. **Adopt composition where it pays.** USD's references/variants are the proven
-   answer to "assemble a big scene from small reusable files" — worth borrowing
-   conceptually even if the on-disk format stays custom.
+Materials map onto the engine's PBR maps: factors become 1×1 solid textures
+when a slot has no image; `metallicRoughness` feeds both the metallic and
+roughness slots (the shader samples its channels); `doubleSided` disables
+culling; emissive (× `KHR_materials_emissive_strength`) approximates through
+`Material::ambient`. `KHR_texture_transform` on the base color is baked into
+UV0 per primitive. `KHR_lights_punctual` lights attach to their nodes.
+`LoadGLTF` (single textured mesh) is unchanged.
 
-In short: glTF tells us how to store a model, `.map`/CSG tells us how to store
-*editable* geometry, and USD tells us how to *compose* a scene. The engine's
-scene format should be the union of those three lessons, not a fourth flat mesh
-dump.
+## USD notes
+
+Opt-in: TinyUSDZ is fetched at configure time (FetchContent, pinned) — build
+with `-DAE_USE_TINYUSDZ=ON`; without it `ImportUSDPrefab` warns and returns an
+empty prefab. Tydra keeps mesh points local and reports the node tree, so the
+Xform hierarchy survives import. Stage `upAxis`/`metersPerUnit` are read from
+the **Stage metas** (Tydra's `RenderScene.meta` is not populated from them) and
+applied at the prefab root — Z-up/cm scenes like Pixar's Kitchen_set come in
+oriented and scaled correctly. `Examples/USDViewer` is the live demo: a
+committed `cube.usda` via the scene-JSON `"prefab"` field, plus Kitchen_set via
+`scripts/fetchKitchenSet.sh`.
+
+## Verification
+
+Everything CPU-side is execution-verified outside the engine build:
+
+- **`.map`** — 24-check harness: arena regression, Valve 220, brushDef cube
+  (64 units → exactly 1 UV tile through the texture matrix), patch Bezier peak
+  height exact (8.0), entity key/values and spawn transforms
+  (quake `(64,128,24)` → engine `(64,24,-128)`), light color/intensity
+  normalization, special-texture filtering (clip cube renders 0 tris, still
+  colliders), per-brush collider counts.
+- **glTF** — against real tinygltf: node hierarchy + translation exact, 1×1 PNG
+  decode, PBR factors, per-node punctual light, KHR_texture_transform baked
+  exactly ((1,0) → (0.75,0.5) for offset .25/.5, scale .5), emissive strength ×2.
+- **USD** — against real TinyUSDZ: nested Xform `(10,20,30)` lands as that
+  node's local transform, UsdPreviewSurface factors, mesh→material binding,
+  Z-up/0.01-mpu root transform (maps USD +Z to engine +Y at 0.01), plus
+  suzanne.usdc / cube.usdz / texture-cat-plane.usdz (embedded 768² jpg decodes
+  to a usable 8-bit image).
+
+The `Instantiate` half (GPU upload, rigidbodies, LightComponents) is
+inspection-verified against the engine APIs — the full engine doesn't build in
+the authoring environment; validate in-game via the examples.
+
+## Scene format implications
+
+The importers now preserve exactly what a native scene format must keep:
+node hierarchy (USD/glTF/map), per-part materials (all three), authored
+volumes (brush colliders), and entity metadata (map key/values). glTF shows
+how to store a *model*, `.map` an *editable level*, USD a *composed scene* —
+the prefab layer is the common denominator all three project into, and the
+scene JSON's `"prefab"` field is how scenes reference them.

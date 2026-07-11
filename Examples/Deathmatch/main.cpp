@@ -262,16 +262,26 @@ class DeathmatchGame : public Application {
             MakeBox(boxes[i], cubeMesh);
 
         // ── Static environment shell (imported from a TrenchBroom .map) ──────
-        // The plaza, the perimeter pillars (just outside the ±kArenaHalf movement
+        // The plaza, perimeter pillars + walls (outside the ±kArenaHalf movement
         // clamp), and the distant parallax landmarks all live in arena.map. It is
         // authored in engine units (loaded at scale 1.0) and instantiated as a
-        // node subtree; the loader's per-texture batches resolve to the materials
-        // created above, so each surface keeps its own look. The grid play floor
-        // and the gameplay boxes stay procedural — the authoritative sim owns box
-        // collision (see sim::Boxes()), and the floor needs its blueprint-grid
-        // UVs that a brush texture projection can't reproduce.
+        // node subtree; per-texture batches resolve to the materials created
+        // above, and each brush also contributes a static convex collider. The
+        // grid play floor and gameplay boxes stay procedural — the authoritative
+        // sim owns box collision (see sim::Boxes()), and the floor needs its
+        // blueprint-grid UVs that a brush texture projection can't reproduce.
         Prefab arena = ImportMapPrefab("assets/maps/arena.map", 1.0f);
-        if (arena.ok) Instantiate(arena, nullptr, "arena");
+        if (arena.ok) {
+            Instantiate(arena, nullptr, "arena");
+            // Entity data survives import: the map's info_player_start entities
+            // are queryable for gameplay (the netcode sim dictates actual spawns
+            // here, so this just demonstrates the API).
+            const auto spawns = arena.FindEntities("info_player_start");
+            ConsoleSubsystem::Get()->Info(
+                "arena.map: " + std::to_string(spawns.size()) + " spawn point(s), "
+                + std::to_string(arena.colliders.size()) + " brush collider(s)"
+            );
+        }
 
         // Enemy avatar. In --local solo mode the "enemy" is the embedded
         // server's training bot (a practice dummy), so render it as an animated

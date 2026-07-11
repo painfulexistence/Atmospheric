@@ -1,9 +1,11 @@
-// Deathmatch static environment shell, loaded via Instantiate(ImportMapPrefab(...,1.0f)).
-// Authored in engine units (Z-up here; the loader maps Z-up->Y-up). Per-face texture
-// names resolve to like-named engine materials. The grid play floor stays procedural
-// (it needs specific UVs), and gameplay boxes/characters stay procedural (sim-owned).
+// Deathmatch static environment shell (TrenchBroom .map), loaded via
+// Instantiate(ImportMapPrefab(..., 1.0f)). Authored in engine units (Z-up here;
+// the importer maps Z-up->Y-up). Per-face texture names resolve to like-named
+// engine materials; brushes also produce static convex colliders. The grid play
+// floor and gameplay boxes stay procedural (the sim owns box collision).
 {
 "classname" "worldspawn"
+"message" "dm_arena"
 {
 ( -96.0 -96.0 -1.02 ) ( -96.0 -95.0 -1.02 ) ( -96.0 -96.0 -0.020000000000000018 ) dm_ground_mat 0 0 0 1 1
 ( -96.0 -96.0 -1.02 ) ( -96.0 -96.0 -0.020000000000000018 ) ( -95.0 -96.0 -1.02 ) dm_ground_mat 0 0 0 1 1
@@ -220,4 +222,46 @@
 ( -51.0 -7.0 10.0 ) ( -50.0 -7.0 10.0 ) ( -51.0 -7.0 11.0 ) dm_far_mat 0 0 0 1 1
 ( -51.0 -7.0 10.0 ) ( -51.0 -7.0 11.0 ) ( -51.0 -6.0 10.0 ) dm_far_mat 0 0 0 1 1
 }
+{
+( -15.0 -15.0 0.0 ) ( -15.0 -14.0 0.0 ) ( -15.0 -15.0 1.0 ) dm_pillar_mat 0 0 0 1 1
+( -15.0 -15.0 0.0 ) ( -15.0 -15.0 1.0 ) ( -14.0 -15.0 0.0 ) dm_pillar_mat 0 0 0 1 1
+( -15.0 -15.0 0.0 ) ( -14.0 -15.0 0.0 ) ( -15.0 -14.0 0.0 ) dm_pillar_mat 0 0 0 1 1
+( 15.0 -14.0 3.0 ) ( 15.0 -13.0 3.0 ) ( 16.0 -14.0 3.0 ) dm_pillar_mat 0 0 0 1 1
+( 15.0 -14.0 3.0 ) ( 16.0 -14.0 3.0 ) ( 15.0 -14.0 4.0 ) dm_pillar_mat 0 0 0 1 1
+( 15.0 -14.0 3.0 ) ( 15.0 -14.0 4.0 ) ( 15.0 -13.0 3.0 ) dm_pillar_mat 0 0 0 1 1
+}
+{
+( -15.0 14.0 0.0 ) ( -15.0 15.0 0.0 ) ( -15.0 14.0 1.0 ) dm_pillar_mat 0 0 0 1 1
+( -15.0 14.0 0.0 ) ( -15.0 14.0 1.0 ) ( -14.0 14.0 0.0 ) dm_pillar_mat 0 0 0 1 1
+( -15.0 14.0 0.0 ) ( -14.0 14.0 0.0 ) ( -15.0 15.0 0.0 ) dm_pillar_mat 0 0 0 1 1
+( 15.0 15.0 3.0 ) ( 15.0 16.0 3.0 ) ( 16.0 15.0 3.0 ) dm_pillar_mat 0 0 0 1 1
+( 15.0 15.0 3.0 ) ( 16.0 15.0 3.0 ) ( 15.0 15.0 4.0 ) dm_pillar_mat 0 0 0 1 1
+( 15.0 15.0 3.0 ) ( 15.0 15.0 4.0 ) ( 15.0 16.0 3.0 ) dm_pillar_mat 0 0 0 1 1
+}
+{
+( 14.0 -15.0 0.0 ) ( 14.0 -14.0 0.0 ) ( 14.0 -15.0 1.0 ) dm_pillar_mat 0 0 0 1 1
+( 14.0 -15.0 0.0 ) ( 14.0 -15.0 1.0 ) ( 15.0 -15.0 0.0 ) dm_pillar_mat 0 0 0 1 1
+( 14.0 -15.0 0.0 ) ( 15.0 -15.0 0.0 ) ( 14.0 -14.0 0.0 ) dm_pillar_mat 0 0 0 1 1
+( 15.0 15.0 3.0 ) ( 15.0 16.0 3.0 ) ( 16.0 15.0 3.0 ) dm_pillar_mat 0 0 0 1 1
+( 15.0 15.0 3.0 ) ( 16.0 15.0 3.0 ) ( 15.0 15.0 4.0 ) dm_pillar_mat 0 0 0 1 1
+( 15.0 15.0 3.0 ) ( 15.0 15.0 4.0 ) ( 15.0 16.0 3.0 ) dm_pillar_mat 0 0 0 1 1
+}
+{
+( -15.0 -15.0 0.0 ) ( -15.0 -14.0 0.0 ) ( -15.0 -15.0 1.0 ) dm_pillar_mat 0 0 0 1 1
+( -15.0 -15.0 0.0 ) ( -15.0 -15.0 1.0 ) ( -14.0 -15.0 0.0 ) dm_pillar_mat 0 0 0 1 1
+( -15.0 -15.0 0.0 ) ( -14.0 -15.0 0.0 ) ( -15.0 -14.0 0.0 ) dm_pillar_mat 0 0 0 1 1
+( -14.0 15.0 3.0 ) ( -14.0 16.0 3.0 ) ( -13.0 15.0 3.0 ) dm_pillar_mat 0 0 0 1 1
+( -14.0 15.0 3.0 ) ( -13.0 15.0 3.0 ) ( -14.0 15.0 4.0 ) dm_pillar_mat 0 0 0 1 1
+( -14.0 15.0 3.0 ) ( -14.0 15.0 4.0 ) ( -14.0 16.0 3.0 ) dm_pillar_mat 0 0 0 1 1
+}
+}
+{
+"classname" "info_player_start"
+"origin" "-8 8 1"
+"angle" "45"
+}
+{
+"classname" "info_player_start"
+"origin" "8 -8 1"
+"angle" "225"
 }
