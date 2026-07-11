@@ -242,7 +242,7 @@ class DeathmatchGame : public Application {
         // The surrounding plaza, perimeter pillars, and distant landmarks — the
         // whole static environment shell — are authored in assets/maps/arena.map
         // and imported below. Their materials are created here so the .map's
-        // per-face texture names resolve to them (InstantiateModel looks each
+        // per-face texture names resolve to them (InstantiatePrefab looks each
         // material up by name). The plaza is darker and reaches to the HDRI
         // horizon so objects sit on ground rather than on a 24x24 platform.
         Material* groundMat = MakeMaterial("dm_ground_mat", glm::vec3(0.14f, 0.15f, 0.17f));
@@ -270,8 +270,8 @@ class DeathmatchGame : public Application {
         // and the gameplay boxes stay procedural — the authoritative sim owns box
         // collision (see sim::Boxes()), and the floor needs its blueprint-grid
         // UVs that a brush texture projection can't reproduce.
-        ModelData arena = ImportMapModel("assets/maps/arena.map", 1.0f);
-        if (arena.ok) InstantiateModel(arena, nullptr, "arena");
+        Prefab arena = ImportMapPrefab("assets/maps/arena.map", 1.0f);
+        if (arena.ok) InstantiatePrefab(arena, nullptr, "arena");
 
         // Enemy avatar. In --local solo mode the "enemy" is the embedded
         // server's training bot (a practice dummy), so render it as an animated
@@ -436,14 +436,12 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    DeathmatchGame game(
-        { .windowTitle = "Deathmatch",
-          .windowWidth = 1280,
-          .windowHeight = 720,
-          .enableAudio = false,
-          .useDefaultTextures = true,
-          .useDefaultShaders = true }
-    );
+    DeathmatchGame game({ .windowTitle = "Deathmatch",
+                          .windowWidth = 1280,
+                          .windowHeight = 720,
+                          .enableAudio = false,
+                          .useDefaultTextures = true,
+                          .useDefaultShaders = true });
     game.Run();
     return 0;
 }

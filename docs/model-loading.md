@@ -55,14 +55,14 @@ Not handled (deliberately, for a first cut):
 - Maps whose brush geometry exceeds 65535 vertices per material batch are
   truncated with a warning.
 
-**Per-face materials** *are* supported through the import line: `ImportMapModel`
+**Per-face materials** *are* supported through the import line: `ImportMapPrefab`
 groups every brush entity's faces by texture name into one `MeshData` batch each,
-tagged with that texture name. `InstantiateModel` then resolves a like-named
+tagged with that texture name. `InstantiatePrefab` then resolves a like-named
 engine material (`GetMaterialHandle(texture)`), so a `.map` textured with
 `floor` / `wall` renders each surface with the engine material of the same name
 (falling back to the default when none exists). The single-handle `LoadTBMap`
 still flattens all batches into one mesh, so its caller sets one material — use
-the `"model"` scene field or `InstantiateModel` directly for multi-material maps.
+the `"prefab"` scene field or `InstantiatePrefab` directly for multi-material maps.
 
 This importer maps naturally onto the engine's existing CSG blockout system
 (`csg.hpp`, `level_blockout.hpp`) — a `.map` is essentially the on-disk,
@@ -133,55 +133,55 @@ output is the quickest sanity check before anything reaches the screen.
 
 `Load*` returning one flattened `MeshHandle` is the resource-layer shortcut. The
 structured path — the one glTF, USD, and `.map` all funnel through — is
-`ImportModel` (`model_import.hpp`):
+`ImportPrefab` (`prefab.hpp`):
 
 ```
-file ──[ImportModel — pure CPU, no GL, off-thread-safe]──▶ ModelData
-     ──[Application::InstantiateModel — main thread]──▶ GameObject subtree
+file ──[ImportPrefab — pure CPU, no GL, off-thread-safe]──▶ Prefab
+     ──[Application::InstantiatePrefab — main thread]──▶ GameObject subtree
 ```
 
-- **`ModelData`** is the reusable "prefab": a flat `std::vector<MeshData>` plus a
-  `ModelNode` transform tree that references those meshes by index. No GPU state,
-  so `ImportModel` fits the engine's Phase-1 "pure parse" step (it can run off
+- **`Prefab`** is the reusable "prefab": a flat `std::vector<MeshData>` plus a
+  `PrefabNode` transform tree that references those meshes by index. No GPU state,
+  so `ImportPrefab` fits the engine's Phase-1 "pure parse" step (it can run off
   the main thread, like `ParseSceneBlueprint`).
-- **`InstantiateModel`** is the Phase-2 (main-thread) half shared by every
+- **`InstantiatePrefab`** is the Phase-2 (main-thread) half shared by every
   format: it uploads each `MeshData` to a `Mesh` (registered as `"<base>#<i>"`)
   and spawns one `GameObject` per node, attaching a `MeshComponent` per mesh and
   recursing into children. The node tree — not a flattened blob — reaches the
   scene, so per-part transforms and the 65535-vertex-per-mesh ceiling both work
   out (a big model is many sub-meshes, each well under the cap).
 
-Scene vs prefab is a role, not a type: a `ModelData` is a prefab (reusable,
+Scene vs prefab is a role, not a type: a `Prefab` is a prefab (reusable,
 instanceable); a scene is the root you load and run. No separate `PrefabBlueprint`
 is needed.
 
 ### Declaring a model in a scene
 
 An entity in `main.json` can name a model file directly — one field covers every
-format `ImportModel` dispatches:
+format `ImportPrefab` dispatches:
 
 ```jsonc
 { "name": "Arena", "position": [0, 0, 0],
   "components": [ { "type": "CameraController3D" } ],
-  "model": "assets/maps/arena.map", "modelScale": 1.0 }
+  "prefab": "assets/maps/arena.map", "prefabScale": 1.0 }
 ```
 
-`ParseEntity` calls `ImportModel` + `InstantiateModel`, parenting the imported
+`ParseEntity` calls `ImportPrefab` + `InstantiatePrefab`, parenting the imported
 subtree under the entity so the entity's transform positions the whole model.
 `modelScale` only affects `.map` (Quake units; default `1/32`).
 
-`ImportModel` dispatches all three formats by extension:
+`ImportPrefab` dispatches all three formats by extension:
 
-- **`.map`** → `ImportMapModel`: one MeshData per texture batch per brush entity.
-- **`.gltf` / `.glb`** → `ImportGLTFModel`: the glTF node hierarchy becomes the
-  ModelNode tree, one MeshData per primitive tagged with the glTF material name.
+- **`.map`** → `ImportMapPrefab`: one MeshData per texture batch per brush entity.
+- **`.gltf` / `.glb`** → `ImportGLTFPrefab`: the glTF node hierarchy becomes the
+  PrefabNode tree, one MeshData per primitive tagged with the glTF material name.
   Geometry + hierarchy only — glTF textures are not decoded here (use `LoadGLTF`
   for the single-mesh, textured path).
-- **`.usd*`** → `ImportUSDModel`: one MeshData per Tydra RenderMesh (requires
+- **`.usd*`** → `ImportUSDPrefab`: one MeshData per Tydra RenderMesh (requires
   `AE_USE_TINYUSDZ`; USD materials not wired yet).
 
-So the same `"model"` field imports any of the three with no scene-format change.
-Materials resolve by name via `GetMaterialHandle` in `InstantiateModel`, falling
+So the same `"prefab"` field imports any of the three with no scene-format change.
+Materials resolve by name via `GetMaterialHandle` in `InstantiatePrefab`, falling
 back to the default when the named material doesn't exist.
 
 ---

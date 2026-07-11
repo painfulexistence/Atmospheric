@@ -6,7 +6,7 @@
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_builder.hpp"
-#include "model_import.hpp"
+#include "prefab.hpp"
 #include "shader.hpp"
 #include <algorithm>
 #include <array>
@@ -1638,7 +1638,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     return CreateMesh(path, mesh);
 }
 
-// ── glTF import (geometry + node hierarchy → ModelData; no texture build) ─────
+// ── glTF import (geometry + node hierarchy → Prefab; no texture build) ─────
 // Unlike LoadGLTF (which builds one textured Material and flattens to a single
 // mesh), this keeps the node tree and emits one MeshData per primitive tagged
 // with the glTF material name, so glTF rides the same unified line as .map/.usd.
@@ -1666,10 +1666,10 @@ static glm::mat4 GLTFNodeMatrix(const tinygltf::Node& n) {
     return m;
 }
 
-static ModelNode
+static PrefabNode
     BuildGLTFNode(const tinygltf::Model& model, const std::vector<std::vector<int>>& meshPrims, int nodeIdx) {
     const tinygltf::Node& n = model.nodes[nodeIdx];
-    ModelNode node;
+    PrefabNode node;
     node.name = n.name.empty() ? ("node_" + std::to_string(nodeIdx)) : n.name;
     node.transform = GLTFNodeMatrix(n);
     if (n.mesh >= 0 && n.mesh < static_cast<int>(meshPrims.size())) node.meshes = meshPrims[n.mesh];
@@ -1679,16 +1679,16 @@ static ModelNode
     return node;
 }
 
-ModelData ImportGLTFModel(const std::string& path) {
+Prefab ImportGLTFPrefab(const std::string& path) {
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
     std::string err, warn;
     // Geometry + hierarchy only: no SetImageLoader, so no texture is decoded.
     const bool result = path.ends_with(".glb") ? loader.LoadBinaryFromFile(&model, &err, &warn, path)
                                                : loader.LoadASCIIFromFile(&model, &err, &warn, path);
-    if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportGLTFModel '{}': {}", path, warn));
-    if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportGLTFModel '{}' error: {}", path, err));
-    if (!result) return ModelData{};
+    if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportGLTFPrefab '{}': {}", path, warn));
+    if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportGLTFPrefab '{}' error: {}", path, err));
+    if (!result) return Prefab{};
 
     // Accessor readers with byteStride support (same semantics as LoadGLTF).
     auto readFloat3 = [&](const tinygltf::Accessor& acc) {
@@ -1744,7 +1744,7 @@ ModelData ImportGLTFModel(const std::string& path) {
 
     // One MeshData per (glTF mesh, primitive); meshPrims[m] indexes out.meshes so
     // nodes sharing a glTF mesh reuse the same geometry.
-    ModelData out;
+    Prefab out;
     std::vector<std::vector<int>> meshPrims(model.meshes.size());
     for (size_t mi = 0; mi < model.meshes.size(); ++mi) {
         for (const auto& prim : model.meshes[mi].primitives) {
@@ -1821,12 +1821,12 @@ ModelData ImportGLTFModel(const std::string& path) {
 }
 
 // TrenchBroom / Quake ".map" brush loader — a thin wrapper over the pure-CPU
-// ImportMapModel (model_import.cpp). It flattens every imported brush entity's
+// ImportMapPrefab (prefab.cpp). It flattens every imported brush entity's
 // mesh into one 16-bit-indexed Mesh for the single-handle API. Declaring a
-// "model" entity in a scene instead preserves the per-entity node tree (see
-// Application::InstantiateModel).
+// "prefab" entity in a scene instead preserves the per-entity node tree (see
+// Application::InstantiatePrefab).
 MeshHandle AssetManager::LoadTBMap(const std::string& path, float scale) {
-    ModelData model = ImportMapModel(path, scale);
+    Prefab model = ImportMapPrefab(path, scale);
     if (!model.ok) {
         ConsoleSubsystem::Get()->Warn(fmt::format("LoadTBMap: no brush geometry found in '{}'", path));
         return MeshHandle{};
@@ -1878,21 +1878,21 @@ MeshHandle AssetManager::LoadTBMap(const std::string& path, float scale) {
     return CreateMesh(path, mesh);
 }
 
-ModelData ImportUSDModel(const std::string& path) {
+Prefab ImportUSDPrefab(const std::string& path) {
 #ifndef AE_USE_TINYUSDZ
     ConsoleSubsystem::Get()->Warn(
-        fmt::format("ImportUSDModel '{}': USD support not compiled in (build with -DAE_USE_TINYUSDZ=ON)", path)
+        fmt::format("ImportUSDPrefab '{}': USD support not compiled in (build with -DAE_USE_TINYUSDZ=ON)", path)
     );
-    return ModelData{};
+    return Prefab{};
 #else
     tinyusdz::Stage stage;
     std::string warn, err;
     if (!tinyusdz::LoadUSDFromFile(path, &stage, &warn, &err)) {
-        if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDModel '{}': {}", path, warn));
-        if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDModel '{}' error: {}", path, err));
-        return ModelData{};
+        if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab '{}': {}", path, warn));
+        if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab '{}' error: {}", path, err));
+        return Prefab{};
     }
-    if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDModel '{}': {}", path, warn));
+    if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab '{}': {}", path, warn));
 
     // Tydra flattens the USD scene graph into renderer-friendly meshes, applying
     // triangulation, single-index rebuild, and normal/tangent synthesis. We
@@ -1905,11 +1905,12 @@ ModelData ImportUSDModel(const std::string& path) {
 
     tinyusdz::tydra::RenderScene rscene;
     if (!converter.ConvertToRenderScene(env, &rscene)) {
-        ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDModel '{}' convert error: {}", path, converter.GetError()));
-        return ModelData{};
+        ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab '{}' convert error: {}", path, converter.GetError())
+        );
+        return Prefab{};
     }
 
-    ModelData model;
+    Prefab model;
     model.root.name = (slash == std::string::npos) ? path : path.substr(slash + 1);
 
     for (const auto& rmesh : rscene.meshes) {
@@ -1969,7 +1970,7 @@ ModelData ImportUSDModel(const std::string& path) {
         }
         if (md.vertices.empty()) continue;
 
-        ModelNode node;
+        PrefabNode node;
         node.name = rmesh.prim_name.empty() ? "mesh" : rmesh.prim_name;
         node.meshes.push_back(static_cast<int>(model.meshes.size()));
         model.meshes.push_back(std::move(md));
@@ -1988,7 +1989,7 @@ MeshHandle AssetManager::LoadUSD(const std::string& path) {
     );
     return MeshHandle{};
 #else
-    ModelData model = ImportUSDModel(path);
+    Prefab model = ImportUSDPrefab(path);
     if (!model.ok) {
         ConsoleSubsystem::Get()->Warn(fmt::format("LoadUSD: no mesh geometry found in '{}'", path));
         return MeshHandle{};

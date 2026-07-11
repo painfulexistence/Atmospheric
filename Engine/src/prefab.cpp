@@ -1,4 +1,4 @@
-#include "model_import.hpp"
+#include "prefab.hpp"
 #include "file_system.hpp"
 #include <cctype>
 #include <cmath>
@@ -8,15 +8,15 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
-ModelData ImportModel(const std::string& path, float scale) {
+Prefab ImportPrefab(const std::string& path, float scale) {
     auto endsWith = [&](const char* ext) {
         return path.size() >= std::strlen(ext)
                && path.compare(path.size() - std::strlen(ext), std::strlen(ext), ext) == 0;
     };
-    if (endsWith(".map")) return ImportMapModel(path, scale);
-    if (endsWith(".gltf") || endsWith(".glb")) return ImportGLTFModel(path);
-    if (endsWith(".usd") || endsWith(".usda") || endsWith(".usdc") || endsWith(".usdz")) return ImportUSDModel(path);
-    return ModelData{};
+    if (endsWith(".map")) return ImportMapPrefab(path, scale);
+    if (endsWith(".gltf") || endsWith(".glb")) return ImportGLTFPrefab(path);
+    if (endsWith(".usd") || endsWith(".usda") || endsWith(".usdc") || endsWith(".usdz")) return ImportUSDPrefab(path);
+    return Prefab{};
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -340,20 +340,20 @@ namespace {
 
 }// namespace
 
-ModelData ImportMapModel(const std::string& path, float scale) {
+Prefab ImportMapPrefab(const std::string& path, float scale) {
     // Read through FileSystem so `path` resolves against the executable dir
     // (SDL_GetBasePath), consistent with every other engine asset. A raw
     // std::ifstream would resolve against the process cwd and miss the file
     // whenever the two differ (the cause of "no brush geometry found").
     const FileSystem::Bytes bytes = FileSystem::Get().ReadSync(path);
-    if (bytes.empty()) return ModelData{};// ok = false; caller logs
+    if (bytes.empty()) return Prefab{};// ok = false; caller logs
 
     const std::string text(bytes.begin(), bytes.end());
-    return ImportMapModelFromText(text, BaseName(path), scale);
+    return ImportMapPrefabFromText(text, BaseName(path), scale);
 }
 
-ModelData ImportMapModelFromText(const std::string& text, const std::string& name, float scale) {
-    ModelData model;
+Prefab ImportMapPrefabFromText(const std::string& text, const std::string& name, float scale) {
+    Prefab model;
     const std::vector<MapEntity> entities = ParseMap(TokenizeMap(text));
 
     model.root.name = name;
@@ -363,7 +363,7 @@ ModelData ImportMapModelFromText(const std::string& text, const std::string& nam
 
         // One node per brush entity; its per-texture batches become sibling
         // meshes on that node (each keeps its own material == texture name).
-        ModelNode node;
+        PrefabNode node;
         node.name = entities[i].classname.empty() ? ("brushentity_" + std::to_string(i)) : entities[i].classname;
         for (MeshData& md : batches) {
             node.meshes.push_back(static_cast<int>(model.meshes.size()));
