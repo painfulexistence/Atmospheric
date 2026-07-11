@@ -1051,19 +1051,116 @@ void Application::InstantiateScene(const SceneBlueprint& bp) {
     mainLight = _graphics->GetMainLight();
 }
 
-// Phase 2 instantiation shared by every prefab format: upload each MeshData to a
-// Mesh, then spawn a GameObject subtree mirroring the prefab node hierarchy.
+// Phase 2 instantiation shared by every prefab format: upload images/materials/
+// meshes, then spawn a GameObject subtree mirroring the prefab node hierarchy —
+// meshes as leaf MeshRenderers, brush colliders as a static rigidbody, lights as
+// LightComponents, .map point entities as named empties.
 GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, const std::string& baseName) {
     auto& am = AssetManager::Get();
 
-    // One engine Mesh per MeshData, registered under "<baseName>#<i>" so repeated
-    // instantiation of the same prefab reuses the cached mesh by name.
+    // ── Images → engine textures ─────────────────────────────────────────────
+    std::vector<TextureHandle> imageTex(prefab.images.size());
+    for (size_t i = 0; i < prefab.images.size(); ++i) {
+        const PrefabImage& pi = prefab.images[i];
+        if (pi.pixels.empty() || pi.width <= 0 || pi.height <= 0) continue;
+        auto cpuImg =
+            std::make_shared<Image>(pi.width, pi.height, pi.channels, const_cast<unsigned char*>(pi.pixels.data()));
+        imageTex[i] = am.CreateTextureFromImage(cpuImg);
+    }
+    // 1x1 solid texture for material scalar factors (same pattern the examples use).
+    auto solidTex = [&](glm::vec3 rgb) {
+        auto b = [](float x) { return static_cast<unsigned char>(std::round(std::clamp(x, 0.0f, 1.0f) * 255.0f)); };
+        unsigned char px[3] = { b(rgb.r), b(rgb.g), b(rgb.b) };
+        return am.CreateTextureFromImage(std::make_shared<Image>(1, 1, 3, px));
+    };
+
+    // ── PrefabMaterials → engine materials (dedup by name via CreateMaterial) ─
+    std::vector<MaterialHandle> matHandles(prefab.materials.size());
+    for (size_t i = 0; i < prefab.materials.size(); ++i) {
+        const PrefabMaterial& pm = prefab.materials[i];
+        const std::string matName = fmt::format("{}:{}", baseName, pm.name.empty() ? std::to_string(i) : pm.name);
+        if (Material* existing = am.GetMaterial(matName)) {
+            matHandles[i] = am.GetMaterialHandle(existing);
+            continue;
+        }
+        auto texAt = [&](int idx) {
+            return (idx >= 0 && idx < static_cast<int>(imageTex.size())) ? imageTex[idx] : TextureHandle{};
+        };
+        MaterialProps props;
+        props.baseMap = texAt(pm.baseColorImage);
+        props.normalMap = texAt(pm.normalImage);
+        props.aoMap = texAt(pm.occlusionImage);
+        // glTF packs metallic (B) and roughness (G) in one texture; the PBR
+        // shader samples the right channels either way, so wire it to both.
+        props.roughnessMap = texAt(pm.metallicRoughnessImage);
+        props.metallicMap = texAt(pm.metallicRoughnessImage);
+        if (!props.roughnessMap.IsValid()) props.roughnessMap = solidTex(glm::vec3(pm.roughness));
+        if (!props.metallicMap.IsValid()) props.metallicMap = solidTex(glm::vec3(pm.metallic));
+        props.diffuse = props.baseMap.IsValid() ? glm::vec3(1.0f) : pm.baseColor;
+        props.ambient = pm.emissive;// closest engine analogue to emissive
+        props.cullFaceEnabled = !pm.doubleSided;
+        matHandles[i] = am.GetMaterialHandle(am.CreateMaterial(matName, props));
+    }
+
+    // ── .map texture-name pipeline ────────────────────────────────────────────
+    // Resolve a texture-name material: an already-registered engine material of
+    // that name wins (UVs assume the classic 64px tile); otherwise look for
+    // textures/<name>.(png|jpg|jpeg|tga) — TrenchBroom's textures/ convention —
+    // build a material from it, and rescale texel UVs by the real image size.
+    struct NamedMat {
+        MaterialHandle handle;
+        glm::vec2 texSize{ 64.0f, 64.0f };
+    };
+    std::unordered_map<std::string, NamedMat> namedMats;
+    auto resolveNamed = [&](const std::string& name) -> NamedMat {
+        auto it = namedMats.find(name);
+        if (it != namedMats.end()) return it->second;
+        NamedMat nm;
+        if (Material* existing = am.GetMaterial(name)) {
+            nm.handle = am.GetMaterialHandle(existing);
+        } else {
+            for (const char* ext : { ".png", ".jpg", ".jpeg", ".tga" }) {
+                const std::string path = "textures/" + name + ext;
+                if (!FileSystem::Get().Exists(path)) continue;
+                if (auto img = am.LoadImage(path)) {
+                    MaterialProps props;
+                    props.baseMap = am.CreateTextureFromImage(img);
+                    props.diffuse = glm::vec3(1.0f);
+                    nm.handle = am.GetMaterialHandle(am.CreateMaterial(name, props));
+                    nm.texSize = { static_cast<float>(img->width), static_cast<float>(img->height) };
+                    break;
+                }
+            }
+        }
+        namedMats[name] = nm;
+        return nm;
+    };
+
+    // ── MeshData → engine meshes ("<baseName>#<i>") ──────────────────────────
     std::vector<MeshHandle> handles(prefab.meshes.size());
     for (size_t i = 0; i < prefab.meshes.size(); ++i) {
         const MeshData& md = prefab.meshes[i];
-        if (md.vertices.empty()) continue;
+        if (md.vertices.empty() || !md.visible) continue;
+
+        MaterialHandle mat;
+        glm::vec2 uvDiv(64.0f);
+        if (md.materialIndex >= 0 && md.materialIndex < static_cast<int>(matHandles.size())) {
+            mat = matHandles[md.materialIndex];
+        } else if (!md.material.empty()) {
+            NamedMat nm = resolveNamed(md.material);
+            mat = nm.handle;
+            uvDiv = nm.texSize;
+        }
+
         auto* mesh = new Mesh(MeshType::PRIM);
-        mesh->Initialize(md.vertices, md.indices);
+        if (md.uvInTexels) {
+            std::vector<Vertex> scaled = md.vertices;
+            for (auto& v : scaled)
+                v.uv /= uvDiv;
+            mesh->Initialize(scaled, md.indices);
+        } else {
+            mesh->Initialize(md.vertices, md.indices);
+        }
         glm::vec3 lo = md.vertices[0].position, hi = lo;
         for (const auto& v : md.vertices) {
             lo = glm::min(lo, v.position);
@@ -1078,18 +1175,17 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
                                glm::vec3(lo.x, hi.y, hi.z),
                                glm::vec3(hi.x, hi.y, hi.z) });
         MeshHandle h = am.CreateMesh(fmt::format("{}#{}", baseName, i), mesh);
-        if (!md.material.empty()) {
-            if (Mesh* mp = am.GetMeshPtr(h)) mp->SetMaterial(am.GetMaterialHandle(md.material));
-        }
+        if (mat.IsValid())
+            if (Mesh* mp = am.GetMeshPtr(h)) mp->SetMaterial(mat);
         handles[i] = h;
     }
 
-    // Spawn one GameObject per node. Internal nodes are pure transforms; every
-    // mesh becomes a leaf child GameObject with a single MeshRenderer, so the
-    // invariant "one GameObject = one drawable" holds (a multi-material node
-    // yields sibling leaves rather than several MeshComponents stacked on it).
-    // The node's own transform (and, at the root, the entity that referenced the
-    // prefab) positions the whole subtree.
+    // ── Spawn the node tree ───────────────────────────────────────────────────
+    // Internal nodes are pure transforms; every mesh becomes a leaf child with a
+    // single MeshRenderer ("one GameObject = one drawable"). Colliders compound
+    // into one static rigidbody per node; lights become LightComponents; .map
+    // point entities spawn as named empties (their key/values live on the
+    // Prefab — query with Prefab::FindEntities before instantiating).
     std::function<GameObject*(const PrefabNode&, GameObject*)> spawn = [&](const PrefabNode& node,
                                                                            GameObject* p) -> GameObject* {
         const std::string nodeName = node.name.empty() ? baseName : node.name;
@@ -1097,6 +1193,7 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
         go->SetName(nodeName);
         if (p) go->parent = p;
         go->SetLocalTransform(node.transform);
+
         for (size_t j = 0; j < node.meshes.size(); ++j) {
             const int mi = node.meshes[j];
             if (mi < 0 || mi >= static_cast<int>(handles.size()) || !handles[mi].IsValid()) continue;
@@ -1106,6 +1203,43 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
             leaf->parent = go;
             leaf->AddComponent<MeshRenderer>(handles[mi]);
         }
+
+        if (!node.colliders.empty() && _config.enablePhysics3D) {
+            auto* compound = new btCompoundShape();
+            for (int ci : node.colliders) {
+                if (ci < 0 || ci >= static_cast<int>(prefab.colliders.size())) continue;
+                const PrefabCollider& pc = prefab.colliders[ci];
+                if (pc.points.size() < 4) continue;
+                auto* hull = new btConvexHullShape();
+                for (const glm::vec3& pt : pc.points)
+                    hull->addPoint(btVector3(pt.x, pt.y, pt.z), false);
+                hull->recalcLocalAabb();
+                compound->addChildShape(btTransform::getIdentity(), hull);
+            }
+            if (compound->getNumChildShapes() > 0)
+                go->AddComponent<RigidbodyComponent>(compound, 0.0f);// static level geometry
+            else
+                delete compound;
+        }
+
+        for (int li : node.lights) {
+            if (li < 0 || li >= static_cast<int>(prefab.lights.size())) continue;
+            const PrefabLight& pl = prefab.lights[li];
+            LightProps props;
+            props.type = pl.type == PrefabLight::Type::Directional ? LightType::Directional
+                         : pl.type == PrefabLight::Type::Spot      ? LightType::Spot
+                                                                   : LightType::Point;
+            props.diffuse = pl.color;
+            props.specular = pl.color;
+            props.ambient = glm::vec3(0.0f);
+            props.intensity = pl.intensity;
+            // Direction from the node's -Z (only meaningful for dir/spot lights).
+            props.direction = -glm::normalize(glm::vec3(node.transform[2]));
+            props.attenuation = pl.range > 0.0f ? glm::vec3(1.0f, 4.5f / pl.range, 75.0f / (pl.range * pl.range))
+                                                : glm::vec3(1.0f, 0.09f, 0.032f);
+            go->AddComponent<LightComponent>(props);
+        }
+
         for (const auto& child : node.children)
             spawn(child, go);
         return go;

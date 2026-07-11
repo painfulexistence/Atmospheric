@@ -6,6 +6,7 @@
 #include "prefab.hpp"
 
 #include "fmt/core.h"
+#include <algorithm>
 #include <functional>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -123,6 +124,9 @@ Prefab ImportUSDPrefab(const std::string& path) {
     const size_t slash = path.find_last_of("/\\");
     if (slash != std::string::npos) env.set_search_paths({ path.substr(0, slash) });
     env.scene_config.load_texture_assets = true;// decode textures for materials
+    // Keep 8-bit texels 8-bit — Tydra otherwise converts textures to fp32
+    // (observed: a 768x768 jpg became a 9.4MB float buffer).
+    env.material_config.preserve_texel_bitdepth = true;
 
     tinyusdz::tydra::RenderScene rscene;
     if (!converter.ConvertToRenderScene(env, &rscene)) {
@@ -141,15 +145,24 @@ Prefab ImportUSDPrefab(const std::string& path) {
         if (ti.buffer_id < 0 || ti.buffer_id >= static_cast<int64_t>(rscene.buffers.size())) continue;
         const auto& buf = rscene.buffers[ti.buffer_id];
         if (!ti.decoded || ti.width <= 0 || ti.height <= 0 || ti.channels <= 0) continue;
-        if (buf.componentType != tinyusdz::tydra::ComponentType::UInt8) continue;// 8-bit only for now
-        const size_t expected = static_cast<size_t>(ti.width) * ti.height * ti.channels;
-        if (buf.data.size() < expected) continue;
+        const size_t texels = static_cast<size_t>(ti.width) * ti.height * ti.channels;
         PrefabImage pi;
         pi.name = ti.asset_identifier.empty() ? fmt::format("{}#image{}", path, i) : ti.asset_identifier;
         pi.width = ti.width;
         pi.height = ti.height;
         pi.channels = ti.channels;
-        pi.pixels.assign(buf.data.begin(), buf.data.begin() + expected);
+        if (buf.componentType == tinyusdz::tydra::ComponentType::UInt8 && buf.data.size() >= texels) {
+            pi.pixels.assign(buf.data.begin(), buf.data.begin() + texels);
+        } else if (buf.componentType == tinyusdz::tydra::ComponentType::Float
+                   && buf.data.size() >= texels * sizeof(float)) {
+            // Fallback for Tydra's fp32 conversion path: quantize back to 8-bit.
+            const float* f = reinterpret_cast<const float*>(buf.data.data());
+            pi.pixels.resize(texels);
+            for (size_t t = 0; t < texels; ++t)
+                pi.pixels[t] = static_cast<uint8_t>(std::clamp(f[t], 0.0f, 1.0f) * 255.0f + 0.5f);
+        } else {
+            continue;// unsupported texel layout
+        }
         imageRemap[i] = static_cast<int>(out.images.size());
         out.images.push_back(std::move(pi));
     }
@@ -216,12 +229,15 @@ Prefab ImportUSDPrefab(const std::string& path) {
     }
 
     // ── Stage metadata: upAxis + metersPerUnit at the root ───────────────────
+    // Read from the Stage itself — Tydra's RenderScene.meta is not populated
+    // from the stage metas (observed: file says Z/0.01, rscene.meta says Y/1).
     glm::mat4 rootXf(1.0f);
-    const float mpu = static_cast<float>(rscene.meta.metersPerUnit);
+    const float mpu = static_cast<float>(stage.metas().metersPerUnit.get_value());
     if (mpu > 0.0f && std::abs(mpu - 1.0f) > 1e-6f) rootXf = glm::scale(rootXf, glm::vec3(mpu));
-    if (rscene.meta.upAxis == "Z")
+    const tinyusdz::Axis up = stage.metas().upAxis.get_value();
+    if (up == tinyusdz::Axis::Z)
         rootXf = glm::rotate(rootXf, glm::radians(-90.0f), glm::vec3(1, 0, 0));// Z-up → Y-up
-    else if (rscene.meta.upAxis == "X")
+    else if (up == tinyusdz::Axis::X)
         rootXf = glm::rotate(rootXf, glm::radians(-90.0f), glm::vec3(0, 0, 1));// X-up → Y-up
     out.root.transform = rootXf;
 
