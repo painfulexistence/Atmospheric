@@ -13,7 +13,7 @@
 // to run off the main thread (matching the engine's Phase-1 "pure parse" split).
 //
 // Turning a Prefab into live GameObjects + uploaded meshes is a separate,
-// main-thread step (Application::InstantiatePrefab). The three legacy loaders
+// main-thread step (Application::Instantiate). The three legacy loaders
 // (LoadTBMap / LoadGLTF / LoadUSD) are thin wrappers that import then flatten to
 // a single mesh, so each format has exactly one parsing implementation.
 //

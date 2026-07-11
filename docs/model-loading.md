@@ -57,12 +57,12 @@ Not handled (deliberately, for a first cut):
 
 **Per-face materials** *are* supported through the import line: `ImportMapPrefab`
 groups every brush entity's faces by texture name into one `MeshData` batch each,
-tagged with that texture name. `InstantiatePrefab` then resolves a like-named
+tagged with that texture name. `Instantiate` then resolves a like-named
 engine material (`GetMaterialHandle(texture)`), so a `.map` textured with
 `floor` / `wall` renders each surface with the engine material of the same name
 (falling back to the default when none exists). The single-handle `LoadTBMap`
 still flattens all batches into one mesh, so its caller sets one material — use
-the `"prefab"` scene field or `InstantiatePrefab` directly for multi-material maps.
+the `"prefab"` scene field or `Instantiate` directly for multi-material maps.
 
 This importer maps naturally onto the engine's existing CSG blockout system
 (`csg.hpp`, `level_blockout.hpp`) — a `.map` is essentially the on-disk,
@@ -137,14 +137,14 @@ structured path — the one glTF, USD, and `.map` all funnel through — is
 
 ```
 file ──[ImportPrefab — pure CPU, no GL, off-thread-safe]──▶ Prefab
-     ──[Application::InstantiatePrefab — main thread]──▶ GameObject subtree
+     ──[Application::Instantiate — main thread]──▶ GameObject subtree
 ```
 
 - **`Prefab`** is the reusable "prefab": a flat `std::vector<MeshData>` plus a
   `PrefabNode` transform tree that references those meshes by index. No GPU state,
   so `ImportPrefab` fits the engine's Phase-1 "pure parse" step (it can run off
   the main thread, like `ParseSceneBlueprint`).
-- **`InstantiatePrefab`** is the Phase-2 (main-thread) half shared by every
+- **`Instantiate`** is the Phase-2 (main-thread) half shared by every
   format: it uploads each `MeshData` to a `Mesh` (registered as `"<base>#<i>"`)
   and spawns one `GameObject` per node, attaching a `MeshComponent` per mesh and
   recursing into children. The node tree — not a flattened blob — reaches the
@@ -166,7 +166,7 @@ format `ImportPrefab` dispatches:
   "prefab": "assets/maps/arena.map", "prefabScale": 1.0 }
 ```
 
-`ParseEntity` calls `ImportPrefab` + `InstantiatePrefab`, parenting the imported
+`ParseEntity` calls `ImportPrefab` + `Instantiate`, parenting the imported
 subtree under the entity so the entity's transform positions the whole model.
 `modelScale` only affects `.map` (Quake units; default `1/32`).
 
@@ -181,7 +181,7 @@ subtree under the entity so the entity's transform positions the whole model.
   `AE_USE_TINYUSDZ`; USD materials not wired yet).
 
 So the same `"prefab"` field imports any of the three with no scene-format change.
-Materials resolve by name via `GetMaterialHandle` in `InstantiatePrefab`, falling
+Materials resolve by name via `GetMaterialHandle` in `Instantiate`, falling
 back to the default when the named material doesn't exist.
 
 ---

@@ -1,4 +1,4 @@
-// Deathmatch static environment shell, loaded via InstantiatePrefab(ImportMapPrefab(...,1.0f)).
+// Deathmatch static environment shell, loaded via Instantiate(ImportMapPrefab(...,1.0f)).
 // Authored in engine units (Z-up here; the loader maps Z-up->Y-up). Per-face texture
 // names resolve to like-named engine materials. The grid play floor stays procedural
 // (it needs specific UVs), and gameplay boxes/characters stay procedural (sim-owned).

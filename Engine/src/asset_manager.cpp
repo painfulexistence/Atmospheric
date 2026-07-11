@@ -1824,7 +1824,7 @@ Prefab ImportGLTFPrefab(const std::string& path) {
 // ImportMapPrefab (prefab.cpp). It flattens every imported brush entity's
 // mesh into one 16-bit-indexed Mesh for the single-handle API. Declaring a
 // "prefab" entity in a scene instead preserves the per-entity node tree (see
-// Application::InstantiatePrefab).
+// Application::Instantiate).
 MeshHandle AssetManager::LoadTBMap(const std::string& path, float scale) {
     Prefab model = ImportMapPrefab(path, scale);
     if (!model.ok) {
@@ -1970,7 +1970,7 @@ Prefab ImportUSDPrefab(const std::string& path) {
         }
         if (md.vertices.empty()) continue;
 
-        // Attach directly to the root; InstantiatePrefab turns each mesh into a
+        // Attach directly to the root; Instantiate turns each mesh into a
         // leaf GameObject (Tydra already flattened the USD Xform hierarchy into
         // world-space meshes, so there's no node tree left to preserve). USD
         // materials aren't wired yet, so md.material stays empty (default mat).

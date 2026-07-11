@@ -900,7 +900,7 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
         const float prefabScale = entityVal.value("prefabScale", 1.0f / 32.0f);
         Prefab prefab = ImportPrefab(prefabSrc, prefabScale);
         if (prefab.ok)
-            app->InstantiatePrefab(prefab, go, name.empty() ? prefabSrc : name);
+            app->Instantiate(prefab, go, name.empty() ? prefabSrc : name);
         else
             ConsoleSubsystem::Get()->Warn(fmt::format("ParseEntity '{}': failed to import prefab '{}'", name, prefabSrc)
             );
@@ -1053,7 +1053,7 @@ void Application::InstantiateScene(const SceneBlueprint& bp) {
 
 // Phase 2 instantiation shared by every prefab format: upload each MeshData to a
 // Mesh, then spawn a GameObject subtree mirroring the prefab node hierarchy.
-GameObject* Application::InstantiatePrefab(const Prefab& prefab, GameObject* parent, const std::string& baseName) {
+GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, const std::string& baseName) {
     auto& am = AssetManager::Get();
 
     // One engine Mesh per MeshData, registered under "<baseName>#<i>" so repeated

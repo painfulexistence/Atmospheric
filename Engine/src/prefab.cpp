@@ -364,7 +364,7 @@ Prefab ImportMapPrefabFromText(const std::string& text, const std::string& name,
         // worldspawn is the level itself, not a movable object — its per-texture
         // batches attach directly to the prefab root (no wrapper node). Other
         // brush entities (func_door, …) keep their own node so they can be
-        // transformed as a unit. InstantiatePrefab turns each mesh into a leaf
+        // transformed as a unit. Instantiate turns each mesh into a leaf
         // GameObject, so batches become sibling drawables either way.
         const bool isWorld = entities[i].classname.empty() || entities[i].classname == "worldspawn";
         PrefabNode entityNode;

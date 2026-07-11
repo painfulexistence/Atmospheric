@@ -182,7 +182,7 @@ public:
     // mirroring its node hierarchy, parented under `parent`. Meshes are
     // registered under "<baseName>#<i>". This is the Phase-2 (main-thread)
     // instantiation shared by every prefab format. Returns the spawned root.
-    GameObject* InstantiatePrefab(const Prefab& prefab, GameObject* parent, const std::string& baseName);
+    GameObject* Instantiate(const Prefab& prefab, GameObject* parent, const std::string& baseName);
 
     // Queue a factory lambda to run at the start of the next frame, outside any
     // entity-tick loop. Use this from Component::OnTick to safely create new
