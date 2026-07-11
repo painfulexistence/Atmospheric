@@ -353,25 +353,30 @@ Prefab ImportMapPrefab(const std::string& path, float scale) {
 }
 
 Prefab ImportMapPrefabFromText(const std::string& text, const std::string& name, float scale) {
-    Prefab model;
+    Prefab prefab;
     const std::vector<MapEntity> entities = ParseMap(TokenizeMap(text));
 
-    model.root.name = name;
+    prefab.root.name = name;
     for (size_t i = 0; i < entities.size(); ++i) {
         std::vector<MeshData> batches = BuildEntityMeshes(entities[i].brushes, scale);
         if (batches.empty()) continue;
 
-        // One node per brush entity; its per-texture batches become sibling
-        // meshes on that node (each keeps its own material == texture name).
-        PrefabNode node;
-        node.name = entities[i].classname.empty() ? ("brushentity_" + std::to_string(i)) : entities[i].classname;
+        // worldspawn is the level itself, not a movable object — its per-texture
+        // batches attach directly to the prefab root (no wrapper node). Other
+        // brush entities (func_door, …) keep their own node so they can be
+        // transformed as a unit. InstantiatePrefab turns each mesh into a leaf
+        // GameObject, so batches become sibling drawables either way.
+        const bool isWorld = entities[i].classname.empty() || entities[i].classname == "worldspawn";
+        PrefabNode entityNode;
+        PrefabNode& target = isWorld ? prefab.root : entityNode;
+        if (!isWorld) entityNode.name = entities[i].classname;
         for (MeshData& md : batches) {
-            node.meshes.push_back(static_cast<int>(model.meshes.size()));
-            model.meshes.push_back(std::move(md));
+            target.meshes.push_back(static_cast<int>(prefab.meshes.size()));
+            prefab.meshes.push_back(std::move(md));
         }
-        model.root.children.push_back(std::move(node));
+        if (!isWorld) prefab.root.children.push_back(std::move(entityNode));
     }
 
-    model.ok = !model.meshes.empty();
-    return model;
+    prefab.ok = !prefab.meshes.empty();
+    return prefab;
 }

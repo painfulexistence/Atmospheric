@@ -1970,11 +1970,12 @@ Prefab ImportUSDPrefab(const std::string& path) {
         }
         if (md.vertices.empty()) continue;
 
-        PrefabNode node;
-        node.name = rmesh.prim_name.empty() ? "mesh" : rmesh.prim_name;
-        node.meshes.push_back(static_cast<int>(model.meshes.size()));
+        // Attach directly to the root; InstantiatePrefab turns each mesh into a
+        // leaf GameObject (Tydra already flattened the USD Xform hierarchy into
+        // world-space meshes, so there's no node tree left to preserve). USD
+        // materials aren't wired yet, so md.material stays empty (default mat).
+        model.root.meshes.push_back(static_cast<int>(model.meshes.size()));
         model.meshes.push_back(std::move(md));
-        model.root.children.push_back(std::move(node));
     }
 
     model.ok = !model.meshes.empty();

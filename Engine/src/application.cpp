@@ -1084,18 +1084,28 @@ GameObject* Application::InstantiatePrefab(const Prefab& prefab, GameObject* par
         handles[i] = h;
     }
 
-    // Spawn one GameObject per node. A node's meshes become MeshComponents on it;
-    // children recurse. The entity's own transform (from ParseEntity) positions
-    // the whole subtree since `parent` is that entity's GameObject.
+    // Spawn one GameObject per node. Internal nodes are pure transforms; every
+    // mesh becomes a leaf child GameObject with a single MeshComponent, so the
+    // invariant "one GameObject = one drawable" holds (a multi-material node
+    // yields sibling leaves rather than several MeshComponents stacked on it).
+    // The node's own transform (and, at the root, the entity that referenced the
+    // prefab) positions the whole subtree.
     std::function<GameObject*(const PrefabNode&, GameObject*)> spawn = [&](const PrefabNode& node,
                                                                            GameObject* p) -> GameObject* {
+        const std::string nodeName = node.name.empty() ? baseName : node.name;
         GameObject* go = CreateGameObject();
-        go->SetName(node.name.empty() ? baseName : node.name);
+        go->SetName(nodeName);
         if (p) go->parent = p;
         go->SetLocalTransform(node.transform);
-        for (int mi : node.meshes)
-            if (mi >= 0 && mi < static_cast<int>(handles.size()) && handles[mi].IsValid())
-                go->AddComponent<MeshComponent>(handles[mi]);
+        for (size_t j = 0; j < node.meshes.size(); ++j) {
+            const int mi = node.meshes[j];
+            if (mi < 0 || mi >= static_cast<int>(handles.size()) || !handles[mi].IsValid()) continue;
+            GameObject* leaf = CreateGameObject();
+            const std::string& mat = prefab.meshes[mi].material;
+            leaf->SetName(mat.empty() ? fmt::format("{}#{}", nodeName, j) : mat);
+            leaf->parent = go;
+            leaf->AddComponent<MeshComponent>(handles[mi]);
+        }
         for (const auto& child : node.children)
             spawn(child, go);
         return go;
