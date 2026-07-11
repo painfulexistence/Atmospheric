@@ -114,16 +114,39 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
         return volume[(static_cast<size_t>(z) * N + y) * N + x];
     };
 
-    // Material palette (index 0 = air)
-    enum : uint8_t { MatGrass = 1, MatDirt = 2, MatStone = 3, MatSnow = 4, MatSand = 5, MatOre = 6, MatCrystal = 7 };
-    paletteRGBA.assign(256 * 4, 0);
-    auto setPalette = [this](uint8_t idx, uint8_t r, uint8_t g, uint8_t b) {
+    // Material palette (index 0 = air). The alpha channel is repurposed as
+    // per-material emission strength (0 = not emissive): voxels are always
+    // opaque, so alpha is free, and the shaders read it as self-illumination
+    // that the GI bounce also picks up (emissive voxels light their neighbors).
+    enum : uint8_t {
+        MatGrass = 1,
+        MatDirt = 2,
+        MatStone = 3,
+        MatSnow = 4,
+        MatSand = 5,
+        MatOre = 6,
+        MatCrystal = 7,
+        MatGlow = 8
+    };
+    // 2-row material table (256 x 2 RGBA8), uploaded as a 2-row 2D texture:
+    //   row 0: albedo.rgb, emission.a         (surface color + self-illumination)
+    //   row 1: reflectivity.r, roughness.g    (mirror reflection; roughness
+    //          reserved for future glossy jitter)
+    // The shader reads row 0 with texelFetch(u_palette, ivec2(mat, 0)) and the
+    // material params with ivec2(mat, 1).
+    paletteRGBA.assign(256 * 2 * 4, 0);
+    auto setPalette = [this](uint8_t idx, uint8_t r, uint8_t g, uint8_t b, uint8_t emission = 0) {
         paletteRGBA[idx * 4 + 0] = r;
         paletteRGBA[idx * 4 + 1] = g;
         paletteRGBA[idx * 4 + 2] = b;
-        paletteRGBA[idx * 4 + 3] = 255;
+        paletteRGBA[idx * 4 + 3] = emission;
     };
-    for (int i = 8; i < 256; i++)
+    auto setMaterial = [this](uint8_t idx, uint8_t reflectivity, uint8_t roughness = 0) {
+        const int base = (256 + idx) * 4;// row 1
+        paletteRGBA[base + 0] = reflectivity;
+        paletteRGBA[base + 1] = roughness;
+    };
+    for (int i = 9; i < 256; i++)
         setPalette(static_cast<uint8_t>(i), 128, 128, 128);
     setPalette(MatGrass, 64, 140, 46);
     setPalette(MatDirt, 107, 77, 46);
@@ -131,7 +154,13 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
     setPalette(MatSnow, 235, 240, 250);
     setPalette(MatSand, 204, 184, 122);
     setPalette(MatOre, 242, 191, 64);
-    setPalette(MatCrystal, 115, 191, 242);
+    setPalette(MatCrystal, 115, 191, 242, 160);// cool cyan glow
+    setPalette(MatGlow, 255, 140, 48, 255);// warm glowstone, full emission
+    // Reflective materials: crystals are near-mirror; ore and snow catch a
+    // faint sheen. Everything else stays matte (reflectivity 0).
+    setMaterial(MatCrystal, 210, 20);// glossy crystal — mirrors the scene
+    setMaterial(MatOre, 90, 60);// metallic-ish speckle
+    setMaterial(MatSnow, 40, 120);// faint wet sheen
 
     // Terrain heightfield: gradient-noise fbm with gentle amplitude (~0.28
     // height/width ratio) so the terrain reads as rolling hills rather than
@@ -220,6 +249,33 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
         }
     }
 
+    // A handful of warm glowstone orbs resting on the terrain surface. These
+    // are emissive (full alpha), so the GI bounce ray picks them up and washes
+    // the surrounding stone/dirt with warm indirect light — the signature
+    // voxel-GI effect (glowing blocks lighting their neighbors), nearly free
+    // because the bounce rays are already being traced.
+    for (int g = 0; g < 6; g++) {
+        int gx = static_cast<int>((0.18f + 0.64f * MvHashNoise(g, 5, 0, seed + 31u)) * N);
+        int gz = static_cast<int>((0.18f + 0.64f * MvHashNoise(g, 6, 0, seed + 31u)) * N);
+        if (gx < 0 || gz < 0 || gx >= static_cast<int>(N) || gz >= static_cast<int>(N)) continue;
+        int gy = static_cast<int>(heights[static_cast<size_t>(gz) * N + gx]) + 1;// sit just above the surface
+        const int rad = 2;
+        for (int dz = -rad; dz <= rad; dz++) {
+            for (int dy = -rad; dy <= rad; dy++) {
+                for (int dx = -rad; dx <= rad; dx++) {
+                    if (dx * dx + dy * dy + dz * dz > rad * rad) continue;
+                    int x = gx + dx, y = gy + dy, z = gz + dz;
+                    if (x < 0 || y < 0 || z < 0 || x >= static_cast<int>(N) || y >= static_cast<int>(N)
+                        || z >= static_cast<int>(N))
+                        continue;
+                    uint8_t& v = voxelAt(x, y, z);
+                    if (v == 0) solidCount++;
+                    v = MatGlow;
+                }
+            }
+        }
+    }
+
     // Brick occupancy grid (any-solid per brick; empty bricks are skipped in
     // one coarse DDA step)
     for (uint32_t bz = 0; bz < BG; bz++) {
@@ -253,6 +309,117 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
             )
         );
     }
+}
+
+void VoxelVolumeComponent::CarveSphere(const glm::vec3& worldCenter, float radius) {
+    if (volume.empty() || radius <= 0.0f) return;
+    const int N = gridDim;
+    const int B = brickDim;
+    const int BG = N / B;
+
+    // World -> voxel space (GetOrigin is the grid's world min corner).
+    const glm::vec3 c = (worldCenter - GetOrigin()) / voxelSize;// sphere centre in voxels
+    const float rv = radius / voxelSize;// radius in voxels
+    const glm::ivec3 lo = glm::clamp(glm::ivec3(glm::floor(c - rv)), glm::ivec3(0), glm::ivec3(N - 1));
+    const glm::ivec3 hi = glm::clamp(glm::ivec3(glm::ceil(c + rv)), glm::ivec3(0), glm::ivec3(N - 1));
+
+    bool changed = false;
+    const float rv2 = rv * rv;
+    for (int z = lo.z; z <= hi.z; z++) {
+        for (int y = lo.y; y <= hi.y; y++) {
+            for (int x = lo.x; x <= hi.x; x++) {
+                const glm::vec3 d = glm::vec3(x, y, z) + 0.5f - c;
+                if (glm::dot(d, d) > rv2) continue;
+                uint8_t& vx = volume[(static_cast<size_t>(z) * N + y) * N + x];
+                if (vx != 0) {
+                    vx = 0;
+                    if (solidCount > 0) solidCount--;
+                    changed = true;
+                }
+            }
+        }
+    }
+    if (!changed) return;
+
+    // Recompute occupancy for the affected brick range (a brick is occupied if
+    // any voxel in it is still solid). Only the carved bricks are touched.
+    const glm::ivec3 blo = lo / B;
+    const glm::ivec3 bhi = hi / B;
+    for (int bz = blo.z; bz <= bhi.z; bz++) {
+        for (int by = blo.y; by <= bhi.y; by++) {
+            for (int bx = blo.x; bx <= bhi.x; bx++) {
+                bool occ = false;
+                for (int z = bz * B; z < (bz + 1) * B && !occ; z++) {
+                    for (int y = by * B; y < (by + 1) * B && !occ; y++) {
+                        for (int x = bx * B; x < (bx + 1) * B; x++) {
+                            if (volume[(static_cast<size_t>(z) * N + y) * N + x] != 0) {
+                                occ = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                occupancy[(static_cast<size_t>(bz) * BG + by) * BG + bx] = occ ? 1 : 0;
+            }
+        }
+    }
+    dirty = true;// pass re-uploads the volume and resets GI history
+}
+
+bool VoxelVolumeComponent::RaycastVoxel(
+    const glm::vec3& ro, const glm::vec3& rd, float maxDist, glm::vec3& outHitWorld
+) const {
+    if (volume.empty()) return false;
+    const int N = gridDim;
+    const glm::vec3 origin = GetOrigin();
+    const glm::vec3 bmax = origin + glm::vec3(static_cast<float>(N) * voxelSize);
+
+    // Ray-AABB (slab). rd is a normalized view ray; axis-aligned components are
+    // vanishingly rare from a free camera, so 1/rd is fine here.
+    const glm::vec3 invD = 1.0f / rd;
+    const glm::vec3 t0 = (origin - ro) * invD;
+    const glm::vec3 t1 = (bmax - ro) * invD;
+    const glm::vec3 tsmall = glm::min(t0, t1);
+    const glm::vec3 tbig = glm::max(t0, t1);
+    const float tEnter = glm::max(glm::max(tsmall.x, tsmall.y), tsmall.z);
+    const float tExit = glm::min(glm::min(tbig.x, tbig.y), tbig.z);
+    if (tExit < glm::max(tEnter, 0.0f)) return false;
+
+    float t = glm::max(tEnter, 0.0f) + voxelSize * 1e-3f;
+    if (t > maxDist) return false;
+    const glm::vec3 p = ro + rd * t;
+    glm::ivec3 cell = glm::clamp(glm::ivec3(glm::floor((p - origin) / voxelSize)), glm::ivec3(0), glm::ivec3(N - 1));
+
+    const glm::ivec3 step = glm::ivec3(glm::sign(rd));
+    const glm::vec3 tDelta = glm::abs(glm::vec3(voxelSize) * invD);
+    const glm::vec3 stepPos = glm::vec3(glm::greaterThan(rd, glm::vec3(0.0f)));
+    const glm::vec3 boundary = origin + (glm::vec3(cell) + stepPos) * voxelSize;
+    glm::vec3 tMax = (boundary - ro) * invD;
+
+    for (int i = 0; i < 3 * N; i++) {
+        if (volume[(static_cast<size_t>(cell.z) * N + cell.y) * N + cell.x] != 0) {
+            outHitWorld = ro + rd * t;
+            return true;
+        }
+        if (tMax.x < tMax.y && tMax.x < tMax.z) {
+            t = tMax.x;
+            tMax.x += tDelta.x;
+            cell.x += step.x;
+            if (cell.x < 0 || cell.x >= N) break;
+        } else if (tMax.y < tMax.z) {
+            t = tMax.y;
+            tMax.y += tDelta.y;
+            cell.y += step.y;
+            if (cell.y < 0 || cell.y >= N) break;
+        } else {
+            t = tMax.z;
+            tMax.z += tDelta.z;
+            cell.z += step.z;
+            if (cell.z < 0 || cell.z >= N) break;
+        }
+        if (t > maxDist || t > tExit) break;
+    }
+    return false;
 }
 
 void VoxelVolumeComponent::OnAttach() {

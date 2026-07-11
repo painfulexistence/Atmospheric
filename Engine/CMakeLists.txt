@@ -63,6 +63,7 @@ find_package(fmt REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(RmlUi REQUIRED)
 find_package(flatbuffers CONFIG REQUIRED)
+find_package(tinyexr CONFIG REQUIRED)
 
 # ── Lua 5.4 (built from source) ───────────────────────────────────────────────────────────────
 # Building from source rather than find_package(lua) because:
@@ -171,6 +172,7 @@ set(SOURCES
     src/rigidbody_component.cpp
     src/light_component.cpp
     src/camera_component.cpp
+    src/material.cpp
     src/mesh.cpp
     src/gl_buffer.cpp
     src/gl_render_target.cpp
@@ -189,6 +191,8 @@ set(SOURCES
     src/terrain_tile_cache.cpp
     src/height_field_collider_component.cpp
     src/water_component.cpp
+    src/vat.cpp
+    src/vat_component.cpp
     src/shader.cpp
     src/graphics_subsystem.cpp
     src/graphics_subsystem_tile.cpp
@@ -218,6 +222,7 @@ set(SOURCES
     src/shape_renderer_component.cpp
     src/voxel_chunk_component.cpp
     src/voxel_world.cpp
+    src/voxel_world_component.cpp
     src/voxel_chunk_pass.cpp
     src/micro_voxel_pass.cpp
     src/voxel_volume_component.cpp
@@ -418,6 +423,7 @@ target_link_libraries(AtmosphericEngine
         glm::glm fmt::fmt BulletSoftBody BulletDynamics BulletCollision LinearMath
         lua_static sol2::sol2
         RmlUi::RmlUi box2d::box2d flatbuffers::flatbuffers
+        unofficial::tinyexr::tinyexr
 )
 if(NOT EMSCRIPTEN)
     target_link_libraries(AtmosphericEngine PUBLIC raudio)

@@ -14,7 +14,7 @@ class VoxelChunkComponent : public Component {
 public:
     static constexpr int SIZE = 32;
 
-    VoxelChunkComponent(GameObject* owner, GraphicsSubsystem* gfx, glm::ivec3 chunkPos);
+    VoxelChunkComponent(GameObject* owner, GraphicsSubsystem* gfx, glm::ivec3 chunkPos, MaterialHandle material = {});
     ~VoxelChunkComponent();
 
     std::string GetName() const override {
@@ -71,6 +71,7 @@ private:
     bool _dirty = true;
     std::unique_ptr<Mesh> _mesh;
     MeshHandle _meshHandle;
+    MaterialHandle _material;// per-world VoxelMaterial handed in by VoxelWorld
     // _neighbors[dx+1][dy+1][dz+1], dx/dy/dz in {-1,0,1}
     VoxelChunkComponent* _neighbors[3][3][3];
 

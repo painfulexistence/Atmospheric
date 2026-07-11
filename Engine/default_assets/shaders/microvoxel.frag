@@ -22,15 +22,15 @@ precision highp usampler3D;
 precision highp sampler2D;
 #endif
 
-in vec2 v_uv;
+in vec3 v_worldPos;            // interpolated bounding-box surface position
 
 uniform usampler3D u_volume;
 uniform usampler3D u_occupancy;
 uniform sampler2D  u_palette;
 uniform sampler2D  u_giTex;    // accumulated 1-bounce indirect (microvoxel_gi.frag)
 
-uniform mat4  u_invViewProj;   // clip -> world
 uniform mat4  u_viewProj;      // world -> clip (for depth output)
+uniform vec2  u_viewportSize;  // pixels, for screen-space GI lookup
 uniform vec3  u_cameraPos;
 uniform vec3  u_volumeOrigin;  // world-space min corner
 uniform float u_voxelSize;     // world edge length of one voxel
@@ -45,10 +45,26 @@ uniform int   u_shadowEnabled;
 uniform float u_aoStrength;    // 0 disables corner AO
 uniform float u_giStrength;    // 0 = flat ambient, >0 = traced indirect
 uniform int   u_debugMode;     // 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
+uniform float u_emissiveStrength;  // HDR multiplier for palette-alpha emission
+uniform int   u_reflectionsEnabled;// per-material mirror reflections (row 1 of palette)
+
+// Local point lights (warm fill). Colors arrive pre-scaled by intensity;
+// falloff reaches 0 at the radius. u_pointLightCount <= MAX_POINT_LIGHTS.
+const int MAX_POINT_LIGHTS = 4;
+uniform int   u_pointLightCount;
+uniform vec3  u_pointLightPos[MAX_POINT_LIGHTS];
+uniform vec3  u_pointLightColor[MAX_POINT_LIGHTS];
+uniform float u_pointLightRadius[MAX_POINT_LIGHTS];
 
 out vec4 fragColor;
 
 const float PI = 3.1415927;
+
+// Sky hemisphere gradient (matches the GI pass), used for ambient and as the
+// reflection ray's miss color.
+vec3 skyRadiance(vec3 dir) {
+    return mix(vec3(0.20, 0.22, 0.28), vec3(0.45, 0.55, 0.75), dir.y * 0.5 + 0.5);
+}
 
 // Per-voxel value hash for subtle albedo variation (keeps micro voxels legible).
 float voxelHash(ivec3 c) {
@@ -218,11 +234,12 @@ Hit raycast(vec3 ro, vec3 rd) {
 }
 
 void main() {
-    // Reconstruct the world-space ray for this pixel from clip space.
-    vec2 ndc = v_uv * 2.0 - 1.0;    // v_uv is 0..1 across the screen quad
-    vec4 farH = u_invViewProj * vec4(ndc, 1.0, 1.0);
+    // The bounding box was rasterized, so the view ray for this pixel goes from
+    // the camera through this box-surface fragment. Screen uv (for the
+    // screen-space GI texture) comes from the window-space fragment coordinate.
+    vec2 v_uv = gl_FragCoord.xy / u_viewportSize;
     vec3 ro = u_cameraPos;
-    vec3 rd = normalize(farH.xyz / farH.w - ro);
+    vec3 rd = normalize(v_worldPos - ro);
 
     Hit h = raycast(ro, rd);
     if (!h.hit) {
@@ -233,7 +250,9 @@ void main() {
     ivec3 cell = clamp(ivec3(floor((hitPos + rd * u_voxelSize * 0.01 - u_volumeOrigin) / u_voxelSize)),
                        ivec3(0), ivec3(u_gridDim - 1));
 
-    vec3 albedo = texelFetch(u_palette, ivec2(int(h.material), 0), 0).rgb;
+    vec4 pal = texelFetch(u_palette, ivec2(int(h.material), 0), 0);
+    vec3 albedo = pal.rgb;
+    float emission = pal.a;    // 0..1 self-illumination (0 for normal materials)
     albedo *= 0.85 + 0.3 * voxelHash(cell);
 
     vec3 L = normalize(u_sunDir);
@@ -261,10 +280,58 @@ void main() {
         indirect = skyAmbient * u_ambient;
     }
 
+    // Local point lights: distance falloff + N·L, with an optional shadow ray
+    // (same voxel DDA, gated on the shadow toggle to keep the cost bounded).
+    vec3 pointLight = vec3(0.0);
+    for (int i = 0; i < MAX_POINT_LIGHTS; i++) {
+        if (i >= u_pointLightCount) break;
+        vec3 d = u_pointLightPos[i] - hitPos;
+        float dist = length(d);
+        float radius = u_pointLightRadius[i];
+        if (dist >= radius) continue;
+        vec3 Lp = d / max(dist, 1e-4);
+        float pndl = max(dot(h.normal, Lp), 0.0);
+        if (pndl <= 0.0) continue;
+        float a = 1.0 - dist / radius;
+        float atten = a * a;    // smooth falloff, exactly 0 at the radius
+        float psh = 1.0;
+        if (u_shadowEnabled != 0) {
+            Hit sh = raycast(hitPos + h.normal * u_voxelSize * 0.51, Lp);
+            if (sh.hit && sh.t < dist) psh = 0.0;
+        }
+        pointLight += u_pointLightColor[i] * (1.0 / PI) * pndl * atten * psh;
+    }
+
     vec3 direct = u_sunColor * u_sunIntensity * (1.0 / PI) * ndl * shadow;
     // AO fully attenuates indirect; a stylized 30% also darkens direct so
-    // corners stay readable in full sun (Teardown-ish look).
-    vec3 color = albedo * (direct * (0.7 + 0.3 * ao) + indirect * ao);
+    // corners stay readable in full sun (Teardown-ish look). Emission is
+    // self-lit, added after AO so glowing voxels stay bright in their crevices.
+    vec3 emissive = albedo * emission * u_emissiveStrength;
+    vec3 color = albedo * (direct * (0.7 + 0.3 * ao) + indirect * ao + pointLight * ao) + emissive;
+
+    // ── Per-material mirror reflections ─────────────────────────────────────
+    // Reflective materials (crystal/ore/snow; palette row 1) cast one extra
+    // reflection ray through the same DDA and blend the reflected radiance in
+    // by a Schlick Fresnel term (F0 = reflectivity), so grazing angles read as
+    // near-mirror. The reflected sample is cheaply shaded (sun + sky ambient +
+    // emission) — enough to mirror the glowing orbs, terrain, and sky.
+    float reflectivity = texelFetch(u_palette, ivec2(int(h.material), 1), 0).r;
+    if (u_reflectionsEnabled != 0 && reflectivity > 0.0) {
+        vec3 rdir = reflect(rd, h.normal);
+        vec3 rorig = hitPos + h.normal * u_voxelSize * 0.51;
+        Hit rh = raycast(rorig, rdir);
+        vec3 refl;
+        if (rh.hit) {
+            vec4 rpal = texelFetch(u_palette, ivec2(int(rh.material), 0), 0);
+            float rndl = max(dot(rh.normal, L), 0.0);
+            refl = rpal.rgb * (u_sunColor * u_sunIntensity * (1.0 / PI) * rndl + skyRadiance(rh.normal) * u_ambient)
+                 + rpal.rgb * rpal.a * u_emissiveStrength;
+        } else {
+            refl = skyRadiance(rdir);
+        }
+        float fres = reflectivity + (1.0 - reflectivity) * pow(1.0 - max(dot(-rd, h.normal), 0.0), 5.0);
+        color = mix(color, refl, clamp(fres, 0.0, 1.0));
+    }
 
     // Debug visualization of individual terms (keys in the MicroVoxel example)
     if (u_debugMode == 1) color = albedo;

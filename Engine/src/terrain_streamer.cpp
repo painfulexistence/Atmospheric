@@ -348,7 +348,7 @@ TerrainStreamer::TileSlot* TerrainStreamer::AcquireSlot(int lod) {
     mat->paletteIndex = _lodTintDebug ? lod % 6 : _props.paletteIndex;
     mat->fogDensity = _props.fogDensity;
     mat->fogColor = _props.fogColor;
-    mat->cullFaceEnabled = false;// skirts must render from both sides
+    mat->renderState.cull = CullMode::None;// skirts must render from both sides
     mat->layerCount = static_cast<int>(_layers.size());
     for (size_t i = 0; i < _layers.size(); ++i) {
         mat->layers[i].albedoMap = _layers[i].albedo;

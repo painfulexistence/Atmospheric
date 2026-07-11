@@ -89,7 +89,11 @@ Mesh* MeshBuilder::CreatePlane(float width, float height) {
                           { { -hw, 0.0f, -hh }, { 0.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },
                           { { hw, 0.0f, -hh }, { 1.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },
                           { { hw, 0.0f, hh }, { 1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } } };
-    uint16_t indices[] = { 0, 1, 2, 0, 2, 3 };
+    // Wind so the surface faces +Y: CalculateNormalsAndTangents derives the
+    // normal from cross(edge2, edge1), so {0,1,2,...} would yield a downward
+    // (-Y) normal — the plane would be back-face culled and unlit when viewed
+    // from above. {0,2,1,...} matches CreatePlaneMeshSubdivided's up-facing wind.
+    uint16_t indices[] = { 0, 2, 1, 0, 3, 2 };
     std::vector<Vertex> verts(vertices, vertices + 4);
     std::vector<uint16_t> tris(indices, indices + 6);
     CalculateNormalsAndTangents(verts, tris);
@@ -219,6 +223,89 @@ Mesh* MeshBuilder::CreateSphere(const float& radius, const int& division) {
             glm::vec3(radius, -radius, radius) } }
     );
     return sphere;
+}
+
+Mesh* MeshBuilder::CreateCapsule(const float& radius, const float& height, const int& division) {
+    // Cylinder half-height between the two hemisphere centers.
+    const float cylHalf = (height * 0.5f > radius) ? (height * 0.5f - radius) : 0.0f;
+    const float delta = static_cast<float>(PI) / static_cast<float>(division);
+
+    std::vector<Vertex> verts;
+    std::vector<uint16_t> tris;
+    verts.resize(
+        (static_cast<std::vector<Vertex>::size_type>(division) + 1)
+        * (static_cast<std::vector<Vertex>::size_type>(2) * static_cast<std::vector<Vertex>::size_type>(division) + 1)
+    );
+    for (int v = 0; v <= division; ++v) {
+        const float vAngle = v * delta;
+        for (int h = 0; h <= 2 * division; ++h) {
+            const float hAngle = h * delta;
+
+            glm::vec3 spos, norm;
+            if (v == 0) {
+                spos = glm::vec3(0.f, radius, 0.f);
+                norm = glm::vec3(0.f, 1.f, 0.f);
+            } else if (v == division) {
+                spos = glm::vec3(0.f, -radius, 0.f);
+                norm = glm::vec3(0.f, -1.f, 0.f);
+            } else {
+                spos = glm::vec3(
+                    radius * glm::sin(vAngle) * glm::cos(hAngle),
+                    radius * glm::cos(vAngle),
+                    radius * glm::sin(vAngle) * glm::sin(hAngle)
+                );
+                norm = glm::normalize(spos);
+            }
+            // Push the top hemisphere up and the bottom hemisphere down; the
+            // sphere triangles straddling the equator become the cylinder wall.
+            const float yOff = (spos.y >= 0.0f) ? cylHalf : -cylHalf;
+            const glm::vec3 pos = glm::vec3(spos.x, spos.y + yOff, spos.z);
+
+            const int idx = v * (2 * division + 1) + h;
+            verts[idx].position = pos;
+            verts[idx].normal = norm;
+            verts[idx].uv = glm::vec2(
+                static_cast<float>(h) / static_cast<float>(2 * division),
+                1.0f - static_cast<float>(v) / static_cast<float>(division)
+            );
+        }
+    }
+    tris.resize(
+        (static_cast<std::size_t>(6) * static_cast<std::size_t>(division) - 6u)
+        * (2u * static_cast<std::size_t>(division))
+    );
+    for (int v = 0, i = 0; v <= division - 1; ++v) {
+        for (int h = 0; h <= 2 * division - 1; ++h) {
+            if (v != 0) {
+                tris[i] = (2 * division + 1) * v + h;
+                tris[i + 1] = (2 * division + 1) * v + h + 1;
+                tris[i + 2] = (2 * division + 1) * (v + 1) + h;
+                i += 3;
+            }
+            if (v != division - 1) {
+                tris[i] = (2 * division + 1) * (v + 1) + h;
+                tris[i + 1] = (2 * division + 1) * v + h + 1;
+                tris[i + 2] = (2 * division + 1) * (v + 1) + h + 1;
+                i += 3;
+            }
+        }
+    }
+    CalculateNormalsAndTangents(verts, tris);
+
+    const float hy = cylHalf + radius;// half total height
+    auto capsule = new Mesh(MeshType::PRIM);
+    capsule->Initialize(verts, tris);
+    capsule->SetBoundingBox(
+        { { glm::vec3(radius, hy, radius),
+            glm::vec3(-radius, hy, radius),
+            glm::vec3(-radius, -hy, radius),
+            glm::vec3(radius, -hy, radius),
+            glm::vec3(radius, hy, -radius),
+            glm::vec3(-radius, hy, -radius),
+            glm::vec3(-radius, -hy, -radius),
+            glm::vec3(radius, -hy, -radius) } }
+    );
+    return capsule;
 }
 
 Mesh* MeshBuilder::CreateTerrain(const float& worldSize, const int& resolution) {

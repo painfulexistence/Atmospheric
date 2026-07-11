@@ -9,6 +9,9 @@
 #include "shader.hpp"
 #include <algorithm>
 #include <cassert>
+#include <cctype>
+#include <cstdlib>
+#include <cstring>
 #include <nlohmann/json.hpp>
 #include <unordered_set>
 
@@ -27,6 +30,10 @@ TextureHandle::TextureHandle(const std::string& path) {
 #define STBI_NO_SIMD
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+
+// Declarations only; the implementation is compiled into the vcpkg tinyexr
+// static library (linked as unofficial::tinyexr::tinyexr, which pulls in miniz).
+#include <tinyexr.h>
 
 #define TINYGLTF_NO_INCLUDE_STB_IMAGE
 #define TINYGLTF_NO_STB_IMAGE_WRITE
@@ -410,11 +417,18 @@ void AssetManager::LoadDefaultShaders() {
           { "skybox", { .vert = "assets/shaders/skybox.vert", .frag = "assets/shaders/skybox.frag" } },
           { "sun", { .vert = "assets/shaders/sun.vert", .frag = "assets/shaders/sun.frag" } },
           { "voxel", { .vert = "assets/shaders/voxel.vert", .frag = "assets/shaders/voxel.frag" } },
-          { "microvoxel", { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/microvoxel.frag" } },
+          { "microvoxel", { .vert = "assets/shaders/microvoxel_box.vert", .frag = "assets/shaders/microvoxel.frag" } },
           { "microvoxel_gi",
             { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/microvoxel_gi.frag" } },
           { "water", { .vert = "assets/shaders/water.vert", .frag = "assets/shaders/water.frag" } },
           { "portal", { .vert = "assets/shaders/portal.vert", .frag = "assets/shaders/portal.frag" } },
+          // Vertex Animation Texture playback: vat.vert displaces vertices from
+          // the animation texture, then reuses pbr.frag for identical shading.
+          // The depth variants let VAT meshes cast animation-matching shadows.
+          { "vat", { .vert = "assets/shaders/vat.vert", .frag = "assets/shaders/pbr.frag" } },
+          { "vat_depth", { .vert = "assets/shaders/vat_depth.vert", .frag = "assets/shaders/depth_simple.frag" } },
+          { "vat_depth_cubemap",
+            { .vert = "assets/shaders/vat_depth_cubemap.vert", .frag = "assets/shaders/depth_cubemap.frag" } },
           { "bloom_threshold", { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_threshold.frag" } },
           { "bloom_downsample",
             { .vert = "assets/shaders/bloom.vert", .frag = "assets/shaders/bloom_downsample.frag" } },
@@ -535,6 +549,22 @@ TerrainMaterial* AssetManager::CreateTerrainMaterial() {
     auto* ptr = material.get();
     materials.push_back(std::move(material));
     _materialCache["terrain_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return ptr;
+}
+
+VATMaterial* AssetManager::CreateVATMaterial() {
+    auto material = std::make_unique<VATMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
+    _materialCache["vat_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return ptr;
+}
+
+VoxelMaterial* AssetManager::CreateVoxelMaterial() {
+    auto material = std::make_unique<VoxelMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
+    _materialCache["voxel_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
     return ptr;
 }
 
@@ -898,6 +928,84 @@ TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>&
     return TextureHandle(texID);
 }
 
+namespace {
+    // Flip an RGBA float image vertically in place (row 0 <-> last row).
+    void FlipRGBAVerticallyInPlace(float* rgba, int w, int h) {
+        const size_t rowFloats = static_cast<size_t>(w) * 4;
+        std::vector<float> tmp(rowFloats);
+        for (int y = 0; y < h / 2; ++y) {
+            float* top = rgba + static_cast<size_t>(y) * rowFloats;
+            float* bot = rgba + static_cast<size_t>(h - 1 - y) * rowFloats;
+            std::memcpy(tmp.data(), top, rowFloats * sizeof(float));
+            std::memcpy(top, bot, rowFloats * sizeof(float));
+            std::memcpy(bot, tmp.data(), rowFloats * sizeof(float));
+        }
+    }
+
+    bool HasExtension(const std::string& path, const char* ext) {
+        const size_t n = std::strlen(ext);
+        if (path.size() < n) return false;
+        return std::equal(path.end() - static_cast<std::ptrdiff_t>(n), path.end(), ext, [](char a, char b) {
+            return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+        });
+    }
+}// namespace
+
+TextureHandle AssetManager::LoadHDR(const std::string& path) {
+    // Both loaders end up with texture row 0 (GL v=0) = image bottom, so the
+    // skybox shader's v = asin(dir.y) mapping is consistent: .hdr via stb's
+    // flip-on-load, .exr via an explicit flip (tinyexr returns top-down).
+    // Source bytes through FileSystem (asset resolution + transparent web
+    // prefetching) rather than letting stb/tinyexr fopen() the raw path, which
+    // bypasses that and fails outside the process CWD / on web.
+    FileSystem::Bytes fileData = FileSystem::Get().ReadSync(path);
+    if (fileData.empty()) {
+        ConsoleSubsystem::Get()->Error(
+            fmt::format("AssetManager::LoadHDR: failed to read file bytes via FileSystem at '{}'", path)
+        );
+        return TextureHandle{};
+    }
+
+    int w = 0, h = 0;
+    float* data = nullptr;
+    const bool fromEXR = HasExtension(path, ".exr");
+
+    if (fromEXR) {
+        const char* err = nullptr;
+        int ret = LoadEXRFromMemory(&data, &w, &h, fileData.data(), fileData.size(), &err);// always RGBA
+        if (ret != TINYEXR_SUCCESS) {
+            ConsoleSubsystem::Get()->Error(
+                fmt::format("AssetManager::LoadHDR(EXR) '{}': {}", path, err ? err : "unknown error")
+            );
+            if (err) FreeEXRErrorMessage(err);
+            return TextureHandle{};
+        }
+        FlipRGBAVerticallyInPlace(data, w, h);
+    } else {
+        stbi_set_flip_vertically_on_load(true);
+        int n = 0;
+        data = stbi_loadf_from_memory(fileData.data(), static_cast<int>(fileData.size()), &w, &h, &n, 4);// force RGBA
+        stbi_set_flip_vertically_on_load(false);
+        if (!data) {
+            ConsoleSubsystem::Get()->Error(fmt::format("AssetManager::LoadHDR: failed to decode '{}'", path));
+            return TextureHandle{};
+        }
+    }
+
+    uint32_t id = GfxFactory::UploadTextureRGBA16F(data, w, h);
+    if (fromEXR)
+        free(data);// tinyexr allocates with malloc
+    else
+        stbi_image_free(data);
+
+    _textureCache["hdr_" + path] = {
+        id, static_cast<uint32_t>(w), static_cast<uint32_t>(h), static_cast<size_t>(w) * h * 8
+    };
+    textures.push_back(id);
+    ENGINE_LOG("LoadHDR '{}': {}x{} ({})", path, w, h, fromEXR ? "exr" : "hdr");
+    return TextureHandle(id);
+}
+
 TextureHandle AssetManager::GetTexture(const std::string& name) const {
     auto it = _textureCache.find(name);
     if (it != _textureCache.end()) {
@@ -1236,9 +1344,7 @@ MeshHandle AssetManager::CreateSphereMesh(const std::string& name, float radius,
 }
 
 MeshHandle AssetManager::CreateCapsuleMesh(const std::string& name, float radius, float height) {
-    // TODO: Implement capsule mesh generation
-    ENGINE_LOG("Capsule mesh '{}' created (generation not yet implemented)", name);
-    auto* mesh = new Mesh();
+    auto mesh = MeshBuilder::CreateCapsule(radius, height);
     if (_materialCache.find("Default") != _materialCache.end()) {
         mesh->SetMaterial(GetMaterialHandle("Default"));
     }

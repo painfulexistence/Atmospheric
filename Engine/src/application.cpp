@@ -37,6 +37,7 @@
 #include "ui_page_manager.hpp"
 #include "video_recorder.hpp"
 #include "voxel_volume_component.hpp"
+#include "voxel_world_component.hpp"
 #include "window.hpp"
 #include <algorithm>
 #include <chrono>
@@ -562,6 +563,13 @@ void Application::RegisterComponents() {
         }
 
         return new StreamingTerrainComponent(o, p);
+    });
+
+    // ── VoxelWorldComponent (streaming voxel terrain) ────────────────────────
+    ComponentFactory::Register("VoxelWorld", [](GameObject* o, Deserializer& d) -> Component* {
+        int seed = 42;
+        d.Read("seed", seed);
+        return new VoxelWorldComponent(o, seed);
     });
 
     // ── ShapeRendererComponent ────────────────────────────────────────────────
