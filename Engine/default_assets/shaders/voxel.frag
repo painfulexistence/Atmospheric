@@ -25,6 +25,7 @@ uniform vec4  u_clipPlane;
 // in world space by origin (min corner) + dim cells of cellSize metres.
 uniform int       u_giMode;
 uniform float     u_giStrength;
+uniform float     u_vxaoStrength; // 0 disables VXAO (voxel cone-traced AO)
 uniform sampler3D u_giRadiance;
 uniform vec3      u_giOrigin;
 uniform float     u_giCellSize;
@@ -67,6 +68,43 @@ vec3 voxelGI(vec3 worldPos, vec3 n) {
     gi += coneTrace(start, normalize(n * 0.5 + b), aperture);
     gi += coneTrace(start, normalize(n * 0.5 - b), aperture);
     return gi / 5.0;
+}
+
+// Accumulate opacity along one cone for occlusion (VXAO). Unlike coneTrace this
+// keeps only the alpha and weights nearer occluders more (broad-cavity AO, not
+// long-range shadowing), stopping after a few metres.
+float coneOcclusion(vec3 startWorld, vec3 dir, float aperture) {
+    float gridSize = float(u_giDim) * u_giCellSize;
+    float maxDist = 6.0 * u_giCellSize;// AO is a local effect
+    float occ = 0.0;
+    float dist = u_giCellSize * 1.5;
+    for (int i = 0; i < 16; ++i) {
+        if (occ >= 0.98 || dist >= maxDist) break;
+        float diameter = max(u_giCellSize, 2.0 * aperture * dist);
+        float mip = clamp(log2(diameter / u_giCellSize), 0.0, u_giMaxMip);
+        vec3 wp = startWorld + dir * dist;
+        vec3 uvw = (wp - u_giOrigin) / gridSize;
+        if (any(lessThan(uvw, vec3(0.0))) || any(greaterThan(uvw, vec3(1.0)))) break;
+        float a = textureLod(u_giRadiance, uvw, mip).a;
+        occ += (1.0 - occ) * a / (1.0 + dist);// distance falloff
+        dist += diameter * 0.5;
+    }
+    return occ;
+}
+
+// Five-cone occlusion gather -> AO factor (1 = fully open, 0 = occluded).
+float voxelAO(vec3 worldPos, vec3 n) {
+    vec3 start = worldPos + n * u_giCellSize * 1.5;
+    vec3 up = abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    vec3 t = normalize(cross(up, n));
+    vec3 b = cross(n, t);
+    float aperture = 0.577;
+    float occ = coneOcclusion(start, n, aperture);
+    occ += coneOcclusion(start, normalize(n * 0.5 + t), aperture);
+    occ += coneOcclusion(start, normalize(n * 0.5 - t), aperture);
+    occ += coneOcclusion(start, normalize(n * 0.5 + b), aperture);
+    occ += coneOcclusion(start, normalize(n * 0.5 - b), aperture);
+    return clamp(1.0 - occ / 5.0, 0.0, 1.0);
 }
 
 // Cosine colour palette: a + b * cos(2π * (c*t + d))
@@ -114,6 +152,11 @@ void main() {
     // Corner AO darkens creases/contact edges. Remap the 0..1 level to a
     // gentler [1-strength .. 1] range so open faces stay full-bright.
     float ao = mix(1.0, v_ao, u_aoStrength);
+    // VXAO adds broad concavity (caves, pits) the per-vertex corner term can't
+    // see, cone-traced from the same grid's opacity. Stacks with corner AO.
+    if (u_vxaoStrength > 0.0) {
+        ao *= mix(1.0, voxelAO(v_worldPos, norm), u_vxaoStrength);
+    }
 
     vec3 ambient = u_ambientColor * baseColor;
     vec3 diffuse = diff * u_lightColor * baseColor;

@@ -246,10 +246,14 @@ void GraphicsSubsystem::DrawImGui(float dt) {
         // off. Kept above bloom and the post-process effect toggles below.
         if (auto* vp = renderer->GetPass<VoxelChunkPass>()) {
             if (ImGui::TreeNode("Ambient Occlusion")) {
-                ImGui::Checkbox("Enabled", &vp->aoEnabled);
+                ImGui::Checkbox("Corner (baked)", &vp->aoEnabled);
                 if (vp->aoEnabled) {
-                    ImGui::SliderFloat("Strength", &vp->aoStrength, 0.0f, 1.0f);
-                    ImGui::TextDisabled("Baked per-vertex corner AO");
+                    ImGui::SliderFloat("Corner strength", &vp->aoStrength, 0.0f, 1.0f);
+                }
+                ImGui::Checkbox("VXAO (cone-traced)", &vp->vxaoEnabled);
+                if (vp->vxaoEnabled) {
+                    ImGui::SliderFloat("VXAO strength", &vp->vxaoStrength, 0.0f, 1.0f);
+                    ImGui::TextDisabled("Reuses the VoxelGI grid (built even if GI is off)");
                 }
                 ImGui::TreePop();
             }

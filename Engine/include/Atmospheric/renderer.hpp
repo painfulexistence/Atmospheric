@@ -298,12 +298,16 @@ public:
 #endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
-    // Per-vertex corner AO baked by the greedy mesher (VoxelVertex::ao).
-    // aoEnabled gates it (default off); aoStrength scales its influence when on
-    // (0..1). GL path only (the WebGPU path applies AO unconditionally). Exposed
-    // in the GI panel (GraphicsSubsystem::DrawImGui) alongside the GI toggle.
-    bool aoEnabled = false;
+    // Ambient occlusion for the voxel world (both default off, GL path only,
+    // stackable). Corner AO is the per-vertex value baked by the greedy mesher
+    // (crisp block-contact darkening); VXAO cone-traces the VoxelConeGI grid's
+    // opacity for broad concavity (caves, pits) the corner term can't see — it
+    // reuses the same grid VoxelGI builds (built on demand when vxaoEnabled even
+    // if GI is off). Exposed in the GI panel (GraphicsSubsystem::DrawImGui).
+    bool aoEnabled = false;// corner AO (baked)
     float aoStrength = 1.0f;
+    bool vxaoEnabled = false;// voxel cone-traced AO
+    float vxaoStrength = 1.0f;
 
     // Global illumination mode for the voxel world. VoxelGI cone-traces the
     // world's VoxelConeGI radiance grid (world-space, forward-friendly); SSGI is

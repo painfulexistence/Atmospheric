@@ -627,14 +627,18 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     }
     shader->SetUniform("u_paletteIndex", palette);
 
-    // ── Global illumination (VoxelGI / VCT) ──────────────────────────────────
-    // For VoxelGI, drive the registered world's radiance grid (inject on
-    // dirty/camera-move) and cone-trace it in voxel.frag. SSGI is reserved
-    // (mode 1, a shader no-op for now). u_giRadiance is always bound to a valid
-    // 3D texture so strict drivers never see an unbound sampler.
+    // ── VoxelGI (VCT) + VXAO ──────────────────────────────────────────────────
+    // Both cone-trace the world's VoxelConeGI grid, so it is driven/bound once
+    // and shared: VoxelGI reads its radiance, VXAO its opacity. The grid builds
+    // whenever GI is VoxelGI OR VXAO is enabled. SSGI is reserved (mode 1, a
+    // shader no-op). u_giRadiance is always bound to a valid 3D texture so strict
+    // drivers never see an unbound sampler.
     shader->SetUniform("u_giStrength", giStrength);
     int giModeInt = static_cast<int>(giMode);
-    if (giMode == GIMode::VoxelGI && !_giWorlds.empty()) {
+    float vxaoStr = 0.0f;
+    bool gridBound = false;
+    const bool wantGrid = (giMode == GIMode::VoxelGI) || vxaoEnabled;
+    if (wantGrid && !_giWorlds.empty()) {
         VoxelWorld* w = _giWorlds[0];
         w->coneGI.slabsPerFrame = std::max(1, giInjectSlabs);
         // sunStrength 1.0: the rasterizer shades with lightColor directly (no
@@ -644,11 +648,14 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         w->giDirty = false;
         if (ready) {
             w->coneGI.Bind(shader, 0);// u_giRadiance + placement on unit 0
-        } else {
+            gridBound = true;
+            if (giMode == GIMode::VoxelGI) giModeInt = 2;
+            if (vxaoEnabled) vxaoStr = vxaoStrength;
+        } else if (giMode == GIMode::VoxelGI) {
             giModeInt = 0;// grid not ready yet — fall back to flat ambient
         }
     }
-    if (giModeInt != 2) {
+    if (!gridBound) {
         if (_giFallbackTex == 0) {
             glGenTextures(1, &_giFallbackTex);
             glBindTexture(GL_TEXTURE_3D, _giFallbackTex);
@@ -667,6 +674,7 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         shader->SetUniform("u_giMaxMip", 0.0f);
     }
     shader->SetUniform("u_giMode", giModeInt);
+    shader->SetUniform("u_vxaoStrength", vxaoStr);
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
