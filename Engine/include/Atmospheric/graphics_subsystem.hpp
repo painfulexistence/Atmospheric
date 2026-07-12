@@ -36,13 +36,13 @@ struct CameraData {
     glm::mat4 projectionMatrix;
 };
 
-struct InstanceData {
-    glm::mat4 modelMatrix;
-};
+// InstanceData moved to vertex.hpp (included above) so RenderCommand and
+// MeshInstancer can reference it without depending on this subsystem header.
 
 class Renderer;
 
 class MeshComponent;
+class MeshInstancer;
 class CanvasDrawable;
 class SpriteComponent;
 class CameraComponent;
@@ -60,6 +60,9 @@ public:
     }
     std::vector<GLuint> canvasTextures;
     std::vector<MeshComponent*> renderables;
+    // Instanced clouds — each submits one span command covering all its
+    // instances, instead of one command per instance like `renderables`.
+    std::vector<MeshInstancer*> instancers;
     std::vector<CanvasDrawable*> canvasDrawables;
     std::vector<LightComponent*> directionalLights;
     std::vector<LightComponent*> pointLights;
@@ -113,6 +116,7 @@ public:
     MeshHandle GetMesh(const std::string& name) const;
 
     MeshComponent* RegisterMesh(MeshComponent* mesh);
+    MeshInstancer* RegisterInstancer(MeshInstancer* instancer);
     CameraComponent* RegisterCamera(CameraComponent* camera);
     LightComponent* RegisterLight(LightComponent* light);
     SunComponent* RegisterSun(SunComponent* sun);
@@ -121,6 +125,7 @@ public:
     void UnregisterCamera(CameraComponent* camera);
     void UnregisterLight(LightComponent* light);
     void UnregisterMesh(MeshComponent* mesh);
+    void UnregisterInstancer(MeshInstancer* instancer);
     void UnregisterCanvasDrawable(CanvasDrawable* drawable);
 
     // ===== Render Target Management =====

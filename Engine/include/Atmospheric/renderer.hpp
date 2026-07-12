@@ -36,8 +36,23 @@ class VoxelVolumeComponent;
 
 struct RenderCommand {
     MeshHandle mesh;
-    // Material* material; // TODO: currently material is coupled with mesh
+    // Effective material for this draw. INVALID means "use the mesh's own
+    // material" (mesh->GetMaterial()) — the historical behavior — so submitters
+    // that don't override the material can leave it default. A valid handle
+    // (MeshComponent's per-instance override, or a MeshInstancer's shared
+    // material) now wins on the *main* render path, not only the ImGui/fallback
+    // path: sort key, batch key, and every draw loop resolve this field.
+    MaterialHandle material;
+    // Single-instance draws: the model matrix (used for depth sort and, when no
+    // instance span is attached, as the one instance). Instanced draws: the
+    // cloud anchor, used only for the depth sort key.
     glm::mat4 transform;
+    // Optional instance span (a MeshInstancer's whole cloud). Non-null →
+    // BuildBatches appends all `instanceCount` matrices to the batch instead of
+    // the lone `transform`. The pointed-to memory is owned by the submitter and
+    // must outlive the frame (same contract as the per-frame command queue).
+    const InstanceData* instances = nullptr;
+    uint32_t instanceCount = 0;
 };
 
 // Camera/target override consumed by the scene passes (Skybox, Sun,

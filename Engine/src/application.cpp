@@ -22,6 +22,7 @@
 #include "light_component.hpp"
 #include "material.hpp"
 #include "mesh_component.hpp"
+#include "mesh_instancer.hpp"
 #include "rigidbody_2d_component.hpp"
 #include "rigidbody_component.hpp"
 #include "rmlui_manager.hpp"
@@ -48,6 +49,8 @@
 #include <ctime>
 #include <filesystem>
 #include <fmt/format.h>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <thread>
@@ -581,6 +584,65 @@ void Application::RegisterComponents() {
         int seed = 42;
         d.Read("seed", seed);
         return new VoxelWorldComponent(o, seed);
+    });
+
+    // ── MeshInstancer (one prototype mesh drawn N times) ──────────────────────
+    // Declares a cloud of instances of one mesh — the CPU-cheap way to place
+    // thousands of props (trees, rocks, debris) without a GameObject each.
+    // Prototype: "mesh": "<name>" references a mesh loaded elsewhere; otherwise
+    // "primitive" (cube|sphere|plane|capsule) + "size" builds a shared
+    // primitive. "material" is an optional shared override (falls back to the
+    // prototype's own material). "instances" is a list of TRS entries in the
+    // entity convention — position (world units), rotation (degrees), scale.
+    ComponentFactory::Register("MeshInstancer", [](GameObject* o, Deserializer& d) -> Component* {
+        MeshInstancerProps p;
+        auto& assets = AssetManager::Get();
+
+        std::string meshName;
+        d.Read("mesh", meshName, std::string());
+        if (!meshName.empty()) {
+            p.prototype = assets.GetMesh(meshName);
+        } else {
+            std::string prim;
+            d.Read("primitive", prim, std::string("cube"));
+            float size = 1.0f;
+            d.Read("size", size, 1.0f);
+            // Dedupe the generated primitive by shape+size, so many instancers
+            // (or a scene reload) share one prototype mesh instead of leaking a
+            // new one each time.
+            std::string key = fmt::format("__instancer_{}_{}", prim, size);
+            MeshHandle existing = assets.GetMesh(key);
+            if (existing.IsValid()) {
+                p.prototype = existing;
+            } else if (prim == "sphere") {
+                p.prototype = assets.CreateSphereMesh(key, size * 0.5f, 24);
+            } else if (prim == "plane") {
+                p.prototype = assets.CreatePlaneMesh(key, size, size);
+            } else if (prim == "capsule") {
+                p.prototype = assets.CreateCapsuleMesh(key, size * 0.5f, size);
+            } else {
+                p.prototype = assets.CreateCubeMesh(key, size);
+            }
+        }
+
+        std::string matName;
+        d.Read("material", matName, std::string());
+        if (!matName.empty()) p.material = assets.GetMaterialHandle(matName);
+
+        for (auto& instD : d.ReadArray("instances")) {
+            glm::vec3 pos(0.0f), rotDeg(0.0f), scale(1.0f);
+            instD->Read("position", pos, glm::vec3(0.0f));
+            instD->Read("rotation", rotDeg, glm::vec3(0.0f));
+            instD->Read("scale", scale, glm::vec3(1.0f));
+            // Matches TransformComponent's T * R * S (rotation from euler
+            // radians) so a JSON instance sits where the same TRS on an entity
+            // would.
+            glm::mat4 local = glm::translate(glm::mat4(1.0f), pos) * glm::mat4_cast(glm::quat(glm::radians(rotDeg)))
+                              * glm::scale(glm::mat4(1.0f), scale);
+            p.localTransforms.push_back(local);
+        }
+
+        return new MeshInstancer(o, std::move(p));
     });
 
     // ── ShapeRendererComponent ────────────────────────────────────────────────

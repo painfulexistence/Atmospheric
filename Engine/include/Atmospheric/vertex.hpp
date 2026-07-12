@@ -1,4 +1,5 @@
 #pragma once
+#include "glm/mat4x4.hpp"
 #include "glm/vec2.hpp"
 #include "glm/vec3.hpp"
 #include "glm/vec4.hpp"
@@ -55,4 +56,12 @@ struct VoxelVertex {
     // Trailing padding: WebGPU requires GPUVertexBufferLayout.arrayStride to be
     // a multiple of 4 bytes, so the struct must round up from 5 to 8 bytes.
     uint8_t _pad[3];
+};
+
+// Per-instance draw data streamed into the instanced-geometry attribute buffer
+// (locations 5-8, divisor 1). One model matrix per instance; a batch uploads a
+// contiguous array of these. Lives here (rather than graphics_subsystem.hpp) so
+// RenderCommand and MeshInstancer can name it without pulling in the subsystem.
+struct InstanceData {
+    glm::mat4 modelMatrix;
 };
