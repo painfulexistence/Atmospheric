@@ -208,17 +208,24 @@ public:
     float ssgiStrength = 1.0f;
     float ssgiRadius = 4.0f;// view-space march distance (metres)
     float ssgiThickness = 0.5f;// depth gap counted as a hit (metres)
+    float ssgiBlend = 0.9f;// temporal history weight (0 = no accumulation)
 
 private:
     void _ensureScratch(int w, int h);
     void _ensureSSGI(int w, int h);
     GLuint _scratchFBO = 0;
     GLuint _scratchTex = 0;
-    GLuint _ssgiFBO = 0;
-    GLuint _ssgiTex = 0;
     int _scratchW = 0, _scratchH = 0;
+    // SSGI temporal ping-pong (rgb = accumulated indirect, a = camera distance
+    // for history validation) + previous-frame reprojection state.
+    GLuint _ssgiHist[2] = { 0, 0 };
+    GLuint _ssgiHistFBO[2] = { 0, 0 };
     int _ssgiW = 0, _ssgiH = 0;
-    int _frame = 0;
+    int _ssgiCur = 0;
+    int _ssgiFrame = 0;// varies the per-frame sample rotation for temporal integration
+    glm::mat4 _ssgiPrevVP = glm::mat4(1.0f);
+    glm::vec3 _ssgiPrevEye = glm::vec3(0.0f);
+    bool _ssgiPrevValid = false;
 };
 
 class WorldCanvasPass : public RenderPass {

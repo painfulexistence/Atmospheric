@@ -2009,21 +2009,24 @@ void ScreenSpaceGIPass::_ensureScratch(int w, int h) {
 }
 
 void ScreenSpaceGIPass::_ensureSSGI(int w, int h) {
-    if (_ssgiFBO && _ssgiW == w && _ssgiH == h) return;
-    if (_ssgiTex) glDeleteTextures(1, &_ssgiTex);
-    if (_ssgiFBO == 0) glGenFramebuffers(1, &_ssgiFBO);
-    glGenTextures(1, &_ssgiTex);
-    glBindTexture(GL_TEXTURE_2D, _ssgiTex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glBindFramebuffer(GL_FRAMEBUFFER, _ssgiFBO);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _ssgiTex, 0);
+    if (_ssgiHist[0] && _ssgiW == w && _ssgiH == h) return;
+    for (int i = 0; i < 2; ++i) {
+        if (_ssgiHist[i]) glDeleteTextures(1, &_ssgiHist[i]);
+        if (_ssgiHistFBO[i] == 0) glGenFramebuffers(1, &_ssgiHistFBO[i]);
+        glGenTextures(1, &_ssgiHist[i]);
+        glBindTexture(GL_TEXTURE_2D, _ssgiHist[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFramebuffer(GL_FRAMEBUFFER, _ssgiHistFBO[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _ssgiHist[i], 0);
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     _ssgiW = w;
     _ssgiH = h;
+    _ssgiPrevValid = false;// fresh buffers — no usable history yet
 }
 
 // Screen-space AO/GI over the resolved opaque scene: GTAO (multiply) then SSGI
@@ -2036,6 +2039,7 @@ void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 #endif
     ZoneScopedN("ScreenSpaceGIPass");
     if (!gtaoEnabled && !ssgiEnabled) return;
+    if (!ssgiEnabled) _ssgiPrevValid = false;// invalidate history while SSGI is off
 
     CameraComponent* cam = ctx->GetMainCamera();
     if (!cam) return;
@@ -2050,6 +2054,9 @@ void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
     const GLuint srcFBO = static_cast<GLRenderTarget*>(src)->GetNativeFBOID();
     const glm::mat4 proj = cam->GetProjectionMatrix();
     const glm::mat4 invProj = glm::inverse(proj);
+    const glm::mat4 viewProj = proj * cam->GetViewMatrix();
+    const glm::mat4 invViewProj = glm::inverse(viewProj);
+    const glm::vec3 eye = cam->GetEyePosition();
     const glm::vec2 vp(static_cast<float>(w), static_cast<float>(h));
 
     glDisable(GL_DEPTH_TEST);
@@ -2081,30 +2088,41 @@ void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
         }
     }
 
-    // SSGI: trace one-bounce indirect -> _ssgiTex, then blur+add -> scratch ->
-    // blit back into the resolved color.
+    // SSGI: trace one-bounce indirect (temporally accumulated) into the current
+    // history slot, then blur+add -> scratch -> blit back into the resolved color.
     if (ssgiEnabled) {
         ShaderProgram* trace = am.GetShader("screen_ssgi");
         ShaderProgram* comp = am.GetShader("screen_ssgi_composite");
         if (trace && comp) {
             _ensureSSGI(w, h);
-            glBindFramebuffer(GL_FRAMEBUFFER, _ssgiFBO);
+            const int prev = 1 - _ssgiCur;
+            const float blend = _ssgiPrevValid ? ssgiBlend : 0.0f;
+
+            glBindFramebuffer(GL_FRAMEBUFFER, _ssgiHistFBO[_ssgiCur]);
             glViewport(0, 0, w, h);
             trace->Activate();
             trace->SetUniform(std::string("u_color"), 0);
             trace->SetUniform(std::string("u_depth"), 1);
+            trace->SetUniform(std::string("u_history"), 2);
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, src->GetTextureID());
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, _ssgiHist[prev]);
             trace->SetUniform(std::string("u_proj"), proj);
             trace->SetUniform(std::string("u_invProj"), invProj);
+            trace->SetUniform(std::string("u_invViewProj"), invViewProj);
+            trace->SetUniform(std::string("u_prevViewProj"), _ssgiPrevVP);
+            trace->SetUniform(std::string("u_cameraPos"), eye);
+            trace->SetUniform(std::string("u_prevCameraPos"), _ssgiPrevEye);
             trace->SetUniform(std::string("u_viewportSize"), vp);
             trace->SetUniform(std::string("u_ssgiRadius"), ssgiRadius);
             trace->SetUniform(std::string("u_ssgiThickness"), ssgiThickness);
-            // Constant seed (not _frame): without temporal accumulation a
-            // per-frame-varying rotation would shimmer; stable grain reads better.
-            trace->SetUniform(std::string("u_frameIndex"), 0);
+            // Vary the sample rotation each frame so temporal accumulation
+            // integrates different samples (real variance reduction).
+            trace->SetUniform(std::string("u_frameIndex"), _ssgiFrame);
+            trace->SetUniform(std::string("u_blend"), blend);
             glBindVertexArray(renderer.gl.screenQuadVAO);
             glDrawArrays(GL_TRIANGLES, 0, 6);
             glBindVertexArray(0);
@@ -2117,7 +2135,7 @@ void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, src->GetTextureID());
             glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, _ssgiTex);
+            glBindTexture(GL_TEXTURE_2D, _ssgiHist[_ssgiCur]);
             glActiveTexture(GL_TEXTURE2);
             glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
             comp->SetUniform(std::string("u_viewportSize"), vp);
@@ -2128,7 +2146,13 @@ void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             glBindFramebuffer(GL_READ_FRAMEBUFFER, _scratchFBO);
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, srcFBO);
             glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-            _frame++;
+
+            // Roll reprojection sources forward and swap the history slot.
+            _ssgiPrevVP = viewProj;
+            _ssgiPrevEye = eye;
+            _ssgiPrevValid = true;
+            _ssgiCur = prev;
+            _ssgiFrame++;
         }
     }
 

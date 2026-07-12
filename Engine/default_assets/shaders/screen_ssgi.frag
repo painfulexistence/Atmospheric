@@ -18,6 +18,18 @@ uniform float u_ssgiRadius;   // view-space march distance (metres)
 uniform float u_ssgiThickness;// max depth gap counted as a hit (metres)
 uniform int   u_frameIndex;   // decorrelates the per-pixel sample rotation
 
+// Temporal accumulation: reproject this pixel's world position into the previous
+// frame and blend with history (validated by camera distance so disocclusions /
+// camera cuts fall back to the raw sample). rgb = accumulated indirect, a =
+// camera distance. The scene is static, so reprojection is exact for camera
+// motion; edits just converge over a few frames.
+uniform mat4  u_invViewProj;
+uniform mat4  u_prevViewProj;
+uniform vec3  u_cameraPos;
+uniform vec3  u_prevCameraPos;
+uniform sampler2D u_history;
+uniform float u_blend;// 0 on the first frame / when disabled
+
 out vec4 fragColor;
 
 const int RAYS = 4;
@@ -78,5 +90,25 @@ void main() {
             }
         }
     }
-    fragColor = vec4(indirect / float(RAYS), 1.0);// misses contribute 0
+    vec3 raw = indirect / float(RAYS);// misses contribute 0
+
+    // Temporal reprojection + blend.
+    vec4 wp = u_invViewProj * vec4(v_uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    vec3 worldPos = wp.xyz / wp.w;
+    float camDist = length(worldPos - u_cameraPos);
+    vec3 result = raw;
+    if (u_blend > 0.0) {
+        vec4 pc = u_prevViewProj * vec4(worldPos, 1.0);
+        if (pc.w > 0.0) {
+            vec2 puv = (pc.xy / pc.w) * 0.5 + 0.5;
+            if (all(greaterThanEqual(puv, vec2(0.0))) && all(lessThanEqual(puv, vec2(1.0)))) {
+                vec4 h = texture(u_history, puv);
+                float expected = length(worldPos - u_prevCameraPos);
+                if (h.a > 0.0 && abs(h.a - expected) < 0.05 * expected + 0.1) {
+                    result = mix(raw, h.rgb, u_blend);
+                }
+            }
+        }
+    }
+    fragColor = vec4(result, camDist);
 }

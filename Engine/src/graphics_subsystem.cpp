@@ -287,7 +287,8 @@ void GraphicsSubsystem::DrawImGui(float dt) {
                         ImGui::SliderFloat("SSGI strength", &ssgi->ssgiStrength, 0.0f, 3.0f);
                         ImGui::SliderFloat("SSGI radius (m)", &ssgi->ssgiRadius, 0.5f, 12.0f);
                         ImGui::SliderFloat("SSGI thickness (m)", &ssgi->ssgiThickness, 0.1f, 2.0f);
-                        ImGui::TextDisabled("Screen-space 1-bounce (depth-based)");
+                        ImGui::SliderFloat("SSGI temporal", &ssgi->ssgiBlend, 0.0f, 0.98f);
+                        ImGui::TextDisabled("Screen-space 1-bounce, temporally accumulated");
                     }
                 }
                 ImGui::TreePop();
