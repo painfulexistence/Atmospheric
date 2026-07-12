@@ -316,7 +316,7 @@ private:
     };
     struct GrassJob {
         glm::ivec2 coord{ 0, 0 };
-        std::vector<Vertex> verts;
+        std::vector<GrassInstance> instances;
         std::atomic<bool> done{ false };
     };
     GrassCell* AcquireGrassCell();

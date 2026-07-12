@@ -133,7 +133,10 @@ blade meshes are built on JobSystem workers (roots sampled from the exact
 height source, patchiness from a value-noise mask, slope/height-band rules),
 uploaded one cell per frame into pooled dynamic meshes, and recycled as the
 camera moves. Per-blade variation (length, facing, static lean, wind phase,
-hue) is baked into vertex attributes so every cell shares one `GrassMaterial`;
+hue) rides in a per-blade **instance buffer** (32 bytes/blade) — one canonical
+9-vertex blade is drawn once per instance via `glDrawArraysInstanced`, so every
+cell is a single instanced draw and cell memory is ~15x smaller than baked
+geometry. Every cell shares one `GrassMaterial`;
 `grass.vert` adds the two-band wind sway (slow travelling gust + per-blade
 flutter, t²-weighted so roots stay planted) and collapses blades to the ground
 approaching `grassRadius` so the ring edge is invisible. `grass.frag` does the

@@ -184,10 +184,11 @@ class TerrainStreamingDemo : public Application {
                 .entityRadiusTiles = 3,
                 // Golden pampas grass in a streamed ring around the camera —
                 // watch cells build in as you sprint (GoT-style wind sway).
-                .grassDensity = 12.0f,
-                .grassRadius = 80.0f,
-                .grassBladeHeight = 1.5f,
-                .grassWindStrength = 0.4f,
+                .grassDensity = 40.0f,// instanced now — 40 blades/m^2 is cheap
+                .grassRadius = 90.0f,
+                .grassBladeHeight = 1.6f,
+                .grassMaxSlope = 1000.0f,// grow grass everywhere, ignore slope
+                .grassWindStrength = 0.45f,
                 .grassWindSpeed = 1.8f,
             })
         );

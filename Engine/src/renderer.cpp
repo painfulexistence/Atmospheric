@@ -1801,7 +1801,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             grassShader->SetUniform(std::string("main_light.diffuse"), mainLight->diffuse);
 
             glBindVertexArray(mesh->vao);
-            glDrawArrays(GL_TRIANGLES, 0, mesh->vertCount);
+            glDrawArraysInstanced(GL_TRIANGLES, 0, 9, static_cast<GLsizei>(mesh->instanceCount));
             glBindVertexArray(0);
             break;
         }

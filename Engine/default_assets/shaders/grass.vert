@@ -1,18 +1,15 @@
 #version 410
 
-// Streamed grass blades (MeshType::GRASS). Each blade is baked into the cell
-// mesh in its rest pose (static lean included); this shader adds the wind:
-// two sine bands (a slow travelling gust plus a faster flutter) push the blade
-// tip downwind with a t^2 weight so roots stay planted, Ghost-of-Tsushima
-// style. Blades shrink to the ground near the ring edge so the streamed grass
-// boundary is invisible.
+// Instanced grass blades (MeshType::GRASS). One canonical 9-vertex blade is
+// drawn per instance; the per-blade transform (root/facing/length/lean) and
+// variation live in the instance attributes, so a whole cell is one
+// glDrawArraysInstanced call with ~32 bytes/blade instead of baked geometry.
 //
-// Vertex attribute encoding (see TerrainStreamer's grass cell builder):
-//   position  - rest-pose vertex position, cell-local
-//   uv        - (side in [-1,1], t: 0 at the root, 1 at the tip)
-//   normal    - blade facing normal (horizontal)
-//   tangent   - blade root position, cell-local
-//   bitangent - (phase, blade length, color variation)
+// The shader turns the flat canonical blade into a curved, wind-swayed
+// world-space blade: two sine bands (a slow travelling gust + a faster
+// per-blade flutter) push the tip downwind with a t^2 weight so roots stay
+// planted (Ghost-of-Tsushima style). Blades shrink to the ground near the
+// ring edge so the streamed grass boundary is invisible.
 
 uniform mat4 ProjectionView;
 uniform mat4 World;
@@ -24,52 +21,61 @@ uniform float u_wind_speed;
 uniform float u_fade_start;
 uniform float u_fade_end;
 
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec2 uv;
-layout(location = 2) in vec3 normal;
-layout(location = 3) in vec3 tangent;
-layout(location = 4) in vec3 bitangent;
+layout(location = 0) in vec2 aBlade;       // x = side [-1,1], y = t [0,1]
+layout(location = 5) in vec4 iRootFacing;  // xyz = root (cell-local), w = facing angle
+layout(location = 6) in vec4 iShape;       // x = length, y = lean, z = phase, w = hue
 
 out vec3 frag_pos;
 out vec3 frag_normal;
 out vec2 frag_uv;    // (side, t)
-out float frag_hue;  // per-blade color variation
-out float frag_gust; // gust intensity, brightens wind waves sweeping the field
+out float frag_hue;
+out float frag_gust;
 
 void main(void)
 {
-	float t = uv.y;
-	float phase = bitangent.x;
-	float bladeLen = bitangent.y;
+	float side = aBlade.x;
+	float t = aBlade.y;
+	vec3 root = iRootFacing.xyz;
+	float bladeLen = iShape.x;
+	float lean = iShape.y;
+	float phase = iShape.z;
 
-	vec3 rootWorld = (World * vec4(tangent, 1.0)).xyz;
+	float ca = cos(iRootFacing.w), sa = sin(iRootFacing.w);
+	vec3 facing = vec3(ca, 0.0, sa);
+	vec3 sideDir = vec3(-sa, 0.0, ca);
+
+	vec3 rootWorld = (World * vec4(root, 1.0)).xyz;
 	vec2 windDir = normalize(u_wind_dir);
 
-	// Slow gust wave travelling downwind + faster per-blade flutter. The
-	// constant bias keeps the field leaning downwind instead of oscillating
-	// around vertical, which is what sells the "wind from over there" read.
+	// Slow gust wave travelling downwind + faster per-blade flutter, plus a
+	// constant downwind bias so the field leans "away from the wind".
 	float gust = sin(dot(rootWorld.xz, windDir) * 0.10 - u_time * u_wind_speed);
 	float flutter = sin(dot(rootWorld.xz, vec2(0.83, -0.55)) * 0.9 - u_time * (u_wind_speed * 2.7) + phase);
 	float sway = (0.45 + 0.40 * gust + 0.15 * flutter) * u_wind_strength;
 
-	// t^2 weighting: roots planted, tips travel. The small vertical drop keeps
-	// the blade length roughly constant as it bends (arc, not shear).
-	float bend = sway * t * t * bladeLen;
-	vec3 pos = position;
-	pos.xz += windDir * bend;
-	pos.y -= bend * bend * (0.5 / max(bladeLen, 0.01));
+	// Rest-pose curve: static lean bends the blade forward along t^2. Wind adds
+	// on top of the lean, both t^2-weighted so the root stays planted.
+	float bendAmt = (lean + sway) * t * t;
+	vec3 center = root
+		+ facing * (bendAmt * bladeLen)
+		+ vec3(0.0, t * bladeLen * (1.0 - 0.2 * bendAmt), 0.0);
 
-	// Ring fade: collapse the blade toward its root as it approaches the edge
-	// of the streamed grass radius.
+	// Width tapers root->tip; the tip vertex has side=0 so it comes to a point.
+	float halfWidth = bladeLen * 0.03 * (1.0 - 0.85 * t);
+	vec3 pos = center + sideDir * (side * halfWidth);
+
+	// Ring fade: collapse the blade toward its root approaching the edge.
 	float dist = distance(cam_pos.xz, rootWorld.xz);
 	float keep = 1.0 - smoothstep(u_fade_start, u_fade_end, dist);
-	pos = mix(tangent, pos, keep);
+	pos = mix(root, pos, keep);
 
 	vec4 worldPos = World * vec4(pos, 1.0);
 	frag_pos = worldPos.xyz;
-	frag_normal = mat3(World) * normal;
-	frag_uv = uv;
-	frag_hue = bitangent.z;
+	// Blade normal faces the camera side of the blade plane (billboard-ish),
+	// so both faces catch light regardless of facing.
+	frag_normal = mat3(World) * facing;
+	frag_uv = vec2(side, t);
+	frag_hue = iShape.w;
 	frag_gust = clamp(0.5 + 0.5 * gust, 0.0, 1.0);
 	gl_Position = ProjectionView * worldPos;
 }

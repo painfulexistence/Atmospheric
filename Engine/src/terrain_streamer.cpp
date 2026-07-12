@@ -638,7 +638,7 @@ void TerrainStreamer::UpdateGrass(const glm::vec3& cameraPos) {
         GrassJob& job = *it->second;
         GrassCell* gc = AcquireGrassCell();
         gc->coord = job.coord;
-        gc->mesh->UpdateDynamic(job.verts);
+        gc->mesh->UploadGrassInstances(job.instances);
         gc->go->SetPosition(glm::vec3(job.coord.x * cell, 0.0f, job.coord.y * cell));
         gc->go->SetActive(true);
         if (GrassCell* old = _grassCells.count(job.coord) ? _grassCells[job.coord] : nullptr) {
@@ -653,7 +653,7 @@ void TerrainStreamer::UpdateGrass(const glm::vec3& cameraPos) {
     // Live blade count for the stats line (cells are few; recount is trivial).
     _grassBladesLive = 0;
     for (auto& [coord, gc] : _grassCells)
-        _grassBladesLive += gc->mesh->vertCount / 9;
+        _grassBladesLive += static_cast<int>(gc->mesh->instanceCount);
 
     // Kick worker jobs for missing cells, nearest first, two in flight max.
     if (_grassInFlight.size() >= 2) return;
@@ -695,8 +695,9 @@ void TerrainStreamer::UpdateGrass(const glm::vec3& cameraPos) {
                                    band,
                                    seed](int /*threadIndex*/) {
             const glm::vec2 origin(job->coord.x * cellSize, job->coord.y * cellSize);
-            const int target = std::min(20000, static_cast<int>(density * cellSize * cellSize));
-            job->verts.reserve(static_cast<size_t>(target) * 9);
+            // Cap generous now that each blade is 32 bytes, not ~500.
+            const int target = std::min(60000, static_cast<int>(density * cellSize * cellSize));
+            job->instances.reserve(static_cast<size_t>(target));
             uint32_t rng = static_cast<uint32_t>(job->coord.x * 73856093 ^ job->coord.y * 19349663 ^ seed);
 
             for (int i = 0; i < target; ++i) {
@@ -712,42 +713,23 @@ void TerrainStreamer::UpdateGrass(const glm::vec3& cameraPos) {
                 const float h01 = heightFn(wx, wz);
                 if (h01 < band.x || h01 > band.y) continue;
                 const float y = h01 * heightScale;
-                // Slope from two forward differences (2m probe).
-                const float dhx = (heightFn(wx + 2.0f, wz) - h01) * heightScale * 0.5f;
-                const float dhz = (heightFn(wx, wz + 2.0f) - h01) * heightScale * 0.5f;
-                if (dhx * dhx + dhz * dhz > maxSlope * maxSlope) continue;
+                // Slope gate (skip entirely when maxSlope is huge — "ignore slope").
+                if (maxSlope < 100.0f) {
+                    const float dhx = (heightFn(wx + 2.0f, wz) - h01) * heightScale * 0.5f;
+                    const float dhz = (heightFn(wx, wz + 2.0f) - h01) * heightScale * 0.5f;
+                    if (dhx * dhx + dhz * dhz > maxSlope * maxSlope) continue;
+                }
 
-                // Per-blade shape: length, facing, static lean (baked into the
-                // rest pose — the shader only adds wind on top).
-                const float len = avgHeight * (0.65f + 0.7f * GrassRand(rng)) * (0.6f + 0.4f * patch);
-                const float ang = GrassRand(rng) * 6.28318f;
-                const float lean = 0.05f + 0.30f * GrassRand(rng);
-                const float phase = GrassRand(rng) * 6.28318f;
-                const float hue = GrassRand(rng);
-                const glm::vec3 root(lx, y, lz);
-                const glm::vec3 facing(std::cos(ang), 0.0f, std::sin(ang));
-                const glm::vec3 side(-facing.z, 0.0f, facing.x);
-                const float w0 = 0.045f * (0.7f + 0.6f * GrassRand(rng));
-
-                // Center curve at t: lean bends the rest pose forward.
-                auto center = [&](float t) {
-                    return root + facing * (lean * len * t * t) + glm::vec3(0, t * len * (1.0f - 0.2f * lean * t), 0);
-                };
-                auto emit = [&](const glm::vec3& pos, float sideSign, float t) {
-                    job->verts.emplace_back(pos, glm::vec2(sideSign, t), facing, root, glm::vec3(phase, len, hue));
-                };
-                const glm::vec3 c0 = center(0.0f), c1 = center(0.55f), tip = center(1.0f);
-                const float w1 = w0 * 0.45f;
-                // Two quads + tip triangle, emitted as 9 plain triangles verts.
-                emit(c0 - side * w0, -1.0f, 0.0f);
-                emit(c0 + side * w0, 1.0f, 0.0f);
-                emit(c1 - side * w1, -1.0f, 0.55f);
-                emit(c0 + side * w0, 1.0f, 0.0f);
-                emit(c1 + side * w1, 1.0f, 0.55f);
-                emit(c1 - side * w1, -1.0f, 0.55f);
-                emit(c1 - side * w1, -1.0f, 0.55f);
-                emit(c1 + side * w1, 1.0f, 0.55f);
-                emit(tip, 0.0f, 1.0f);
+                // One instance carries everything unique about this blade;
+                // grass.vert reconstructs the curved, wind-swayed geometry.
+                GrassInstance inst;
+                inst.root = glm::vec3(lx, y, lz);
+                inst.facing = GrassRand(rng) * 6.28318f;
+                inst.length = avgHeight * (0.65f + 0.7f * GrassRand(rng)) * (0.6f + 0.4f * patch);
+                inst.lean = 0.05f + 0.30f * GrassRand(rng);
+                inst.phase = GrassRand(rng) * 6.28318f;
+                inst.hue = GrassRand(rng);
+                job->instances.push_back(inst);
             }
             job->done.store(true, std::memory_order_release);
         });
@@ -784,6 +766,7 @@ TerrainStreamer::GrassCell* TerrainStreamer::AcquireGrassCell() {
             glm::vec3(0, 0, 0),
             glm::vec3(c, 0, 0) } }
     );
+    mesh->InitGrassInstanced();
     MeshHandle handle = am.CreateMesh(name, mesh);
     mesh->SetMaterial(am.GetMaterialHandle(_grassMaterial));
     go->AddComponent<MeshComponent>(handle);

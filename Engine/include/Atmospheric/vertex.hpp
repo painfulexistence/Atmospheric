@@ -36,6 +36,18 @@ struct ScreenVertex {
     glm::vec2 texCoord;
 };
 
+// One grass blade for instanced rendering (see TerrainStreamer's grass ring).
+// A single canonical 9-vertex blade is drawn once per instance; everything
+// that makes a blade unique lives here (32 bytes vs ~500 for baked geometry).
+struct GrassInstance {
+    glm::vec3 root;// blade root, cell-local
+    float facing;// yaw angle (radians)
+    float length;// blade length in metres
+    float lean;// static forward lean (rest-pose bend)
+    float phase;// wind flutter phase offset
+    float hue;// [0,1] per-blade color variation
+};
+
 struct VoxelVertex {
     uint8_t x, y, z;// Local position within chunk (0-255)
     uint8_t voxel_id;// Voxel type

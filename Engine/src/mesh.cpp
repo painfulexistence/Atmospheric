@@ -260,3 +260,44 @@ template void Mesh::UpdateDynamic<Vertex>(const std::vector<Vertex>&, GLenum);
 template void Mesh::InitializeDynamic<DebugVertex>(GLenum);
 template void Mesh::InitializeDynamic<CanvasVertex>(GLenum);
 template void Mesh::InitializeDynamic<Vertex>(GLenum);
+// ── Instanced grass ──────────────────────────────────────────────────────────
+
+void Mesh::InitGrassInstanced() {
+    initialized = true;
+    vertCount = 9;// canonical blade: 2 quads + tip triangle
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;// grass is GL/GLES3 only
+
+    // Canonical blade in blade-local space: x = side in [-1,1], y = t in [0,1].
+    // The vertex shader turns (side, t) + the per-instance transform into the
+    // curved, wind-swayed world-space blade.
+    const glm::vec2 blade[9] = {
+        { -1.0f, 0.0f },  { 1.0f, 0.0f },  { -1.0f, 0.55f },// quad 1
+        { 1.0f, 0.0f },   { 1.0f, 0.55f }, { -1.0f, 0.55f },// quad 2
+        { -1.0f, 0.55f }, { 1.0f, 0.55f }, { 0.0f, 1.0f }// tip
+    };
+
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(blade), blade, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), nullptr);
+    glEnableVertexAttribArray(0);
+
+    if (_instanceVBO == 0) glGenBuffers(1, &_instanceVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, _instanceVBO);
+    // location 5: (root.xyz, facing)   location 6: (length, lean, phase, hue)
+    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(GrassInstance), nullptr);
+    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(GrassInstance), reinterpret_cast<void*>(4 * sizeof(float)));
+    glEnableVertexAttribArray(5);
+    glEnableVertexAttribArray(6);
+    glVertexAttribDivisor(5, 1);
+    glVertexAttribDivisor(6, 1);
+    glBindVertexArray(0);
+}
+
+void Mesh::UploadGrassInstances(const std::vector<GrassInstance>& instances) {
+    instanceCount = instances.size();
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
+    glBindBuffer(GL_ARRAY_BUFFER, _instanceVBO);
+    glBufferData(GL_ARRAY_BUFFER, instances.size() * sizeof(GrassInstance), instances.data(), GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
