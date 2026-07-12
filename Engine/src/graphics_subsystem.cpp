@@ -267,24 +267,27 @@ void GraphicsSubsystem::DrawImGui(float dt) {
             }
             if (ImGui::TreeNode("Global Illumination")) {
                 using GIMode = VoxelChunkPass::GIMode;
-                bool enabled = vp->giMode != GIMode::Off;
-                if (ImGui::Checkbox("Enabled", &enabled)) {
-                    vp->giMode = enabled ? GIMode::VoxelGI : GIMode::Off;
+                // VoxelGI (world-space cone tracing) and SSGI (screen-space) are
+                // independent systems — either or both. VoxelGI lives on the
+                // voxel pass; SSGI on ScreenSpaceGIPass.
+                bool voxelGiOn = vp->giMode == GIMode::VoxelGI;
+                if (ImGui::Checkbox("VoxelGI (cone tracing)", &voxelGiOn)) {
+                    vp->giMode = voxelGiOn ? GIMode::VoxelGI : GIMode::Off;
                 }
-                if (vp->giMode != GIMode::Off) {
-                    int idx = (vp->giMode == GIMode::VoxelGI) ? 1 : 0;
-                    if (ImGui::Combo("Mode", &idx, "SSGI (screen-space)\0VoxelGI (cone tracing)\0")) {
-                        vp->giMode = (idx == 1) ? GIMode::VoxelGI : GIMode::SSGI;
-                    }
-                    ImGui::SliderFloat("Strength", &vp->giStrength, 0.0f, 3.0f);
-                    if (vp->giMode == GIMode::VoxelGI) {
-                        ImGui::SliderInt("Cascade dim (m)", &vp->giVoxelDim, 32, 128);
-                        // Injection is amortized across frames; fewer slabs/frame
-                        // = smoother (no hitch) but the grid refreshes slower.
-                        ImGui::SliderInt("Inject slabs/frame", &vp->giInjectSlabs, 1, 16);
-                        ImGui::TextDisabled("World-space voxel cone tracing");
-                    } else {
-                        ImGui::TextDisabled("SSGI not yet implemented (next increment)");
+                if (vp->giMode == GIMode::VoxelGI) {
+                    ImGui::SliderFloat("VoxelGI strength", &vp->giStrength, 0.0f, 3.0f);
+                    ImGui::SliderInt("Cascade dim (m)", &vp->giVoxelDim, 32, 128);
+                    // Injection is amortized across frames; fewer slabs/frame
+                    // = smoother (no hitch) but the grid refreshes slower.
+                    ImGui::SliderInt("Inject slabs/frame", &vp->giInjectSlabs, 1, 16);
+                }
+                if (auto* ssgi = renderer->GetPass<ScreenSpaceGIPass>()) {
+                    ImGui::Checkbox("SSGI (screen-space)", &ssgi->ssgiEnabled);
+                    if (ssgi->ssgiEnabled) {
+                        ImGui::SliderFloat("SSGI strength", &ssgi->ssgiStrength, 0.0f, 3.0f);
+                        ImGui::SliderFloat("SSGI radius (m)", &ssgi->ssgiRadius, 0.5f, 12.0f);
+                        ImGui::SliderFloat("SSGI thickness (m)", &ssgi->ssgiThickness, 0.1f, 2.0f);
+                        ImGui::TextDisabled("Screen-space 1-bounce (depth-based)");
                     }
                 }
                 ImGui::TreePop();

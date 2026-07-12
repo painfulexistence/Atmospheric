@@ -2008,55 +2008,132 @@ void ScreenSpaceGIPass::_ensureScratch(int w, int h) {
     _scratchH = h;
 }
 
-// Screen-space AO/GI over the resolved opaque scene. Increment 1: GTAO.
+void ScreenSpaceGIPass::_ensureSSGI(int w, int h) {
+    if (_ssgiFBO && _ssgiW == w && _ssgiH == h) return;
+    if (_ssgiTex) glDeleteTextures(1, &_ssgiTex);
+    if (_ssgiFBO == 0) glGenFramebuffers(1, &_ssgiFBO);
+    glGenTextures(1, &_ssgiTex);
+    glBindTexture(GL_TEXTURE_2D, _ssgiTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindFramebuffer(GL_FRAMEBUFFER, _ssgiFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _ssgiTex, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    _ssgiW = w;
+    _ssgiH = h;
+}
+
+// Screen-space AO/GI over the resolved opaque scene: GTAO (multiply) then SSGI
+// (additive). Both reconstruct from the resolved depth; each ping-pongs the
+// scene color through a scratch target and blits the result back, so SSGI sees
+// the AO'd color when both are on.
 void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;// GL path only for now
 #endif
     ZoneScopedN("ScreenSpaceGIPass");
-    if (!gtaoEnabled) return;
+    if (!gtaoEnabled && !ssgiEnabled) return;
 
     CameraComponent* cam = ctx->GetMainCamera();
     if (!cam) return;
     RenderTarget* src = renderer.msaaResolveRT ? renderer.msaaResolveRT.get() : renderer.sceneRT.get();
     if (!src) return;
-    ShaderProgram* shader = AssetManager::Get().GetShader("screen_gtao");
-    if (!shader) return;
-
     const int w = static_cast<int>(src->GetWidth());
     const int h = static_cast<int>(src->GetHeight());
     if (w <= 0 || h <= 0) return;
     _ensureScratch(w, h);
 
-    // Compute color*AO into the scratch target (can't read+write the same
-    // texture, so ping-pong through scratch then blit back).
-    glBindFramebuffer(GL_FRAMEBUFFER, _scratchFBO);
-    glViewport(0, 0, w, h);
+    AssetManager& am = AssetManager::Get();
+    const GLuint srcFBO = static_cast<GLRenderTarget*>(src)->GetNativeFBOID();
+    const glm::mat4 proj = cam->GetProjectionMatrix();
+    const glm::mat4 invProj = glm::inverse(proj);
+    const glm::vec2 vp(static_cast<float>(w), static_cast<float>(h));
+
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
-    shader->Activate();
-    shader->SetUniform(std::string("u_color"), 0);
-    shader->SetUniform(std::string("u_depth"), 1);
+    glViewport(0, 0, w, h);
+
+    // GTAO: color*AO -> scratch -> blit back into the resolved color.
+    if (gtaoEnabled) {
+        if (ShaderProgram* sh = am.GetShader("screen_gtao")) {
+            glBindFramebuffer(GL_FRAMEBUFFER, _scratchFBO);
+            sh->Activate();
+            sh->SetUniform(std::string("u_color"), 0);
+            sh->SetUniform(std::string("u_depth"), 1);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, src->GetTextureID());
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
+            sh->SetUniform(std::string("u_proj"), proj);
+            sh->SetUniform(std::string("u_invProj"), invProj);
+            sh->SetUniform(std::string("u_viewportSize"), vp);
+            sh->SetUniform(std::string("u_aoRadius"), gtaoRadius);
+            sh->SetUniform(std::string("u_aoStrength"), gtaoStrength);
+            glBindVertexArray(renderer.gl.screenQuadVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, _scratchFBO);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, srcFBO);
+            glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        }
+    }
+
+    // SSGI: trace one-bounce indirect -> _ssgiTex, then blur+add -> scratch ->
+    // blit back into the resolved color.
+    if (ssgiEnabled) {
+        ShaderProgram* trace = am.GetShader("screen_ssgi");
+        ShaderProgram* comp = am.GetShader("screen_ssgi_composite");
+        if (trace && comp) {
+            _ensureSSGI(w, h);
+            glBindFramebuffer(GL_FRAMEBUFFER, _ssgiFBO);
+            glViewport(0, 0, w, h);
+            trace->Activate();
+            trace->SetUniform(std::string("u_color"), 0);
+            trace->SetUniform(std::string("u_depth"), 1);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, src->GetTextureID());
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
+            trace->SetUniform(std::string("u_proj"), proj);
+            trace->SetUniform(std::string("u_invProj"), invProj);
+            trace->SetUniform(std::string("u_viewportSize"), vp);
+            trace->SetUniform(std::string("u_ssgiRadius"), ssgiRadius);
+            trace->SetUniform(std::string("u_ssgiThickness"), ssgiThickness);
+            // Constant seed (not _frame): without temporal accumulation a
+            // per-frame-varying rotation would shimmer; stable grain reads better.
+            trace->SetUniform(std::string("u_frameIndex"), 0);
+            glBindVertexArray(renderer.gl.screenQuadVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, _scratchFBO);
+            comp->Activate();
+            comp->SetUniform(std::string("u_color"), 0);
+            comp->SetUniform(std::string("u_ssgi"), 1);
+            comp->SetUniform(std::string("u_depth"), 2);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, src->GetTextureID());
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, _ssgiTex);
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
+            comp->SetUniform(std::string("u_viewportSize"), vp);
+            comp->SetUniform(std::string("u_ssgiStrength"), ssgiStrength);
+            glBindVertexArray(renderer.gl.screenQuadVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, _scratchFBO);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, srcFBO);
+            glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            _frame++;
+        }
+    }
+
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, src->GetTextureID());
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
-    const glm::mat4 proj = cam->GetProjectionMatrix();
-    shader->SetUniform(std::string("u_proj"), proj);
-    shader->SetUniform(std::string("u_invProj"), glm::inverse(proj));
-    shader->SetUniform(std::string("u_viewportSize"), glm::vec2(static_cast<float>(w), static_cast<float>(h)));
-    shader->SetUniform(std::string("u_aoRadius"), gtaoRadius);
-    shader->SetUniform(std::string("u_aoStrength"), gtaoStrength);
-    glBindVertexArray(renderer.gl.screenQuadVAO);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
-    glBindVertexArray(0);
-
-    // Composite back into the resolved scene color (color only; depth untouched).
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, _scratchFBO);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLRenderTarget*>(src)->GetNativeFBOID());
-    glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
     renderer.CheckErrors("screen-space GI pass");
 }
 

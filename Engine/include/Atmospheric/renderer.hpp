@@ -201,11 +201,24 @@ public:
     float gtaoStrength = 1.0f;
     float gtaoRadius = 0.5f;// view-space metres
 
+    // SSGI: one-bounce screen-space GI (hemisphere rays marched against depth,
+    // gathering bounce light from the resolved color), depth-aware blurred and
+    // added to the scene. Noisy vs VoxelGI but full-resolution and needs no grid.
+    bool ssgiEnabled = false;
+    float ssgiStrength = 1.0f;
+    float ssgiRadius = 4.0f;// view-space march distance (metres)
+    float ssgiThickness = 0.5f;// depth gap counted as a hit (metres)
+
 private:
     void _ensureScratch(int w, int h);
+    void _ensureSSGI(int w, int h);
     GLuint _scratchFBO = 0;
     GLuint _scratchTex = 0;
+    GLuint _ssgiFBO = 0;
+    GLuint _ssgiTex = 0;
     int _scratchW = 0, _scratchH = 0;
+    int _ssgiW = 0, _ssgiH = 0;
+    int _frame = 0;
 };
 
 class WorldCanvasPass : public RenderPass {
