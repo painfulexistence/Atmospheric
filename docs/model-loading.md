@@ -62,9 +62,13 @@ Instantiate(level, nullptr, "arena");
 ```
 
 `docs/example-maps/room.map` — walled room + pillar + `light` +
-`info_player_start`. Deathmatch's `assets/maps/arena.map` is the in-game use:
-plaza, pillar ring, perimeter walls, parallax landmarks, and two spawns —
-31 brush colliders, three named materials.
+`info_player_start`. Deathmatch's `assets/maps/arena.map` is the in-game use: a
+walled training yard — curb ring at the sim's movement clamp, pilastered walls
+with signal stripes, corner watchtowers, a gated south wall (chamfered arch +
+recessed door), a control-room deck, a quarter-pipe `patchDef2`, rotated road
+barriers, crates, a shooting range, skyline towers, five `light` entities
+(warm tower floods + a cool deck wash), and two spawns — 71 brush colliders,
+seven named materials.
 
 ## glTF notes
 

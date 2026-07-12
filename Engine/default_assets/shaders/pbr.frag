@@ -112,7 +112,10 @@ vec3 CalculatePointLight(PointLight light, vec3 norm, vec3 viewDir, Surface surf
     float dist = distance(light.position, frag_pos);
     float attenuation = 1.0 / (dist * dist);
     float shadow = float(light.cast_shadow) * PointShadow((frag_pos - light.position) / 400.0f, ShadowBias(norm, lightDir));
-    vec3 radiance = attenuation * light.diffuse * clamp(1.0 - shadow, 0.0, 1.0);
+    // intensity scales the photometric power (e.g. Quake light values arrive
+    // normalized to 300 == 1.0); without it every point light was pinned to
+    // the raw color at 1m, far too dim to read at room distances.
+    vec3 radiance = attenuation * light.intensity * light.diffuse * clamp(1.0 - shadow, 0.0, 1.0);
 
     return CookTorranceBRDF(norm, lightDir, viewDir, surf) * radiance * clamp(dot(norm, lightDir), 0.0, 1.0);
 }
@@ -287,10 +290,9 @@ void main() {
 
     vec3 result = vec3(0.0);
     result += CalculateDirectionalLight(main_light, norm, viewDir, surf);
-    result += CalculatePointLight(aux_lights[0], norm, viewDir, surf);
-    // result += CalculatePointLight(aux_lights[1], norm, viewDir, surf);
-    // result += CalculatePointLight(aux_lights[2], norm, viewDir, surf);
-    // result += CalculatePointLight(aux_lights[3], norm, viewDir, surf);
+    for (int i = 0; i < aux_light_count && i < MAX_NUM_AUX_LIGHTS; i++) {
+        result += CalculatePointLight(aux_lights[i], norm, viewDir, surf);
+    }
     if (u_useEnv == 1) {
         result += ComputeIBL(norm, viewDir, surf);
     } else {

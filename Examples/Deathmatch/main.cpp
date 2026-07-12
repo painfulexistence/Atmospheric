@@ -239,21 +239,28 @@ class DeathmatchGame : public Application {
         am.GetMeshPtr(floorMesh)->SetMaterial(am.GetMaterialHandle("dm_floor_mat"));
         CreateGameObject(glm::vec3(0.0f))->AddComponent<MeshRenderer>(floorMesh);
 
-        // The surrounding plaza, perimeter pillars, and distant landmarks — the
-        // whole static environment shell — are authored in assets/maps/arena.map
-        // and imported below. Their materials are created here so the .map's
-        // per-face texture names resolve to them (Instantiate looks each
-        // material up by name). The plaza is darker and reaches to the HDRI
-        // horizon so objects sit on ground rather than on a 24x24 platform.
-        Material* groundMat = MakeMaterial("dm_ground_mat", glm::vec3(0.14f, 0.15f, 0.17f));
-        groundMat->roughnessMap = MakeSolidTexture(glm::vec3(0.9f));
-        groundMat->metallicMap = MakeSolidTexture(glm::vec3(0.0f));
-        Material* pillarMat = MakeMaterial("dm_pillar_mat", glm::vec3(0.40f, 0.42f, 0.47f));
-        pillarMat->roughnessMap = MakeSolidTexture(glm::vec3(0.9f));
-        pillarMat->metallicMap = MakeSolidTexture(glm::vec3(0.0f));
-        Material* farMat = MakeMaterial("dm_far_mat", glm::vec3(0.20f, 0.21f, 0.24f));
-        farMat->roughnessMap = MakeSolidTexture(glm::vec3(0.9f));
-        farMat->metallicMap = MakeSolidTexture(glm::vec3(0.0f));
+        // The whole static environment shell — a walled "training yard" with a
+        // curb ring at the movement clamp, perimeter walls with pilasters and
+        // signal stripes, corner watchtowers, a gated south wall, a control-room
+        // deck, a quarter-pipe (Bezier patch), road barriers, crates, a shooting
+        // range, and distant skyline towers — is authored in
+        // assets/maps/arena.map and imported below. Its per-face texture names
+        // resolve to the palette materials created here (Instantiate looks each
+        // material up by name); its light entities become the arena's point
+        // lights. The ground reaches the HDRI horizon so objects sit on ground.
+        auto matte = [&](const std::string& name, glm::vec3 rgb, float rough, float metal = 0.0f) {
+            Material* m = MakeMaterial(name, rgb);
+            m->roughnessMap = MakeSolidTexture(glm::vec3(rough));
+            m->metallicMap = MakeSolidTexture(glm::vec3(metal));
+            return m;
+        };
+        matte("dm_ground_mat", glm::vec3(0.14f, 0.15f, 0.17f), 0.9f);// asphalt apron
+        matte("dm_pillar_mat", glm::vec3(0.40f, 0.42f, 0.47f), 0.9f);// props / quarter-pipe
+        matte("dm_far_mat", glm::vec3(0.20f, 0.21f, 0.24f), 0.9f);// skyline silhouettes
+        matte("dm_wall_mat", glm::vec3(0.42f, 0.40f, 0.37f), 0.85f);// warm concrete walls
+        matte("dm_trim_mat", glm::vec3(0.23f, 0.23f, 0.25f), 0.8f);// graphite caps/curbs
+        matte("dm_accent_mat", glm::vec3(0.70f, 0.16f, 0.13f), 0.6f);// signal-red stripes
+        matte("dm_window_mat", glm::vec3(0.05f, 0.07f, 0.10f), 0.15f, 0.3f);// dark glass
 
         auto cubeMesh = am.CreateCubeMesh("dm_cube", 1.0f);
         am.GetMeshPtr(cubeMesh)->SetMaterial(am.GetMaterialHandle("dm_box_mat"));
@@ -262,11 +269,12 @@ class DeathmatchGame : public Application {
             MakeBox(boxes[i], cubeMesh);
 
         // ── Static environment shell (imported from a TrenchBroom .map) ──────
-        // The plaza, perimeter pillars + walls (outside the ±kArenaHalf movement
-        // clamp), and the distant parallax landmarks all live in arena.map. It is
-        // authored in engine units (loaded at scale 1.0) and instantiated as a
-        // node subtree; per-texture batches resolve to the materials created
-        // above, and each brush also contributes a static convex collider. The
+        // The whole training-yard set dressing (everything outside the
+        // ±kArenaHalf movement clamp) lives in arena.map. It is authored in
+        // engine units (loaded at scale 1.0) and instantiated as a node subtree;
+        // per-texture batches resolve to the materials created above, each brush
+        // contributes a static convex collider, and the map's light entities
+        // spawn LightComponents (the warm tower floods + cool deck wash). The
         // grid play floor and gameplay boxes stay procedural — the authoritative
         // sim owns box collision (see sim::Boxes()), and the floor needs its
         // blueprint-grid UVs that a brush texture projection can't reproduce.

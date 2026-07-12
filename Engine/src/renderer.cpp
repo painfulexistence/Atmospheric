@@ -1805,7 +1805,11 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             meshShader->SetUniform(std::string("main_light.intensity"), mainLight->intensity);
             meshShader->SetUniform(std::string("main_light.cast_shadow"), mainLight->castShadow ? 1 : 0);
             meshShader->SetUniform(std::string("main_light.ProjectionView"), mainLight->GetProjectionViewMatrix(0));
-            for (int i = 0; i < ctx->pointLights.size(); ++i) {
+            // pbr.frag sizes aux_lights[MAX_NUM_AUX_LIGHTS] at 6 — clamp both the
+            // upload loop and the count so extra registered lights are dropped
+            // instead of spamming missing-uniform lookups.
+            const int auxCount = std::min(static_cast<int>(ctx->pointLights.size()), 6);
+            for (int i = 0; i < auxCount; ++i) {
                 LightComponent* l = ctx->pointLights[i];
                 meshShader->SetUniform(
                     std::string("aux_lights[") + std::to_string(i) + std::string("].position"), l->GetPosition()
@@ -1837,7 +1841,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                     );
                 }
             }
-            meshShader->SetUniform(std::string("aux_light_count"), static_cast<int>(ctx->pointLights.size()));
+            meshShader->SetUniform(std::string("aux_light_count"), auxCount);
             meshShader->SetUniform(std::string("shadow_map_unit"), 0);
             meshShader->SetUniform(std::string("omni_shadow_map_unit"), static_cast<int>(UNI_SHADOW_MAP_COUNT));
             meshShader->SetUniform(std::string("ProjectionView"), projectionView);
