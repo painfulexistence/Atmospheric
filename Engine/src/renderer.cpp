@@ -204,6 +204,7 @@ void Renderer::Init(int width, int height) {
     );// raymarched micro voxels (renders registered VoxelVolumeComponents)
     _renderGraph->AddPass(std::make_unique<PortalSurfacePass>());// portal windows in the main view
     _renderGraph->AddPass(std::make_unique<MSAAResolvePass>());
+    _renderGraph->AddPass(std::make_unique<ScreenSpaceGIPass>());// screen-space AO/GI on the resolved opaque scene
     _renderGraph->AddPass(std::make_unique<WaterPass>());
     _renderGraph->AddPass(std::make_unique<WorldCanvasPass>());// World sprites with depth testing
     _renderGraph->AddPass(std::make_unique<CanvasPass>());// 2D sprites, world space ortho, with no depth testing
@@ -1987,6 +1988,76 @@ void MSAAResolvePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
     glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.finalFBO);
 
     renderer.CheckErrors("MSAA resolve pass");
+}
+
+void ScreenSpaceGIPass::_ensureScratch(int w, int h) {
+    if (_scratchFBO && _scratchW == w && _scratchH == h) return;
+    if (_scratchTex) glDeleteTextures(1, &_scratchTex);
+    if (_scratchFBO == 0) glGenFramebuffers(1, &_scratchFBO);
+    glGenTextures(1, &_scratchTex);
+    glBindTexture(GL_TEXTURE_2D, _scratchTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindFramebuffer(GL_FRAMEBUFFER, _scratchFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _scratchTex, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    _scratchW = w;
+    _scratchH = h;
+}
+
+// Screen-space AO/GI over the resolved opaque scene. Increment 1: GTAO.
+void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;// GL path only for now
+#endif
+    ZoneScopedN("ScreenSpaceGIPass");
+    if (!gtaoEnabled) return;
+
+    CameraComponent* cam = ctx->GetMainCamera();
+    if (!cam) return;
+    RenderTarget* src = renderer.msaaResolveRT ? renderer.msaaResolveRT.get() : renderer.sceneRT.get();
+    if (!src) return;
+    ShaderProgram* shader = AssetManager::Get().GetShader("screen_gtao");
+    if (!shader) return;
+
+    const int w = static_cast<int>(src->GetWidth());
+    const int h = static_cast<int>(src->GetHeight());
+    if (w <= 0 || h <= 0) return;
+    _ensureScratch(w, h);
+
+    // Compute color*AO into the scratch target (can't read+write the same
+    // texture, so ping-pong through scratch then blit back).
+    glBindFramebuffer(GL_FRAMEBUFFER, _scratchFBO);
+    glViewport(0, 0, w, h);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    shader->Activate();
+    shader->SetUniform(std::string("u_color"), 0);
+    shader->SetUniform(std::string("u_depth"), 1);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, src->GetTextureID());
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
+    const glm::mat4 proj = cam->GetProjectionMatrix();
+    shader->SetUniform(std::string("u_proj"), proj);
+    shader->SetUniform(std::string("u_invProj"), glm::inverse(proj));
+    shader->SetUniform(std::string("u_viewportSize"), glm::vec2(static_cast<float>(w), static_cast<float>(h)));
+    shader->SetUniform(std::string("u_aoRadius"), gtaoRadius);
+    shader->SetUniform(std::string("u_aoStrength"), gtaoStrength);
+    glBindVertexArray(renderer.gl.screenQuadVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+
+    // Composite back into the resolved scene color (color only; depth untouched).
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, _scratchFBO);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLRenderTarget*>(src)->GetNativeFBOID());
+    glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    renderer.CheckErrors("screen-space GI pass");
 }
 
 // WorldCanvasPass: World sprites with depth testing

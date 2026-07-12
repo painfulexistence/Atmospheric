@@ -187,6 +187,27 @@ public:
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
+// Screen-space GI/AO over the resolved opaque scene. Reconstructs view-space
+// position and normal from the resolved depth buffer (no G-buffer needed — the
+// world's voxel faces are planar, so depth-derived normals are clean), so it
+// works for any geometry. Runs right after MSAAResolvePass, before transparents.
+// Increment 1 is GTAO (horizon AO composited as color*AO); SSGI follows. Inert
+// unless a mode is enabled. GL path only; exposed in GraphicsSubsystem panel.
+class ScreenSpaceGIPass : public RenderPass {
+public:
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+    bool gtaoEnabled = false;
+    float gtaoStrength = 1.0f;
+    float gtaoRadius = 0.5f;// view-space metres
+
+private:
+    void _ensureScratch(int w, int h);
+    GLuint _scratchFBO = 0;
+    GLuint _scratchTex = 0;
+    int _scratchW = 0, _scratchH = 0;
+};
+
 class WorldCanvasPass : public RenderPass {
 public:
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;

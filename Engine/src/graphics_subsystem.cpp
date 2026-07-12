@@ -255,6 +255,14 @@ void GraphicsSubsystem::DrawImGui(float dt) {
                     ImGui::SliderFloat("VXAO strength", &vp->vxaoStrength, 0.0f, 1.0f);
                     ImGui::TextDisabled("Reuses the VoxelGI grid (built even if GI is off)");
                 }
+                if (auto* ssgi = renderer->GetPass<ScreenSpaceGIPass>()) {
+                    ImGui::Checkbox("GTAO (screen-space)", &ssgi->gtaoEnabled);
+                    if (ssgi->gtaoEnabled) {
+                        ImGui::SliderFloat("GTAO strength", &ssgi->gtaoStrength, 0.0f, 1.0f);
+                        ImGui::SliderFloat("GTAO radius (m)", &ssgi->gtaoRadius, 0.1f, 3.0f);
+                        ImGui::TextDisabled("Screen-space horizon AO (depth-based)");
+                    }
+                }
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode("Global Illumination")) {
