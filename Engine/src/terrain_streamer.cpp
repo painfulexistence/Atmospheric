@@ -230,6 +230,18 @@ void TerrainStreamer::SetLodTintDebug(bool enabled) {
     }
 }
 
+void TerrainStreamer::SetPalette(int index) {
+    // Six fallback height-palettes (see terrain.frag); wrap so the caller can
+    // cycle freely. Stored on _props so tiles streamed in later inherit it.
+    _props.paletteIndex = ((index % 6) + 6) % 6;
+    // LOD-tint mode owns paletteIndex while active — don't stomp its colours;
+    // the new palette takes effect when the user turns tint back off.
+    if (_lodTintDebug) return;
+    for (auto& slot : _allSlots) {
+        if (slot->material) slot->material->paletteIndex = _props.paletteIndex;
+    }
+}
+
 // ── streaming internals ──────────────────────────────────────────────────────
 
 void TerrainStreamer::RequestTile(glm::ivec2 coord, int lod) {

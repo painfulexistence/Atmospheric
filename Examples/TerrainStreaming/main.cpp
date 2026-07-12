@@ -18,7 +18,7 @@
 //
 // Controls: WASD move, arrows look, X sprint (x50), Z slow, R/F up/down,
 //           G toggle ground-clamp, T teleport +2km (streaming stress test),
-//           L LOD tint (colors each detail ring — watch tiles refine),
+//           P cycle terrain palette, L LOD tint (colors each detail ring),
 //           I wireframe, ESC quit.
 
 // Keeps the fly camera above the streamed terrain. Ticks after the
@@ -184,9 +184,9 @@ class TerrainStreamingDemo : public Application {
                 .entityRadiusTiles = 3,
                 // Golden pampas grass in a streamed ring around the camera —
                 // watch cells build in as you sprint (GoT-style wind sway).
-                .grassDensity = 3.0f,
+                .grassDensity = 12.0f,
                 .grassRadius = 80.0f,
-                .grassBladeHeight = 0.9f,
+                .grassBladeHeight = 1.5f,
                 .grassWindStrength = 0.4f,
                 .grassWindSpeed = 1.8f,
             })
@@ -213,8 +213,8 @@ class TerrainStreamingDemo : public Application {
         _groundClamp = static_cast<GroundClampComponent*>(_camGO->AddComponent<GroundClampComponent>(_terrain));
 
         ConsoleSubsystem::Get()->Info(
-            "WASD move, arrows look, X sprint, Z slow, R/F up/down, G ground-clamp, T teleport, L LOD tint, I "
-            "wireframe, ESC quit."
+            "WASD move, arrows look, X sprint, Z slow, R/F up/down, G ground-clamp, T teleport, P palette, L LOD "
+            "tint, I wireframe, ESC quit."
         );
     }
 
@@ -243,6 +243,10 @@ class TerrainStreamingDemo : public Application {
             );
         }
         if (input->IsKeyPressed(Key::G) && _groundClamp) _groundClamp->enabled = !_groundClamp->enabled;
+        if (input->IsKeyPressed(Key::P)) {
+            terrain.SetPalette(terrain.GetPalette() + 1);
+            ConsoleSubsystem::Get()->Info("Terrain palette " + std::to_string(terrain.GetPalette()));
+        }
         if (input->IsKeyPressed(Key::L)) {
             terrain.SetLodTintDebug(!terrain.GetLodTintDebug());
             ConsoleSubsystem::Get()->Info(

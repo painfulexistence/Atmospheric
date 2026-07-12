@@ -51,6 +51,13 @@ public:
     const TerrainStreamer::Stats& GetStats() const {
         return _streamer.GetStats();
     }
+    // World-level height-palette (0-5, wraps) — recolors the whole terrain.
+    void SetPalette(int index) {
+        _streamer.SetPalette(index);
+    }
+    int GetPalette() const {
+        return _streamer.GetPalette();
+    }
 
 private:
     TerrainStreamer _streamer;

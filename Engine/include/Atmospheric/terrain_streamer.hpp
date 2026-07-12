@@ -204,6 +204,13 @@ public:
         return _lodTintDebug;
     }
 
+    // World-level height-palette (0-5, wraps): recolors every loaded tile and
+    // every tile streamed in afterward. See terrain.frag's fallback palettes.
+    void SetPalette(int index);
+    int GetPalette() const {
+        return _props.paletteIndex;
+    }
+
     struct Stats {
         int loadedTiles = 0;
         int visibleTiles = 0;
