@@ -494,6 +494,15 @@ if(AE_USE_TINYUSDZ)
         GIT_TAG 11a2d361a9b6a0c4bf8918027233858d80ed17c5
     )
     FetchContent_MakeAvailable(tinyusdz)
+    # On Emscripten the engine builds with -pthread (shared memory). Every object
+    # linked into the module must then carry the WASM 'atomics'/'bulk-memory'
+    # features, or wasm-ld rejects it ("--shared-memory is disallowed by
+    # image-loader.cc.o …"). TinyUSDZ's FetchContent targets don't inherit our
+    # -pthread, so force it onto them — exactly as lua_static does above. (Tydra
+    # is compiled into tinyusdz_static, so this one target covers image-loader.cc.)
+    if(EMSCRIPTEN)
+        target_compile_options(tinyusdz_static PRIVATE -pthread)
+    endif()
     target_link_libraries(AtmosphericEngine PUBLIC tinyusdz::tinyusdz_static)
     target_include_directories(AtmosphericEngine PRIVATE ${tinyusdz_SOURCE_DIR}/src)
     target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_TINYUSDZ)
