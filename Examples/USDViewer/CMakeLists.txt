@@ -1,5 +1,6 @@
 # USDViewer — USD scene viewer over the unified prefab import line.
-# Only registered by Examples/CMakeLists.txt when AE_USE_TINYUSDZ=ON (native).
+# Registered by Examples/CMakeLists.txt when AE_USE_TINYUSDZ is on (native by
+# default; web only with -DAE_USE_TINYUSDZ_ON_WEB=ON).
 set(GAME_NAME USDViewer)
 set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 
@@ -20,12 +21,58 @@ target_link_libraries(${GAME_TARGET} PRIVATE
     fmt::fmt
     BulletSoftBody BulletDynamics BulletCollision LinearMath
 )
-if(NOT IOS)
-    find_package(spdlog CONFIG REQUIRED)
-    find_package(glad CONFIG REQUIRED)
-    target_link_libraries(${GAME_TARGET} PRIVATE glad::glad spdlog::spdlog raudio)
+
+if(EMSCRIPTEN)
+    # ── Emscripten / WebAssembly build (opt-in via AE_USE_TINYUSDZ_ON_WEB) ──────
+    set(CMAKE_EXECUTABLE_SUFFIX ".html")
+
+    # Stage assets that must be available synchronously before the link step so
+    # --preload-file can bake them into the .data bundle (they land in MEMFS,
+    # where fopen() — and thus tinyusdz's LoadUSDFromFile — reads them).
+    # cube.usda is the self-contained web demo (Kitchen_set is native-only:
+    # ~30MB with hundreds of external references, not a realistic web payload).
+    set(EM_PRELOAD_STAGING_DIR ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets)
+
+    add_custom_target(stage_${GAME_NAME}_em_preload
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${EM_PRELOAD_STAGING_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/shaders
+            ${EM_PRELOAD_STAGING_DIR}/shaders
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/fonts
+            ${EM_PRELOAD_STAGING_DIR}/fonts
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/ui
+            ${EM_PRELOAD_STAGING_DIR}/ui
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
+            ${EM_PRELOAD_STAGING_DIR}/scenes
+        COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/cube.usda
+            ${EM_PRELOAD_STAGING_DIR}/cube.usda
+        COMMENT "Staging Emscripten preload assets (shaders, fonts, ui, scenes, cube.usda) for ${GAME_NAME}"
+    )
+    add_dependencies(${GAME_TARGET} stage_${GAME_NAME}_em_preload)
+
+    target_link_options(${GAME_TARGET} PRIVATE
+        -sALLOW_MEMORY_GROWTH=1
+        -sASSERTIONS=1
+        -sDISABLE_EXCEPTION_CATCHING=0
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/ui@assets/ui"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/cube.usda@assets/cube.usda"
+    )
+else()
+    # ── Native build ─────────────────────────────────────────────────────────
+    if(NOT IOS)
+        find_package(spdlog CONFIG REQUIRED)
+        find_package(glad CONFIG REQUIRED)
+        target_link_libraries(${GAME_TARGET} PRIVATE glad::glad spdlog::spdlog raudio)
+    endif()
+    target_link_libraries(${GAME_TARGET} PRIVATE SDL3::SDL3)
 endif()
-target_link_libraries(${GAME_TARGET} PRIVATE SDL3::SDL3)
 
 ae_copy_engine_assets(${GAME_TARGET})
 ae_copy_game_assets(${GAME_TARGET} "${GAME_ASSETS_DIR}")

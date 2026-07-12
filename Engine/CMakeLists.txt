@@ -469,14 +469,14 @@ if(AE_USE_FFMPEG AND NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
 elseif(NOT AE_USE_FFMPEG)
     message(STATUS "FFmpeg disabled (AE_USE_FFMPEG=OFF). VideoPlayer and VideoRecorder will be unavailable.")
 endif()
-if(AE_USE_TINYUSDZ AND NOT EMSCRIPTEN)
+if(AE_USE_TINYUSDZ)
     # TinyUSDZ: dependency-free USD (USDA/USDC/USDZ) reader plus its Tydra
     # render-data converter. USD is a first-class import format, so this is on
     # by default (like AE_USE_FFMPEG) — it is fetched at configure time (like
-    # SDL3/lua/sol2) so there is no submodule to init. Web is the one exclusion:
-    # compiling the USD stack into the WASM payload is not worth the size on a
-    # platform that streams assets, so Emscripten drops to the warn-stub. The
-    # static target's include dir is only exposed PRIVATE, so we add
+    # SDL3/lua/sol2) so there is no submodule to init. On web this block only
+    # runs when -DAE_USE_TINYUSDZ_ON_WEB=ON (the root shadows AE_USE_TINYUSDZ to
+    # OFF otherwise); TinyUSDZ compiles to WASM without threads/SIMD. The static
+    # target's include dir is only exposed PRIVATE, so we add
     # ${tinyusdz_SOURCE_DIR}/src ourselves for <tinyusdz.hh> / <tydra/render-data.hh>.
     set(TINYUSDZ_WITH_TYDRA ON CACHE BOOL "" FORCE)
     set(TINYUSDZ_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -491,11 +491,9 @@ if(AE_USE_TINYUSDZ AND NOT EMSCRIPTEN)
     target_link_libraries(AtmosphericEngine PUBLIC tinyusdz::tinyusdz_static)
     target_include_directories(AtmosphericEngine PRIVATE ${tinyusdz_SOURCE_DIR}/src)
     target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_TINYUSDZ)
-    message(STATUS "TinyUSDZ enabled (AE_USE_TINYUSDZ=ON, fetched). USD import (LoadUSD/ImportUSDPrefab) available.")
-elseif(AE_USE_TINYUSDZ AND EMSCRIPTEN)
-    message(STATUS "TinyUSDZ skipped on Emscripten to keep the WASM payload small. USD import falls back to the warn-stub; import USD offline and ship the converted asset.")
-elseif(NOT AE_USE_TINYUSDZ)
-    message(STATUS "TinyUSDZ disabled (AE_USE_TINYUSDZ=OFF). USD import falls back to the warn-stub.")
+    message(STATUS "TinyUSDZ enabled (fetched). USD import (LoadUSD/ImportUSDPrefab) available.")
+else()
+    message(STATUS "TinyUSDZ disabled — USD import falls back to the warn-stub. (On web pass -DAE_USE_TINYUSDZ_ON_WEB=ON to include it; on native pass -DAE_USE_TINYUSDZ=ON.)")
 endif()
 if(EMSCRIPTEN OR ANDROID OR IOS)
     # IMGUI_IMPL_OPENGL_ES3 : tell Dear ImGui's OpenGL3 backend to use GLES3

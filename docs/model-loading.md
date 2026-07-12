@@ -80,11 +80,14 @@ UV0 per primitive. `KHR_lights_punctual` lights attach to their nodes.
 
 USD is a first-class format: `AE_USE_TINYUSDZ` defaults **ON** on native (like
 `AE_USE_FFMPEG`), so TinyUSDZ is fetched at configure time (FetchContent,
-pinned) with no submodule to init. The option stays as an escape hatch — pass
-`-DAE_USE_TINYUSDZ=OFF` to skip fetching/compiling it, and web (Emscripten) is
-auto-excluded to keep the WASM payload small (import USD offline and ship the
-converted asset). When the stub is active `ImportUSDPrefab` warns and returns an
-empty prefab. Tydra keeps mesh points local and reports the node tree, so the
+pinned) with no submodule to init. Pass `-DAE_USE_TINYUSDZ=OFF` to skip
+fetching/compiling it. TinyUSDZ also compiles to **WebAssembly** (upstream needs
+no threads/SharedArrayBuffer/SIMD), so the browser is supported too — but it's
+opt-in there (`-DAE_USE_TINYUSDZ_ON_WEB=ON`, or `buildWasm.sh --usd`) so the USD
+stack doesn't inflate every WASM payload; `USDViewer` then preloads its
+self-contained `cube.usda` into MEMFS and renders it in-browser. When the stub
+is active `ImportUSDPrefab` warns and returns an empty prefab. Tydra keeps mesh
+points local and reports the node tree, so the
 Xform hierarchy survives import. Stage `upAxis`/`metersPerUnit` are read from
 the **Stage metas** (Tydra's `RenderScene.meta` is not populated from them) and
 applied at the prefab root — Z-up/cm scenes like Pixar's Kitchen_set come in

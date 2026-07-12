@@ -17,8 +17,10 @@ add_subdirectory(VoxelWorld)         # voxel streaming, fly camera, bloom
 add_subdirectory(MicroVoxel)         # raymarched micro voxels (DDA over 3D texture)
 add_subdirectory(Terrain)            # procedural / heightmap terrain, RmlUi HUD
 add_subdirectory(TerrainStreaming)   # 10km x 10km streamed open-world terrain (TerrainStreamer)
-if(AE_USE_TINYUSDZ AND NOT EMSCRIPTEN)
-    add_subdirectory(USDViewer)      # USD scene viewer via the prefab import line (Kitchen_set demo)
+if(AE_USE_TINYUSDZ)
+    # Native by default; web too when -DAE_USE_TINYUSDZ_ON_WEB=ON (the root
+    # shadows AE_USE_TINYUSDZ to OFF on web otherwise).
+    add_subdirectory(USDViewer)      # USD scene viewer via the prefab import line
 endif()
 
 # ── Networking ───────────────────────────────────────────────────────────────

@@ -1,7 +1,9 @@
 // USDViewer — fly-camera viewer for USD scenes through the unified prefab
 // import line (ImportPrefab → Instantiate). USD is a first-class format, so
-// this builds on native by default (AE_USE_TINYUSDZ is ON); it is excluded on
-// web, where the WASM payload skips the USD stack.
+// this builds on native by default (AE_USE_TINYUSDZ is ON). It also builds to
+// WebAssembly with -DAE_USE_TINYUSDZ_ON_WEB=ON: the committed cube.usda is
+// preloaded into MEMFS and rendered in the browser; Kitchen_set stays
+// native-only (too large / too many external refs for a web payload).
 //
 // Two demo assets:
 //   • assets/cube.usda — tiny committed sample, declared straight from the

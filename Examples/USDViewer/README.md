@@ -6,9 +6,24 @@ line (`ImportPrefab` → `Instantiate`). USD is a first-class format, so
 `-DAE_USE_TINYUSDZ=OFF` to skip it; web builds exclude it automatically.)
 
 ```bash
-cmake --preset=dev
-cmake --build --preset=dev --target USDViewer
+cmake --preset=ninja-local-vcpkg
+cmake --build build --target USDViewer
 ```
+
+### Web (WebAssembly)
+
+TinyUSDZ compiles to WASM (no threads/SharedArrayBuffer/SIMD needed), so the
+viewer runs in the browser. It's opt-in — the USD stack would otherwise inflate
+every web build — so build with the `--usd` flag (which passes
+`-DAE_USE_TINYUSDZ_ON_WEB=ON`):
+
+```bash
+./scripts/buildWasm.sh release --usd   # → build-wasm/release/USDViewer/USDViewer.html
+```
+
+The committed `cube.usda` is preloaded into MEMFS and rendered from the scene
+JSON's `"prefab"` field. Kitchen_set is native-only (its size and hundreds of
+external references aren't a realistic web payload).
 
 Two assets:
 
