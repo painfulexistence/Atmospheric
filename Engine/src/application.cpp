@@ -533,6 +533,85 @@ void Application::RegisterComponents() {
         return new ShapeRendererComponent(o, props);
     });
 
+    // ── MeshRenderer (3D drawable) ────────────────────────────────────────────
+    // Two ways to supply geometry:
+    //   "mesh": "<name>"        — reference a mesh already registered in code
+    //                             (AssetManager::CreateMesh/CreateCubeMesh/…).
+    //   "primitive": "cube"|"sphere"|"plane"|"capsule"|"disc" (+ params) —
+    //                             build one declaratively, deduped by its params
+    //                             so N identical entities share one Mesh.
+    // Optional "material": "<name>" overrides the mesh's own material (looked up
+    // by name; created via scene "materials" or in code). Primitive params:
+    // size (cube), radius/division (sphere), width/height (plane), radius/height
+    // (capsule), radius/segments (disc).
+    ComponentFactory::Register("MeshRenderer", [](GameObject* o, Deserializer& d) -> Component* {
+        auto& am = AssetManager::Get();
+        std::string primitive, meshName, materialName;
+        d.Read("primitive", primitive, std::string(""));
+        d.Read("mesh", meshName, std::string(""));
+        d.Read("material", materialName, std::string(""));
+
+        MeshHandle handle;
+        if (!primitive.empty()) {
+            float size, radius, width, height;
+            int division, segments;
+            d.Read("size", size, 1.0f);
+            d.Read("radius", radius, 0.5f);
+            d.Read("division", division, 18);
+            d.Read("segments", segments, 48);
+            d.Read("width", width, 1.0f);
+            d.Read("height", height, 1.0f);
+            // Cache key folds in every param so distinct sizes stay distinct and
+            // identical requests reuse one Mesh (CreateMesh does not dedup).
+            std::string key;
+            if (primitive == "cube")
+                key = fmt::format("prim:cube:{}", size);
+            else if (primitive == "sphere")
+                key = fmt::format("prim:sphere:{}:{}", radius, division);
+            else if (primitive == "plane")
+                key = fmt::format("prim:plane:{}:{}", width, height);
+            else if (primitive == "capsule")
+                key = fmt::format("prim:capsule:{}:{}", radius, height);
+            else if (primitive == "disc")
+                key = fmt::format("prim:disc:{}:{}", radius, segments);
+
+            if (key.empty()) {
+                spdlog::warn("MeshRenderer: unknown primitive '{}' on '{}'", primitive, o->GetName());
+                return nullptr;
+            }
+            if (am.HasMesh(key)) {
+                handle = am.GetMesh(key);
+            } else if (primitive == "cube")
+                handle = am.CreateCubeMesh(key, size);
+            else if (primitive == "sphere")
+                handle = am.CreateSphereMesh(key, radius, division);
+            else if (primitive == "plane")
+                handle = am.CreatePlaneMesh(key, width, height);
+            else if (primitive == "capsule")
+                handle = am.CreateCapsuleMesh(key, radius, height);
+            else if (primitive == "disc")
+                handle = am.CreateDiscMesh(key, radius, segments);
+        } else if (!meshName.empty()) {
+            if (am.HasMesh(meshName)) {
+                handle = am.GetMesh(meshName);
+            } else {
+                spdlog::warn("MeshRenderer: mesh '{}' not found for '{}'", meshName, o->GetName());
+                return nullptr;
+            }
+        } else {
+            spdlog::warn("MeshRenderer on '{}' has neither 'mesh' nor 'primitive'", o->GetName());
+            return nullptr;
+        }
+
+        auto* mr = new MeshRenderer(o, handle);
+        if (!materialName.empty()) {
+            MaterialHandle mat = am.GetMaterialHandle(materialName);
+            if (mat.IsValid()) mr->SetMaterial(mat);
+            else spdlog::warn("MeshRenderer: material '{}' not found for '{}'", materialName, o->GetName());
+        }
+        return mr;
+    });
+
     // ── Animator2D ────────────────────────────────────────────────────────────
     // Clip data is read via ReadArray so it lives entirely inside this lambda.
     ComponentFactory::Register("Animator2D", [](GameObject* o, Deserializer& d) -> Component* {

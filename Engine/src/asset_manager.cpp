@@ -1364,6 +1364,10 @@ MeshHandle AssetManager::GetMesh(const std::string& name) const {
     throw std::runtime_error(fmt::format("Mesh '{}' not found", name));
 }
 
+bool AssetManager::HasMesh(const std::string& name) const {
+    return _meshCache.find(name) != _meshCache.end();
+}
+
 Mesh* AssetManager::GetMeshPtr(MeshHandle handle) const {
     if (!handle.IsValid()) return nullptr;
     auto it = _meshByID.find(handle.id);

@@ -20,6 +20,11 @@ entities. Scene JSON references it declaratively:
   "prefab": "assets/maps/arena.map", "prefabScale": 1.0 }
 ```
 
+The full scene JSON schema — entities, components, materials, and the `prefab`
+field for all three formats — is documented in
+[scene-format.md](scene-format.md), with a complete
+mesh + entities + glTF + USD + `.map` example.
+
 `prefabScale` only affects `.map` (Quake units; default 1/32). The single-handle
 `LoadTBMap` / `LoadGLTF` / `LoadUSD` remain as flatten-to-one-mesh wrappers.
 

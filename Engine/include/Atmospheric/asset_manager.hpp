@@ -101,6 +101,7 @@ public:
     MeshHandle CreateCapsuleMesh(const std::string& name, float radius = 0.5f, float height = 3.0f);
     MeshHandle CreateTerrainMesh(const std::string& name, float worldSize = 1024.f, int resolution = 10);
     MeshHandle GetMesh(const std::string& name) const;
+    bool HasMesh(const std::string& name) const;// non-throwing existence check
     Mesh* GetMeshPtr(MeshHandle handle) const;
     // Registers an externally-owned mesh (e.g. a unique_ptr<Mesh> held by a
     // voxel chunk) so it gets a handle usable in RenderCommand/queue sorting.
