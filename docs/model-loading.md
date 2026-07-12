@@ -25,7 +25,7 @@ entities. Scene JSON references it declaratively:
 
 ## Format coverage
 
-| | `.map` (TrenchBroom/Quake) | `.gltf` / `.glb` | `.usd*` (TinyUSDZ, opt-in) |
+| | `.map` (TrenchBroom/Quake) | `.gltf` / `.glb` | `.usd*` (TinyUSDZ) |
 |---|---|---|---|
 | Geometry | classic + Valve 220 + `brushDef` faces, `patchDef2/3` Bezier patches | triangle primitives (byteStride-aware) | Tydra-triangulated GeomMeshes |
 | Hierarchy | worldspawn→root, brush entities as group nodes, point entities as transform nodes | full node tree (TRS + matrix) | full Xform tree (local matrices) |
@@ -78,8 +78,12 @@ UV0 per primitive. `KHR_lights_punctual` lights attach to their nodes.
 
 ## USD notes
 
-Opt-in: TinyUSDZ is fetched at configure time (FetchContent, pinned) — build
-with `-DAE_USE_TINYUSDZ=ON`; without it `ImportUSDPrefab` warns and returns an
+USD is a first-class format: `AE_USE_TINYUSDZ` defaults **ON** on native (like
+`AE_USE_FFMPEG`), so TinyUSDZ is fetched at configure time (FetchContent,
+pinned) with no submodule to init. The option stays as an escape hatch — pass
+`-DAE_USE_TINYUSDZ=OFF` to skip fetching/compiling it, and web (Emscripten) is
+auto-excluded to keep the WASM payload small (import USD offline and ship the
+converted asset). When the stub is active `ImportUSDPrefab` warns and returns an
 empty prefab. Tydra keeps mesh points local and reports the node tree, so the
 Xform hierarchy survives import. Stage `upAxis`/`metersPerUnit` are read from
 the **Stage metas** (Tydra's `RenderScene.meta` is not populated from them) and

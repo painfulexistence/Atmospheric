@@ -1,10 +1,12 @@
 # USDViewer
 
 Fly-camera viewer for USD scenes, driven entirely by the unified prefab import
-line (`ImportPrefab` → `Instantiate`). Built only with `-DAE_USE_TINYUSDZ=ON`.
+line (`ImportPrefab` → `Instantiate`). USD is a first-class format, so
+`AE_USE_TINYUSDZ` is ON by default on native — no extra flag needed. (Pass
+`-DAE_USE_TINYUSDZ=OFF` to skip it; web builds exclude it automatically.)
 
 ```bash
-cmake --preset=dev -DAE_USE_TINYUSDZ=ON
+cmake --preset=dev
 cmake --build --preset=dev --target USDViewer
 ```
 
