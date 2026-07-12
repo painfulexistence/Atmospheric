@@ -21,6 +21,12 @@
 
 #include "fmt/core.h"
 #include "stb_image.h"
+// Match asset_manager.cpp's tinygltf config (the TINYGLTF_IMPLEMENTATION TU):
+// it builds with TINYGLTF_NO_STB_IMAGE_WRITE, so WriteImageData is never
+// compiled. Without this define here, tiny_gltf.h in this TU takes the address
+// of tinygltf::WriteImageData as the loader's default image-writer callback,
+// leaving an undefined symbol at link (we only read glTF, never write).
+#define TINYGLTF_NO_STB_IMAGE_WRITE
 #include <tiny_gltf.h>
 
 #ifdef _WIN32

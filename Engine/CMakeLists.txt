@@ -482,6 +482,12 @@ if(AE_USE_TINYUSDZ)
     set(TINYUSDZ_BUILD_TESTS OFF CACHE BOOL "" FORCE)
     set(TINYUSDZ_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(TINYUSDZ_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+    # TinyUSDZ vendors its own tinyexr (src/external/tinyexr.cc) for EXR *texture*
+    # decoding inside USD. The engine already links vcpkg's tinyexr (HDR/EXR env
+    # maps), so building both yields duplicate-symbol link errors
+    # (multiple definition of FreeEXRErrorMessage, …). Disable TinyUSDZ's copy —
+    # .exr textures referenced *from USD* are rare, and this is the only overlap.
+    set(TINYUSDZ_WITH_EXR OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(
         tinyusdz
         GIT_REPOSITORY https://github.com/lighttransport/tinyusdz.git
