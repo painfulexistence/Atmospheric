@@ -472,9 +472,11 @@ int main(int argc, char* argv[]) {
     }
 
 #ifdef __EMSCRIPTEN__
-    // The browser passes no args and there is no server to connect to, so the
-    // web build is always single-player: an embedded authority reached over an
-    // in-process LoopbackDatagramSocket (see datagram_socket.hpp).
+    // The shell.html lobby launches Solo via callMain(["--local"]); its PvP mode
+    // is WIP (needs a WebTransport transport + server). Until that lands the web
+    // build is always single-player: an embedded authority reached over an
+    // in-process LoopbackDatagramSocket (see datagram_socket.hpp). Forced here
+    // too so a bare launch can never end up in a broken connect state.
     gcli.local = true;
 #endif
 

@@ -7,45 +7,97 @@
   <style>
     html, body { margin: 0; height: 100%; background: #0b0c10; color: #c8ccd4;
       font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
-    #canvas { background: #000; width: min(90vw, 1280px); aspect-ratio: 16 / 9;
-      border: 1px solid #23262d; outline: none; display: block; }
-    #caption { max-width: min(90vw, 1280px); font-size: 13px; line-height: 1.6; color: #8b909a; }
-    #caption b { color: #c8ccd4; }
-    #caption .k { color: #9fd0ff; font-weight: 600; }
+    body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-height: 100%; }
+    h1 { margin: 0; font-size: 26px; letter-spacing: 0.5px; }
+    .sub { color: #8b909a; font-size: 13px; margin-top: -8px; }
+    #lobby { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; max-width: 760px; }
+    .card { width: 320px; background: #14161c; border: 1px solid #23262d; border-radius: 10px;
+      padding: 18px 18px 20px; display: flex; flex-direction: column; gap: 10px; }
+    .card h2 { margin: 0; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+    .card p { margin: 0; font-size: 13px; line-height: 1.55; color: #8b909a; flex: 1; }
+    .badge { font-size: 10px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
+      color: #0b0c10; background: #d0a24c; border-radius: 4px; padding: 2px 6px; }
+    button { font: inherit; font-size: 14px; font-weight: 600; border: 0; border-radius: 7px;
+      padding: 10px 14px; cursor: pointer; background: #2d6cdf; color: #fff; }
+    button:hover { background: #397ff0; }
+    button:disabled { background: #23262d; color: #5c626d; cursor: not-allowed; }
+    #canvas { display: none; background: #000; width: min(92vw, 1280px); aspect-ratio: 16 / 9;
+      border: 1px solid #23262d; outline: none; }
+    #caption { display: none; max-width: min(92vw, 1280px); font-size: 12.5px; line-height: 1.6; color: #8b909a; }
+    #caption b { color: #c8ccd4; } #caption .k { color: #9fd0ff; font-weight: 600; }
     #status { font-size: 12px; color: #6c7280; min-height: 1.2em; }
-    a { color: #9fd0ff; }
   </style>
 </head>
 <body>
+  <h1>Deathmatch</h1>
+  <div class="sub">server-authoritative FPS netcode — web demo</div>
+
+  <div id="lobby">
+    <div class="card">
+      <h2>Solo</h2>
+      <p>Play against a training dummy. The client talks to an <b>in-process
+        authority</b> over a loopback socket, so all the netcode — prediction,
+        reconciliation, interpolation, lag compensation — runs locally. Dial the
+        emulated link with the number keys and watch the netgraph react.</p>
+      <button id="btn-solo" disabled>Loading…</button>
+    </div>
+    <div class="card">
+      <h2>Multiplayer <span class="badge">WIP</span></h2>
+      <p>Player-vs-player against a dedicated server. The browser has no raw UDP,
+        so this needs a <b>WebTransport</b> (QUIC) transport plus a server that
+        speaks it — not wired up yet. Native builds already do PvP over UDP
+        (<code>--connect</code>).</p>
+      <button id="btn-pvp" disabled title="WebTransport transport not implemented yet">Coming soon</button>
+    </div>
+  </div>
+
   <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
   <div id="caption">
-    <b>Deathmatch</b> — single-player web demo (server-authoritative FPS netcode,
-    running against an <b>in-process authority</b>; no server needed).
-    <br>
     <span class="k">Click</span> the view to capture the mouse ·
     <span class="k">WASD</span> move · <span class="k">mouse</span> look ·
     <span class="k">LMB</span> railgun · <span class="k">F</span> rocket ·
     <span class="k">Space</span> jump/levitate · <span class="k">Q</span> dash ·
     <span class="k">C</span> shield · <span class="k">Esc</span> release mouse.
-    <br>
-    Netgraph (top-right): dial the emulated link with
-    <span class="k">1/2</span> latency · <span class="k">3/4</span> jitter ·
-    <span class="k">5/6</span> loss · <span class="k">0</span> reset — then watch
-    prediction/reconciliation and RTT respond.
+    <br>Netgraph (top-right): <span class="k">1/2</span> latency ·
+    <span class="k">3/4</span> jitter · <span class="k">5/6</span> loss ·
+    <span class="k">0</span> reset.
   </div>
   <div id="status">loading…</div>
+
   <script>
+    var _wasmReady = false, _pendingCall = null;
     var statusEl = document.getElementById('status');
+    function setStatus(t) { if (statusEl) statusEl.textContent = t || ''; }
+
+    // Launch the WASM game with CLI args (main() is not auto-run: INVOKE_RUN=0).
+    function startGame(args) {
+      document.getElementById('lobby').style.display = 'none';
+      document.getElementById('canvas').style.display = 'block';
+      document.getElementById('caption').style.display = 'block';
+      setStatus('');
+      if (_wasmReady) Module['callMain'](args);
+      else _pendingCall = args;
+    }
+
+    document.getElementById('btn-solo').addEventListener('click', function () {
+      startGame(['--local']);
+    });
+
     var Module = {
       canvas: document.getElementById('canvas'),
       print: function (t) { console.log(t); },
       printErr: function (t) { console.error(t); },
-      setStatus: function (t) { if (statusEl) statusEl.textContent = t; },
-      onRuntimeInitialized: function () { if (statusEl) statusEl.textContent = ''; }
+      setStatus: setStatus,
+      onRuntimeInitialized: function () {
+        _wasmReady = true;
+        var solo = document.getElementById('btn-solo');
+        solo.disabled = false; solo.textContent = 'Play';
+        setStatus('');
+        if (_pendingCall) { var a = _pendingCall; _pendingCall = null; Module['callMain'](a); }
+      }
     };
-    Module.setStatus('loading…');
-    window.onerror = function () { Module.setStatus('an error occurred — see the console'); };
+    setStatus('loading…');
+    window.onerror = function () { setStatus('an error occurred — see the console'); };
   </script>
   {{{ SCRIPT }}}
 </body>

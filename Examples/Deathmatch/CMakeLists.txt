@@ -54,22 +54,23 @@ if(EMSCRIPTEN)
     )
     add_dependencies(DeathmatchClient stage_DeathmatchClient_em_preload)
 
+    # INVOKE_RUN=0: main() is not auto-run. The shell.html lobby lets the player
+    # pick Solo (working) or PvP (WIP) and then launches via Module.callMain,
+    # mirroring MultiplayerSandbox. _main is exported so callMain can reach it.
     target_link_options(DeathmatchClient PRIVATE
         -sALLOW_MEMORY_GROWTH=1
         -sASSERTIONS=1
         -sDISABLE_EXCEPTION_CATCHING=0
+        -sINVOKE_RUN=0
+        -sEXPORTED_FUNCTIONS=["_main"]
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/ui@assets/ui"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
+        # The lobby is the entry point (INVOKE_RUN=0), so the custom shell is
+        # applied in all build types, not just Release.
+        "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell.html"
     )
-
-    # Custom shell only for non-Debug (default shell keeps stdout visible in Debug).
-    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-        target_link_options(DeathmatchClient PRIVATE
-            "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell.html"
-        )
-    endif()
 else()
     # ── Native build ─────────────────────────────────────────────────────────
     find_package(glad CONFIG REQUIRED)
