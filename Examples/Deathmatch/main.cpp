@@ -471,6 +471,13 @@ int main(int argc, char* argv[]) {
         }
     }
 
+#ifdef __EMSCRIPTEN__
+    // The browser passes no args and there is no server to connect to, so the
+    // web build is always single-player: an embedded authority reached over an
+    // in-process LoopbackDatagramSocket (see datagram_socket.hpp).
+    gcli.local = true;
+#endif
+
     DeathmatchGame game(
         { .windowTitle = "Deathmatch",
           .windowWidth = 1280,
