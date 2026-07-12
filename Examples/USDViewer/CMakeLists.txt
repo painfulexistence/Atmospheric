@@ -1,6 +1,6 @@
 # USDViewer — USD scene viewer over the unified prefab import line.
-# Registered by Examples/CMakeLists.txt when AE_USE_TINYUSDZ is on (native by
-# default; web only with -DAE_USE_TINYUSDZ_ON_WEB=ON).
+# Registered by Examples/CMakeLists.txt when AE_USE_TINYUSDZ is on (default on
+# every platform, web included; -DAE_USE_TINYUSDZ=OFF opts out).
 set(GAME_NAME USDViewer)
 set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 
@@ -23,7 +23,7 @@ target_link_libraries(${GAME_TARGET} PRIVATE
 )
 
 if(EMSCRIPTEN)
-    # ── Emscripten / WebAssembly build (opt-in via AE_USE_TINYUSDZ_ON_WEB) ──────
+    # ── Emscripten / WebAssembly build ──────────────────────────────────────
     set(CMAKE_EXECUTABLE_SUFFIX ".html")
 
     # Stage assets that must be available synchronously before the link step so

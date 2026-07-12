@@ -20,7 +20,7 @@ WEBGPU_SUPPORT="OFF"
 NO_SERVER="OFF"
 NO_EXAMPLES="OFF"
 CLEAN_BUILD="OFF"
-USD_SUPPORT="OFF"
+USD_SUPPORT="ON"
 
 # 解析參數
 for arg in "$@"; do
@@ -34,9 +34,9 @@ for arg in "$@"; do
         --webgpu)
             WEBGPU_SUPPORT="ON"
             ;;
-        --usd)
-            # 把 TinyUSDZ 一起編進 WASM（產物較大），並啟用 USDViewer 網頁版
-            USD_SUPPORT="ON"
+        --no-usd)
+            # 不把 TinyUSDZ 編進 WASM（縮小產物），略過 USDViewer 網頁版
+            USD_SUPPORT="OFF"
             ;;
         --no-server)
             NO_SERVER="ON"
@@ -144,7 +144,7 @@ emcmake cmake -G Ninja \
   -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
   -DAE_USE_WEBGPU="$WEBGPU_SUPPORT" \
-  -DAE_USE_TINYUSDZ_ON_WEB="$USD_SUPPORT" \
+  -DAE_USE_TINYUSDZ="$USD_SUPPORT" \
   -DAE_BUILD_EXAMPLES="$BUILD_EXAMPLES_FLAG"
 
 # 5. 進行建置 (自動偵測記憶體以避免 OOM)

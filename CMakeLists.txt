@@ -4,14 +4,7 @@ option(AE_USE_BASIS_UNIVERSAL "Enable Basis Universal transcoder for KTX2 GPU-co
 option(AE_USE_FFMPEG "Enable FFmpeg for VideoPlayer and VideoRecorder (uses the system FFmpeg found via pkg-config)" ON)
 option(AE_BUILD_EXAMPLES "Build the bundled example projects" ON)
 option(AE_USE_NETWORKING "Enable HTTP and WebSocket networking" OFF)
-option(AE_USE_TINYUSDZ "Enable TinyUSDZ so USD (USDA/USDC/USDZ) is a first-class import format alongside glTF and .map. On by default on native. Turn OFF to skip fetching/compiling TinyUSDZ." ON)
-# TinyUSDZ compiles cleanly to WebAssembly (upstream: no threads/SharedArrayBuffer/
-# SIMD needed), but the USD stack would inflate every WASM payload, so on web USD
-# import is opt-in: set this ON to build TinyUSDZ (and the USDViewer example) for
-# Emscripten. Self-contained assets (a committed .usda / .usdz) are preloaded into
-# MEMFS so tinyusdz's file loader reads them; huge externally-referenced scenes
-# (e.g. Kitchen_set) are not a realistic web payload and stay native-only.
-option(AE_USE_TINYUSDZ_ON_WEB "Also build TinyUSDZ into Emscripten/WASM builds (larger payload)" OFF)
+option(AE_USE_TINYUSDZ "Enable TinyUSDZ so USD (USDA/USDC/USDZ) is a first-class import format alongside glTF and .map. On by default on every platform — TinyUSDZ also compiles to WebAssembly (upstream: no threads/SharedArrayBuffer/SIMD needed). Turn OFF to skip fetching/compiling it (e.g. -DAE_USE_TINYUSDZ=OFF on the web configure to trim the WASM payload)." ON)
 
 # curl + libwebsockets live behind the "networking" vcpkg manifest feature so
 # that default builds don't compile OpenSSL and friends. Must be requested
@@ -92,13 +85,6 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake")
 if(EMSCRIPTEN)
     set(AE_USE_BASIS_UNIVERSAL ON CACHE BOOL "Enabled automatically for Emscripten builds" FORCE)
     message(STATUS "Building for Emscripten / WebAssembly")
-    # USD is first-class on native but opt-in on web (payload). Shadow the option
-    # to OFF unless the web opt-in is set; this normal variable propagates into
-    # the Engine/ and Examples/ subdirectories so a single check gates both.
-    if(AE_USE_TINYUSDZ AND NOT AE_USE_TINYUSDZ_ON_WEB)
-        set(AE_USE_TINYUSDZ OFF)
-        message(STATUS "TinyUSDZ: USD import off on web by default to keep the WASM payload small — pass -DAE_USE_TINYUSDZ_ON_WEB=ON to build it (and USDViewer) for the browser.")
-    endif()
 endif()
 
 if(AE_USE_BASIS_UNIVERSAL)

@@ -13,17 +13,16 @@ cmake --build build --target USDViewer
 ### Web (WebAssembly)
 
 TinyUSDZ compiles to WASM (no threads/SharedArrayBuffer/SIMD needed), so the
-viewer runs in the browser. It's opt-in — the USD stack would otherwise inflate
-every web build — so build with the `--usd` flag (which passes
-`-DAE_USE_TINYUSDZ_ON_WEB=ON`):
+viewer runs in the browser out of the box — USD is built by default here too:
 
 ```bash
-./scripts/buildWasm.sh release --usd   # → build-wasm/release/USDViewer/USDViewer.html
+./scripts/buildWasm.sh release   # → build-wasm/release/USDViewer/USDViewer.html
 ```
 
 The committed `cube.usda` is preloaded into MEMFS and rendered from the scene
 JSON's `"prefab"` field. Kitchen_set is native-only (its size and hundreds of
-external references aren't a realistic web payload).
+external references aren't a realistic web payload). To trim USD out of the WASM
+payload, build with `--no-usd`.
 
 Two assets:
 
