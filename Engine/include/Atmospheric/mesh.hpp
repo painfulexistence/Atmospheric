@@ -52,10 +52,12 @@ public:
     // Update with voxel vertex data (uses internal RenderMesh)
     void Update(const std::vector<VoxelVertex>& vertices);
 
-    // Instanced grass: a shared canonical 9-vertex blade (locations 0-1) plus
-    // a per-blade instance buffer (locations 5-6, divisor 1). InitGrassInstanced
-    // builds the VAO + canonical blade once; UploadGrassInstances refreshes the
-    // per-cell instance data. Drawn with glDrawArraysInstanced(0, 9, count).
+    // Instanced grass: a shared canonical 9-vertex blade (location 0) plus a
+    // per-blade instance buffer (locations 5-6, step-per-instance), stored in
+    // an RHI VertexFormat::Grass RenderMesh on both backends.
+    // InitGrassInstanced uploads the canonical blade once; UploadGrassInstances
+    // refreshes the per-cell instance data; Buffer::Draw emits the instanced
+    // draw (9 vertices x instanceCount).
     void InitGrassInstanced();
     void UploadGrassInstances(const std::vector<GrassInstance>& instances);
     size_t instanceCount = 0;
@@ -106,7 +108,6 @@ public:
 
 private:
     GLuint vbo, ebo;
-    GLuint _instanceVBO = 0;// per-blade instance data (grass)
     GLenum _primitiveType = GL_TRIANGLES;
     std::array<glm::vec3, 8> _bounds;
 

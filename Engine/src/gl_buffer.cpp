@@ -29,12 +29,13 @@ GLBuffer::~GLBuffer() {
 }
 
 GLBuffer::GLBuffer(GLBuffer&& other) noexcept
-  : _vao(other._vao), _vbo(other._vbo), _ebo(other._ebo), _format(other._format), _usage(other._usage),
-    _vertexCount(other._vertexCount), _indexCount(other._indexCount), _initialized(other._initialized),
-    _hasIndices(other._hasIndices) {
+  : _vao(other._vao), _vbo(other._vbo), _ebo(other._ebo), _instanceVBO(other._instanceVBO), _format(other._format),
+    _usage(other._usage), _vertexCount(other._vertexCount), _indexCount(other._indexCount),
+    _instanceCount(other._instanceCount), _initialized(other._initialized), _hasIndices(other._hasIndices) {
     other._vao = 0;
     other._vbo = 0;
     other._ebo = 0;
+    other._instanceVBO = 0;
     other._initialized = false;
 }
 
@@ -44,15 +45,18 @@ GLBuffer& GLBuffer::operator=(GLBuffer&& other) noexcept {
         _vao = other._vao;
         _vbo = other._vbo;
         _ebo = other._ebo;
+        _instanceVBO = other._instanceVBO;
         _format = other._format;
         _usage = other._usage;
         _vertexCount = other._vertexCount;
         _indexCount = other._indexCount;
+        _instanceCount = other._instanceCount;
         _initialized = other._initialized;
         _hasIndices = other._hasIndices;
         other._vao = 0;
         other._vbo = 0;
         other._ebo = 0;
+        other._instanceVBO = 0;
         other._initialized = false;
     }
     return *this;
@@ -66,6 +70,10 @@ void GLBuffer::Cleanup() {
     if (_ebo) {
         glDeleteBuffers(1, &_ebo);
         _ebo = 0;
+    }
+    if (_instanceVBO) {
+        glDeleteBuffers(1, &_instanceVBO);
+        _instanceVBO = 0;
     }
     if (_vao) {
         glDeleteVertexArrays(1, &_vao);
@@ -143,6 +151,30 @@ void GLBuffer::SetupVertexAttributes() {
         glEnableVertexAttribArray(1);
         glEnableVertexAttribArray(2);
         break;
+
+    case VertexFormat::Grass:
+        // Canonical blade corner: (side, t) — see grass.vert.
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
+        glEnableVertexAttribArray(0);
+        break;
+    }
+}
+
+bool GLBuffer::SetupInstanceAttributes() {
+    switch (_format) {
+    case VertexFormat::Grass:
+        // GrassInstance: (root.xyz, facing) @5, (length, lean, phase, hue) @6.
+        glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(GrassInstance), nullptr);
+        glVertexAttribPointer(
+            6, 4, GL_FLOAT, GL_FALSE, sizeof(GrassInstance), reinterpret_cast<void*>(4 * sizeof(float))
+        );
+        glEnableVertexAttribArray(5);
+        glEnableVertexAttribArray(6);
+        glVertexAttribDivisor(5, 1);
+        glVertexAttribDivisor(6, 1);
+        return true;
+    default:
+        return false;// format has no per-instance layout
     }
 }
 
@@ -182,13 +214,48 @@ void GLBuffer::Upload(
     glBindVertexArray(0);
 }
 
+void GLBuffer::UploadInstances(const void* instanceData, size_t instanceCount, size_t instanceSize) {
+    if (!_initialized) Initialize(_format, _usage);
+
+    const bool firstUpload = (_instanceVBO == 0);
+    if (firstUpload) glGenBuffers(1, &_instanceVBO);
+
+    glBindVertexArray(_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, _instanceVBO);
+    if (firstUpload && !SetupInstanceAttributes()) {
+        // Format has no instance layout — drop the buffer, stay non-instanced.
+        glBindVertexArray(0);
+        glDeleteBuffers(1, &_instanceVBO);
+        _instanceVBO = 0;
+        _instanceCount = 0;
+        return;
+    }
+    glBufferData(GL_ARRAY_BUFFER, instanceCount * instanceSize, instanceData, GL_DYNAMIC_DRAW);
+    glBindVertexArray(0);
+    _instanceCount = instanceCount;
+}
+
 void GLBuffer::Draw(CommandEncoder* /*enc*/, PrimitiveTopology topology) const {
     Draw(ToGLTopology(topology));
 }
 
 void GLBuffer::Draw(GLenum primitiveType) const {
     glBindVertexArray(_vao);
-    if (_hasIndices) {
+    if (_instanceVBO && _instanceCount > 0) {
+        if (_hasIndices) {
+            glDrawElementsInstanced(
+                primitiveType,
+                static_cast<GLsizei>(_indexCount),
+                GL_UNSIGNED_SHORT,
+                nullptr,
+                static_cast<GLsizei>(_instanceCount)
+            );
+        } else {
+            glDrawArraysInstanced(
+                primitiveType, 0, static_cast<GLsizei>(_vertexCount), static_cast<GLsizei>(_instanceCount)
+            );
+        }
+    } else if (_hasIndices) {
         glDrawElements(primitiveType, static_cast<GLsizei>(_indexCount), GL_UNSIGNED_SHORT, nullptr);
     } else {
         glDrawArrays(primitiveType, 0, static_cast<GLsizei>(_vertexCount));

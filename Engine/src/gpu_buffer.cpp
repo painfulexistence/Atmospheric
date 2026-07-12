@@ -13,6 +13,10 @@ GPUBuffer::~GPUBuffer() {
         wgpuBufferRelease(_indexBuffer);
         _indexBuffer = nullptr;
     }
+    if (_instanceBuffer) {
+        wgpuBufferRelease(_instanceBuffer);
+        _instanceBuffer = nullptr;
+    }
 }
 
 void GPUBuffer::Initialize(VertexFormat format, BufferUsage /*usage*/) {
@@ -60,6 +64,23 @@ void GPUBuffer::Upload(
     _indexBuffer = AllocAndUpload(indexData, indexCount * sizeof(uint16_t), WGPUBufferUsage_Index);
 }
 
+void GPUBuffer::UploadInstances(const void* instanceData, size_t instanceCount, size_t instanceSize) {
+    if (!_initialized) Initialize(_format);
+    const size_t bytes = instanceCount * instanceSize;
+    if (bytes == 0) {
+        _instanceCount = 0;
+        return;// keep the buffer for the next refill (pooled cells shrink to 0 transiently)
+    }
+    if (_instanceBuffer && _instanceBufferBytes == bytes) {
+        wgpuQueueWriteBuffer(_queue, _instanceBuffer, 0, instanceData, bytes);
+    } else {
+        if (_instanceBuffer) wgpuBufferRelease(_instanceBuffer);
+        _instanceBuffer = AllocAndUpload(instanceData, bytes, WGPUBufferUsage_Vertex);
+        _instanceBufferBytes = bytes;
+    }
+    _instanceCount = instanceCount;
+}
+
 // topology is ignored: in WebGPU, primitive topology is baked into the render
 // pipeline (see GpuPipelineBuilder), not chosen per draw like glDrawArrays.
 void GPUBuffer::Draw(CommandEncoder* enc, PrimitiveTopology /*topology*/) const {
@@ -67,11 +88,18 @@ void GPUBuffer::Draw(CommandEncoder* enc, PrimitiveTopology /*topology*/) const 
     if (!gpuEnc || !gpuEnc->pass || !_vertexBuffer) return;
     WGPURenderPassEncoder pass = gpuEnc->pass;
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, _vertexBuffer, 0, WGPU_WHOLE_SIZE);
+    // Slot 1 carries per-instance data; only valid against a pipeline whose
+    // vertex state declared the instance-stepped buffer (GpuPipelineBuilder::
+    // instance()). Non-instanced pipelines never see a buffer here because
+    // their meshes never call UploadInstances.
+    const bool instanced = _instanceBuffer && _instanceCount > 0;
+    if (instanced) wgpuRenderPassEncoderSetVertexBuffer(pass, 1, _instanceBuffer, 0, WGPU_WHOLE_SIZE);
+    const uint32_t instances = instanced ? static_cast<uint32_t>(_instanceCount) : 1u;
     if (_hasIndices) {
         wgpuRenderPassEncoderSetIndexBuffer(pass, _indexBuffer, WGPUIndexFormat_Uint16, 0, WGPU_WHOLE_SIZE);
-        wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(_indexCount), 1, 0, 0, 0);
+        wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(_indexCount), instances, 0, 0, 0);
     } else {
-        wgpuRenderPassEncoderDraw(pass, static_cast<uint32_t>(_vertexCount), 1, 0, 0);
+        wgpuRenderPassEncoderDraw(pass, static_cast<uint32_t>(_vertexCount), instances, 0, 0);
     }
 }
 #endif// AE_USE_WEBGPU && __EMSCRIPTEN__

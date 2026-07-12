@@ -1480,7 +1480,12 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             const auto& cmd = sortable.cmd;
             Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
             // TERRAIN draws with the heightmap-displacement pipeline; VOXEL is
-            // handled by VoxelChunkPass.
+            // handled by VoxelChunkPass. GRASS is skipped pending a WGSL grass
+            // pipeline — its blade + instance data already sit in an RHI
+            // Grass-format RenderMesh (GPUBuffer slots 0/1), and
+            // GpuPipelineBuilder::instance() can express the layout, so the
+            // remaining work is the WGSL port of grass.vert/frag + a pipeline
+            // in _initGPU wired here.
             if (!mesh) continue;
             if (mesh->type != MeshType::PRIM && mesh->type != MeshType::TERRAIN) continue;
             if (!mesh->UsesRenderMesh()) continue;
@@ -1841,9 +1846,13 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             grassShader->SetUniform(std::string("main_light.direction"), mainLight->direction);
             grassShader->SetUniform(std::string("main_light.diffuse"), mainLight->diffuse);
 
-            glBindVertexArray(mesh->vao);
-            glDrawArraysInstanced(GL_TRIANGLES, 0, 9, static_cast<GLsizei>(mesh->instanceCount));
-            glBindVertexArray(0);
+            // The blade + instance data live in an RHI Grass-format RenderMesh;
+            // Draw() emits the instanced draw (9 verts x instance count).
+            if (mesh->UsesRenderMesh()) {
+                if (Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle())) {
+                    buf->Draw();
+                }
+            }
             break;
         }
 

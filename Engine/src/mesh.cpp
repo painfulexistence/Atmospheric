@@ -265,7 +265,6 @@ template void Mesh::InitializeDynamic<Vertex>(GLenum);
 void Mesh::InitGrassInstanced() {
     initialized = true;
     vertCount = 9;// canonical blade: 2 quads + tip triangle
-    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;// grass is GL/GLES3 only
 
     // Canonical blade in blade-local space: x = side in [-1,1], y = t in [0,1].
     // The vertex shader turns (side, t) + the per-instance transform into the
@@ -276,28 +275,23 @@ void Mesh::InitGrassInstanced() {
         { -1.0f, 0.55f }, { 1.0f, 0.55f }, { 0.0f, 1.0f }// tip
     };
 
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(blade), blade, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(glm::vec2), nullptr);
-    glEnableVertexAttribArray(0);
-
-    if (_instanceVBO == 0) glGenBuffers(1, &_instanceVBO);
-    glBindBuffer(GL_ARRAY_BUFFER, _instanceVBO);
-    // location 5: (root.xyz, facing)   location 6: (length, lean, phase, hue)
-    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(GrassInstance), nullptr);
-    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(GrassInstance), reinterpret_cast<void*>(4 * sizeof(float)));
-    glEnableVertexAttribArray(5);
-    glEnableVertexAttribArray(6);
-    glVertexAttribDivisor(5, 1);
-    glVertexAttribDivisor(6, 1);
-    glBindVertexArray(0);
+    // Both backends store the blade + instances in an RHI Grass-format
+    // RenderMesh (slot 0 = blade, per-instance data via UploadInstances), and
+    // Buffer::Draw emits the instanced draw. On WebGPU the data path is
+    // complete but drawing still needs a GRASS WGSL pipeline in the forward
+    // pass, so the WebGPU renderer skips GRASS meshes for now.
+    if (!_renderMeshHandle.IsValid()) {
+        _renderMeshHandle = GraphicsSubsystem::Get()->AllocateRenderMesh(VertexFormat::Grass, BufferUsage::Dynamic);
+    }
+    if (Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle)) {
+        renderMesh->Upload(blade, 9, sizeof(glm::vec2));
+    }
 }
 
 void Mesh::UploadGrassInstances(const std::vector<GrassInstance>& instances) {
     instanceCount = instances.size();
-    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;
-    glBindBuffer(GL_ARRAY_BUFFER, _instanceVBO);
-    glBufferData(GL_ARRAY_BUFFER, instances.size() * sizeof(GrassInstance), instances.data(), GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    if (!_renderMeshHandle.IsValid()) return;
+    if (Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle)) {
+        renderMesh->UploadInstances(instances.data(), instances.size(), sizeof(GrassInstance));
+    }
 }
