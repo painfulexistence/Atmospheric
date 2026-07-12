@@ -144,7 +144,11 @@ tight ring of grass cells streams around the camera exactly like the tiles:
 blade meshes are built on JobSystem workers (roots sampled from the exact
 height source, patchiness from a value-noise mask, slope/height-band rules),
 uploaded one cell per frame into pooled dynamic meshes, and recycled as the
-camera moves. Per-blade variation (length, facing, static lean, wind phase,
+camera moves. Coverage is tunable: `grassHeightBand` gates the elevation
+range that grows grass (widen it so peaks aren't bald), and `grassCoverage`
+(0 = maximal patchy drifts, 1 = continuous carpet in-band) lifts the thin
+drifts toward full without losing the value-noise variation. Per-blade
+variation (length, facing, static lean, wind phase,
 hue) rides in a per-blade **instance buffer** (32 bytes/blade) — one canonical
 9-vertex blade is drawn once per instance, so every cell is a single instanced
 draw and cell memory is ~15x smaller than baked geometry. Blade + instance

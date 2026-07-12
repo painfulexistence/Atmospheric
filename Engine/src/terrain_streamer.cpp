@@ -728,6 +728,7 @@ void TerrainStreamer::UpdateGrass(const glm::vec3& cameraPos) {
         const float density = _props.grassDensity, avgHeight = _props.grassBladeHeight;
         const float maxSlope = _props.grassMaxSlope, worldHalf = 0.5f * _props.worldSize;
         const glm::vec2 band = _props.grassHeightBand;
+        const float coverage = std::clamp(_props.grassCoverage, 0.0f, 1.0f);
         const int seed = _props.noise.seed;
 
         JobSystem::Get()->Execute([job,
@@ -739,6 +740,7 @@ void TerrainStreamer::UpdateGrass(const glm::vec3& cameraPos) {
                                    maxSlope,
                                    worldHalf,
                                    band,
+                                   coverage,
                                    seed](int /*threadIndex*/) {
             const glm::vec2 origin(job->coord.x * cellSize, job->coord.y * cellSize);
             // Cap generous now that each blade is 32 bytes, not ~500.
@@ -753,8 +755,12 @@ void TerrainStreamer::UpdateGrass(const glm::vec3& cameraPos) {
                 if (std::abs(wx) > worldHalf || std::abs(wz) > worldHalf) continue;
 
                 // Patchiness: grass grows in drifts, not as a uniform carpet.
+                // The drift probability is lifted toward 1 by grassCoverage so
+                // thin drifts fill in without losing the variation (coverage=0
+                // keeps the original bald-gap look, 1 = full carpet in-band).
                 const float patch = GrassValueNoise(wx * 0.045f, wz * 0.045f, seed);
-                if (GrassRand(rng) > (patch - 0.25f) * 1.8f) continue;
+                const float driftProb = (patch - 0.25f) * 1.8f;
+                if (GrassRand(rng) > driftProb + coverage * (1.0f - driftProb)) continue;
 
                 const float h01 = heightFn(wx, wz);
                 if (h01 < band.x || h01 > band.y) continue;

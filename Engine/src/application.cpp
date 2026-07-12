@@ -551,6 +551,7 @@ void Application::RegisterComponents() {
         d.Read("grassBladeHeight", p.grassBladeHeight, p.grassBladeHeight);
         d.Read("grassMaxSlope", p.grassMaxSlope, p.grassMaxSlope);
         d.Read("grassHeightBand", p.grassHeightBand, p.grassHeightBand);
+        d.Read("grassCoverage", p.grassCoverage, p.grassCoverage);
         d.Read("grassRootColor", p.grassRootColor, p.grassRootColor);
         d.Read("grassTipColor", p.grassTipColor, p.grassTipColor);
         d.Read("grassWindDir", p.grassWindDir, p.grassWindDir);

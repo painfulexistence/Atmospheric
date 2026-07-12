@@ -130,7 +130,7 @@ class TerrainStreamingDemo : public Application {
                 .tileMeshRes = 64,
                 .lodCount = 4,
                 .lod0RadiusTiles = 2,
-                .paletteIndex = 3,// forest
+                .paletteIndex = 2,// earthy green
                 // ~1.4km feature wavelength: enough distinct ridges/valleys
                 // across 10km that traversal reads as covering ground.
                 .noise = { .resolution = 0, .seed = 20260705, .frequency = 0.0007f, .octaves = 9 },
@@ -187,6 +187,11 @@ class TerrainStreamingDemo : public Application {
                 .grassRadius = 90.0f,
                 .grassBladeHeight = 1.6f,
                 .grassMaxSlope = 1000.0f,// grow grass everywhere, ignore slope
+                // Cover almost the whole elevation range (default {0.04,0.65}
+                // left the upper terrain — a big chunk of a 500m world — bald)
+                // and lift the sparse drifts so meadows read as continuous.
+                .grassHeightBand = { 0.02f, 0.95f },
+                .grassCoverage = 0.7f,
                 .grassWindStrength = 0.45f,
                 .grassWindSpeed = 1.8f,
             })

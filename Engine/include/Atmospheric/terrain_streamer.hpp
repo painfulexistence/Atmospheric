@@ -173,6 +173,12 @@ struct StreamingTerrainProps {
     float grassBladeHeight = 0.9f;// average blade height in metres
     float grassMaxSlope = 0.45f;// no grass on slopes steeper than this (rise/run)
     glm::vec2 grassHeightBand{ 0.04f, 0.65f };// normalized terrain-height range with grass
+    // Drift patchiness → coverage floor. Grass grows in value-noise drifts;
+    // sparse drifts thin out to bare ground. 0 = maximal patchiness (bald
+    // gaps where the drift noise dips, the original look); 1 = a continuous
+    // carpet inside the height band. Values in between lift the thin drifts
+    // toward full without killing the variation.
+    float grassCoverage = 0.0f;
     glm::vec3 grassRootColor{ 0.24f, 0.17f, 0.07f };
     glm::vec3 grassTipColor{ 0.93f, 0.76f, 0.38f };// golden pampas
     glm::vec2 grassWindDir{ 0.8f, 0.6f };
