@@ -182,6 +182,13 @@ class TerrainStreamingDemo : public Application {
                         return go;
                     },
                 .entityRadiusTiles = 3,
+                // Golden pampas grass in a streamed ring around the camera —
+                // watch cells build in as you sprint (GoT-style wind sway).
+                .grassDensity = 3.0f,
+                .grassRadius = 80.0f,
+                .grassBladeHeight = 0.9f,
+                .grassWindStrength = 0.4f,
+                .grassWindSpeed = 1.8f,
             })
         );
 
@@ -271,7 +278,8 @@ class TerrainStreamingDemo : public Application {
                 "cam (" + std::to_string(static_cast<int>(pos.x)) + ", " + std::to_string(static_cast<int>(pos.z))
                 + (inside ? ") " : ") OUTSIDE WORLD ") + "tiles " + std::to_string(stats.loadedTiles) + " visible "
                 + std::to_string(stats.visibleTiles) + " pending " + std::to_string(stats.pendingJobs) + " entities "
-                + std::to_string(stats.activeEntities) + " cache " + std::to_string(stats.cacheHits) + "/"
+                + std::to_string(stats.activeEntities) + " grass " + std::to_string(stats.grassCells) + "c/"
+                + std::to_string(stats.grassBlades / 1000) + "k cache " + std::to_string(stats.cacheHits) + "/"
                 + std::to_string(stats.cacheHits + stats.cacheMisses) + " heightmapMB "
                 + std::to_string(stats.gpuHeightmapBytes / (1024 * 1024))
             );

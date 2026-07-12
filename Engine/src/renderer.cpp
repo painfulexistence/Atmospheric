@@ -1635,6 +1635,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
     AE_GL_PROBE(renderer, "Opaque pass: after clear");
 
     auto terrainShader = ctx->GetShader("terrain");
+    auto grassShader = ctx->GetShader("grass");
     auto colorShader = ctx->GetShader("color");
     // 1. Batching Phase
     std::vector<RenderBatch> batches;
@@ -1772,6 +1773,35 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             glDrawArrays(GL_TRIANGLES, 0, mesh->vertCount);
 #endif
             AE_GL_PROBE(renderer, "Opaque pass: TERRAIN after draw");
+            glBindVertexArray(0);
+            break;
+        }
+
+        case MeshType::GRASS: {
+            // Streamed grass-blade cells (TerrainStreamer's grass ring).
+            // Per-blade variation is baked into the vertex attributes; the
+            // shared GrassMaterial carries the look, the wind field, and the
+            // ring fade. Wind animates off renderer.frameTime.
+            auto* gm = dynamic_cast<GrassMaterial*>(material);
+            grassShader->Activate();
+            grassShader->SetUniform(std::string("ProjectionView"), projectionView);
+            grassShader->SetUniform(std::string("World"), instances[0].modelMatrix);
+            grassShader->SetUniform(std::string("cam_pos"), eyePos);
+            grassShader->SetUniform(std::string("u_time"), renderer.frameTime);
+            grassShader->SetUniform(std::string("u_wind_dir"), gm ? gm->windDir : glm::vec2(1.0f, 0.0f));
+            grassShader->SetUniform(std::string("u_wind_strength"), gm ? gm->windStrength : 0.0f);
+            grassShader->SetUniform(std::string("u_wind_speed"), gm ? gm->windSpeed : 1.0f);
+            grassShader->SetUniform(std::string("u_fade_start"), gm ? gm->fadeStart : 1e9f);
+            grassShader->SetUniform(std::string("u_fade_end"), gm ? gm->fadeEnd : 1e9f);
+            grassShader->SetUniform(std::string("u_root_color"), gm ? gm->rootColor : glm::vec3(0.2f));
+            grassShader->SetUniform(std::string("u_tip_color"), gm ? gm->tipColor : glm::vec3(0.8f));
+            grassShader->SetUniform(std::string("fog_color"), gm ? gm->fogColor : glm::vec3(0.0f));
+            grassShader->SetUniform(std::string("fog_density"), gm ? gm->fogDensity : 0.0f);
+            grassShader->SetUniform(std::string("main_light.direction"), mainLight->direction);
+            grassShader->SetUniform(std::string("main_light.diffuse"), mainLight->diffuse);
+
+            glBindVertexArray(mesh->vao);
+            glDrawArrays(GL_TRIANGLES, 0, mesh->vertCount);
             glBindVertexArray(0);
             break;
         }
@@ -2059,6 +2089,9 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
         switch (mesh->type) {
         case MeshType::TERRAIN:
             // TODO: implement terrain rendering
+            break;
+        case MeshType::GRASS:
+            // Grass draws in the forward opaque pass only.
             break;
         case MeshType::SKY:
             // TODO: implement skybox rendering

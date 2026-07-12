@@ -128,6 +128,21 @@ void TerrainStreamer::Init(Application* app, const StreamingTerrainProps& props,
         _layers.push_back(layer);
     }
 
+    // Shared grass material: per-blade variation lives in vertex attributes,
+    // so every grass cell can share one material (one batch state).
+    if (_props.grassDensity > 0.0f) {
+        _grassMaterial = am.CreateGrassMaterial();
+        _grassMaterial->rootColor = _props.grassRootColor;
+        _grassMaterial->tipColor = _props.grassTipColor;
+        _grassMaterial->windDir = _props.grassWindDir;
+        _grassMaterial->windStrength = _props.grassWindStrength;
+        _grassMaterial->windSpeed = _props.grassWindSpeed;
+        _grassMaterial->fadeStart = _props.grassRadius * 0.65f;
+        _grassMaterial->fadeEnd = _props.grassRadius;
+        _grassMaterial->fogColor = _props.fogColor;
+        _grassMaterial->fogDensity = _props.fogDensity;
+    }
+
     // Prewarm: the whole world at the coarsest LOD, generated in parallel and
     // integrated synchronously, so frame one already shows the full horizon.
     const int coarsest = _props.lodCount - 1;
@@ -193,10 +208,13 @@ void TerrainStreamer::Update(const glm::vec3& cameraPos, const glm::mat4& viewPr
     CullTiles(viewProj);
     UpdateColliders(camTile);
     UpdateEntities(camTile);
+    UpdateGrass(cameraPos);
 
     _stats.loadedTiles = static_cast<int>(_tiles.size());
     _stats.pendingJobs = static_cast<int>(_inFlight.size());
     _stats.activeEntities = _activeEntities;
+    _stats.grassCells = static_cast<int>(_grassCells.size());
+    _stats.grassBlades = _grassBladesLive;
     _stats.cacheHits = _cacheHits.load(std::memory_order_relaxed);
     _stats.cacheMisses = _cacheMisses.load(std::memory_order_relaxed);
 }
@@ -551,4 +569,214 @@ void TerrainStreamer::AssignCollider(ColliderSlot& slot, TileSlot* tile) {
         if (slot.rigidbody) slot.rigidbody->SetWorldTransform(center, glm::vec3(0.0f));
     }
     slot.coord = tile->coord;
+}
+
+// ── grass ring ───────────────────────────────────────────────────────────────
+
+namespace {
+
+    // Tiny self-contained hash noise for the grass patchiness mask — runs on
+    // worker threads, no shared state, deterministic across platforms.
+    inline float GrassHash(int x, int y, int seed) {
+        uint32_t h = static_cast<uint32_t>(x) * 374761393u + static_cast<uint32_t>(y) * 668265263u
+                     + static_cast<uint32_t>(seed) * 2246822519u;
+        h = (h ^ (h >> 13)) * 1274126177u;
+        return static_cast<float>((h ^ (h >> 16)) & 0xFFFFFF) / 16777215.0f;
+    }
+
+    inline float GrassValueNoise(float x, float y, int seed) {
+        const int xi = static_cast<int>(std::floor(x)), yi = static_cast<int>(std::floor(y));
+        const float fx = x - xi, fy = y - yi;
+        const float u = fx * fx * (3.0f - 2.0f * fx), v = fy * fy * (3.0f - 2.0f * fy);
+        const float a = GrassHash(xi, yi, seed), b = GrassHash(xi + 1, yi, seed);
+        const float c = GrassHash(xi, yi + 1, seed), d = GrassHash(xi + 1, yi + 1, seed);
+        return (a + (b - a) * u) + ((c + (d - c) * u) - (a + (b - a) * u)) * v;
+    }
+
+    inline float GrassRand(uint32_t& state) {
+        state = state * 1664525u + 1013904223u;
+        return static_cast<float>(state >> 8) * (1.0f / 16777215.0f);
+    }
+
+}// namespace
+
+void TerrainStreamer::UpdateGrass(const glm::vec3& cameraPos) {
+    if (_props.grassDensity <= 0.0f || !_grassMaterial) return;
+
+    const float cell = _props.grassCellSize;
+    const glm::ivec2 camCell{ static_cast<int>(std::floor(cameraPos.x / cell)),
+                              static_cast<int>(std::floor(cameraPos.z / cell)) };
+    const int cr = std::max(1, static_cast<int>(std::ceil(_props.grassRadius / cell - 0.5f)));
+
+    // Release cells that left the ring (+1 hysteresis) back into the pool.
+    std::vector<glm::ivec2> departed;
+    for (auto& [coord, gc] : _grassCells) {
+        if (std::max(std::abs(coord.x - camCell.x), std::abs(coord.y - camCell.y)) > cr + 1) departed.push_back(coord);
+    }
+    for (const auto& coord : departed) {
+        GrassCell* gc = _grassCells[coord];
+        gc->go->SetActive(false);
+        _grassCells.erase(coord);
+        _grassPool.push_back(gc);
+    }
+
+    // Integrate one finished cell mesh per frame (a cell upload is ~1-3MB).
+    for (auto it = _grassInFlight.begin(); it != _grassInFlight.end(); ++it) {
+        if (!it->second->done.load(std::memory_order_acquire)) continue;
+        GrassJob& job = *it->second;
+        GrassCell* gc = AcquireGrassCell();
+        gc->coord = job.coord;
+        gc->mesh->UpdateDynamic(job.verts);
+        gc->go->SetPosition(glm::vec3(job.coord.x * cell, 0.0f, job.coord.y * cell));
+        gc->go->SetActive(true);
+        if (GrassCell* old = _grassCells.count(job.coord) ? _grassCells[job.coord] : nullptr) {
+            old->go->SetActive(false);
+            _grassPool.push_back(old);
+        }
+        _grassCells[job.coord] = gc;
+        _grassInFlight.erase(it);
+        break;
+    }
+
+    // Live blade count for the stats line (cells are few; recount is trivial).
+    _grassBladesLive = 0;
+    for (auto& [coord, gc] : _grassCells)
+        _grassBladesLive += gc->mesh->vertCount / 9;
+
+    // Kick worker jobs for missing cells, nearest first, two in flight max.
+    if (_grassInFlight.size() >= 2) return;
+    std::vector<glm::ivec2> missing;
+    for (int dz = -cr; dz <= cr; ++dz) {
+        for (int dx = -cr; dx <= cr; ++dx) {
+            const glm::ivec2 coord{ camCell.x + dx, camCell.y + dz };
+            if (_grassCells.count(coord) || _grassInFlight.count(coord)) continue;
+            missing.push_back(coord);
+        }
+    }
+    std::sort(missing.begin(), missing.end(), [&](const glm::ivec2& a, const glm::ivec2& b) {
+        const glm::ivec2 da = a - camCell, db = b - camCell;
+        return da.x * da.x + da.y * da.y < db.x * db.x + db.y * db.y;
+    });
+
+    for (const auto& coord : missing) {
+        if (_grassInFlight.size() >= 2) break;
+        auto job = std::make_shared<GrassJob>();
+        job->coord = coord;
+        _grassInFlight[coord] = job;
+
+        // Copies for the worker — it must never touch `this`.
+        auto heightFn = _heightFn;
+        const float cellSize = cell, heightScale = _props.heightScale;
+        const float density = _props.grassDensity, avgHeight = _props.grassBladeHeight;
+        const float maxSlope = _props.grassMaxSlope, worldHalf = 0.5f * _props.worldSize;
+        const glm::vec2 band = _props.grassHeightBand;
+        const int seed = _props.noise.seed;
+
+        JobSystem::Get()->Execute([job,
+                                   heightFn,
+                                   cellSize,
+                                   heightScale,
+                                   density,
+                                   avgHeight,
+                                   maxSlope,
+                                   worldHalf,
+                                   band,
+                                   seed](int /*threadIndex*/) {
+            const glm::vec2 origin(job->coord.x * cellSize, job->coord.y * cellSize);
+            const int target = std::min(20000, static_cast<int>(density * cellSize * cellSize));
+            job->verts.reserve(static_cast<size_t>(target) * 9);
+            uint32_t rng = static_cast<uint32_t>(job->coord.x * 73856093 ^ job->coord.y * 19349663 ^ seed);
+
+            for (int i = 0; i < target; ++i) {
+                const float lx = GrassRand(rng) * cellSize;
+                const float lz = GrassRand(rng) * cellSize;
+                const float wx = origin.x + lx, wz = origin.y + lz;
+                if (std::abs(wx) > worldHalf || std::abs(wz) > worldHalf) continue;
+
+                // Patchiness: grass grows in drifts, not as a uniform carpet.
+                const float patch = GrassValueNoise(wx * 0.045f, wz * 0.045f, seed);
+                if (GrassRand(rng) > (patch - 0.25f) * 1.8f) continue;
+
+                const float h01 = heightFn(wx, wz);
+                if (h01 < band.x || h01 > band.y) continue;
+                const float y = h01 * heightScale;
+                // Slope from two forward differences (2m probe).
+                const float dhx = (heightFn(wx + 2.0f, wz) - h01) * heightScale * 0.5f;
+                const float dhz = (heightFn(wx, wz + 2.0f) - h01) * heightScale * 0.5f;
+                if (dhx * dhx + dhz * dhz > maxSlope * maxSlope) continue;
+
+                // Per-blade shape: length, facing, static lean (baked into the
+                // rest pose — the shader only adds wind on top).
+                const float len = avgHeight * (0.65f + 0.7f * GrassRand(rng)) * (0.6f + 0.4f * patch);
+                const float ang = GrassRand(rng) * 6.28318f;
+                const float lean = 0.05f + 0.30f * GrassRand(rng);
+                const float phase = GrassRand(rng) * 6.28318f;
+                const float hue = GrassRand(rng);
+                const glm::vec3 root(lx, y, lz);
+                const glm::vec3 facing(std::cos(ang), 0.0f, std::sin(ang));
+                const glm::vec3 side(-facing.z, 0.0f, facing.x);
+                const float w0 = 0.045f * (0.7f + 0.6f * GrassRand(rng));
+
+                // Center curve at t: lean bends the rest pose forward.
+                auto center = [&](float t) {
+                    return root + facing * (lean * len * t * t) + glm::vec3(0, t * len * (1.0f - 0.2f * lean * t), 0);
+                };
+                auto emit = [&](const glm::vec3& pos, float sideSign, float t) {
+                    job->verts.emplace_back(pos, glm::vec2(sideSign, t), facing, root, glm::vec3(phase, len, hue));
+                };
+                const glm::vec3 c0 = center(0.0f), c1 = center(0.55f), tip = center(1.0f);
+                const float w1 = w0 * 0.45f;
+                // Two quads + tip triangle, emitted as 9 plain triangles verts.
+                emit(c0 - side * w0, -1.0f, 0.0f);
+                emit(c0 + side * w0, 1.0f, 0.0f);
+                emit(c1 - side * w1, -1.0f, 0.55f);
+                emit(c0 + side * w0, 1.0f, 0.0f);
+                emit(c1 + side * w1, 1.0f, 0.55f);
+                emit(c1 - side * w1, -1.0f, 0.55f);
+                emit(c1 - side * w1, -1.0f, 0.55f);
+                emit(c1 + side * w1, 1.0f, 0.55f);
+                emit(tip, 0.0f, 1.0f);
+            }
+            job->done.store(true, std::memory_order_release);
+        });
+    }
+}
+
+TerrainStreamer::GrassCell* TerrainStreamer::AcquireGrassCell() {
+    if (!_grassPool.empty()) {
+        GrassCell* gc = _grassPool.back();
+        _grassPool.pop_back();
+        return gc;
+    }
+    auto& am = AssetManager::Get();
+    auto owned = std::make_unique<GrassCell>();
+    GrassCell* gc = owned.get();
+    const std::string name = "grasscell_" + std::to_string(_allGrassCells.size());
+
+    GameObject* go = _app->CreateGameObject(glm::vec3(0.0f));
+    go->SetName(name);
+    go->parent = _root;
+    go->SetActive(false);// stays hidden until the first mesh upload
+    gc->go = go;
+
+    auto* mesh = new Mesh(MeshType::GRASS);
+    mesh->updateFreq = UpdateFrequency::Dynamic;
+    const float c = _props.grassCellSize, top = _props.heightScale + _props.grassBladeHeight;
+    mesh->SetBoundingBox(
+        { { glm::vec3(c, top, c),
+            glm::vec3(0, top, c),
+            glm::vec3(0, 0, c),
+            glm::vec3(c, 0, c),
+            glm::vec3(c, top, 0),
+            glm::vec3(0, top, 0),
+            glm::vec3(0, 0, 0),
+            glm::vec3(c, 0, 0) } }
+    );
+    MeshHandle handle = am.CreateMesh(name, mesh);
+    mesh->SetMaterial(am.GetMaterialHandle(_grassMaterial));
+    go->AddComponent<MeshComponent>(handle);
+    gc->mesh = mesh;
+
+    _allGrassCells.push_back(std::move(owned));
+    return gc;
 }

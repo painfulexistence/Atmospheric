@@ -542,6 +542,17 @@ void Application::RegisterComponents() {
         d.Read("colliderResolution", p.colliderResolution, p.colliderResolution);
         d.Read("entityRadiusTiles", p.entityRadiusTiles, p.entityRadiusTiles);
         d.Read("entityTilesPerFrame", p.entityTilesPerFrame, p.entityTilesPerFrame);
+        d.Read("grassDensity", p.grassDensity, p.grassDensity);
+        d.Read("grassRadius", p.grassRadius, p.grassRadius);
+        d.Read("grassCellSize", p.grassCellSize, p.grassCellSize);
+        d.Read("grassBladeHeight", p.grassBladeHeight, p.grassBladeHeight);
+        d.Read("grassMaxSlope", p.grassMaxSlope, p.grassMaxSlope);
+        d.Read("grassHeightBand", p.grassHeightBand, p.grassHeightBand);
+        d.Read("grassRootColor", p.grassRootColor, p.grassRootColor);
+        d.Read("grassTipColor", p.grassTipColor, p.grassTipColor);
+        d.Read("grassWindDir", p.grassWindDir, p.grassWindDir);
+        d.Read("grassWindStrength", p.grassWindStrength, p.grassWindStrength);
+        d.Read("grassWindSpeed", p.grassWindSpeed, p.grassWindSpeed);
 
         if (auto noise = d.ReadObject("noise")) {
             noise->Read("seed", p.noise.seed, p.noise.seed);

@@ -127,6 +127,19 @@ revisiting a tile reproduces the identical scatter. Population is budgeted
 same per-tile placement lists later drive impostors and HLOD proxies for
 the rings beyond `entityRadiusTiles`.
 
+**Procedural grass (GoT-style, wind-animated).** With `grassDensity > 0` a
+tight ring of grass cells streams around the camera exactly like the tiles:
+blade meshes are built on JobSystem workers (roots sampled from the exact
+height source, patchiness from a value-noise mask, slope/height-band rules),
+uploaded one cell per frame into pooled dynamic meshes, and recycled as the
+camera moves. Per-blade variation (length, facing, static lean, wind phase,
+hue) is baked into vertex attributes so every cell shares one `GrassMaterial`;
+`grass.vert` adds the two-band wind sway (slow travelling gust + per-blade
+flutter, t²-weighted so roots stay planted) and collapses blades to the ground
+approaching `grassRadius` so the ring edge is invisible. `grass.frag` does the
+Ghost-of-Tsushima look: dark-root→golden-tip gradient, wrap lighting, backlit
+translucency, gust glint, and the same aerial-perspective fog as the terrain.
+
 **Gaea-grade sources, reserved splat space.** The height source is a
 pluggable `heightFn(wx, wz) → [0,1]` called in world metres on worker
 threads — the default is OpenSimplex2 FBm, but a Gaea tiled-export sampler or

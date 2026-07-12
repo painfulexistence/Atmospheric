@@ -11,6 +11,7 @@ class Mesh;
 class Material;
 class WaterMaterial;
 class TerrainMaterial;
+class GrassMaterial;
 class VATMaterial;
 class PortalMaterial;
 class VoxelMaterial;
@@ -60,6 +61,7 @@ public:
     WaterMaterial* CreateWaterMaterial();
     PortalMaterial* CreatePortalMaterial();
     TerrainMaterial* CreateTerrainMaterial();
+    GrassMaterial* CreateGrassMaterial();
     VATMaterial* CreateVATMaterial();
     VoxelMaterial* CreateVoxelMaterial();
     Material* GetMaterial(const std::string& name) const;

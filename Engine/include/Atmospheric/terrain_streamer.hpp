@@ -2,6 +2,7 @@
 #include "globals.hpp"
 #include "height_field.hpp"
 #include "terrain_mesh_component.hpp"
+#include "vertex.hpp"
 #include <atomic>
 #include <climits>
 #include <functional>
@@ -16,6 +17,8 @@ class Application;
 class GameObject;
 class HeightFieldColliderComponent;
 class RigidbodyComponent;
+class GrassMaterial;
+class Mesh;
 class TerrainMaterial;
 class TerrainTileCache;
 
@@ -146,6 +149,25 @@ struct StreamingTerrainProps {
     std::function<GameObject*(Application*, const TerrainEntityPlacement&)> spawnEntityFn;
     int entityRadiusTiles = 3;
     int entityTilesPerFrame = 1;// tiles populated per Update()
+
+    // ── Procedural grass (Ghost-of-Tsushima-style blades, wind-animated) ────
+    // A tight ring of grass cells streams around the camera exactly like the
+    // terrain tiles: cell meshes are built on JobSystem workers (blade
+    // positions sampled from the exact height source, so blades sit on the
+    // LOD0 ground), uploaded under a per-frame budget, and pooled when the
+    // camera moves on. Blades shrink to the ground approaching grassRadius so
+    // the ring edge is invisible; grass.vert adds the wind sway.
+    float grassDensity = 0.0f;// blades per square metre; 0 disables grass
+    float grassRadius = 80.0f;// metres of grass around the camera
+    float grassCellSize = 32.0f;// metres per grass cell edge
+    float grassBladeHeight = 0.9f;// average blade height in metres
+    float grassMaxSlope = 0.45f;// no grass on slopes steeper than this (rise/run)
+    glm::vec2 grassHeightBand{ 0.04f, 0.65f };// normalized terrain-height range with grass
+    glm::vec3 grassRootColor{ 0.24f, 0.17f, 0.07f };
+    glm::vec3 grassTipColor{ 0.93f, 0.76f, 0.38f };// golden pampas
+    glm::vec2 grassWindDir{ 0.8f, 0.6f };
+    float grassWindStrength = 0.35f;
+    float grassWindSpeed = 1.6f;
 };
 
 struct IVec2Hash {
@@ -188,6 +210,8 @@ public:
         int pendingJobs = 0;
         int tilesPerSide = 0;
         int activeEntities = 0;
+        int grassCells = 0;
+        int grassBlades = 0;
         int cacheHits = 0;
         int cacheMisses = 0;// counts generation runs; 0 misses = pure-IO boot
         size_t gpuHeightmapBytes = 0;
@@ -248,6 +272,7 @@ private:
     void UpdateColliders(glm::ivec2 camTile);
     void AssignCollider(ColliderSlot& slot, TileSlot* tile);
     void UpdateEntities(glm::ivec2 camTile);
+    void UpdateGrass(const glm::vec3& cameraPos);
     void CullTiles(const glm::mat4& viewProj);
 
     StreamingTerrainProps _props;
@@ -275,6 +300,25 @@ private:
     std::unordered_map<glm::ivec2, std::vector<SpawnedEntity>, IVec2Hash> _entityTiles;
     std::unordered_map<int, std::vector<GameObject*>> _entityPool;
     int _activeEntities = 0;
+
+    // Grass ring: pooled cells whose blade meshes are rebuilt on workers.
+    struct GrassCell {
+        GameObject* go = nullptr;
+        Mesh* mesh = nullptr;// dynamic MeshType::GRASS mesh, updated in place
+        glm::ivec2 coord{ INT_MIN, INT_MIN };
+    };
+    struct GrassJob {
+        glm::ivec2 coord{ 0, 0 };
+        std::vector<Vertex> verts;
+        std::atomic<bool> done{ false };
+    };
+    GrassCell* AcquireGrassCell();
+    std::unordered_map<glm::ivec2, GrassCell*, IVec2Hash> _grassCells;
+    std::unordered_map<glm::ivec2, std::shared_ptr<GrassJob>, IVec2Hash> _grassInFlight;
+    std::vector<GrassCell*> _grassPool;
+    std::vector<std::unique_ptr<GrassCell>> _allGrassCells;
+    GrassMaterial* _grassMaterial = nullptr;
+    int _grassBladesLive = 0;
     bool _lodTintDebug = false;
 
     // Layer textures resolved once in Init and shared by every tile material.
