@@ -31,9 +31,11 @@
 #include "udp_socket.hpp"
 using DatagramSocket = UdpSocket;// native: raw UDP
 #else
-// Web: WebTransport datagram mode. WebTransportSocket is not implemented yet;
-// when it lands it aliases here. Nothing references DatagramSocket on web today
-// (MultiplayerSandbox's web path uses a WebRTC DataChannel, and the server-auth
-// examples aren't built for web yet), so leaving it undefined makes any
-// premature web use fail loudly rather than silently misbehave.
+#include "loopback_datagram_socket.hpp"
+// Web has no raw UDP. --local single-player is genuinely one process (a client
+// plus an embedded authority), so its "network" is pure in-process loopback —
+// no browser networking API needed. Real browser client<->server play would add
+// a WebTransportSocket (over QUIC) and select between the two; that's separate,
+// later work — see this header's KNOWN BOUNDARIES.
+using DatagramSocket = LoopbackDatagramSocket;
 #endif

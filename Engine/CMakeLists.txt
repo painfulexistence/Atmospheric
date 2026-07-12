@@ -285,6 +285,10 @@ list(APPEND SOURCES src/udp_relay_client.cpp)
 # empty on Emscripten, and dep-free so headless servers can use it too.
 # (NetMetrics is header-only — Engine/include/Atmospheric/net_metrics.hpp.)
 list(APPEND SOURCES src/net_conditioner.cpp)
+# LoopbackDatagramSocket: in-process DatagramSocket impl (no OS sockets) for
+# --local single-player on the web, where there is no raw UDP. Dep-free, pure
+# logic — compiled on all platforms (it's what DatagramSocket aliases to on web).
+list(APPEND SOURCES src/loopback_datagram_socket.cpp)
 # NetHud: the shared netgraph renderer (DrawNetHud) for the realtime examples.
 # Graphics-side (needs GraphicsSubsystem), so part of the engine target only —
 # unlike the primitives above, not for the dep-free servers.

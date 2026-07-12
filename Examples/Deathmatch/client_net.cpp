@@ -14,7 +14,7 @@ namespace {
 
 bool ClientNet::Connect(const std::string& serverIp, uint16_t serverPort) {
     if (!_socket.Open(0)) return false;
-    if (!UdpSocket::Resolve(serverIp, serverPort, _serverAddr, _serverPort)) {
+    if (!DatagramSocket::Resolve(serverIp, serverPort, _serverAddr, _serverPort)) {
         spdlog::error("ClientNet: invalid server address: {}", serverIp);
         return false;
     }
