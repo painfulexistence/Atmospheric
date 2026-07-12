@@ -41,7 +41,7 @@ mesh + entities + glTF + USD + `.map` example.
 | Entities/metadata | **all** key/values preserved (`Prefab::FindEntities`) | — | — |
 | Coord fixes | Z-up→Y-up, uniform scale | native Y-up | stage `upAxis` (X/Z→Y) + `metersPerUnit` at root |
 | >65535 verts | per-material batches split | primitives chunked | RenderMeshes chunked |
-| Extensions | special textures `nodraw/caulk/skip/hint/clip/trigger/origin` filtered (solid where appropriate); `func_group` merged | `KHR_texture_transform` (baked into UVs), `KHR_materials_emissive_strength` | `preserve_texel_bitdepth` + fp32→u8 fallback |
+| Extensions | special textures `nodraw/caulk/skip/hint/clip/trigger/origin` filtered (solid where appropriate); `func_group` merged | `KHR_texture_transform` (baked into UVs), `KHR_materials_emissive_strength`, `KHR_materials_transmission`/`_volume`/`_ior` (data only) | `preserve_texel_bitdepth` + fp32→u8 fallback |
 | Known gaps | UVs not pixel-validated against real renderers; `angle` only (no `angles`/`mangle`) | Draco/meshopt, specular-glossiness, skinning | USD lights/cameras/skels; per-GeomSubset materials |
 
 ## `.map` notes
@@ -84,6 +84,15 @@ culling; emissive (× `KHR_materials_emissive_strength`) approximates through
 `Material::ambient`. `KHR_texture_transform` on the base color is baked into
 UV0 per primitive. `KHR_lights_punctual` lights attach to their nodes.
 `LoadGLTF` (single textured mesh) is unchanged.
+
+Transmission/refraction (`KHR_materials_transmission`, `KHR_materials_volume`,
+`KHR_materials_ior`) is imported as **data only** onto `PrefabMaterial` and then
+the engine `Material` (`transmissionFactor`, `transmissionMap`, `ior`,
+`thicknessFactor`, `thicknessMap`, `attenuationDistance`, `attenuationColor`).
+No shader consumes these yet — a refraction/transmission pass is a separate
+concern. Defaults make an opaque thin-walled dielectric (`transmissionFactor 0`,
+`ior 1.5`, `thicknessFactor 0`, `attenuationDistance +inf`), so materials without
+the extensions are unaffected.
 
 ## USD notes
 

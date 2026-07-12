@@ -6,6 +6,7 @@
 #include <functional>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
+#include <limits>
 
 enum class PolygonMode { Fill, Line, Point };
 
@@ -126,6 +127,18 @@ public:
     bool planarReflection = false;
     float reflectionStrength = 0.6f;// blend weight toward the mirror image at grazing angles
     float reflectionDistortion = 0.02f;// normal-driven UV wobble (waves); 0 for a perfect mirror
+
+    // ── Transmission / volume / IOR (populated from glTF KHR_materials_*) ───────
+    // Data carried through from import for a future refraction/transmission pass;
+    // no current shader reads these. Defaults = opaque thin-walled dielectric, so
+    // existing materials render unchanged. See PrefabMaterial for field meanings.
+    float transmissionFactor = 0.0f;// 0 = opaque; 1 = fully transmissive
+    TextureHandle transmissionMap;// R channel scales transmissionFactor
+    float ior = 1.5f;// index of refraction
+    float thicknessFactor = 0.0f;// 0 = thin-walled; >0 = has a volume
+    TextureHandle thicknessMap;// G channel scales thicknessFactor
+    float attenuationDistance = std::numeric_limits<float>::infinity();// +inf = no absorption
+    glm::vec3 attenuationColor = glm::vec3(1.0f);// Beer-Lambert tint through the volume
 
     int GetFinalRenderQueue() const {
         return static_cast<int>(renderQueue) + renderQueueOffset;

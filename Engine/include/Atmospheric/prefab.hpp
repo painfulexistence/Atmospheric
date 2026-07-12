@@ -3,6 +3,7 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -49,6 +50,22 @@ struct PrefabMaterial {
     int metallicRoughnessImage = -1;// glTF packs metallic(B) + roughness(G)
     int occlusionImage = -1;
     int emissiveImage = -1;
+
+    // ── Transmission / volume / IOR (glTF KHR_materials_transmission,
+    //    KHR_materials_volume, KHR_materials_ior) ──────────────────────────────
+    // Imported as data only; the surface shader does not yet consume these — a
+    // transmission/refraction render pass is a separate concern. Defaults make a
+    // fully opaque dielectric (transmission 0, thin-walled), so untouched
+    // materials are unaffected.
+    float transmissionFactor = 0.0f;// 0 = opaque; 1 = fully transmissive (glass)
+    float ior = 1.5f;// index of refraction (glTF default 1.5)
+    float thicknessFactor = 0.0f;// 0 = thin-walled (surface only); >0 = has a volume
+    // Beer-Lambert absorption distance through the volume; +inf = no absorption
+    // (the glTF default). Only meaningful when thicknessFactor > 0.
+    float attenuationDistance = std::numeric_limits<float>::infinity();
+    glm::vec3 attenuationColor{ 1.0f };// tint light picks up traversing the volume
+    int transmissionImage = -1;// R channel scales transmissionFactor
+    int thicknessImage = -1;// G channel scales thicknessFactor
 };
 
 // A punctual light attached to a node (from .map "light" entities or glTF

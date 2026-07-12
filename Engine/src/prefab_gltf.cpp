@@ -8,6 +8,11 @@
 //   KHR_texture_transform          → baked into UV0 at import (baseColor's
 //                                    transform, applied per primitive)
 //   KHR_materials_emissive_strength→ multiplied into PrefabMaterial::emissive
+//   KHR_materials_transmission     → PrefabMaterial::transmissionFactor + texture
+//   KHR_materials_volume           → thicknessFactor, attenuationDistance/Color
+//   KHR_materials_ior              → PrefabMaterial::ior
+//     (transmission/volume/ior are imported as data only — no shader consumes
+//      them yet; a refraction pass is separate. Defaults = opaque dielectric.)
 // Unsupported (skipped, geometry still imports): Draco/meshopt compression,
 // specular-glossiness materials, skinning/morph targets.
 #include "console_subsystem.hpp"
@@ -179,6 +184,36 @@ Prefab ImportGLTFPrefab(const std::string& path) {
         if (auto es = gm.extensions.find("KHR_materials_emissive_strength"); es != gm.extensions.end())
             if (es->second.Has("emissiveStrength"))
                 pm.emissive *= static_cast<float>(es->second.Get("emissiveStrength").GetNumberAsDouble());
+        // KHR_materials_ior — index of refraction (default 1.5 when absent).
+        if (auto ex = gm.extensions.find("KHR_materials_ior"); ex != gm.extensions.end())
+            if (ex->second.Has("ior")) pm.ior = static_cast<float>(ex->second.Get("ior").GetNumberAsDouble());
+        // KHR_materials_transmission — base transmission factor + optional (R) texture.
+        if (auto ex = gm.extensions.find("KHR_materials_transmission"); ex != gm.extensions.end()) {
+            const auto& e = ex->second;
+            if (e.Has("transmissionFactor"))
+                pm.transmissionFactor = static_cast<float>(e.Get("transmissionFactor").GetNumberAsDouble());
+            if (e.Has("transmissionTexture") && e.Get("transmissionTexture").Has("index"))
+                pm.transmissionImage = imageOf(e.Get("transmissionTexture").Get("index").GetNumberAsInt());
+        }
+        // KHR_materials_volume — thickness (G) + Beer-Lambert absorption. Only
+        // meaningful with thicknessFactor > 0; attenuationDistance stays +inf
+        // (no absorption) when the key is absent.
+        if (auto ex = gm.extensions.find("KHR_materials_volume"); ex != gm.extensions.end()) {
+            const auto& e = ex->second;
+            if (e.Has("thicknessFactor"))
+                pm.thicknessFactor = static_cast<float>(e.Get("thicknessFactor").GetNumberAsDouble());
+            if (e.Has("thicknessTexture") && e.Get("thicknessTexture").Has("index"))
+                pm.thicknessImage = imageOf(e.Get("thicknessTexture").Get("index").GetNumberAsInt());
+            if (e.Has("attenuationDistance"))
+                pm.attenuationDistance = static_cast<float>(e.Get("attenuationDistance").GetNumberAsDouble());
+            if (e.Has("attenuationColor") && e.Get("attenuationColor").IsArray()
+                && e.Get("attenuationColor").ArrayLen() == 3) {
+                const auto& c = e.Get("attenuationColor");
+                pm.attenuationColor = { static_cast<float>(c.Get(0).GetNumberAsDouble()),
+                                        static_cast<float>(c.Get(1).GetNumberAsDouble()),
+                                        static_cast<float>(c.Get(2).GetNumberAsDouble()) };
+            }
+        }
         matUV[i] = ReadTextureTransform(pbr.baseColorTexture.extensions);
         out.materials.push_back(std::move(pm));
     }

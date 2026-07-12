@@ -1178,7 +1178,18 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
         props.diffuse = props.baseMap.IsValid() ? glm::vec3(1.0f) : pm.baseColor;
         props.ambient = pm.emissive;// closest engine analogue to emissive
         props.cullFaceEnabled = !pm.doubleSided;
-        matHandles[i] = am.GetMaterialHandle(am.CreateMaterial(matName, props));
+        Material* mat = am.CreateMaterial(matName, props);
+        // Carry transmission/volume/IOR through to the engine material (data
+        // only; no shader reads them yet — see Material's fields). MaterialProps
+        // has no slot for these, so set them on the created material directly.
+        mat->transmissionFactor = pm.transmissionFactor;
+        mat->transmissionMap = texAt(pm.transmissionImage);
+        mat->ior = pm.ior;
+        mat->thicknessFactor = pm.thicknessFactor;
+        mat->thicknessMap = texAt(pm.thicknessImage);
+        mat->attenuationDistance = pm.attenuationDistance;
+        mat->attenuationColor = pm.attenuationColor;
+        matHandles[i] = am.GetMaterialHandle(mat);
     }
 
     // ── .map texture-name pipeline ────────────────────────────────────────────
