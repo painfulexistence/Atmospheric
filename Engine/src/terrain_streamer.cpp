@@ -684,7 +684,9 @@ void TerrainStreamer::UpdateGrass(const glm::vec3& cameraPos) {
         gc->coord = job.coord;
         gc->mesh->UploadGrassInstances(job.instances);
         gc->go->SetPosition(glm::vec3(job.coord.x * cell, 0.0f, job.coord.y * cell));
-        gc->go->SetActive(true);
+        // Fully-masked cells stay inactive (nothing to draw) but still occupy
+        // their _grassCells entry so the job isn't re-kicked every frame.
+        gc->go->SetActive(!job.instances.empty());
         if (GrassCell* old = _grassCells.count(job.coord) ? _grassCells[job.coord] : nullptr) {
             old->go->SetActive(false);
             _grassPool.push_back(old);

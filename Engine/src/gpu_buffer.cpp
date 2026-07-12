@@ -86,6 +86,10 @@ void GPUBuffer::UploadInstances(const void* instanceData, size_t instanceCount, 
 void GPUBuffer::Draw(CommandEncoder* enc, PrimitiveTopology /*topology*/) const {
     auto* gpuEnc = static_cast<GPUCommandEncoder*>(enc);
     if (!gpuEnc || !gpuEnc->pass || !_vertexBuffer) return;
+    // An instanced buffer with zero live instances draws nothing — mirrors
+    // GLBuffer, and avoids a draw the instance-stepped pipeline can't
+    // validate (slot 1 would be unbound or stale-sized).
+    if (_instanceBuffer && _instanceCount == 0) return;
     WGPURenderPassEncoder pass = gpuEnc->pass;
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, _vertexBuffer, 0, WGPU_WHOLE_SIZE);
     // Slot 1 carries per-instance data; only valid against a pipeline whose

@@ -1848,9 +1848,11 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
             // The blade + instance data live in an RHI Grass-format RenderMesh;
             // Draw() emits the instanced draw (9 verts x instance count).
+            // Skip cells with no live blades (empty scatter or pool-fresh,
+            // instances never uploaded) — nothing to draw.
             if (mesh->UsesRenderMesh()) {
                 if (Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle())) {
-                    buf->Draw();
+                    if (buf->GetInstanceCount() > 0) buf->Draw();
                 }
             }
             break;

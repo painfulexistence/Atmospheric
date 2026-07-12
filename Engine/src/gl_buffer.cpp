@@ -217,6 +217,16 @@ void GLBuffer::Upload(
 void GLBuffer::UploadInstances(const void* instanceData, size_t instanceCount, size_t instanceSize) {
     if (!_initialized) Initialize(_format, _usage);
 
+    // Empty upload: record the count and keep any previous buffer/attribute
+    // state. Never glBufferData a 0-byte instance buffer — the VAO's enabled
+    // divisor attributes would point at empty storage, and a later draw that
+    // touches them reads out of bounds (Apple's GL falls back to a
+    // copy-through submit and crashes dereferencing base+offset).
+    if (instanceCount == 0) {
+        _instanceCount = 0;
+        return;
+    }
+
     const bool firstUpload = (_instanceVBO == 0);
     if (firstUpload) glGenBuffers(1, &_instanceVBO);
 
@@ -240,8 +250,13 @@ void GLBuffer::Draw(CommandEncoder* /*enc*/, PrimitiveTopology topology) const {
 }
 
 void GLBuffer::Draw(GLenum primitiveType) const {
-    glBindVertexArray(_vao);
-    if (_instanceVBO && _instanceCount > 0) {
+    // Once an instance buffer exists this VAO has divisor attributes enabled,
+    // so it must ALWAYS draw instanced — a plain draw would still fetch
+    // instance slot 0 from that buffer (out of bounds when the live count is
+    // 0). Zero instances therefore means draw nothing, not draw once.
+    if (_instanceVBO) {
+        if (_instanceCount == 0) return;
+        glBindVertexArray(_vao);
         if (_hasIndices) {
             glDrawElementsInstanced(
                 primitiveType,
@@ -255,7 +270,11 @@ void GLBuffer::Draw(GLenum primitiveType) const {
                 primitiveType, 0, static_cast<GLsizei>(_vertexCount), static_cast<GLsizei>(_instanceCount)
             );
         }
-    } else if (_hasIndices) {
+        glBindVertexArray(0);
+        return;
+    }
+    glBindVertexArray(_vao);
+    if (_hasIndices) {
         glDrawElements(primitiveType, static_cast<GLsizei>(_indexCount), GL_UNSIGNED_SHORT, nullptr);
     } else {
         glDrawArrays(primitiveType, 0, static_cast<GLsizei>(_vertexCount));
