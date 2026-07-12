@@ -33,12 +33,11 @@ void DrawNetHud(
     const glm::vec4 label(0.72f, 0.76f, 0.82f, 1.0f);
     const glm::vec4 dim(0.6f, 0.63f, 0.68f, 1.0f);
 
-    // Count rows so the backing panel is sized to content.
-    int rows = 3;// title + RTT + loss
-    rows += 1;   // bandwidth
-    if (m.predErr >= 0.0f) rows += 1;
-    if (m.pendingInputs >= 0) rows += 1;
-    rows += 1;// conditioner knobs line
+    // Size the backing panel to its content.
+    int rows = 4;// title, rtt, loss, bandwidth
+    if (m.predErr >= 0.0f) rows++;
+    if (m.pendingInputs >= 0) rows++;
+    rows++;// conditioner knobs line
 
     gfx->DrawRect(x - 8.0f, y - 6.0f, 250.0f, lh * rows + 10.0f, glm::vec4(0.05f, 0.06f, 0.08f, 0.62f));
 

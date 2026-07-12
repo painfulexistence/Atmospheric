@@ -33,11 +33,10 @@ void NetConditioner::Enqueue(uint32_t nowMs, uint32_t addr, uint16_t port, const
 
 void NetConditioner::Push(uint32_t nowMs, uint32_t fromAddr, uint16_t fromPort, const uint8_t* data, int len) {
     if (len <= 0) return;
-    _seen++;
-    if (lossPct > 0.0f && NextUnit() * 100.0f < lossPct) {
-        _dropped++;
-        return;
-    }
+    const bool drop = lossPct > 0.0f && NextUnit() * 100.0f < lossPct;
+    constexpr float kAlpha = 0.02f;// ~50-packet time constant; decays when the knob changes
+    _lossEwma += ((drop ? 1.0f : 0.0f) - _lossEwma) * kAlpha;
+    if (drop) return;
     Enqueue(nowMs, fromAddr, fromPort, data, len);
     if (dupPct > 0.0f && NextUnit() * 100.0f < dupPct)
         Enqueue(nowMs, fromAddr, fromPort, data, len);

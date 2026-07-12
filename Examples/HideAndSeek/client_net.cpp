@@ -58,31 +58,13 @@ void ClientNet::HandlePacket(const uint8_t* buf, int n, uint32_t fromAddr, uint1
 
 void ClientNet::Pump(uint32_t nowMs) {
     if (!_socket.IsOpen()) return;
-    _metrics.Roll(nowMs);
-
-    // Byte counting here (pre-conditioning) so bandwidth reflects real link
-    // usage. Clean link (conditioner idle) processes straight through; when
-    // active, arrivals buffer for delayed/lossy/duplicated delivery below.
-    uint8_t buf[256];
-    for (;;) {
-        uint32_t fromAddr = 0;
-        uint16_t fromPort = 0;
-        int n = _socket.RecvFrom(buf, static_cast<int>(sizeof(buf)), fromAddr, fromPort);
-        if (n <= 0) break;
-        _metrics.OnRecv(n);
-        if (_cond.Active())
-            _cond.Push(nowMs, fromAddr, fromPort, buf, n);
-        else
-            HandlePacket(buf, n, fromAddr, fromPort, nowMs);
-    }
-    if (_cond.Active()) {
-        uint32_t fromAddr = 0;
-        uint16_t fromPort = 0;
-        int n = 0;
-        while (_cond.Pop(nowMs, fromAddr, fromPort, buf, static_cast<int>(sizeof(buf)), n))
-            HandlePacket(buf, n, fromAddr, fromPort, nowMs);
-    }
-
+    PumpConditioned(
+        _cond,
+        _metrics,
+        nowMs,
+        [&](uint8_t* b, int max, uint32_t& from, uint16_t& port) { return _socket.RecvFrom(b, max, from, port); },
+        [&](const uint8_t* b, int n, uint32_t from, uint16_t port) { HandlePacket(b, n, from, port, nowMs); }
+    );
     _metrics.lossPct = _cond.Active() ? _cond.MeasuredLossPct() : 0.0f;
     // pendingInputs stays n/a: this model has no per-tick input buffer to replay.
 }

@@ -1,36 +1,24 @@
 #pragma once
+#include "net_metrics.hpp"
 #include <cstdint>
 #include <vector>
 
 // NetConditioner — inbound-datagram link emulator: latency, jitter, loss, and
-// duplication. Lets the realtime netcode above it (prediction, reconciliation,
-// interpolation, lag compensation) actually be exercised under the adverse
-// conditions it exists for, instead of only ever running on a ~0 ms / 0 %-loss
-// loopback where none of that code is ever stressed.
+// duplication. Lets realtime netcode (prediction, reconciliation, interpolation,
+// lag compensation) run under adverse conditions instead of only on a clean
+// loopback. Dependency-free so the headless servers can use it too, and
+// deterministic for a fixed seed so tests can assert behaviour.
 //
-// Dependency-free (no engine or third-party headers) so the headless dep-free
-// servers (HideAndSeekServer, RelayServer) can use it too, not just windowed
-// clients — the same reason UdpSocket has no engine deps. Deterministic for a
-// fixed seed, so tests can assert exact behaviour.
-//
-// Inbound path — feed every real arrival into Push(), then drain Pop() for the
-// datagrams whose scheduled delivery time has arrived:
-//
-//   int n; uint32_t from; uint16_t port;
-//   while ((n = sock.RecvFrom(buf, sizeof buf, from, port)) > 0)
-//       cond.Push(nowMs, from, port, buf, n);
-//   while (cond.Pop(nowMs, from, port, buf, sizeof buf, n)) {
-//       /* handle the n-byte datagram from (from,port) */
-//   }
-//
-// With all knobs at 0 it is a pass-through: Pop returns each pushed datagram
-// immediately and in order (so callers can gate on Active() and skip the queue
-// entirely on a clean loopback — see the example ClientNet integrations).
+// Inbound path: feed every real arrival to Push(), then drain Pop() for the
+// datagrams whose delivery time has come. With all knobs at 0 it is a
+// pass-through (Pop returns each pushed datagram immediately, in order), so
+// callers gate on Active() to skip the queue on a clean link — or use the
+// PumpConditioned() helper below, which does that for them.
 class NetConditioner {
 public:
     // Tunable live; safe to change any frame.
     int latencyMs = 0;   // base one-way delay added to every delivered packet
-    int jitterMs = 0;    // uniform +/- added to latency (reordering emerges from this, as in reality)
+    int jitterMs = 0;    // uniform +/- added to latency (reordering falls out of this)
     float lossPct = 0.0f;// 0..100: chance to drop a packet outright
     float dupPct = 0.0f; // 0..100: chance to also deliver a second copy
 
@@ -40,25 +28,18 @@ public:
         return latencyMs != 0 || jitterMs != 0 || lossPct > 0.0f || dupPct > 0.0f;
     }
 
-    // Ingest one real arrival. Applies loss (may drop), then schedules delivery
-    // at now + latency +/- jitter, and may schedule a duplicate.
+    // Ingest one real arrival: apply loss, else schedule delivery at
+    // now + latency +/- jitter (and maybe a duplicate).
     void Push(uint32_t nowMs, uint32_t fromAddr, uint16_t fromPort, const uint8_t* data, int len);
 
-    // Emit the earliest datagram whose delivery time has arrived. Returns false
-    // when nothing is due. Call in a loop each frame.
+    // Emit the earliest datagram whose delivery time has arrived, or false when
+    // none is due. Call in a loop each frame.
     bool Pop(uint32_t nowMs, uint32_t& fromAddr, uint16_t& fromPort, uint8_t* buf, int maxLen, int& outLen);
 
-    // Rolling drop rate over packets seen since the last reset — the honest
-    // number to show next to a dialed loss knob ("dialed 10 %, link shows ~10 %").
-    void ResetWindow() {
-        _seen = 0;
-        _dropped = 0;
-    }
+    // Actually realized drop rate (EWMA over recent packets), to show beside the
+    // dialed lossPct knob. Decays as the knob changes.
     float MeasuredLossPct() const {
-        return _seen ? 100.0f * static_cast<float>(_dropped) / static_cast<float>(_seen) : 0.0f;
-    }
-    int InFlight() const {
-        return static_cast<int>(_q.size());
+        return _lossEwma * 100.0f;
     }
 
 private:
@@ -70,11 +51,35 @@ private:
     };
     std::vector<Held> _q;
     uint32_t _rng;
-    uint32_t _seen = 0;
-    uint32_t _dropped = 0;
+    float _lossEwma = 0.0f;
 
-    uint32_t NextU32();  // xorshift32
-    float NextUnit();    // [0,1)
-    int NextJitter();    // [-jitterMs, +jitterMs]
+    uint32_t NextU32();// xorshift32
+    float NextUnit();  // [0,1)
+    int NextJitter();  // [-jitterMs, +jitterMs]
     void Enqueue(uint32_t nowMs, uint32_t addr, uint16_t port, const uint8_t* data, int len);
 };
+
+// PumpConditioned — one frame of inbound conditioning, shared by every realtime
+// client. Pulls raw datagrams via recv(), counts + routes them through the
+// conditioner, and dispatches the ready ones to handle(). Templated on the
+// receive source so it works over both a UdpSocket and Emscripten's WebRTC glue.
+//   recv(buf, maxLen, fromAddr, fromPort) -> bytes (>0), or <=0 when drained
+//   handle(buf, len, fromAddr, fromPort)
+template <class Recv, class Handle>
+void PumpConditioned(NetConditioner& cond, NetMetrics& metrics, uint32_t nowMs, Recv&& recv, Handle&& handle) {
+    metrics.Roll(nowMs);
+    uint8_t buf[1500];
+    uint32_t from = 0;
+    uint16_t port = 0;
+    int n = 0;
+    while ((n = recv(buf, static_cast<int>(sizeof buf), from, port)) > 0) {
+        metrics.OnRecv(n);// count on the wire (pre-conditioning) for true link bandwidth
+        if (cond.Active())
+            cond.Push(nowMs, from, port, buf, n);
+        else
+            handle(buf, n, from, port);
+    }
+    if (cond.Active())
+        while (cond.Pop(nowMs, from, port, buf, static_cast<int>(sizeof buf), n))
+            handle(buf, n, from, port);
+}

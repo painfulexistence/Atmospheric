@@ -145,26 +145,13 @@ void LockstepNet::SendRaw(const uint8_t* data, int len) {
 void LockstepNet::Pump(uint32_t nowMs) {
     if (mode == Mode::Solo || !_socket.IsOpen()) return;
 
-    _metrics.Roll(nowMs);
-    uint8_t buf[1500];
-    for (;;) {
-        uint32_t fromAddr = 0;
-        uint16_t fromPort = 0;
-        int n = _socket.RecvFrom(buf, static_cast<int>(sizeof(buf)), fromAddr, fromPort);
-        if (n <= 0) break;
-        _metrics.OnRecv(n);
-        if (_cond.Active())
-            _cond.Push(nowMs, fromAddr, fromPort, buf, n);
-        else
-            HandlePacket(buf, n, fromAddr, fromPort, nowMs);
-    }
-    if (_cond.Active()) {
-        uint32_t fromAddr = 0;
-        uint16_t fromPort = 0;
-        int n = 0;
-        while (_cond.Pop(nowMs, fromAddr, fromPort, buf, static_cast<int>(sizeof(buf)), n))
-            HandlePacket(buf, n, fromAddr, fromPort, nowMs);
-    }
+    PumpConditioned(
+        _cond,
+        _metrics,
+        nowMs,
+        [&](uint8_t* b, int max, uint32_t& from, uint16_t& port) { return _socket.RecvFrom(b, max, from, port); },
+        [&](const uint8_t* b, int n, uint32_t from, uint16_t port) { HandlePacket(b, n, from, port, nowMs); }
+    );
     UpdateMetrics(nowMs);
 
     // Client always sends HELLOs while connecting.
@@ -281,26 +268,19 @@ void LockstepNet::SendRaw(const uint8_t* data, int len) {
 void LockstepNet::Pump(uint32_t nowMs) {
     if (mode == Mode::Solo) return;
 
-    _metrics.Roll(nowMs);
-    uint8_t buf[1500];
-    for (;;) {
-        int n = js_rtc_recv(buf, static_cast<int>(sizeof(buf)));
-        if (n <= 0) break;
-        _metrics.OnRecv(n);
-        // fromAddr/fromPort are 0; HandlePacket uses the same values for
-        // peerAddr/peerPort so the "ignore unknown sender" check still passes.
-        if (_cond.Active())
-            _cond.Push(nowMs, 0, 0, buf, n);
-        else
-            HandlePacket(buf, n, 0, 0, nowMs);
-    }
-    if (_cond.Active()) {
-        uint32_t fromAddr = 0;
-        uint16_t fromPort = 0;
-        int n = 0;
-        while (_cond.Pop(nowMs, fromAddr, fromPort, buf, static_cast<int>(sizeof(buf)), n))
-            HandlePacket(buf, n, fromAddr, fromPort, nowMs);
-    }
+    // WebRTC has no source address; recv reports (0,0), which HandlePacket
+    // treats as the peer (matching peerAddr/peerPort), so the sender check passes.
+    PumpConditioned(
+        _cond,
+        _metrics,
+        nowMs,
+        [&](uint8_t* b, int max, uint32_t& from, uint16_t& port) {
+            from = 0;
+            port = 0;
+            return js_rtc_recv(b, max);
+        },
+        [&](const uint8_t* b, int n, uint32_t from, uint16_t port) { HandlePacket(b, n, from, port, nowMs); }
+    );
     UpdateMetrics(nowMs);
 
     if (mode == Mode::Client && state == State::Connecting) {

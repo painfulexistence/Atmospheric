@@ -107,32 +107,13 @@ void ClientNet::HandlePacket(const uint8_t* buf, int n, uint32_t fromAddr, uint1
 
 void ClientNet::Pump(uint32_t nowMs) {
     if (!_socket.IsOpen()) return;
-    _metrics.Roll(nowMs);
-
-    // Drain the real socket. Byte counting happens here (pre-conditioning) so
-    // bandwidth reflects actual link usage. On a clean link (conditioner idle)
-    // process straight through — no per-packet copy; when it's active, buffer
-    // arrivals for delayed/lossy/duplicated delivery below.
-    uint8_t buf[512];
-    for (;;) {
-        uint32_t fromAddr = 0;
-        uint16_t fromPort = 0;
-        int n = _socket.RecvFrom(buf, static_cast<int>(sizeof(buf)), fromAddr, fromPort);
-        if (n <= 0) break;
-        _metrics.OnRecv(n);
-        if (_cond.Active())
-            _cond.Push(nowMs, fromAddr, fromPort, buf, n);
-        else
-            HandlePacket(buf, n, fromAddr, fromPort, nowMs);
-    }
-    if (_cond.Active()) {
-        uint32_t fromAddr = 0;
-        uint16_t fromPort = 0;
-        int n = 0;
-        while (_cond.Pop(nowMs, fromAddr, fromPort, buf, static_cast<int>(sizeof(buf)), n))
-            HandlePacket(buf, n, fromAddr, fromPort, nowMs);
-    }
-
+    PumpConditioned(
+        _cond,
+        _metrics,
+        nowMs,
+        [&](uint8_t* b, int max, uint32_t& from, uint16_t& port) { return _socket.RecvFrom(b, max, from, port); },
+        [&](const uint8_t* b, int n, uint32_t from, uint16_t port) { HandlePacket(b, n, from, port, nowMs); }
+    );
     _metrics.pendingInputs = static_cast<int>(_pending.size());
     _metrics.lossPct = _cond.Active() ? _cond.MeasuredLossPct() : 0.0f;
 }
@@ -184,10 +165,9 @@ void ClientNet::HandleSnapshot(const uint8_t* data, int len, uint32_t nowMs) {
             ++it;
         }
     }
-    // Prediction error = how far reconciliation had to snap the current
-    // predicted position. ~0 on a clean link (server agrees, replay reproduces
-    // the same head); spikes under loss/latency, then settles — the netgraph's
-    // money line for showing prediction/reconciliation actually working.
+    // Prediction error = how far reconciliation snapped the current predicted
+    // position: ~0 on a clean link (server agrees, replay reproduces the same
+    // head), spikes under loss/latency, then settles.
     const sim::Vec3 corr = { _predictedMotion.foot.x - predBefore.x,
                              _predictedMotion.foot.y - predBefore.y,
                              _predictedMotion.foot.z - predBefore.z };
