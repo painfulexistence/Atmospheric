@@ -1,5 +1,6 @@
 #pragma once
 #include "game_sim.hpp"
+#include <Atmospheric/datagram_socket.hpp>
 #include <Atmospheric/net_conditioner.hpp>
 #include <Atmospheric/net_metrics.hpp>
 #include <Atmospheric/udp_relay_client.hpp>
@@ -81,7 +82,7 @@ private:
     // branch), so these members would sit unused there even if they could be
     // declared.
 #ifndef __EMSCRIPTEN__
-    UdpSocket _socket;
+    DatagramSocket _socket;
     UdpRelayClient _relayClient;// only touched when useRelay is true
 #endif
     bool havePeer = false;

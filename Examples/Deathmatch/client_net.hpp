@@ -1,9 +1,9 @@
 #pragma once
 #include "protocol.hpp"
 #include "sim_common.hpp"
+#include <Atmospheric/datagram_socket.hpp>
 #include <Atmospheric/net_conditioner.hpp>
 #include <Atmospheric/net_metrics.hpp>
-#include <Atmospheric/udp_socket.hpp>
 
 #include <cstdint>
 #include <map>
@@ -125,7 +125,7 @@ private:
     static constexpr uint32_t kInterpDelayMs = 100;
     static constexpr uint32_t kInterpDelayTicks = 6;// ~100 ms at 60 Hz
 
-    UdpSocket _socket;
+    DatagramSocket _socket;
     uint32_t _serverAddr = 0;
     uint16_t _serverPort = 0;
 

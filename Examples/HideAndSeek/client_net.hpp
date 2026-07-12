@@ -1,9 +1,9 @@
 #pragma once
 #include "protocol.hpp"
 #include "sim_common.hpp"
+#include <Atmospheric/datagram_socket.hpp>
 #include <Atmospheric/net_conditioner.hpp>
 #include <Atmospheric/net_metrics.hpp>
-#include <Atmospheric/udp_socket.hpp>
 
 #include <cstdint>
 #include <map>
@@ -63,7 +63,7 @@ public:
     }
 
 private:
-    UdpSocket _socket;
+    DatagramSocket _socket;
     uint32_t _serverAddr = 0;
     uint16_t _serverPort = 0;
     proto::Role _role = proto::Role::Seeker;
