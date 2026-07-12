@@ -163,15 +163,25 @@ approaching `grassRadius` so the ring edge is invisible. `grass.frag` does the
 Ghost-of-Tsushima look: dark-root→golden-tip gradient, wrap lighting, backlit
 translucency, gust glint, and the same aerial-perspective fog as the terrain.
 
-**Gaea-grade sources, reserved splat space.** The height source is a
+**Gaea-grade sources, live splat texturing.** The height source is a
 pluggable `heightFn(wx, wz) → [0,1]` called in world metres on worker
 threads — the default is OpenSimplex2 FBm, but a Gaea tiled-export sampler or
 any erosion-simulating generator plugs in without touching the streamer.
-Splat is reserved end-to-end: shared detail layers (`layers`, up to 4 albedo
-+ normal, world-continuous tiling) plus an optional per-tile `splatFn(worldMin,
-worldMax, res) → RGBA8` generated alongside heights and uploaded per tile
-(`AssetManager::CreateOrUpdateTextureRGBA8` recycles slot textures — no cache
-growth).
+Splat runs end-to-end: shared detail layers (`layers`, up to 4 albedo +
+normal, world-continuous tiling, `TerrainLayerDesc` takes disk paths or
+pre-created handles) plus an optional per-tile `splatFn(worldMin, worldMax,
+res, height01) → RGBA8` generated alongside heights on the workers and
+uploaded per tile (`AssetManager::CreateOrUpdateTextureRGBA8` recycles slot
+textures — no cache growth).
+
+Until a real Gaea export is wired, **`TerrainTextureGen`** supplies the
+content procedurally: four seamlessly tiling detail materials (grass, rock,
+dirt/scree, snow — albedo + tangent normals from periodic FBm, uploaded with
+REPEAT + mips) and `DefaultSplat`, a thread-safe weight generator (slope →
+rock, noisy snowline → snow, worn patches + valley sediment → dirt, grass as
+remainder). The TerrainStreaming demo uses both; replacing them with Gaea
+exports is a content swap, not a code change. LOD-tint debug (`L`) suspends
+the layers while active since they override the palette the tint writes to.
 
 ### Answering the design questions
 

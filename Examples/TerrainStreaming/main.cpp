@@ -3,6 +3,7 @@
 #include "Atmospheric/material.hpp"
 #include "Atmospheric/mesh.hpp"
 #include "Atmospheric/mesh_builder.hpp"
+#include "Atmospheric/terrain_texture_gen.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -111,6 +112,16 @@ class TerrainStreamingDemo : public Application {
         ));
         _rockMesh = am.CreateMesh("ent_rock", rock);
 
+        // Procedural Gaea stand-in: four seamlessly tiling detail layers
+        // (albedo + normal, generated in a few ms at init) and a splat
+        // generator keyed on the exact streamed height source. Swapping in a
+        // real Gaea export later = replace these with file loads; the
+        // streamer/shader path is identical.
+        const auto grassLayer = TerrainTextureGen::GenerateGrass();
+        const auto rockLayer = TerrainTextureGen::GenerateRock();
+        const auto dirtLayer = TerrainTextureGen::GenerateDirt();
+        const auto snowLayer = TerrainTextureGen::GenerateSnow();
+
         // The terrain GameObject roots every tile/collider/entity; the
         // component's OnAttach prewarms the world (synchronous, ~1 frame) and
         // its OnTick streams thereafter — no per-frame work left in the app.
@@ -143,7 +154,21 @@ class TerrainStreamingDemo : public Application {
 #if !defined(__EMSCRIPTEN__)
                 .cacheDir = FileSystem::Get().BasePath() + "cache/terrain",
 #endif
-                // .layers / .splatFn: plug Gaea-style splat + detail textures here.
+                // Detail layers + splat = the full Gaea texturing path, fed by
+                // the procedural generators above. Tiling is repeats per tile
+                // edge (world period = 512m / tiling): grass repeats every 4m,
+                // rock every ~21m, dirt every 8m, snow every ~13m so no layer
+                // shows an obvious repeat at its typical viewing distance.
+                .layers = { { .albedo = grassLayer.albedo, .normal = grassLayer.normal, .tiling = 128.0f },
+                            { .albedo = rockLayer.albedo, .normal = rockLayer.normal, .tiling = 24.0f },
+                            { .albedo = dirtLayer.albedo, .normal = dirtLayer.normal, .tiling = 64.0f },
+                            { .albedo = snowLayer.albedo, .normal = snowLayer.normal, .tiling = 40.0f } },
+                .splatFn =
+                    [](glm::vec2 mn, glm::vec2 mx, int res, const std::function<float(float, float)>& h01) {
+                        TerrainTextureGen::SplatParams sp;
+                        sp.heightScale = 500.0f;// must match .heightScale above
+                        return TerrainTextureGen::DefaultSplat(mn, mx, res, h01, sp);
+                    },
                 .colliderRadiusTiles = 1,
                 // Deterministic scatter: slope/height rules decide trees vs
                 // rocks; the streamer builds/pools one instance cloud per
@@ -187,10 +212,10 @@ class TerrainStreamingDemo : public Application {
                 .grassRadius = 90.0f,
                 .grassBladeHeight = 1.6f,
                 .grassMaxSlope = 1000.0f,// grow grass everywhere, ignore slope
-                // Cover almost the whole elevation range (default {0.04,0.65}
-                // left the upper terrain — a big chunk of a 500m world — bald)
-                // and lift the sparse drifts so meadows read as continuous.
-                .grassHeightBand = { 0.02f, 0.95f },
+                // Grass blades stop where the splat snowline starts (0.62) —
+                // golden pampas poking through snow reads wrong; the rock and
+                // snow LAYERS carry the peaks now, not bald palette terrain.
+                .grassHeightBand = { 0.02f, 0.64f },
                 .grassCoverage = 0.7f,
                 .grassWindStrength = 0.45f,
                 .grassWindSpeed = 1.8f,

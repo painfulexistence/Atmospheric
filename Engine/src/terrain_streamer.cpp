@@ -123,8 +123,15 @@ void TerrainStreamer::Init(Application* app, const StreamingTerrainProps& props,
     const int layerCount = std::min(static_cast<int>(_props.layers.size()), TerrainMaterial::MAX_LAYERS);
     for (int i = 0; i < layerCount; ++i) {
         ResolvedLayer layer;
-        if (!_props.layers[i].albedoPath.empty()) layer.albedo = am.CreateTexture(_props.layers[i].albedoPath);
-        if (!_props.layers[i].normalPath.empty()) layer.normal = am.CreateTexture(_props.layers[i].normalPath);
+        // Pre-created handles (procedural generators) win over disk paths.
+        if (_props.layers[i].albedo.IsValid())
+            layer.albedo = _props.layers[i].albedo;
+        else if (!_props.layers[i].albedoPath.empty())
+            layer.albedo = am.CreateTexture(_props.layers[i].albedoPath);
+        if (_props.layers[i].normal.IsValid())
+            layer.normal = _props.layers[i].normal;
+        else if (!_props.layers[i].normalPath.empty())
+            layer.normal = am.CreateTexture(_props.layers[i].normalPath);
         layer.tilesPerTile = _props.layers[i].tiling;
         _layers.push_back(layer);
     }
@@ -227,7 +234,12 @@ float TerrainStreamer::GetHeight(float wx, float wz) const {
 void TerrainStreamer::SetLodTintDebug(bool enabled) {
     _lodTintDebug = enabled;
     for (auto& slot : _allSlots) {
-        if (slot->material) slot->material->paletteIndex = enabled ? slot->lod % 6 : _props.paletteIndex;
+        if (!slot->material) continue;
+        slot->material->paletteIndex = enabled ? slot->lod % 6 : _props.paletteIndex;
+        // Detail layers override the palette in terrain.frag, so tint mode
+        // suspends them (and restores on the way out) or L would be a no-op
+        // on textured terrain.
+        slot->material->layerCount = enabled ? 0 : static_cast<int>(_layers.size());
     }
 }
 
@@ -298,7 +310,7 @@ void TerrainStreamer::RequestTile(glm::ivec2 coord, int lod) {
             if (cache) cache->Store(job->coord.x, job->coord.y, job->lod, cacheHash, w, job->heights);
         }
         if (cache) (cached ? hits : misses)->fetch_add(1, std::memory_order_relaxed);
-        if (wantSplat) job->splat = splatFn(gutterMin, gutterMax, splatRes);
+        if (wantSplat) job->splat = splatFn(gutterMin, gutterMax, splatRes, heightFn);
         job->done.store(true, std::memory_order_release);
     });
 }
@@ -380,7 +392,7 @@ TerrainStreamer::TileSlot* TerrainStreamer::AcquireSlot(int lod) {
     mat->fogDensity = _props.fogDensity;
     mat->fogColor = _props.fogColor;
     mat->renderState.cull = CullMode::None;// skirts must render from both sides
-    mat->layerCount = static_cast<int>(_layers.size());
+    mat->layerCount = _lodTintDebug ? 0 : static_cast<int>(_layers.size());
     for (size_t i = 0; i < _layers.size(); ++i) {
         mat->layers[i].albedoMap = _layers[i].albedo;
         mat->layers[i].normalMap = _layers[i].normal;

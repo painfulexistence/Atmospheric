@@ -126,9 +126,15 @@ struct StreamingTerrainProps {
     // Optional per-tile RGBA8 splat generator covering the given world rect
     // (rect includes the heightmap gutter so it lines up with the surface
     // UVs exactly). Runs on worker threads; return res*res*4 bytes, or empty
-    // to skip the tile. When null, tiles use the automatic slope/height
-    // weights (or the palette fallback when no layers are set either).
-    std::function<std::vector<unsigned char>(glm::vec2 worldMin, glm::vec2 worldMax, int res)> splatFn;
+    // to skip the tile. height01 is the streamer's exact height source
+    // (thread-safe, world metres -> [0,1]) so weights can key on the same
+    // terrain the tiles displace to. When null, tiles use the automatic
+    // slope/height weights (or the palette fallback when no layers are set
+    // either). TerrainTextureGen::DefaultSplat is a ready-made implementation.
+    std::function<std::vector<unsigned char>(
+        glm::vec2 worldMin, glm::vec2 worldMax, int res, const std::function<float(float, float)>& height01
+    )>
+        splatFn;
     int splatRes = 256;
 
     // Bullet heightfield colliders for LOD0 tiles within this Chebyshev

@@ -1721,7 +1721,7 @@ void AssetManager::UpdateHeightmapTexture(TextureHandle handle, const std::vecto
 }
 
 TextureHandle AssetManager::CreateOrUpdateTextureRGBA8(
-    const std::string& name, const unsigned char* data, int width, int height
+    const std::string& name, const unsigned char* data, int width, int height, bool tiled
 ) {
     const size_t bytes = static_cast<size_t>(width) * height * 4;
     auto it = _textureCache.find(name);
@@ -1753,10 +1753,20 @@ TextureHandle AssetManager::CreateOrUpdateTextureRGBA8(
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     // Full re-specification: handles resolution changes as well as data updates.
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if (tiled) {
+        // Tiled detail layer: repeat wrap + mip chain, or high-frequency
+        // tiling shimmers at any distance.
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    } else {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
     glBindTexture(GL_TEXTURE_2D, 0);
 
     _textureCache[name] = { texID, static_cast<uint32_t>(width), static_cast<uint32_t>(height), bytes };
