@@ -261,6 +261,104 @@ TextureHandle GfxFactory::UploadTexture2D(const uint8_t* pixels, int w, int h, T
     return TextureHandle{ static_cast<uint32_t>(texID) };
 }
 
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+static uint16_t FloatToHalf(float f);// defined below; needed by UploadTextureRGBA16F
+#endif
+
+// Filterable half-float RGBA, wrapped horizontally / clamped vertically — the
+// layout an equirectangular HDR environment map wants (longitude wraps at the
+// seam, latitude clamps at the poles). Unlike RGBA32F this is linear-filterable
+// on every backend, so the sky and IBL lookups get smooth bilinear sampling.
+uint32_t GfxFactory::UploadTextureRGBA16F(const float* rgba, int w, int h) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (_backend == GfxBackend::WebGPU && _wgpuDevice) {
+        uint32_t id = _nextTexID++;
+
+        WGPUTextureDescriptor td{};
+        td.size = { static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+        td.format = WGPUTextureFormat_RGBA16Float;
+        td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+        td.dimension = WGPUTextureDimension_2D;
+        td.mipLevelCount = 1;
+        td.sampleCount = 1;
+        WGPUTexture tex = wgpuDeviceCreateTexture(_wgpuDevice, &td);
+
+        std::vector<uint16_t> halves(static_cast<size_t>(w) * h * 4);
+        for (size_t i = 0; i < halves.size(); ++i)
+            halves[i] = FloatToHalf(rgba[i]);
+
+        WGPUTexelCopyTextureInfo dst{};
+        dst.texture = tex;
+        dst.aspect = WGPUTextureAspect_All;
+        WGPUTexelCopyBufferLayout layout{};
+        layout.bytesPerRow = static_cast<uint32_t>(w) * 4 * 2;// 4 channels * 2 bytes (half)
+        layout.rowsPerImage = static_cast<uint32_t>(h);
+        WGPUExtent3D extent{ static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+        wgpuQueueWriteTexture(_wgpuQueue, &dst, halves.data(), halves.size() * 2, &layout, &extent);
+
+        _gpuTextures[id] = { tex, TextureFilter::Linear };// rgba16float is filterable
+        return id;
+    }
+#endif
+    GLuint texID;
+    glGenTextures(1, &texID);
+    glBindTexture(GL_TEXTURE_2D, texID);
+    // Mip chain doubles as a cheap IBL prefilter: the PBR shader samples higher
+    // LODs for rougher surfaces (roughness -> textureLod bias).
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);// longitude wraps
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);// latitude clamps
+    // Source is 32-bit float; the driver converts to the RGBA16F internal format.
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, rgba);
+    glGenerateMipmap(GL_TEXTURE_2D);// build the LOD chain sampled by the IBL specular term
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return static_cast<uint32_t>(texID);
+}
+
+uint32_t GfxFactory::UploadTextureRGBA32F(const float* rgba, int w, int h) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (_backend == GfxBackend::WebGPU && _wgpuDevice) {
+        uint32_t id = _nextTexID++;
+
+        WGPUTextureDescriptor td{};
+        td.size = { static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+        td.format = WGPUTextureFormat_RGBA32Float;
+        td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+        td.dimension = WGPUTextureDimension_2D;
+        td.mipLevelCount = 1;
+        td.sampleCount = 1;
+        WGPUTexture tex = wgpuDeviceCreateTexture(_wgpuDevice, &td);
+
+        WGPUTexelCopyTextureInfo dst{};
+        dst.texture = tex;
+        dst.aspect = WGPUTextureAspect_All;
+        WGPUTexelCopyBufferLayout layout{};
+        layout.bytesPerRow = static_cast<uint32_t>(w) * 4 * 4;// 4 channels * 4 bytes
+        layout.rowsPerImage = static_cast<uint32_t>(h);
+        WGPUExtent3D extent{ static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
+        wgpuQueueWriteTexture(_wgpuQueue, &dst, rgba, static_cast<size_t>(w) * h * 4 * sizeof(float), &layout, &extent);
+
+        // rgba32float is non-filterable; record Nearest so any sampler-based
+        // consumer picks a matching (non-filtering) sampler. VAT samples it with
+        // textureLoad, which needs no sampler at all.
+        _gpuTextures[id] = { tex, TextureFilter::Nearest };
+        return id;
+    }
+#endif
+    // OpenGL / WebGL path — NEAREST + CLAMP baked into the texture object.
+    GLuint texID;
+    glGenTextures(1, &texID);
+    glBindTexture(GL_TEXTURE_2D, texID);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, w, h, 0, GL_RGBA, GL_FLOAT, rgba);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return static_cast<uint32_t>(texID);
+}
+
 TextureFilter GfxFactory::GetTextureFilter(TextureHandle id) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     auto it = _gpuTextures.find(id.id);
