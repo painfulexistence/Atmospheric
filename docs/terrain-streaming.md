@@ -119,10 +119,22 @@ height queries anywhere (used by the demo's ground clamp).
 **Entity streaming (props/vegetation).** Tiles inside `entityRadiusTiles`
 of the camera get entities: `placeEntitiesFn` produces deterministic
 per-tile placements (seeded by tile coord, heights sampled from the *exact*
-source via `ctx.HeightAt`, so feet match LOD0 ground), `spawnEntityFn`
-builds the GameObjects. Tiles leaving the ring return their objects to
-per-type pools — the live entity count is bounded by the ring area, and
-revisiting a tile reproduces the identical scatter. Population is budgeted
+source via `ctx.HeightAt`, so feet match LOD0 ground). Placements are
+realized one of two ways, per type:
+
+- **Instanced (default for scatter):** `entityMeshes[type]` names a
+  prototype mesh, and every placement of that type in a tile folds into one
+  `MeshInstancer` cloud — one GameObject, one frustum test, one sort entry
+  per (tile, type), and the renderer's batcher merges every tile's cloud of
+  the same mesh+material into a single instanced draw. Visual-only (no
+  per-entity physics/scripts).
+- **Spawned:** types without an `entityMeshes` entry go through
+  `spawnEntityFn`, which builds a full GameObject per placement — for
+  entities that need colliders, scripts, or animation.
+
+Tiles leaving the ring return their objects (clouds or singles) to per-type
+pools — the live entity count is bounded by the ring area, and revisiting a
+tile reproduces the identical scatter. Population is budgeted
 (`entityTilesPerFrame`) and nearest-first. This is the Phase-3 seed: the
 same per-tile placement lists later drive impostors and HLOD proxies for
 the rings beyond `entityRadiusTiles`.
@@ -202,16 +214,17 @@ scale:
   the shader near ring boundaries to eliminate the (already subtle)
   LOD-switch pop entirely — the tese shader already samples the heightmap, so
   it needs only the coarser mip + a morph factor.
-- **Shared tile vertex buffers**: tiles currently own per-slot VBs because
-  draw batching keys material off the mesh; add per-instance material binding
-  to the TERRAIN pass and all tiles of an LOD share one grid mesh
+- **Shared tile vertex buffers**: tiles currently own per-slot VBs. The
+  batcher now keys on (mesh, material) with material decoupled into
+  RenderCommand, so the remaining work is per-instance heightmap binding in
+  the TERRAIN pass; then all tiles of an LOD share one grid mesh
   (~25MB → ~1MB, and instanced draws).
 
 ## Phase 3 — the world on top (HLOD)
 
-- Deterministic per-tile scatter is **implemented** (`placeEntitiesFn` /
-  `spawnEntityFn`, pooled ring streaming); next: drive it from splat weights
-  instead of raw slope/height rules.
+- Deterministic per-tile scatter is **implemented** (`placeEntitiesFn` +
+  `entityMeshes` instance clouds / `spawnEntityFn`, pooled ring streaming);
+  next: drive it from splat weights instead of raw slope/height rules.
 - Near ring: real instanced meshes (today); mid ring: impostor billboards;
   far ring: baked **HLOD proxy** per tile (one merged mesh + one baked atlas
   texture), generated offline or on first visit — the per-tile placement

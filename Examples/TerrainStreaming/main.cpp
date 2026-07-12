@@ -3,7 +3,6 @@
 #include "Atmospheric/material.hpp"
 #include "Atmospheric/mesh.hpp"
 #include "Atmospheric/mesh_builder.hpp"
-#include "Atmospheric/mesh_component.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -97,8 +96,9 @@ class TerrainStreamingDemo : public Application {
             }
         ));
 
-        // Shared entity meshes: one mesh + material per type, so every spawned
-        // instance batches into the same draw.
+        // Entity prototype meshes: one mesh + material per type, drawn via
+        // per-tile MeshInstancer clouds (see .entityMeshes below), so all
+        // trees across the whole ring collapse into one instanced draw.
         auto& am = AssetManager::Get();
         Mesh* tree = MeshBuilder::CreateCube(1.0f);
         tree->SetMaterial(am.GetMaterialHandle(
@@ -146,7 +146,8 @@ class TerrainStreamingDemo : public Application {
                 // .layers / .splatFn: plug Gaea-style splat + detail textures here.
                 .colliderRadiusTiles = 1,
                 // Deterministic scatter: slope/height rules decide trees vs
-                // rocks; the streamer spawns/pools them as the ring moves.
+                // rocks; the streamer builds/pools one instance cloud per
+                // (tile, type) as the ring moves.
                 .placeEntitiesFn =
                     [](const TerrainTileContext& ctx) {
                         std::vector<TerrainEntityPlacement> out;
@@ -174,13 +175,11 @@ class TerrainStreamingDemo : public Application {
                         }
                         return out;
                     },
-                .spawnEntityFn =
-                    [this](Application* app, const TerrainEntityPlacement& p) {
-                        auto* go = app->CreateGameObject(glm::vec3(0.0f));
-                        go->SetName(p.type == 0 ? "tree" : "rock");
-                        go->AddComponent<MeshComponent>(p.type == 0 ? _treeMesh : _rockMesh);
-                        return go;
-                    },
+                // Instanced clouds: one MeshInstancer per (tile, type) instead
+                // of a GameObject per tree/rock — the whole ring is a handful
+                // of commands, and BuildBatches folds every tile's cloud of the
+                // same mesh into a single instanced draw.
+                .entityMeshes = { _treeMesh, _rockMesh },
                 .entityRadiusTiles = 3,
                 // Golden pampas grass in a streamed ring around the camera —
                 // watch cells build in as you sprint (GoT-style wind sway).

@@ -10,6 +10,7 @@
 #include "mesh.hpp"
 #include "mesh_builder.hpp"
 #include "mesh_component.hpp"
+#include "mesh_instancer.hpp"
 #include "rigidbody_component.hpp"
 #include "terrain_tile_cache.hpp"
 
@@ -469,7 +470,8 @@ void TerrainStreamer::UpdateColliders(glm::ivec2 camTile) {
 // ── entity streaming ─────────────────────────────────────────────────────────
 
 void TerrainStreamer::UpdateEntities(glm::ivec2 camTile) {
-    if (!_props.placeEntitiesFn || !_props.spawnEntityFn || _props.entityRadiusTiles < 0) return;
+    if (!_props.placeEntitiesFn || _props.entityRadiusTiles < 0) return;
+    if (!_props.spawnEntityFn && _props.entityMeshes.empty()) return;// no way to realize placements
     const int r = _props.entityRadiusTiles;
 
     // Release tiles that left the ring (+1 hysteresis) back into the pools.
@@ -481,7 +483,7 @@ void TerrainStreamer::UpdateEntities(glm::ivec2 camTile) {
         for (auto& entity : _entityTiles[coord]) {
             entity.go->SetActive(false);
             _entityPool[entity.type].push_back(entity.go);
-            --_activeEntities;
+            _activeEntities -= entity.count;
         }
         _entityTiles.erase(coord);
     }
@@ -516,8 +518,29 @@ void TerrainStreamer::UpdateEntities(glm::ivec2 camTile) {
         ctx.seed = _props.noise.seed;
         ctx.height01 = &_heightFn;
 
+        // Types with a prototype in entityMeshes accumulate into one instance
+        // cloud per (tile, type); everything else spawns a GameObject each via
+        // spawnEntityFn (the pre-instancing path, for entities that need their
+        // own components).
+        auto isInstanced = [this](int type) {
+            return type >= 0 && type < static_cast<int>(_props.entityMeshes.size())
+                   && _props.entityMeshes[type].IsValid();
+        };
+
         std::vector<SpawnedEntity> spawned;
+        std::unordered_map<int, std::vector<glm::mat4>> clouds;
         for (const auto& placement : _props.placeEntitiesFn(ctx)) {
+            if (isInstanced(placement.type)) {
+                // World-space TRS; the cloud GameObject sits at the origin so
+                // these pass through MeshInstancer's goTransform * local as-is.
+                clouds[placement.type].push_back(
+                    glm::translate(glm::mat4(1.0f), placement.position)
+                    * glm::rotate(glm::mat4(1.0f), placement.yaw, glm::vec3(0.0f, 1.0f, 0.0f))
+                    * glm::scale(glm::mat4(1.0f), glm::vec3(placement.scale))
+                );
+                continue;
+            }
+            if (!_props.spawnEntityFn) continue;
             GameObject* go = nullptr;
             auto& pool = _entityPool[placement.type];
             if (!pool.empty()) {
@@ -532,8 +555,29 @@ void TerrainStreamer::UpdateEntities(glm::ivec2 camTile) {
             go->SetRotation(glm::vec3(0.0f, placement.yaw, 0.0f));
             go->SetScale(glm::vec3(placement.scale));
             go->SetActive(true);
-            spawned.push_back({ placement.type, go });
+            spawned.push_back({ placement.type, go, 1 });
             ++_activeEntities;
+        }
+
+        for (auto& [type, transforms] : clouds) {
+            const int count = static_cast<int>(transforms.size());
+            GameObject* go = nullptr;
+            auto& pool = _entityPool[type];
+            if (!pool.empty()) {
+                go = pool.back();
+                pool.pop_back();
+            } else {
+                go = _app->CreateGameObject(glm::vec3(0.0f));
+                go->SetName(fmt::format("entity_cloud_{}", type));
+                go->parent = _root;
+                go->AddComponent<MeshInstancer>(MeshInstancerProps{ .prototype = _props.entityMeshes[type] });
+            }
+            if (auto* instancer = go->GetComponent<MeshInstancer>()) {
+                instancer->SetTransforms(std::move(transforms));
+            }
+            go->SetActive(true);
+            spawned.push_back({ type, go, count });
+            _activeEntities += count;
         }
         // Record even when empty so barren tiles aren't re-scattered per frame.
         _entityTiles[m.coord] = std::move(spawned);

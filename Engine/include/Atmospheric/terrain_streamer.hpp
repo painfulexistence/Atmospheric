@@ -143,9 +143,19 @@ struct StreamingTerrainProps {
     // ring return their GameObjects to per-type pools for reuse, so the
     // world-wide entity count is bounded by the ring area.
     std::function<std::vector<TerrainEntityPlacement>(const TerrainTileContext&)> placeEntitiesFn;
+    // Instanced types: entityMeshes[type] is the prototype mesh for that
+    // placement type. Placements whose type has a valid entry here are folded
+    // into ONE MeshInstancer cloud per (tile, type) — one GameObject, one
+    // frustum test, one batch entry for the whole tile's worth — instead of a
+    // GameObject each. Instanced entities are visual-only (no per-entity
+    // physics/scripts); leave a type's slot invalid (or the vector short) to
+    // route it through spawnEntityFn below.
+    std::vector<MeshHandle> entityMeshes;
     // Build a fresh GameObject for a placement (mesh/components only — the
     // streamer applies position/yaw/scale/active and re-applies them when a
-    // pooled object of the same type is recycled for a new placement).
+    // pooled object of the same type is recycled for a new placement). Only
+    // consulted for types without an entityMeshes entry; use it when an entity
+    // needs its own components (colliders, scripts, animation).
     std::function<GameObject*(Application*, const TerrainEntityPlacement&)> spawnEntityFn;
     int entityRadiusTiles = 3;
     int entityTilesPerFrame = 1;// tiles populated per Update()
@@ -300,9 +310,14 @@ private:
     std::vector<ColliderSlot> _colliders;
 
     // Entity streaming: live per-tile spawn lists plus per-type recycle pools.
+    // For instanced types (entityMeshes[type] valid) the GameObject is a
+    // MeshInstancer cloud covering every placement of that type in the tile;
+    // otherwise it's one spawned entity. A type is consistently one or the
+    // other (entityMeshes is fixed at Init), so the shared pools never mix.
     struct SpawnedEntity {
         int type = 0;
         GameObject* go = nullptr;
+        int count = 1;// instances represented (cloud size for instanced types)
     };
     std::unordered_map<glm::ivec2, std::vector<SpawnedEntity>, IVec2Hash> _entityTiles;
     std::unordered_map<int, std::vector<GameObject*>> _entityPool;
