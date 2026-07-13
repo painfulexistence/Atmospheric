@@ -210,6 +210,7 @@ set(SOURCES
     src/animator_component.cpp
     src/animation_subsystem.cpp
     src/flipbook_component.cpp
+    src/action_timeline_component.cpp
     src/asset_manager.cpp
     src/font_manager.cpp
     src/job_system.cpp
