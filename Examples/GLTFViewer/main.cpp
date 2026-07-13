@@ -63,11 +63,13 @@ class GLTFViewer : public Application {
 };
 
 int main(int, char*[]) {
-    GLTFViewer game({
-        .windowTitle = "GLTFViewer",
-        .useDefaultTextures = true,
-        .useDefaultShaders = true,
-    });
+    GLTFViewer game(
+        {
+            .windowTitle = "GLTFViewer",
+            .useDefaultTextures = true,
+            .useDefaultShaders = true,
+        }
+    );
     game.Run();
     return 0;
 }

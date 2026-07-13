@@ -57,11 +57,13 @@ class USDViewer : public Application {
 };
 
 int main(int, char*[]) {
-    USDViewer game({
-        .windowTitle = "USDViewer",
-        .useDefaultTextures = true,
-        .useDefaultShaders = true,
-    });
+    USDViewer game(
+        {
+            .windowTitle = "USDViewer",
+            .useDefaultTextures = true,
+            .useDefaultShaders = true,
+        }
+    );
     game.Run();
     return 0;
 }

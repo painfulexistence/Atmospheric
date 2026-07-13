@@ -606,8 +606,10 @@ void Application::RegisterComponents() {
         auto* mr = new MeshRenderer(o, handle);
         if (!materialName.empty()) {
             MaterialHandle mat = am.GetMaterialHandle(materialName);
-            if (mat.IsValid()) mr->SetMaterial(mat);
-            else spdlog::warn("MeshRenderer: material '{}' not found for '{}'", materialName, o->GetName());
+            if (mat.IsValid())
+                mr->SetMaterial(mat);
+            else
+                spdlog::warn("MeshRenderer: material '{}' not found for '{}'", materialName, o->GetName());
         }
         return mr;
     });
@@ -981,7 +983,8 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
         if (prefab.ok)
             app->Instantiate(prefab, go, name.empty() ? prefabSrc : name);
         else
-            ConsoleSubsystem::Get()->Warn(fmt::format("ParseEntity '{}': failed to import prefab '{}'", name, prefabSrc)
+            ConsoleSubsystem::Get()->Warn(
+                fmt::format("ParseEntity '{}': failed to import prefab '{}'", name, prefabSrc)
             );
     }
 
@@ -1045,7 +1048,8 @@ static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::s
             mb.ior = matVal.value("ior", mb.ior);
             mb.thicknessFactor = matVal.value("thicknessFactor", mb.thicknessFactor);
             mb.attenuationDistance = matVal.value("attenuationDistance", mb.attenuationDistance);
-            mb.attenuationColor = ParseVec3(matVal.value("attenuationColor", nlohmann::json::array()), mb.attenuationColor);
+            mb.attenuationColor =
+                ParseVec3(matVal.value("attenuationColor", nlohmann::json::array()), mb.attenuationColor);
             mb.transmissionMap = matVal.value("transmissionMap", std::string(""));
             mb.thicknessMap = matVal.value("thicknessMap", std::string(""));
             bp.materials.push_back(std::move(mb));
@@ -1278,14 +1282,16 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
             lo = glm::min(lo, v.position);
             hi = glm::max(hi, v.position);
         }
-        mesh->SetBoundingBox({ glm::vec3(lo.x, lo.y, lo.z),
-                               glm::vec3(hi.x, lo.y, lo.z),
-                               glm::vec3(lo.x, hi.y, lo.z),
-                               glm::vec3(hi.x, hi.y, lo.z),
-                               glm::vec3(lo.x, lo.y, hi.z),
-                               glm::vec3(hi.x, lo.y, hi.z),
-                               glm::vec3(lo.x, hi.y, hi.z),
-                               glm::vec3(hi.x, hi.y, hi.z) });
+        mesh->SetBoundingBox(
+            { glm::vec3(lo.x, lo.y, lo.z),
+              glm::vec3(hi.x, lo.y, lo.z),
+              glm::vec3(lo.x, hi.y, lo.z),
+              glm::vec3(hi.x, hi.y, lo.z),
+              glm::vec3(lo.x, lo.y, hi.z),
+              glm::vec3(hi.x, lo.y, hi.z),
+              glm::vec3(lo.x, hi.y, hi.z),
+              glm::vec3(hi.x, hi.y, hi.z) }
+        );
         MeshHandle h = am.CreateMesh(fmt::format("{}#{}", baseName, i), mesh);
         if (mat.IsValid())
             if (Mesh* mp = am.GetMeshPtr(h)) mp->SetMaterial(mat);

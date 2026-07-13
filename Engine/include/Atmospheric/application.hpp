@@ -274,7 +274,8 @@ private:
 #endif
 
     void Update(const FrameData& frame);
-    void Render(const FrameData& frame
+    void Render(
+        const FrameData& frame
     );// TODO: Properly separate rendering and drawing logic if the backend supports command buffering
     void SyncTransformWithPhysics();
 

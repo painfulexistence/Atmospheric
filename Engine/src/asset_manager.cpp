@@ -339,7 +339,8 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
 
     int width, height, numChannels;
     if (!stbi_info_from_memory(fileData.data(), static_cast<int>(fileData.size()), &width, &height, &numChannels)) {
-        ConsoleSubsystem::Get()->Warn(fmt::format("stbi_info_from_memory: Failed to read image metadata at '{}'", path)
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format("stbi_info_from_memory: Failed to read image metadata at '{}'", path)
         );
         return nullptr;
     }
@@ -618,17 +619,21 @@ void AssetManager::LoadDefaultTextures() {
     // and to store textures on the GPU in ETC2 format (~4× less VRAM than RGBA).
     // These bytes must already be in FileSystem cache before this function is called
     // — populate them with FileSystem::Get().Prefetch() before Application::Run().
-    LoadTextures({ "assets/textures/default_diff.ktx2",
-                   "assets/textures/default_norm.ktx2",
-                   "assets/textures/default_ao.ktx2",
-                   "assets/textures/default_rough.ktx2",
-                   "assets/textures/default_metallic.ktx2" });
+    LoadTextures(
+        { "assets/textures/default_diff.ktx2",
+          "assets/textures/default_norm.ktx2",
+          "assets/textures/default_ao.ktx2",
+          "assets/textures/default_rough.ktx2",
+          "assets/textures/default_metallic.ktx2" }
+    );
 #else
-    LoadTextures({ "assets/textures/default_diff.jpg",
-                   "assets/textures/default_norm.jpg",
-                   "assets/textures/default_ao.jpg",
-                   "assets/textures/default_rough.jpg",
-                   "assets/textures/default_metallic.jpg" });
+    LoadTextures(
+        { "assets/textures/default_diff.jpg",
+          "assets/textures/default_norm.jpg",
+          "assets/textures/default_ao.jpg",
+          "assets/textures/default_rough.jpg",
+          "assets/textures/default_metallic.jpg" }
+    );
 #endif
 
     // Store as default textures
@@ -832,9 +837,12 @@ TextureHandle AssetManager::CreateTexture(const std::string& path) {
     // Regular image (PNG / JPG / etc.) via stb_image.
     auto image = LoadImage(redirectedPath);
     if (!image) {
-        ConsoleSubsystem::Get()->Warn(fmt::format(
-            "AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.", redirectedPath
-        ));
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format(
+                "AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.",
+                redirectedPath
+            )
+        );
         GLuint fallbackTex = defaultTextures.empty() ? 0u : defaultTextures[0];
         _textureCache[redirectedPath] = { fallbackTex, 0, 0, 0 };
         return TextureHandle(fallbackTex);
@@ -1555,11 +1563,13 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
             const size_t vertCount = posAcc.count;
 
             if (vertBase + vertCount > 65535) {
-                ConsoleSubsystem::Get()->Warn(fmt::format(
-                    "LoadGLTF '{}': vertex count exceeds uint16_t limit, primitive skipped. "
-                    "Consider splitting the mesh or upgrading to 32-bit indices.",
-                    path
-                ));
+                ConsoleSubsystem::Get()->Warn(
+                    fmt::format(
+                        "LoadGLTF '{}': vertex count exceeds uint16_t limit, primitive skipped. "
+                        "Consider splitting the mesh or upgrading to 32-bit indices.",
+                        path
+                    )
+                );
                 continue;
             }
 
@@ -1680,14 +1690,16 @@ MeshHandle AssetManager::LoadTBMap(const std::string& path, float scale) {
         lo = glm::min(lo, v.position);
         hi = glm::max(hi, v.position);
     }
-    mesh->SetBoundingBox({ glm::vec3(lo.x, lo.y, lo.z),
-                           glm::vec3(hi.x, lo.y, lo.z),
-                           glm::vec3(lo.x, hi.y, lo.z),
-                           glm::vec3(hi.x, hi.y, lo.z),
-                           glm::vec3(lo.x, lo.y, hi.z),
-                           glm::vec3(hi.x, lo.y, hi.z),
-                           glm::vec3(lo.x, hi.y, hi.z),
-                           glm::vec3(hi.x, hi.y, hi.z) });
+    mesh->SetBoundingBox(
+        { glm::vec3(lo.x, lo.y, lo.z),
+          glm::vec3(hi.x, lo.y, lo.z),
+          glm::vec3(lo.x, hi.y, lo.z),
+          glm::vec3(hi.x, hi.y, lo.z),
+          glm::vec3(lo.x, lo.y, hi.z),
+          glm::vec3(hi.x, lo.y, hi.z),
+          glm::vec3(lo.x, hi.y, hi.z),
+          glm::vec3(hi.x, hi.y, hi.z) }
+    );
 
     ENGINE_LOG(
         "LoadTBMap '{}': {} meshes, {} verts, {} indices", path, model.meshes.size(), allVerts.size(), allIndices.size()
@@ -1731,14 +1743,16 @@ MeshHandle AssetManager::LoadUSD(const std::string& path) {
         lo = glm::min(lo, v.position);
         hi = glm::max(hi, v.position);
     }
-    mesh->SetBoundingBox({ glm::vec3(lo.x, lo.y, lo.z),
-                           glm::vec3(hi.x, lo.y, lo.z),
-                           glm::vec3(lo.x, hi.y, lo.z),
-                           glm::vec3(hi.x, hi.y, lo.z),
-                           glm::vec3(lo.x, lo.y, hi.z),
-                           glm::vec3(hi.x, lo.y, hi.z),
-                           glm::vec3(lo.x, hi.y, hi.z),
-                           glm::vec3(hi.x, hi.y, hi.z) });
+    mesh->SetBoundingBox(
+        { glm::vec3(lo.x, lo.y, lo.z),
+          glm::vec3(hi.x, lo.y, lo.z),
+          glm::vec3(lo.x, hi.y, lo.z),
+          glm::vec3(hi.x, hi.y, lo.z),
+          glm::vec3(lo.x, lo.y, hi.z),
+          glm::vec3(hi.x, lo.y, hi.z),
+          glm::vec3(lo.x, hi.y, hi.z),
+          glm::vec3(hi.x, hi.y, hi.z) }
+    );
     ENGINE_LOG(
         "LoadUSD '{}': {} meshes, {} verts, {} indices", path, model.meshes.size(), allVerts.size(), allIndices.size()
     );

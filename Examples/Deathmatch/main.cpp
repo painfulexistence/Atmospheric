@@ -459,12 +459,14 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    DeathmatchGame game({ .windowTitle = "Deathmatch",
-                          .windowWidth = 1280,
-                          .windowHeight = 720,
-                          .enableAudio = false,
-                          .useDefaultTextures = true,
-                          .useDefaultShaders = true });
+    DeathmatchGame game(
+        { .windowTitle = "Deathmatch",
+          .windowWidth = 1280,
+          .windowHeight = 720,
+          .enableAudio = false,
+          .useDefaultTextures = true,
+          .useDefaultShaders = true }
+    );
     game.Run();
     return 0;
 }
