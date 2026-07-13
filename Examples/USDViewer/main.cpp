@@ -6,9 +6,9 @@
 // for a web payload).
 //
 // Two demo assets:
-//   • assets/cube.usda — tiny committed sample, declared straight from the
+//   • assets/models/cube.usda — tiny committed sample, declared straight from the
 //     scene JSON via the "prefab" entity field (always present).
-//   • assets/kitchen/Kitchen_set.usd — Pixar's Kitchen_set, the real
+//   • assets/models/kitchen/Kitchen_set.usd — Pixar's Kitchen_set, the real
 //     composition stress test. Not committed (large); fetch it with
 //     scripts/fetchKitchenSet.sh, and OnLoad imports it when present.
 //     Kitchen_set is Z-up in cm — the importer's stage upAxis/metersPerUnit
@@ -31,7 +31,7 @@ class USDViewer : public Application {
     void OnLoad() override {
         // The committed cube.usda arrives via the scene JSON's "prefab" field.
         // The kitchen is optional and big, so it loads here with a fallback hint.
-        const std::string kitchen = "assets/kitchen/Kitchen_set.usd";
+        const std::string kitchen = "assets/models/kitchen/Kitchen_set.usd";
         if (FileSystem::Get().Exists(kitchen)) {
             Prefab prefab = ImportPrefab(kitchen);
             if (prefab.ok) {

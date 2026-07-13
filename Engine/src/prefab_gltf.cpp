@@ -16,6 +16,7 @@
 // Unsupported (skipped, geometry still imports): Draco/meshopt compression,
 // specular-glossiness materials, skinning/morph targets.
 #include "console_subsystem.hpp"
+#include "file_system.hpp"
 #include "prefab.hpp"
 
 #include <cmath>
@@ -135,8 +136,13 @@ Prefab ImportGLTFPrefab(const std::string& path) {
         nullptr
     );
 
-    const bool result = path.ends_with(".glb") ? loader.LoadBinaryFromFile(&model, &err, &warn, path)
-                                               : loader.LoadASCIIFromFile(&model, &err, &warn, path);
+    // Resolve against the executable dir (like .map / USD) so loading is
+    // independent of the working directory and reads from MEMFS on web; tinygltf
+    // resolves external .bin/textures relative to this path. Fall back to the raw
+    // path so the loader still reports its own open error.
+    const std::string realPath = FileSystem::Get().ResolvePath(path).value_or(path);
+    const bool result = realPath.ends_with(".glb") ? loader.LoadBinaryFromFile(&model, &err, &warn, realPath)
+                                                   : loader.LoadASCIIFromFile(&model, &err, &warn, realPath);
     if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportGLTFPrefab '{}': {}", path, warn));
     if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportGLTFPrefab '{}' error: {}", path, err));
     if (!result) return Prefab{};

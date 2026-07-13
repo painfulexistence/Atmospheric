@@ -50,10 +50,10 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
             ${EM_PRELOAD_STAGING_DIR}/scenes
-        COMMAND ${CMAKE_COMMAND} -E copy
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/cube.usda
-            ${EM_PRELOAD_STAGING_DIR}/cube.usda
-        COMMENT "Staging Emscripten preload assets (shaders, fonts, ui, textures, scenes, cube.usda) for ${GAME_NAME}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/models
+            ${EM_PRELOAD_STAGING_DIR}/models
+        COMMENT "Staging Emscripten preload assets (shaders, fonts, ui, textures, scenes, models) for ${GAME_NAME}"
     )
     add_dependencies(${GAME_TARGET} stage_${GAME_NAME}_em_preload)
 
@@ -69,7 +69,7 @@ if(EMSCRIPTEN)
         # MEMFS. ae_copy_engine_assets skips Emscripten, hence this preload.
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/textures@assets/textures"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/cube.usda@assets/cube.usda"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/models@assets/models"
     )
 
     # Release builds use the centered custom shell (matches other examples);

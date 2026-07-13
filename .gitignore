@@ -31,4 +31,4 @@ local.properties
 .cxx/
 **/build/
 # Fetched USD sample scenes (scripts/fetchKitchenSet.sh)
-Examples/USDViewer/assets/kitchen/
+Examples/USDViewer/assets/models/kitchen/

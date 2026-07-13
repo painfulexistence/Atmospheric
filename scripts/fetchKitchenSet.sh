@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Download Pixar's Kitchen_set USD sample into Examples/USDViewer/assets/kitchen.
+# Download Pixar's Kitchen_set USD sample into Examples/USDViewer/assets/models/kitchen.
 # Kept out of the repo (~30MB). Official source: openusd.org downloads page.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-DEST="Examples/USDViewer/assets/kitchen"
+DEST="Examples/USDViewer/assets/models/kitchen"
 mkdir -p "$DEST"
 URL="https://graphics.pixar.com/usd/files/Kitchen_set.zip"
 echo "Fetching Kitchen_set from $URL ..."

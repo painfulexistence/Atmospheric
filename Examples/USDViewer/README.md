@@ -26,7 +26,7 @@ payload, build with `--no-usd`.
 
 Two assets:
 
-- **`assets/cube.usda`** (committed) — declared straight from
+- **`assets/models/cube.usda`** (committed) — declared straight from
   `assets/scenes/main.json` via the `"prefab"` entity field; always renders.
 - **Pixar Kitchen_set** (not committed, ~30MB) — the real composition test:
   Z-up, cm units, hundreds of meshes with references. Fetch it once:
@@ -35,7 +35,7 @@ Two assets:
   ./scripts/fetchKitchenSet.sh
   ```
 
-  On the next launch, USDViewer imports `assets/kitchen/Kitchen_set.usd`
+  On the next launch, USDViewer imports `assets/models/kitchen/Kitchen_set.usd`
   (upAxis/metersPerUnit are handled by the importer) and logs the mesh /
   material / vertex counts.
 

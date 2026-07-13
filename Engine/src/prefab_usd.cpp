@@ -3,6 +3,7 @@
 // materials with decoded textures, and applies stage upAxis / metersPerUnit at
 // the prefab root. Pure CPU; compiled to a warning stub without AE_USE_TINYUSDZ.
 #include "console_subsystem.hpp"
+#include "file_system.hpp"
 #include "prefab.hpp"
 
 #include "fmt/core.h"
@@ -110,9 +111,15 @@ namespace {
 }// namespace
 
 Prefab ImportUSDPrefab(const std::string& path) {
+    // Resolve against the executable dir (like .map) so loading is independent of
+    // the working directory, and so it reads from Emscripten's MEMFS. tinyusdz
+    // then resolves external references relative to this path. Fall back to the
+    // raw path so the loader still reports its own open error.
+    const std::string realPath = FileSystem::Get().ResolvePath(path).value_or(path);
+
     tinyusdz::Stage stage;
     std::string warn, err;
-    if (!tinyusdz::LoadUSDFromFile(path, &stage, &warn, &err)) {
+    if (!tinyusdz::LoadUSDFromFile(realPath, &stage, &warn, &err)) {
         if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab '{}': {}", path, warn));
         if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab '{}' error: {}", path, err));
         return Prefab{};
@@ -121,8 +128,8 @@ Prefab ImportUSDPrefab(const std::string& path) {
 
     tinyusdz::tydra::RenderSceneConverter converter;
     tinyusdz::tydra::RenderSceneConverterEnv env(stage);
-    const size_t slash = path.find_last_of("/\\");
-    if (slash != std::string::npos) env.set_search_paths({ path.substr(0, slash) });
+    const size_t slash = realPath.find_last_of("/\\");
+    if (slash != std::string::npos) env.set_search_paths({ realPath.substr(0, slash) });
     env.scene_config.load_texture_assets = true;// decode textures for materials
     // Keep 8-bit texels 8-bit — Tydra otherwise converts textures to fp32
     // (observed: a 768x768 jpg became a 9.4MB float buffer).
@@ -220,7 +227,7 @@ Prefab ImportUSDPrefab(const std::string& path) {
         return node;
     };
 
-    out.root.name = (slash == std::string::npos) ? path : path.substr(slash + 1);
+    out.root.name = (slash == std::string::npos) ? realPath : realPath.substr(slash + 1);
     if (rscene.default_root_node < rscene.nodes.size()) {
         out.root.children.push_back(buildNode(rscene.nodes[rscene.default_root_node]));
     } else {

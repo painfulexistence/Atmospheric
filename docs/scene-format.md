@@ -151,5 +151,5 @@ scene, and a **Quake `.map`** level:
 
 The three `prefab` paths are illustrative — point them at assets that exist in
 your project (e.g. Deathmatch's `assets/maps/arena.map`, USDViewer's
-`assets/cube.usda`). Coordinate/scale conventions per format are documented in
+`assets/models/cube.usda`). Coordinate/scale conventions per format are documented in
 [model-loading.md](model-loading.md).
