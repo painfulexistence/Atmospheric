@@ -1,5 +1,8 @@
 #pragma once
 #include "game_sim.hpp"
+#include <Atmospheric/datagram_socket.hpp>
+#include <Atmospheric/net_conditioner.hpp>
+#include <Atmospheric/net_metrics.hpp>
 #include <Atmospheric/udp_relay_client.hpp>
 #include <Atmospheric/udp_socket.hpp>
 #include <cstdint>
@@ -58,14 +61,28 @@ public:
     // Drop stored inputs/checksums older than `tick` (call as the sim advances).
     void PruneBelow(uint32_t tick);
 
+    // Netgraph data + the live inbound link emulator (mutable so HUD keybinds
+    // can dial it). Unlike the server-auth examples, lockstep reacts to loss by
+    // stalling (waiting for the missing input), not by mispredicting — the
+    // netgraph makes that contrast visible.
+    const NetMetrics& Metrics() const {
+        return _metrics;
+    }
+    NetConditioner& Conditioner() {
+        return _cond;
+    }
+
 private:
+    NetConditioner _cond;
+    NetMetrics _metrics;
+    void UpdateMetrics(uint32_t nowMs);// pending/loss/bandwidth roll, shared by both Pump paths
     // Native only: UdpSocket/UdpRelayClient don't exist on Emscripten (no raw
     // UDP sockets in the browser — see their header comments). The web build
     // uses RTCDataChannel instead (see net_lockstep.cpp's __EMSCRIPTEN__
     // branch), so these members would sit unused there even if they could be
     // declared.
 #ifndef __EMSCRIPTEN__
-    UdpSocket _socket;
+    DatagramSocket _socket;
     UdpRelayClient _relayClient;// only touched when useRelay is true
 #endif
     bool havePeer = false;

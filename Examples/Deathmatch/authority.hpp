@@ -1,7 +1,7 @@
 #pragma once
 #include "protocol.hpp"
 #include "sim_common.hpp"
-#include <Atmospheric/udp_socket.hpp>
+#include <Atmospheric/datagram_socket.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -102,7 +102,7 @@ private:
         bool active = false;
     };
 
-    UdpSocket _socket;
+    DatagramSocket _socket;
     PlayerSlot _slots[2];
     std::vector<Rocket> _rockets;
     uint16_t _nextRocketId = 1;

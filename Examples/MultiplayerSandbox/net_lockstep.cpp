@@ -134,6 +134,7 @@ bool LockstepNet::StartRelayClient(const std::string& relayIp, uint16_t relayPor
 
 void LockstepNet::SendRaw(const uint8_t* data, int len) {
     if (!_socket.IsOpen() || !havePeer) return;
+    _metrics.OnSent(len);
     if (useRelay) {
         _relayClient.Send(_socket, data, len);
         return;
@@ -144,14 +145,14 @@ void LockstepNet::SendRaw(const uint8_t* data, int len) {
 void LockstepNet::Pump(uint32_t nowMs) {
     if (mode == Mode::Solo || !_socket.IsOpen()) return;
 
-    uint8_t buf[1500];
-    for (;;) {
-        uint32_t fromAddr = 0;
-        uint16_t fromPort = 0;
-        int n = _socket.RecvFrom(buf, static_cast<int>(sizeof(buf)), fromAddr, fromPort);
-        if (n <= 0) break;
-        HandlePacket(buf, n, fromAddr, fromPort, nowMs);
-    }
+    PumpConditioned(
+        _cond,
+        _metrics,
+        nowMs,
+        [&](uint8_t* b, int max, uint32_t& from, uint16_t& port) { return _socket.RecvFrom(b, max, from, port); },
+        [&](const uint8_t* b, int n, uint32_t from, uint16_t port) { HandlePacket(b, n, from, port, nowMs); }
+    );
+    UpdateMetrics(nowMs);
 
     // Client always sends HELLOs while connecting.
     // Host in relay mode also sends HELLOs so the relay can register its address
@@ -260,20 +261,27 @@ void LockstepNet::Shutdown() {
 }
 
 void LockstepNet::SendRaw(const uint8_t* data, int len) {
+    _metrics.OnSent(len);
     js_rtc_send(data, len);
 }
 
 void LockstepNet::Pump(uint32_t nowMs) {
     if (mode == Mode::Solo) return;
 
-    uint8_t buf[1500];
-    for (;;) {
-        int n = js_rtc_recv(buf, static_cast<int>(sizeof(buf)));
-        if (n <= 0) break;
-        // fromAddr/fromPort are 0; HandlePacket uses the same values for
-        // peerAddr/peerPort so the "ignore unknown sender" check still passes.
-        HandlePacket(buf, n, 0, 0, nowMs);
-    }
+    // WebRTC has no source address; recv reports (0,0), which HandlePacket
+    // treats as the peer (matching peerAddr/peerPort), so the sender check passes.
+    PumpConditioned(
+        _cond,
+        _metrics,
+        nowMs,
+        [&](uint8_t* b, int max, uint32_t& from, uint16_t& port) {
+            from = 0;
+            port = 0;
+            return js_rtc_recv(b, max);
+        },
+        [&](const uint8_t* b, int n, uint32_t from, uint16_t port) { HandlePacket(b, n, from, port, nowMs); }
+    );
+    UpdateMetrics(nowMs);
 
     if (mode == Mode::Client && state == State::Connecting) {
         SendHello(nowMs);
@@ -411,6 +419,7 @@ void LockstepNet::HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, 
         if (len < 9) break;
         uint32_t sent = GetU32(data + 5);
         rttMs = static_cast<int>(nowMs - sent);
+        _metrics.FeedRtt(static_cast<float>(rttMs));// mirror lockstep's own estimate into the netgraph
         break;
     }
     default:
@@ -453,6 +462,13 @@ void LockstepNet::ShareChecksum(uint32_t tick, uint32_t sum) {
     PutU32(buf + 5, tick);
     PutU32(buf + 9, sum);
     SendRaw(buf, 13);
+}
+
+void LockstepNet::UpdateMetrics(uint32_t /*nowMs*/) {
+    _metrics.lossPct = _cond.Active() ? _cond.MeasuredLossPct() : 0.0f;
+    // Unacked local inputs still being redundantly resent — grows under loss/lag.
+    _metrics.pendingInputs = haveLocal ? static_cast<int>(localTop - peerAckedTick) : 0;
+    // predErr stays n/a: deterministic lockstep has no prediction to correct.
 }
 
 void LockstepNet::PruneBelow(uint32_t tick) {
