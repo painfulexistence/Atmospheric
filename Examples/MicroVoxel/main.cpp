@@ -30,9 +30,11 @@ class MicroVoxelApp : public Application {
             uint32_t seed;
             const char* name;
         } kVolumes[] = {
+            // Spaced by one grid width (12.8 m = 256 * 5 cm) at the same z, so
+            // the three volumes sit edge-to-edge in a straight, aligned row.
             { glm::vec3(0.0f, 0.0f, 0.0f), 1337u, "Volume.Center" },
-            { glm::vec3(13.5f, 0.0f, -1.0f), 7u, "Volume.Right" },
-            { glm::vec3(-13.5f, 0.0f, 2.0f), 99u, "Volume.Left" },
+            { glm::vec3(12.8f, 0.0f, 0.0f), 7u, "Volume.Right" },
+            { glm::vec3(-12.8f, 0.0f, 0.0f), 99u, "Volume.Left" },
         };
         for (const auto& vd : kVolumes) {
             auto* volumeObj = CreateGameObject();
