@@ -160,8 +160,14 @@ shares one `GrassMaterial`;
 `grass.vert` adds the two-band wind sway (slow travelling gust + per-blade
 flutter, t²-weighted so roots stay planted) and collapses blades to the ground
 approaching `grassRadius` so the ring edge is invisible. `grass.frag` does the
-Ghost-of-Tsushima look: dark-root→golden-tip gradient, wrap lighting, backlit
+Ghost-of-Tsushima look: dark-root→tip gradient, wrap lighting, backlit
 translucency, gust glint, and the same aerial-perspective fog as the terrain.
+The ring is controllable at runtime: `SetGrassEnabled` toggles it (live cells
+pool, nothing is destroyed), `SetGrassRadius` re-ranges the view distance
+(cells outside release next tick, the edge fade rescales, clamped to O(r²)
+sanity), and `SetGrassColors` retints root/tip — the demo keys those to the
+grass detail layer so blades blend into the textured ground. All three are on
+the ImGui panel.
 
 **Gaea-grade sources, live splat texturing.** The height source is a
 pluggable `heightFn(wx, wz) → [0,1]` called in world metres on worker
@@ -180,8 +186,10 @@ dirt/scree, snow — albedo + tangent normals from periodic FBm, uploaded with
 REPEAT + mips) and `DefaultSplat`, a thread-safe weight generator (slope →
 rock, noisy snowline → snow, worn patches + valley sediment → dirt, grass as
 remainder). The TerrainStreaming demo uses both; replacing them with Gaea
-exports is a content swap, not a code change. LOD-tint debug (`L`) suspends
-the layers while active since they override the palette the tint writes to.
+exports is a content swap, not a code change. Detail layers hide the fallback
+palette in terrain.frag, so both LOD-tint debug (`L`) and `SetPaletteOverride`
+(demo: `P` cycles textured → palette 0..5 → textured) suspend the layers while
+active — that's how the palette selector stays meaningful on textured terrain.
 
 ### Answering the design questions
 

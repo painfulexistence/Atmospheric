@@ -43,10 +43,11 @@ void StreamingTerrainComponent::DrawImGui() {
     ImGui::Text("Cache %d/%d hit", s.cacheHits, s.cacheHits + s.cacheMisses);
     ImGui::Text("Heightmap %zu MB", s.gpuHeightmapBytes / (1024 * 1024));
 
-    // Palette injection (mirrors VoxelWorldComponent) — SetPalette pushes the
-    // choice onto every resident tile material, so it also drives the P-key
-    // path in the demo. LOD tint overrides the palette, so disable the combo
-    // while it's on to avoid a confusing no-op.
+    // ── Surface ──────────────────────────────────────────────────────────
+    // Palette injection (mirrors VoxelWorldComponent). On textured terrain the
+    // detail layers hide the palette, so "Palette over layers" suspends them
+    // exactly like LOD tint; without it the combo only shows on untextured
+    // terrain. LOD tint owns the palette while on, so the combo greys out then.
     static const char* paletteNames[] = { "0 - Warm Pink/Gold", "1 - Cool Blue/Purple",    "2 - Earthy Green",
                                           "3 - Forest",         "4 - Soft Cool (default)", "5 - Vivid Mint/Coral" };
     bool tint = _streamer.GetLodTintDebug();
@@ -54,5 +55,20 @@ void StreamingTerrainComponent::DrawImGui() {
     int palette = _streamer.GetPalette();
     if (ImGui::Combo("Palette", &palette, paletteNames, 6)) _streamer.SetPalette(palette);
     ImGui::EndDisabled();
+    bool paletteOverride = _streamer.GetPaletteOverride();
+    if (ImGui::Checkbox("Palette over layers", &paletteOverride)) _streamer.SetPaletteOverride(paletteOverride);
     if (ImGui::Checkbox("LOD tint", &tint)) _streamer.SetLodTintDebug(tint);
+
+    // ── Grass ────────────────────────────────────────────────────────────
+    bool grass = _streamer.GetGrassEnabled();
+    if (ImGui::Checkbox("Grass", &grass)) _streamer.SetGrassEnabled(grass);
+    ImGui::BeginDisabled(!grass);
+    float radius = _streamer.GetGrassRadius();
+    if (ImGui::SliderFloat("Grass view dist", &radius, 16.0f, 512.0f, "%.0f m")) _streamer.SetGrassRadius(radius);
+    // Root/tip tint — tune blades to match the terrain grass layer.
+    glm::vec3 root = _streamer.GetGrassRootColor(), tip = _streamer.GetGrassTipColor();
+    bool changed = ImGui::ColorEdit3("Grass root", &root.x);
+    changed |= ImGui::ColorEdit3("Grass tip", &tip.x);
+    if (changed) _streamer.SetGrassColors(root, tip);
+    ImGui::EndDisabled();
 }

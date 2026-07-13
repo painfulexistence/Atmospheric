@@ -18,8 +18,8 @@
 //
 // Controls: WASD move, arrows look, X sprint (x50), Z slow, R/F up/down,
 //           G toggle ground-clamp, T teleport +2km (streaming stress test),
-//           P cycle terrain palette, L LOD tint (colors each detail ring),
-//           I wireframe, ESC quit.
+//           P cycle palette over layers (textured -> 0..5 -> textured),
+//           L LOD tint (colors each detail ring), I wireframe, ESC quit.
 
 // Keeps the fly camera above the streamed terrain. Ticks after the
 // CameraController3D on the same GameObject (components tick in add order),
@@ -61,6 +61,9 @@ class TerrainStreamingDemo : public Application {
     GroundClampComponent* _groundClamp = nullptr;
     MeshHandle _treeMesh;
     MeshHandle _rockMesh;
+    // P-key palette cycle: -1 = textured (layers), 0..5 = that palette forced
+    // over the layers (like LOD tint). Wraps back to textured after the last.
+    int _paletteCycle = -1;
 
     bool _wireframe = false;
     float _statsTimer = 0.0f;
@@ -206,17 +209,21 @@ class TerrainStreamingDemo : public Application {
                 // same mesh into a single instanced draw.
                 .entityMeshes = { _treeMesh, _rockMesh },
                 .entityRadiusTiles = 3,
-                // Golden pampas grass in a streamed ring around the camera —
-                // watch cells build in as you sprint (GoT-style wind sway).
+                // Streamed grass ring — cells build in as you sprint (GoT-style
+                // wind sway). Colours match the grass DETAIL LAYER (dark green
+                // root -> bright meadow tip) so blades blend into the textured
+                // ground instead of reading as a separate golden field.
                 .grassDensity = 40.0f,// instanced now — 40 blades/m^2 is cheap
                 .grassRadius = 90.0f,
                 .grassBladeHeight = 1.6f,
                 .grassMaxSlope = 1000.0f,// grow grass everywhere, ignore slope
                 // Grass blades stop where the splat snowline starts (0.62) —
-                // golden pampas poking through snow reads wrong; the rock and
-                // snow LAYERS carry the peaks now, not bald palette terrain.
+                // blades poking through snow read wrong; the rock and snow
+                // LAYERS carry the peaks now, not bald palette terrain.
                 .grassHeightBand = { 0.02f, 0.64f },
                 .grassCoverage = 0.7f,
+                .grassRootColor = { 0.10f, 0.15f, 0.06f },// shadowed base, matches layer soil/dark green
+                .grassTipColor = { 0.40f, 0.50f, 0.20f },// bright meadow green, keys off the grass layer
                 .grassWindStrength = 0.45f,
                 .grassWindSpeed = 1.8f,
             })
@@ -274,8 +281,18 @@ class TerrainStreamingDemo : public Application {
         }
         if (input->IsKeyPressed(Key::G) && _groundClamp) _groundClamp->enabled = !_groundClamp->enabled;
         if (input->IsKeyPressed(Key::P)) {
-            terrain.SetPalette(terrain.GetPalette() + 1);
-            ConsoleSubsystem::Get()->Info("Terrain palette " + std::to_string(terrain.GetPalette()));
+            // textured -> palette 0 -> ... -> palette 5 -> textured. Forcing a
+            // palette suspends the detail layers (same mechanism as LOD tint),
+            // so the palette is visible over the textured terrain.
+            _paletteCycle = (_paletteCycle + 2) % 7 - 1;
+            if (_paletteCycle < 0) {
+                terrain.SetPaletteOverride(false);
+                ConsoleSubsystem::Get()->Info("Surface: textured (detail layers)");
+            } else {
+                terrain.SetPalette(_paletteCycle);
+                terrain.SetPaletteOverride(true);
+                ConsoleSubsystem::Get()->Info("Surface: palette " + std::to_string(_paletteCycle) + " over layers");
+            }
         }
         if (input->IsKeyPressed(Key::L)) {
             terrain.SetLodTintDebug(!terrain.GetLodTintDebug());

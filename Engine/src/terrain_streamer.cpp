@@ -138,6 +138,7 @@ void TerrainStreamer::Init(Application* app, const StreamingTerrainProps& props,
 
     // Shared grass material: per-blade variation lives in vertex attributes,
     // so every grass cell can share one material (one batch state).
+    _grassRadius0 = _props.grassRadius;// reference for SetGrassRadius's ceiling
     if (_props.grassDensity > 0.0f) {
         _grassMaterial = am.CreateGrassMaterial();
         _grassMaterial->rootColor = _props.grassRootColor;
@@ -231,16 +232,28 @@ float TerrainStreamer::GetHeight(float wx, float wz) const {
     return _heightFn ? _heightFn(wx, wz) * _props.heightScale : 0.0f;
 }
 
-void TerrainStreamer::SetLodTintDebug(bool enabled) {
-    _lodTintDebug = enabled;
+void TerrainStreamer::ApplyLayerSuspend() {
+    // Detail layers override the palette in terrain.frag, so any mode that
+    // wants the flat palette to show through (LOD tint, palette override)
+    // must suspend the layers by zeroing the material's layerCount. When no
+    // override is active tiles run their full layer set again.
+    const bool suspend = _lodTintDebug || _paletteOverride;
+    const int live = suspend ? 0 : static_cast<int>(_layers.size());
     for (auto& slot : _allSlots) {
         if (!slot->material) continue;
-        slot->material->paletteIndex = enabled ? slot->lod % 6 : _props.paletteIndex;
-        // Detail layers override the palette in terrain.frag, so tint mode
-        // suspends them (and restores on the way out) or L would be a no-op
-        // on textured terrain.
-        slot->material->layerCount = enabled ? 0 : static_cast<int>(_layers.size());
+        slot->material->layerCount = live;
+        slot->material->paletteIndex = _lodTintDebug ? slot->lod % 6 : _props.paletteIndex;
     }
+}
+
+void TerrainStreamer::SetLodTintDebug(bool enabled) {
+    _lodTintDebug = enabled;
+    ApplyLayerSuspend();
+}
+
+void TerrainStreamer::SetPaletteOverride(bool enabled) {
+    _paletteOverride = enabled;
+    ApplyLayerSuspend();
 }
 
 void TerrainStreamer::SetPalette(int index) {
@@ -248,10 +261,50 @@ void TerrainStreamer::SetPalette(int index) {
     // cycle freely. Stored on _props so tiles streamed in later inherit it.
     _props.paletteIndex = ((index % 6) + 6) % 6;
     // LOD-tint mode owns paletteIndex while active — don't stomp its colours;
-    // the new palette takes effect when the user turns tint back off.
+    // the new palette takes effect when the user turns tint back off. (Palette
+    // override wants exactly this index, so it does not early-out.)
     if (_lodTintDebug) return;
     for (auto& slot : _allSlots) {
         if (slot->material) slot->material->paletteIndex = _props.paletteIndex;
+    }
+}
+
+void TerrainStreamer::SetGrassEnabled(bool enabled) {
+    if (_grassEnabled == enabled) return;
+    _grassEnabled = enabled;
+    if (enabled) return;// UpdateGrass re-streams the ring from the next tick
+    // Disabling: hide + pool every live cell, drop in-flight jobs. Nothing is
+    // destroyed, so re-enabling refills from the pool without reallocating.
+    for (auto& [coord, gc] : _grassCells) {
+        gc->go->SetActive(false);
+        _grassPool.push_back(gc);
+    }
+    _grassCells.clear();
+    _grassInFlight.clear();
+    _grassBladesLive = 0;
+}
+
+void TerrainStreamer::SetGrassRadius(float radius) {
+    // The ring is O(radius^2) cells; clamp to a sane ceiling so a stray slider
+    // drag can't ask for tens of thousands of cells. Anchored to the initial
+    // radius (not the current one) so repeated increases don't ratchet the cap.
+    const float ceiling = std::max(512.0f, 4.0f * _grassRadius0);
+    _props.grassRadius = std::clamp(radius, _props.grassCellSize, ceiling);
+    if (_grassMaterial) {
+        // Edge fade always tracks the outer radius so the boundary stays hidden.
+        _grassMaterial->fadeStart = _props.grassRadius * 0.65f;
+        _grassMaterial->fadeEnd = _props.grassRadius;
+    }
+    // Cells now outside the ring are released by UpdateGrass's hysteresis pass
+    // on the next tick; a larger radius simply requests the new cells.
+}
+
+void TerrainStreamer::SetGrassColors(const glm::vec3& root, const glm::vec3& tip) {
+    _props.grassRootColor = root;
+    _props.grassTipColor = tip;
+    if (_grassMaterial) {
+        _grassMaterial->rootColor = root;
+        _grassMaterial->tipColor = tip;
     }
 }
 
@@ -392,7 +445,9 @@ TerrainStreamer::TileSlot* TerrainStreamer::AcquireSlot(int lod) {
     mat->fogDensity = _props.fogDensity;
     mat->fogColor = _props.fogColor;
     mat->renderState.cull = CullMode::None;// skirts must render from both sides
-    mat->layerCount = _lodTintDebug ? 0 : static_cast<int>(_layers.size());
+    // Tiles streamed in while an override is active must match it, or newly
+    // refined tiles would flash their textures until the next toggle.
+    mat->layerCount = (_lodTintDebug || _paletteOverride) ? 0 : static_cast<int>(_layers.size());
     for (size_t i = 0; i < _layers.size(); ++i) {
         mat->layers[i].albedoMap = _layers[i].albedo;
         mat->layers[i].normalMap = _layers[i].normal;
@@ -669,7 +724,7 @@ namespace {
 }// namespace
 
 void TerrainStreamer::UpdateGrass(const glm::vec3& cameraPos) {
-    if (_props.grassDensity <= 0.0f || !_grassMaterial) return;
+    if (_props.grassDensity <= 0.0f || !_grassMaterial || !_grassEnabled) return;
 
     const float cell = _props.grassCellSize;
     const glm::ivec2 camCell{ static_cast<int>(std::floor(cameraPos.x / cell)),

@@ -58,6 +58,27 @@ public:
     int GetPalette() const {
         return _streamer.GetPalette();
     }
+    // Force the palette over the detail layers (textured terrain), and toggle
+    // / range the streamed grass ring. Thin passthroughs so game code and the
+    // ImGui panel share one path.
+    void SetPaletteOverride(bool on) {
+        _streamer.SetPaletteOverride(on);
+    }
+    bool GetPaletteOverride() const {
+        return _streamer.GetPaletteOverride();
+    }
+    void SetGrassEnabled(bool on) {
+        _streamer.SetGrassEnabled(on);
+    }
+    bool GetGrassEnabled() const {
+        return _streamer.GetGrassEnabled();
+    }
+    void SetGrassRadius(float m) {
+        _streamer.SetGrassRadius(m);
+    }
+    float GetGrassRadius() const {
+        return _streamer.GetGrassRadius();
+    }
 
 private:
     TerrainStreamer _streamer;

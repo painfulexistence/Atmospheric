@@ -228,9 +228,47 @@ public:
 
     // World-level height-palette (0-5, wraps): recolors every loaded tile and
     // every tile streamed in afterward. See terrain.frag's fallback palettes.
+    // On textured terrain (layers set) picking a palette does nothing unless
+    // the palette override below is on — layers win in terrain.frag.
     void SetPalette(int index);
     int GetPalette() const {
         return _props.paletteIndex;
+    }
+
+    // Force the height palette over the detail layers (same suspend mechanism
+    // as the LOD tint): on = flat palette shading everywhere, off = textured.
+    // Grass keeps its configured colours either way — blades are only asked to
+    // match the terrain in the textured (layers) case, and there the props
+    // already carry layer-matched colours.
+    void SetPaletteOverride(bool enabled);
+    bool GetPaletteOverride() const {
+        return _paletteOverride;
+    }
+
+    // Toggle the grass ring at runtime. Disabling deactivates every live cell
+    // (they pool, nothing is destroyed) and stops new cell jobs; enabling
+    // streams the ring back in around the camera.
+    void SetGrassEnabled(bool enabled);
+    bool GetGrassEnabled() const {
+        return _grassEnabled;
+    }
+
+    // Grass view distance in metres (the streamed ring's radius). Cells beyond
+    // the new radius release on the next update; the edge fade rescales so the
+    // boundary stays invisible. Clamped to [cellSize, 4 * grassRadius₀ or
+    // 512m, whichever is larger] — the ring is O(radius²) cells.
+    void SetGrassRadius(float radius);
+    float GetGrassRadius() const {
+        return _props.grassRadius;
+    }
+
+    // Retint the shared grass material (root = base of the blade, tip = top).
+    void SetGrassColors(const glm::vec3& root, const glm::vec3& tip);
+    glm::vec3 GetGrassRootColor() const {
+        return _props.grassRootColor;
+    }
+    glm::vec3 GetGrassTipColor() const {
+        return _props.grassTipColor;
     }
 
     struct Stats {
@@ -353,7 +391,13 @@ private:
     std::vector<std::unique_ptr<GrassCell>> _allGrassCells;
     GrassMaterial* _grassMaterial = nullptr;
     int _grassBladesLive = 0;
+    float _grassRadius0 = 0.0f;// initial grassRadius; anchors SetGrassRadius clamp
+    bool _grassEnabled = true;
     bool _lodTintDebug = false;
+    bool _paletteOverride = false;
+    // Recompute every slot material's layerCount from the current override
+    // state (LOD tint and palette override both suspend the layers).
+    void ApplyLayerSuspend();
 
     // Layer textures resolved once in Init and shared by every tile material.
     struct ResolvedLayer {
