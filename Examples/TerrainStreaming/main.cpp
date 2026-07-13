@@ -38,7 +38,8 @@ private:
 // Controls: WASD move, arrows look, X sprint (x50), Z slow, R/F up/down,
 //           G toggle ground-clamp, T teleport +2km (streaming stress test),
 //           SPACE cycle surface mode (textured / palette / LOD tint),
-//           P select palette (Palette mode only), I wireframe, ESC quit.
+//           P select palette (Palette mode only),
+//           I jump to LOD-tint debug (LOD colours + wireframe), ESC quit.
 // A HUD panel exposes the same surface-mode and palette selectors.
 
 // Keeps the fly camera above the streamed terrain. Ticks after the
@@ -92,7 +93,6 @@ class TerrainStreamingDemo : public Application {
     std::vector<std::unique_ptr<RmlEventCallback>> _listeners;
     static constexpr int gpaletteCount = 6;
 
-    bool _wireframe = false;
     float _statsTimer = 0.0f;
     std::chrono::steady_clock::time_point _bootTime;
     bool _reportedStreamed = false;
@@ -117,7 +117,11 @@ class TerrainStreamingDemo : public Application {
         // The palette selector only bites in Palette mode — disable it (dims via
         // the :disabled rcss and blocks interaction) otherwise.
         if (_selPalette) _selPalette->SetDisabled(mode != TerrainColorMode::Palette);
-        const char* names[] = { "textured (detail layers)", "palette", "LOD tint" };
+        // LOD tint is the debug view, so wireframe rides with it: entering LOD
+        // tint (via I, SPACE, or the dropdown) turns wireframe on, leaving it
+        // turns it off. No-op on WebGL where glPolygonMode is unavailable.
+        GraphicsSubsystem::Get()->renderer->EnableWireframe(mode == TerrainColorMode::LodTint);
+        const char* names[] = { "textured (detail layers)", "palette", "LOD tint + wireframe" };
         ConsoleSubsystem::Get()->Info(std::string("Surface: ") + names[static_cast<int>(mode)]);
     }
 
@@ -146,10 +150,6 @@ class TerrainStreamingDemo : public Application {
             return;
         }
         _hud->Show();
-#if defined(__EMSCRIPTEN__)
-        // Wireframe (glPolygonMode) is unavailable on WebGL — hide its hint.
-        if (auto* hint = _hud->GetElementById("hint_wireframe")) hint->SetProperty("display", "none");
-#endif
         _selMode = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("mode_select"));
         _selPalette = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("palette_select"));
 
@@ -298,9 +298,9 @@ class TerrainStreamingDemo : public Application {
                 .entityMeshes = { _treeMesh, _rockMesh },
                 .entityRadiusTiles = 3,
                 // Streamed grass ring — cells build in as you sprint (GoT-style
-                // wind sway). Colours match the grass DETAIL LAYER (dark green
-                // root -> bright meadow tip) so blades blend into the textured
-                // ground instead of reading as a separate golden field.
+                // wind sway). Dark green root grounds the blade in the grass
+                // detail layer; golden-yellow tip gives the sunlit-meadow
+                // highlight (tuned live in the ImGui colour pickers).
                 .grassDensity = 40.0f,// instanced now — 40 blades/m^2 is cheap
                 .grassRadius = 90.0f,
                 .grassBladeHeight = 1.6f,
@@ -311,7 +311,7 @@ class TerrainStreamingDemo : public Application {
                 .grassHeightBand = { 0.02f, 0.64f },
                 .grassCoverage = 0.7f,
                 .grassRootColor = { 0.10f, 0.15f, 0.06f },// shadowed base, matches layer soil/dark green
-                .grassTipColor = { 0.40f, 0.50f, 0.20f },// bright meadow green, keys off the grass layer
+                .grassTipColor = { 0.965f, 0.949f, 0.388f },// golden-yellow tip (R246 G242 B99), tuned live
                 .grassWindStrength = 0.45f,
                 .grassWindSpeed = 1.8f,
             })
@@ -345,7 +345,7 @@ class TerrainStreamingDemo : public Application {
 
         ConsoleSubsystem::Get()->Info(
             "WASD move, arrows look, X sprint, Z slow, R/F up/down, G ground-clamp, T teleport, SPACE surface mode, "
-            "P palette, I wireframe, ESC quit."
+            "P palette, I LOD-tint debug, ESC quit."
         );
     }
 
@@ -385,9 +385,14 @@ class TerrainStreamingDemo : public Application {
         // so it only shows when the surface mode is Palette. Cycle to it with
         // SPACE (or the dropdown) first.
         if (input->IsKeyPressed(Key::P)) ApplyPalette(terrain.GetPalette() + 1);
+        // I jumps straight to the LOD-tint debug view (LOD colours + wireframe,
+        // coupled in ApplyColorMode) and back to Textured — a shortcut past the
+        // SPACE cycle.
         if (input->IsKeyPressed(Key::I)) {
-            _wireframe = !_wireframe;
-            GraphicsSubsystem::Get()->renderer->EnableWireframe(_wireframe);
+            ApplyColorMode(
+                terrain.GetColorMode() != TerrainColorMode::LodTint ? TerrainColorMode::LodTint
+                                                                    : TerrainColorMode::Textured
+            );
         }
         if (input->IsKeyPressed(Key::ESCAPE)) Quit();
 

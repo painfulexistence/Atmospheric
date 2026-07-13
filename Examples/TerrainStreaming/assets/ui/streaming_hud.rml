@@ -27,7 +27,7 @@
         <div class="hints">
             <div class="hint">SPACE - cycle surface mode</div>
             <div class="hint">P - select palette</div>
-            <div class="hint" id="hint_wireframe">I - toggle wireframe</div>
+            <div class="hint">I - LOD tint debug</div>
         </div>
     </div>
 </body>
