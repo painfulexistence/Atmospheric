@@ -1317,14 +1317,30 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
         auto texAt = [&](int idx) {
             return (idx >= 0 && idx < static_cast<int>(imageTex.size())) ? imageTex[idx] : TextureHandle{};
         };
+        // glTF packs occlusion(R)/roughness(G)/metallic(B) into one ORM texture,
+        // but the PBR shader samples .r for both roughness and metallic. Extract
+        // a single channel into a grayscale texture so each slot reads the right
+        // value under the shader's .r convention.
+        auto channelTex = [&](int imgIdx, int channel) -> TextureHandle {
+            if (imgIdx < 0 || imgIdx >= static_cast<int>(prefab.images.size())) return TextureHandle{};
+            const PrefabImage& src = prefab.images[imgIdx];
+            if (src.pixels.empty() || src.width <= 0 || src.height <= 0 || channel >= src.channels) return TextureHandle{};
+            const size_t count = static_cast<size_t>(src.width) * static_cast<size_t>(src.height);
+            std::vector<unsigned char> gray(count * 3);
+            for (size_t p = 0; p < count; ++p) {
+                const unsigned char v = src.pixels[p * static_cast<size_t>(src.channels) + static_cast<size_t>(channel)];
+                gray[p * 3 + 0] = v;
+                gray[p * 3 + 1] = v;
+                gray[p * 3 + 2] = v;
+            }
+            return am.CreateTextureFromImage(std::make_shared<Image>(src.width, src.height, 3, gray.data()));
+        };
         MaterialProps props;
         props.baseMap = texAt(pm.baseColorImage);
         props.normalMap = texAt(pm.normalImage);
         props.aoMap = texAt(pm.occlusionImage);
-        // glTF packs metallic (B) and roughness (G) in one texture; the PBR
-        // shader samples the right channels either way, so wire it to both.
-        props.roughnessMap = texAt(pm.metallicRoughnessImage);
-        props.metallicMap = texAt(pm.metallicRoughnessImage);
+        props.roughnessMap = channelTex(pm.metallicRoughnessImage, 1);// glTF roughness → G
+        props.metallicMap = channelTex(pm.metallicRoughnessImage, 2); // glTF metallic  → B
         if (!props.roughnessMap.IsValid()) props.roughnessMap = solidTex(glm::vec3(pm.roughness));
         if (!props.metallicMap.IsValid()) props.metallicMap = solidTex(glm::vec3(pm.metallic));
         props.diffuse = props.baseMap.IsValid() ? glm::vec3(1.0f) : pm.baseColor;

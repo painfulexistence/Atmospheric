@@ -250,6 +250,10 @@ Prefab ImportUSDPrefab(const std::string& path) {
     out.root.transform = rootXf;
 
     out.ok = !out.meshes.empty();
+    ConsoleSubsystem::Get()->Info(fmt::format(
+        "ImportUSDPrefab '{}': {} mesh(es), {} material(s), {} image(s)", path, out.meshes.size(),
+        out.materials.size(), out.images.size()
+    ));
     return out;
 }
 
