@@ -180,6 +180,7 @@ set(SOURCES
     src/csg.cpp
     src/frustum.cpp
     src/mesh_component.cpp
+    src/mesh_instancer.cpp
     src/sprite_component.cpp
     src/sprite_3d_component.cpp
     src/text_2d_component.cpp
@@ -187,7 +188,9 @@ set(SOURCES
     src/height_field.cpp
     src/terrain_mesh_component.cpp
     src/terrain_streamer.cpp
+    src/streaming_terrain_component.cpp
     src/terrain_tile_cache.cpp
+    src/terrain_texture_gen.cpp
     src/height_field_collider_component.cpp
     src/water_component.cpp
     src/vat.cpp

@@ -12,6 +12,7 @@
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_component.hpp"
+#include "mesh_instancer.hpp"
 #include "renderer.hpp"
 #include "sprite_component.hpp"
 #include "stb_image.h"
@@ -207,7 +208,44 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
             }
         }
 
-        RenderCommand cmd{ .mesh = meshHandle, .transform = transform };
+        RenderCommand cmd{ .mesh = meshHandle, .material = r->GetMaterialHandle(), .transform = transform };
+        renderer->SubmitCommand(cmd);
+    }
+
+    // Instanced clouds: one whole-cloud frustum test, then a single span command
+    // covering every instance. The world-instance cache and cloud AABB are
+    // owned by the component and live across the frame, satisfying
+    // RenderCommand::instances's lifetime contract.
+    for (auto* inst : instancers) {
+        totalCount++;
+        if (!inst->gameObject || !inst->gameObject->isActive) continue;
+        if (inst->InstanceCount() == 0) continue;
+        if (!inst->GetMesh().IsValid()) continue;
+
+        if (FRUSTUM_CULLING_ON) {
+            ZoneScopedN("Frustum Culling (instancer)");
+            const std::array<glm::vec3, 8>& worldBounds = inst->CloudBounds();
+            bool visible = frustum.Intersects(worldBounds);
+            for (const Frustum& aux : auxFrusta) {
+                if (visible) break;
+                visible = aux.Intersects(worldBounds);
+            }
+            if (!visible) {
+                culledCount++;
+                continue;
+            }
+        }
+
+        const std::vector<InstanceData>& worldInstances = inst->WorldInstances();
+        RenderCommand cmd{
+            .mesh = inst->GetMesh(),
+            .material = inst->GetMaterialHandle(),
+            // Anchor for the depth sort key — the GameObject origin. Per-instance
+            // transforms travel in the span below.
+            .transform = inst->gameObject->GetTransform(),
+            .instances = worldInstances.data(),
+            .instanceCount = static_cast<uint32_t>(worldInstances.size()),
+        };
         renderer->SubmitCommand(cmd);
     }
 
@@ -471,6 +509,7 @@ void GraphicsSubsystem::Reset() {
     pointLights.clear();
     sunComponents.clear();
     renderables.clear();
+    instancers.clear();
 }
 
 ShaderProgram* GraphicsSubsystem::GetShader(const std::string& name) const {
@@ -549,6 +588,11 @@ MeshComponent* GraphicsSubsystem::RegisterMesh(MeshComponent* mesh) {
     return mesh;
 }
 
+MeshInstancer* GraphicsSubsystem::RegisterInstancer(MeshInstancer* instancer) {
+    instancers.push_back(instancer);
+    return instancer;
+}
+
 CanvasDrawable* GraphicsSubsystem::RegisterCanvasDrawable(CanvasDrawable* drawable) {
     canvasDrawables.push_back(drawable);
     return drawable;
@@ -591,6 +635,13 @@ void GraphicsSubsystem::UnregisterLight(LightComponent* light) {
         if (it != directionalLights.end()) {
             directionalLights.erase(it);
         }
+    }
+}
+
+void GraphicsSubsystem::UnregisterInstancer(MeshInstancer* instancer) {
+    auto it = std::find(instancers.begin(), instancers.end(), instancer);
+    if (it != instancers.end()) {
+        instancers.erase(it);
     }
 }
 

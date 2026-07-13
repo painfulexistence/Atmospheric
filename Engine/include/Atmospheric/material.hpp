@@ -233,6 +233,27 @@ struct TerrainLayer {
 //                           (Gaea flow/wear/deposit masks packed into channels)
 // All maps are optional; with none set the shader falls back to the legacy
 // height-palette coloring (now lit).
+// Streamed grass blades (see TerrainStreamer's grass ring + grass.vert/.frag).
+// One shared instance covers every grass cell: per-blade variation lives in
+// vertex attributes, so the material only carries the look (root->tip color
+// gradient), the wind field, the ring fade, and fog matching the terrain.
+class GrassMaterial : public Material {
+public:
+    glm::vec3 rootColor = glm::vec3(0.24f, 0.17f, 0.07f);// dark base of the blade
+    glm::vec3 tipColor = glm::vec3(0.93f, 0.76f, 0.38f);// sun-lit golden tip
+    glm::vec2 windDir = glm::vec2(0.8f, 0.6f);// XZ, normalized in the shader
+    float windStrength = 0.35f;// horizontal push as a fraction of blade height
+    float windSpeed = 1.6f;// gust wave speed (radians/sec-ish)
+    float fadeStart = 0.0f;// metres; blades shrink to the ground between these
+    float fadeEnd = 0.0f;
+    glm::vec3 fogColor = glm::vec3(0.62f, 0.71f, 0.85f);
+    float fogDensity = 0.0f;
+
+    GrassMaterial() : Material(MaterialProps{}) {
+        renderState.cull = CullMode::None;// blades are two-sided
+    }
+};
+
 class TerrainMaterial : public Material {
 public:
     static constexpr int MAX_LAYERS = 4;

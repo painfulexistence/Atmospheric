@@ -22,6 +22,7 @@
 #include "light_component.hpp"
 #include "material.hpp"
 #include "mesh_component.hpp"
+#include "mesh_instancer.hpp"
 #include "rigidbody_2d_component.hpp"
 #include "rigidbody_component.hpp"
 #include "rmlui_manager.hpp"
@@ -30,6 +31,7 @@
 #include "shape_renderer_component.hpp"
 #include "sprite_3d_component.hpp"
 #include "sprite_component.hpp"
+#include "streaming_terrain_component.hpp"
 #include "text_2d_component.hpp"
 #include "text_3d_component.hpp"
 #include "transform_component.hpp"
@@ -47,6 +49,8 @@
 #include <ctime>
 #include <filesystem>
 #include <fmt/format.h>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <thread>
@@ -510,11 +514,136 @@ void Application::RegisterComponents() {
         return c;
     });
 
+    // ── StreamingTerrainComponent (streamed open-world terrain) ────────────────
+    // Declares the *scalar* props of a streaming terrain. The height /
+    // entity-scatter / splat callbacks are code-only (std::function): a
+    // JSON-declared terrain uses the built-in OpenSimplex2 FBm height source
+    // (parameterized by "noise") and has no entity scatter. For a custom
+    // generator or vegetation, grab the component after load and set the
+    // callbacks in C++.
+    ComponentFactory::Register("StreamingTerrain", [](GameObject* o, Deserializer& d) -> Component* {
+        StreamingTerrainProps p;
+        d.Read("worldSize", p.worldSize, p.worldSize);
+        d.Read("tileSize", p.tileSize, p.tileSize);
+        d.Read("heightScale", p.heightScale, p.heightScale);
+        d.Read("tileHeightRes", p.tileHeightRes, p.tileHeightRes);
+        d.Read("tileMeshRes", p.tileMeshRes, p.tileMeshRes);
+        d.Read("lodCount", p.lodCount, p.lodCount);
+        d.Read("lod0RadiusTiles", p.lod0RadiusTiles, p.lod0RadiusTiles);
+        d.Read("skirtDepth", p.skirtDepth, p.skirtDepth);
+        d.Read("uploadsPerFrame", p.uploadsPerFrame, p.uploadsPerFrame);
+        d.Read("tessellationFactor", p.tessellationFactor, p.tessellationFactor);
+        d.Read("paletteIndex", p.paletteIndex, p.paletteIndex);
+        d.Read("fogDensity", p.fogDensity, p.fogDensity);
+        d.Read("fogColor", p.fogColor, p.fogColor);
+        d.Read("cacheDir", p.cacheDir, p.cacheDir);
+        int cacheVersion = 0;
+        d.Read("cacheVersion", cacheVersion, 0);
+        p.cacheVersion = static_cast<uint32_t>(cacheVersion);
+        d.Read("splatRes", p.splatRes, p.splatRes);
+        d.Read("colliderRadiusTiles", p.colliderRadiusTiles, p.colliderRadiusTiles);
+        d.Read("colliderResolution", p.colliderResolution, p.colliderResolution);
+        d.Read("entityRadiusTiles", p.entityRadiusTiles, p.entityRadiusTiles);
+        d.Read("entityTilesPerFrame", p.entityTilesPerFrame, p.entityTilesPerFrame);
+        d.Read("grassDensity", p.grassDensity, p.grassDensity);
+        d.Read("grassRadius", p.grassRadius, p.grassRadius);
+        d.Read("grassCellSize", p.grassCellSize, p.grassCellSize);
+        d.Read("grassBladeHeight", p.grassBladeHeight, p.grassBladeHeight);
+        d.Read("grassMaxSlope", p.grassMaxSlope, p.grassMaxSlope);
+        d.Read("grassHeightBand", p.grassHeightBand, p.grassHeightBand);
+        d.Read("grassCoverage", p.grassCoverage, p.grassCoverage);
+        d.Read("grassRootColor", p.grassRootColor, p.grassRootColor);
+        d.Read("grassTipColor", p.grassTipColor, p.grassTipColor);
+        d.Read("grassWindDir", p.grassWindDir, p.grassWindDir);
+        d.Read("grassWindStrength", p.grassWindStrength, p.grassWindStrength);
+        d.Read("grassWindSpeed", p.grassWindSpeed, p.grassWindSpeed);
+
+        if (auto noise = d.ReadObject("noise")) {
+            noise->Read("seed", p.noise.seed, p.noise.seed);
+            noise->Read("frequency", p.noise.frequency, p.noise.frequency);
+            noise->Read("octaves", p.noise.octaves, p.noise.octaves);
+            noise->Read("lacunarity", p.noise.lacunarity, p.noise.lacunarity);
+            noise->Read("gain", p.noise.gain, p.noise.gain);
+        }
+
+        // Optional shared detail layers: [{ "albedo": "...", "normal": "...",
+        // "tiling": 32 }]. Splat weights still come from a code-side splatFn (or
+        // the automatic slope/height fallback when none is set).
+        for (auto& layer : d.ReadArray("layers")) {
+            TerrainLayerDesc desc;
+            layer->Read("albedo", desc.albedoPath, std::string());
+            layer->Read("normal", desc.normalPath, std::string());
+            layer->Read("tiling", desc.tiling, desc.tiling);
+            p.layers.push_back(desc);
+        }
+
+        return new StreamingTerrainComponent(o, p);
+    });
+
     // ── VoxelWorldComponent (streaming voxel terrain) ────────────────────────
     ComponentFactory::Register("VoxelWorld", [](GameObject* o, Deserializer& d) -> Component* {
         int seed = 42;
         d.Read("seed", seed);
         return new VoxelWorldComponent(o, seed);
+    });
+
+    // ── MeshInstancer (one prototype mesh drawn N times) ──────────────────────
+    // Declares a cloud of instances of one mesh — the CPU-cheap way to place
+    // thousands of props (trees, rocks, debris) without a GameObject each.
+    // Prototype: "mesh": "<name>" references a mesh loaded elsewhere; otherwise
+    // "primitive" (cube|sphere|plane|capsule) + "size" builds a shared
+    // primitive. "material" is an optional shared override (falls back to the
+    // prototype's own material). "instances" is a list of TRS entries in the
+    // entity convention — position (world units), rotation (degrees), scale.
+    ComponentFactory::Register("MeshInstancer", [](GameObject* o, Deserializer& d) -> Component* {
+        MeshInstancerProps p;
+        auto& assets = AssetManager::Get();
+
+        std::string meshName;
+        d.Read("mesh", meshName, std::string());
+        if (!meshName.empty()) {
+            p.prototype = assets.GetMesh(meshName);
+        } else {
+            std::string prim;
+            d.Read("primitive", prim, std::string("cube"));
+            float size = 1.0f;
+            d.Read("size", size, 1.0f);
+            // Dedupe the generated primitive by shape+size, so many instancers
+            // (or a scene reload) share one prototype mesh instead of leaking a
+            // new one each time.
+            std::string key = fmt::format("__instancer_{}_{}", prim, size);
+            MeshHandle existing = assets.GetMesh(key);
+            if (existing.IsValid()) {
+                p.prototype = existing;
+            } else if (prim == "sphere") {
+                p.prototype = assets.CreateSphereMesh(key, size * 0.5f, 24);
+            } else if (prim == "plane") {
+                p.prototype = assets.CreatePlaneMesh(key, size, size);
+            } else if (prim == "capsule") {
+                p.prototype = assets.CreateCapsuleMesh(key, size * 0.5f, size);
+            } else {
+                p.prototype = assets.CreateCubeMesh(key, size);
+            }
+        }
+
+        std::string matName;
+        d.Read("material", matName, std::string());
+        if (!matName.empty()) p.material = assets.GetMaterialHandle(matName);
+
+        for (auto& instD : d.ReadArray("instances")) {
+            glm::vec3 pos(0.0f), rotDeg(0.0f), scale(1.0f);
+            instD->Read("position", pos, glm::vec3(0.0f));
+            instD->Read("rotation", rotDeg, glm::vec3(0.0f));
+            instD->Read("scale", scale, glm::vec3(1.0f));
+            // Matches TransformComponent's T * R * S (rotation from euler
+            // radians) so a JSON instance sits where the same TRS on an entity
+            // would.
+            glm::mat4 local = glm::translate(glm::mat4(1.0f), pos) * glm::mat4_cast(glm::quat(glm::radians(rotDeg)))
+                              * glm::scale(glm::mat4(1.0f), scale);
+            p.localTransforms.push_back(local);
+        }
+
+        return new MeshInstancer(o, std::move(p));
     });
 
     // ── ShapeRendererComponent ────────────────────────────────────────────────

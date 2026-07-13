@@ -1,0 +1,124 @@
+body {
+    font-family: Noto Sans;
+    font-size: 15dp;
+    color: #f0f0f0;
+    width: 100%;
+    height: 100%;
+}
+
+/* RmlUi defaults <div> to display:inline (unlike HTML), so text rows would
+   run together on one line. Restore block behaviour. */
+div {
+    display: block;
+}
+
+#panel {
+    position: absolute;
+    top: 12dp;
+    left: 12dp;
+    width: 210dp;
+    padding: 10dp;
+    background-color: #101018d2;
+    border-radius: 8dp;
+    border-width: 1dp;
+    border-color: #2a2a3a;
+}
+
+.title {
+    font-size: 18dp;
+    color: #ffffff;
+    margin-bottom: 12dp;
+}
+
+/* Label above each control (Surface / Palette) */
+.label {
+    font-size: 12dp;
+    color: #9a9aa8;
+    margin-bottom: 4dp;
+}
+
+/* Keybinding hints, one per line */
+.hints {
+    margin-top: 14dp;
+}
+.hint {
+    font-size: 11dp;
+    color: #70707e;
+    margin-bottom: 2dp;
+}
+
+/* ── Native <select> dropdowns ────────────────────────────────────────────
+   RmlUi builds each <select> from internal elements: selectvalue (current
+   text), selectarrow (the button on the right) and selectbox (the popup that
+   holds the <option>s). Plain background/border so no image asset is needed. */
+select {
+    display: block;
+    width: 100%;
+    height: 30dp;
+    margin-bottom: 14dp;
+    color: #e6e6ee;
+    font-size: 14dp;
+    background-color: #22283ae6;
+    border-radius: 5dp;
+    border-width: 1dp;
+    border-color: #38405a;
+}
+select:hover, select:focus {
+    border-color: #58aaff;
+}
+
+/* Palette select is disabled unless the Surface mode is Palette — dim it and
+   drop the hover highlight so it reads as inert. */
+select:disabled {
+    color: #5a5a68;
+    background-color: #191c28c8;
+    border-color: #262b3a;
+}
+select:disabled:hover, select:disabled:focus {
+    border-color: #262b3a;
+}
+
+select selectvalue {
+    width: auto;
+    margin-right: 28dp;      /* leaves room for the arrow */
+    height: 30dp;
+    line-height: 30dp;       /* vertically center the single line */
+    padding: 0dp 8dp;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+select selectarrow {
+    width: 28dp;
+    height: 30dp;
+    background-color: #2e3550c8;
+    border-radius: 0dp 5dp 5dp 0dp;
+}
+select selectarrow:hover {
+    background-color: #37406ade;
+}
+
+select selectbox {
+    margin-top: 2dp;         /* sit just below the select */
+    width: 100%;
+    background-color: #161a28f2;
+    border-width: 1dp;
+    border-color: #38405a;
+    border-radius: 5dp;
+}
+
+select selectbox option {
+    width: auto;
+    padding: 6dp 8dp;
+    font-size: 13dp;
+    color: #b8b8c8;
+    white-space: nowrap;
+}
+select selectbox option:hover {
+    background-color: #2a3350e6;
+    color: #ffffff;
+}
+select selectbox option:checked {
+    color: #ffffff;
+    background-color: #2a3a55e6;
+}

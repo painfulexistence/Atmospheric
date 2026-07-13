@@ -12,10 +12,14 @@ class Material;
 class Mesh;
 class TerrainMaterial;
 
-// Optional detail layer, loaded from disk (see TerrainMeshProps::layers).
+// Optional detail layer (see TerrainMeshProps::layers). Provide either disk
+// paths or already-created texture handles (procedural generators, atlas
+// slices) — a valid handle takes precedence over its path.
 struct TerrainLayerDesc {
     std::string albedoPath;
     std::string normalPath;// optional tangent-space detail normal map
+    TextureHandle albedo;// pre-created albedo (overrides albedoPath)
+    TextureHandle normal;// pre-created normal (overrides normalPath)
     float tiling = 32.0f;// repeats across the whole terrain
 };
 

@@ -11,6 +11,7 @@ class Mesh;
 class Material;
 class WaterMaterial;
 class TerrainMaterial;
+class GrassMaterial;
 class VATMaterial;
 class PortalMaterial;
 class VoxelMaterial;
@@ -60,6 +61,7 @@ public:
     WaterMaterial* CreateWaterMaterial();
     PortalMaterial* CreatePortalMaterial();
     TerrainMaterial* CreateTerrainMaterial();
+    GrassMaterial* CreateGrassMaterial();
     VATMaterial* CreateVATMaterial();
     VoxelMaterial* CreateVoxelMaterial();
     Material* GetMaterial(const std::string& name) const;
@@ -118,7 +120,13 @@ public:
     // Create (or re-upload, when a texture with this name already exists) a
     // tightly-packed RGBA8 texture from raw pixels. Used by TerrainStreamer to
     // recycle per-tile splat-map textures without growing the texture cache.
-    TextureHandle CreateOrUpdateTextureRGBA8(const std::string& name, const unsigned char* data, int width, int height);
+    // tiled=true sets REPEAT wrap and builds mipmaps (trilinear min filter) —
+    // required for high-frequency tiled detail layers, which shimmer badly
+    // when sampled without mips. Default (clamp, no mips) suits per-tile maps
+    // like splats that are sampled at ~1:1.
+    TextureHandle CreateOrUpdateTextureRGBA8(
+        const std::string& name, const unsigned char* data, int width, int height, bool tiled = false
+    );
     std::shared_ptr<Mesh> LoadOBJ(const std::string& path);
     MeshHandle LoadGLTF(const std::string& path);
     // Load an equirectangular HDR (.hdr) as a filterable RGBA16F texture for use
