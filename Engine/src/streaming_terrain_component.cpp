@@ -39,7 +39,6 @@ void StreamingTerrainComponent::DrawImGui() {
     const TerrainStreamer::Stats& s = _streamer.GetStats();
     ImGui::Text("Tiles %d (visible %d, pending %d)", s.loadedTiles, s.visibleTiles, s.pendingJobs);
     ImGui::Text("Entities %d", s.activeEntities);
-    ImGui::Text("Grass %d cells / %d blades", s.grassCells, s.grassBlades);
     ImGui::Text("Cache %d/%d hit", s.cacheHits, s.cacheHits + s.cacheMisses);
     ImGui::Text("Heightmap %zu MB", s.gpuHeightmapBytes / (1024 * 1024));
 
@@ -62,6 +61,7 @@ void StreamingTerrainComponent::DrawImGui() {
     // ── Grass ────────────────────────────────────────────────────────────
     bool grass = _streamer.GetGrassEnabled();
     if (ImGui::Checkbox("Grass", &grass)) _streamer.SetGrassEnabled(grass);
+    ImGui::Text("%d cells / %d blades", s.grassCells, s.grassBlades);
     ImGui::BeginDisabled(!grass);
     float radius = _streamer.GetGrassRadius();
     if (ImGui::SliderFloat("Grass view dist", &radius, 16.0f, 512.0f, "%.0f m")) _streamer.SetGrassRadius(radius);
