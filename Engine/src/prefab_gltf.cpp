@@ -375,7 +375,13 @@ Prefab ImportGLTFPrefab(const std::string& path) {
                         Vertex v;
                         v.position = positions[s];
                         v.normal = normals[s];
+                        // glTF UVs are top-left origin; the engine flips images
+                        // on load (GraphicsSubsystem sets stbi flip-Y globally)
+                        // and authors UVs bottom-origin (see mesh_builder's
+                        // 1-v), so flip V here to match. KHR_texture_transform
+                        // is applied first, in glTF UV space.
                         v.uv = uvt ? uvt->Apply(uvs[s]) : uvs[s];
+                        v.uv.y = 1.0f - v.uv.y;
                         const glm::vec3 tan = glm::vec3(tangents4[s]);
                         v.tangent = tan;
                         v.bitangent = glm::cross(normals[s], tan) * tangents4[s].w;
