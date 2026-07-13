@@ -61,8 +61,9 @@ class TerrainStreamingDemo : public Application {
     GroundClampComponent* _groundClamp = nullptr;
     MeshHandle _treeMesh;
     MeshHandle _rockMesh;
-    // P-key palette cycle: -1 = textured (layers), 0..5 = that palette forced
-    // over the layers (like LOD tint). Wraps back to textured after the last.
+    // P-key palette walk: 0..5 = palette index while in Palette mode, -1 =
+    // handed back to Textured after the last. Advanced only while already in
+    // Palette mode (entering from another mode restarts at 0).
     int _paletteCycle = -1;
 
     bool _wireframe = false;
@@ -281,24 +282,26 @@ class TerrainStreamingDemo : public Application {
         }
         if (input->IsKeyPressed(Key::G) && _groundClamp) _groundClamp->enabled = !_groundClamp->enabled;
         if (input->IsKeyPressed(Key::P)) {
-            // textured -> palette 0 -> ... -> palette 5 -> textured. Forcing a
-            // palette suspends the detail layers (same mechanism as LOD tint),
-            // so the palette is visible over the textured terrain.
-            _paletteCycle = (_paletteCycle + 2) % 7 - 1;
+            // P drives the Palette mode: each press advances the index and
+            // switches into Palette shading (auto-suspends the detail layers).
+            // Walk 0..5 then hand back to Textured, so P alone toggles the mode
+            // on and eventually off. Entering from another mode starts at 0.
+            _paletteCycle = (terrain.GetColorMode() == TerrainColorMode::Palette) ? (_paletteCycle + 2) % 7 - 1 : 0;
             if (_paletteCycle < 0) {
-                terrain.SetPaletteOverride(false);
+                terrain.SetColorMode(TerrainColorMode::Textured);
                 ConsoleSubsystem::Get()->Info("Surface: textured (detail layers)");
             } else {
                 terrain.SetPalette(_paletteCycle);
-                terrain.SetPaletteOverride(true);
-                ConsoleSubsystem::Get()->Info("Surface: palette " + std::to_string(_paletteCycle) + " over layers");
+                terrain.SetColorMode(TerrainColorMode::Palette);
+                ConsoleSubsystem::Get()->Info("Surface: palette " + std::to_string(_paletteCycle));
             }
         }
         if (input->IsKeyPressed(Key::L)) {
-            terrain.SetLodTintDebug(!terrain.GetLodTintDebug());
+            // L toggles LOD tint against Textured (leaving Palette mode if set).
+            const bool toLod = terrain.GetColorMode() != TerrainColorMode::LodTint;
+            terrain.SetColorMode(toLod ? TerrainColorMode::LodTint : TerrainColorMode::Textured);
             ConsoleSubsystem::Get()->Info(
-                terrain.GetLodTintDebug() ? "LOD tint ON — each color is a detail ring; tiles recolor as they refine"
-                                          : "LOD tint OFF"
+                toLod ? "LOD tint ON — each color is a detail ring; tiles recolor as they refine" : "LOD tint OFF"
             );
         }
         if (input->IsKeyPressed(Key::I)) {

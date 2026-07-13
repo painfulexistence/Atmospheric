@@ -44,20 +44,20 @@ void StreamingTerrainComponent::DrawImGui() {
     ImGui::Text("Heightmap %zu MB", s.gpuHeightmapBytes / (1024 * 1024));
 
     // ── Surface ──────────────────────────────────────────────────────────
-    // Palette injection (mirrors VoxelWorldComponent). On textured terrain the
-    // detail layers hide the palette, so "Palette over layers" suspends them
-    // exactly like LOD tint; without it the combo only shows on untextured
-    // terrain. LOD tint owns the palette while on, so the combo greys out then.
+    // The three shading modes are mutually exclusive — one selector, not
+    // overlapping toggles. Palette / LOD tint suspend the detail layers so
+    // their flat colours show (see SetColorMode).
+    static const char* modeNames[] = { "Textured (layers)", "Palette", "LOD tint" };
+    int mode = static_cast<int>(_streamer.GetColorMode());
+    if (ImGui::Combo("Surface", &mode, modeNames, 3)) _streamer.SetColorMode(static_cast<TerrainColorMode>(mode));
+
+    // Palette index only bites in Palette mode; grey it out otherwise.
     static const char* paletteNames[] = { "0 - Warm Pink/Gold", "1 - Cool Blue/Purple",    "2 - Earthy Green",
                                           "3 - Forest",         "4 - Soft Cool (default)", "5 - Vivid Mint/Coral" };
-    bool tint = _streamer.GetLodTintDebug();
-    ImGui::BeginDisabled(tint);
+    ImGui::BeginDisabled(_streamer.GetColorMode() != TerrainColorMode::Palette);
     int palette = _streamer.GetPalette();
     if (ImGui::Combo("Palette", &palette, paletteNames, 6)) _streamer.SetPalette(palette);
     ImGui::EndDisabled();
-    bool paletteOverride = _streamer.GetPaletteOverride();
-    if (ImGui::Checkbox("Palette over layers", &paletteOverride)) _streamer.SetPaletteOverride(paletteOverride);
-    if (ImGui::Checkbox("LOD tint", &tint)) _streamer.SetLodTintDebug(tint);
 
     // ── Grass ────────────────────────────────────────────────────────────
     bool grass = _streamer.GetGrassEnabled();

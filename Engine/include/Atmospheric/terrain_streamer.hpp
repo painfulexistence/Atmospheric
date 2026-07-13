@@ -200,6 +200,13 @@ struct IVec2Hash {
     }
 };
 
+// Mutually-exclusive surface shading (see TerrainStreamer::SetColorMode).
+enum class TerrainColorMode {
+    Textured,// detail layers (or palette fallback when no layers)
+    Palette,// flat height-palette forced over the layers
+    LodTint// debug: tile tinted by its LOD ring
+};
+
 class TerrainStreamer {
 public:
     TerrainStreamer() = default;
@@ -218,31 +225,26 @@ public:
     // CPU height query in world metres (evaluates the height source directly).
     float GetHeight(float wx, float wz) const;
 
-    // Debug: tint every tile by its LOD (palette index = LOD) so the detail
-    // rings and their refinement become visible. Only affects tiles rendered
-    // with the palette fallback (no layers / base map).
-    void SetLodTintDebug(bool enabled);
-    bool GetLodTintDebug() const {
-        return _lodTintDebug;
+    // The three surface-shading modes are mutually exclusive (each hides the
+    // others), so they're one setting rather than overlapping toggles:
+    //   Textured — the detail layers (falls back to the palette if no layers)
+    //   Palette  — the flat height-palette forced over any layers
+    //   LodTint  — debug: every tile tinted by its LOD ring
+    // Palette and LodTint both suspend the layers so their colours show; the
+    // switch is instant on resident tiles and inherited by tiles streamed in
+    // while the mode is active.
+    void SetColorMode(TerrainColorMode mode);
+    TerrainColorMode GetColorMode() const {
+        return _colorMode;
     }
 
     // World-level height-palette (0-5, wraps): recolors every loaded tile and
     // every tile streamed in afterward. See terrain.frag's fallback palettes.
-    // On textured terrain (layers set) picking a palette does nothing unless
-    // the palette override below is on — layers win in terrain.frag.
+    // Only visible in Palette mode (or Textured with no layers) — layers win
+    // in terrain.frag otherwise.
     void SetPalette(int index);
     int GetPalette() const {
         return _props.paletteIndex;
-    }
-
-    // Force the height palette over the detail layers (same suspend mechanism
-    // as the LOD tint): on = flat palette shading everywhere, off = textured.
-    // Grass keeps its configured colours either way — blades are only asked to
-    // match the terrain in the textured (layers) case, and there the props
-    // already carry layer-matched colours.
-    void SetPaletteOverride(bool enabled);
-    bool GetPaletteOverride() const {
-        return _paletteOverride;
     }
 
     // Toggle the grass ring at runtime. Disabling deactivates every live cell
@@ -393,11 +395,11 @@ private:
     int _grassBladesLive = 0;
     float _grassRadius0 = 0.0f;// initial grassRadius; anchors SetGrassRadius clamp
     bool _grassEnabled = true;
-    bool _lodTintDebug = false;
-    bool _paletteOverride = false;
-    // Recompute every slot material's layerCount from the current override
-    // state (LOD tint and palette override both suspend the layers).
-    void ApplyLayerSuspend();
+    TerrainColorMode _colorMode = TerrainColorMode::Textured;
+    // Push _colorMode onto every resident tile material (layerCount +
+    // paletteIndex). Palette / LodTint suspend the layers; LodTint also
+    // rewrites paletteIndex per LOD.
+    void ApplyColorMode();
 
     // Layer textures resolved once in Init and shared by every tile material.
     struct ResolvedLayer {

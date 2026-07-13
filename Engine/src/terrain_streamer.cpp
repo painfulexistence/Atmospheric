@@ -232,38 +232,30 @@ float TerrainStreamer::GetHeight(float wx, float wz) const {
     return _heightFn ? _heightFn(wx, wz) * _props.heightScale : 0.0f;
 }
 
-void TerrainStreamer::ApplyLayerSuspend() {
-    // Detail layers override the palette in terrain.frag, so any mode that
-    // wants the flat palette to show through (LOD tint, palette override)
-    // must suspend the layers by zeroing the material's layerCount. When no
-    // override is active tiles run their full layer set again.
-    const bool suspend = _lodTintDebug || _paletteOverride;
-    const int live = suspend ? 0 : static_cast<int>(_layers.size());
+void TerrainStreamer::ApplyColorMode() {
+    // Detail layers hide the palette in terrain.frag, so Palette/LodTint zero
+    // the layerCount to let the flat colour show; Textured runs the full set.
+    // LodTint additionally rewrites paletteIndex per LOD.
+    const int live = (_colorMode == TerrainColorMode::Textured) ? static_cast<int>(_layers.size()) : 0;
     for (auto& slot : _allSlots) {
         if (!slot->material) continue;
         slot->material->layerCount = live;
-        slot->material->paletteIndex = _lodTintDebug ? slot->lod % 6 : _props.paletteIndex;
+        slot->material->paletteIndex = (_colorMode == TerrainColorMode::LodTint) ? slot->lod % 6 : _props.paletteIndex;
     }
 }
 
-void TerrainStreamer::SetLodTintDebug(bool enabled) {
-    _lodTintDebug = enabled;
-    ApplyLayerSuspend();
-}
-
-void TerrainStreamer::SetPaletteOverride(bool enabled) {
-    _paletteOverride = enabled;
-    ApplyLayerSuspend();
+void TerrainStreamer::SetColorMode(TerrainColorMode mode) {
+    _colorMode = mode;
+    ApplyColorMode();
 }
 
 void TerrainStreamer::SetPalette(int index) {
     // Six fallback height-palettes (see terrain.frag); wrap so the caller can
     // cycle freely. Stored on _props so tiles streamed in later inherit it.
     _props.paletteIndex = ((index % 6) + 6) % 6;
-    // LOD-tint mode owns paletteIndex while active — don't stomp its colours;
-    // the new palette takes effect when the user turns tint back off. (Palette
-    // override wants exactly this index, so it does not early-out.)
-    if (_lodTintDebug) return;
+    // LodTint owns paletteIndex while active — don't stomp its per-LOD colours;
+    // the new palette takes effect when the mode leaves LodTint.
+    if (_colorMode == TerrainColorMode::LodTint) return;
     for (auto& slot : _allSlots) {
         if (slot->material) slot->material->paletteIndex = _props.paletteIndex;
     }
@@ -441,13 +433,13 @@ TerrainStreamer::TileSlot* TerrainStreamer::AcquireSlot(int lod) {
     mat->heightScale = _props.heightScale;
     mat->tessellationFactor = _props.tessellationFactor;
     mat->worldSize = GutterWorldSize(lod);
-    mat->paletteIndex = _lodTintDebug ? lod % 6 : _props.paletteIndex;
+    mat->paletteIndex = (_colorMode == TerrainColorMode::LodTint) ? lod % 6 : _props.paletteIndex;
     mat->fogDensity = _props.fogDensity;
     mat->fogColor = _props.fogColor;
     mat->renderState.cull = CullMode::None;// skirts must render from both sides
-    // Tiles streamed in while an override is active must match it, or newly
-    // refined tiles would flash their textures until the next toggle.
-    mat->layerCount = (_lodTintDebug || _paletteOverride) ? 0 : static_cast<int>(_layers.size());
+    // Tiles streamed in while a non-textured mode is active must match it, or
+    // newly refined tiles would flash their textures until the next toggle.
+    mat->layerCount = (_colorMode == TerrainColorMode::Textured) ? static_cast<int>(_layers.size()) : 0;
     for (size_t i = 0; i < _layers.size(); ++i) {
         mat->layers[i].albedoMap = _layers[i].albedo;
         mat->layers[i].normalMap = _layers[i].normal;
