@@ -3,10 +3,29 @@
 #include "Atmospheric/material.hpp"
 #include "Atmospheric/mesh.hpp"
 #include "Atmospheric/mesh_builder.hpp"
+#include "Atmospheric/rmlui_manager.hpp"
 #include "Atmospheric/terrain_texture_gen.hpp"
+#include <RmlUi/Core.h>
+#include <RmlUi/Core/Elements/ElementFormControlSelect.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <functional>
+#include <memory>
+
+// Minimal RmlUi event listener that forwards to a std::function; owned by the
+// app so it outlives the element it's attached to (see Terrain example).
+class RmlEventCallback : public Rml::EventListener {
+public:
+    explicit RmlEventCallback(std::function<void()> cb) : _cb(std::move(cb)) {
+    }
+    void ProcessEvent(Rml::Event& /*event*/) override {
+        if (_cb) _cb();
+    }
+
+private:
+    std::function<void()> _cb;
+};
 
 // 10km x 10km streamed open-world terrain.
 //
@@ -18,8 +37,9 @@
 //
 // Controls: WASD move, arrows look, X sprint (x50), Z slow, R/F up/down,
 //           G toggle ground-clamp, T teleport +2km (streaming stress test),
-//           P cycle palette over layers (textured -> 0..5 -> textured),
-//           L LOD tint (colors each detail ring), I wireframe, ESC quit.
+//           SPACE cycle surface mode (textured / palette / LOD tint),
+//           P select palette (Palette mode only), I wireframe, ESC quit.
+// A HUD panel exposes the same surface-mode and palette selectors.
 
 // Keeps the fly camera above the streamed terrain. Ticks after the
 // CameraController3D on the same GameObject (components tick in add order),
@@ -61,10 +81,16 @@ class TerrainStreamingDemo : public Application {
     GroundClampComponent* _groundClamp = nullptr;
     MeshHandle _treeMesh;
     MeshHandle _rockMesh;
-    // P-key palette walk: 0..5 = palette index while in Palette mode, -1 =
-    // handed back to Textured after the last. Advanced only while already in
-    // Palette mode (entering from another mode restarts at 0).
-    int _paletteCycle = -1;
+
+    // HUD (RmlUi native <select> controls), mirroring the Terrain example.
+    Rml::ElementDocument* _hud = nullptr;
+    Rml::ElementFormControlSelect* _selMode = nullptr;
+    Rml::ElementFormControlSelect* _selPalette = nullptr;
+    // Guards SetSelection() so syncing the UI from code doesn't re-enter the
+    // change handler (which would call Apply* again).
+    bool _syncing = false;
+    std::vector<std::unique_ptr<RmlEventCallback>> _listeners;
+    static constexpr int gpaletteCount = 6;
 
     bool _wireframe = false;
     float _statsTimer = 0.0f;
@@ -74,6 +100,67 @@ class TerrainStreamingDemo : public Application {
     void OnInit() override {
         _bootTime = std::chrono::steady_clock::now();
         GoScene("main", [this] { OnLoad(); });
+    }
+
+    // ── State application (keeps streamer + HUD in sync) ─────────────────────
+    // The single source of truth is the streamer's TerrainColorMode; these
+    // push a change onto it and mirror it into the <select>s (guarded so the
+    // mirror doesn't re-fire the change handler). The palette select is only
+    // meaningful in Palette mode, so it's disabled otherwise.
+    void ApplyColorMode(TerrainColorMode mode) {
+        _terrain->SetColorMode(mode);
+        if (_selMode) {
+            _syncing = true;
+            _selMode->SetSelection(static_cast<int>(mode));
+            _syncing = false;
+        }
+        // The palette selector only bites in Palette mode — disable it (dims via
+        // the :disabled rcss and blocks interaction) otherwise.
+        if (_selPalette) _selPalette->SetDisabled(mode != TerrainColorMode::Palette);
+        const char* names[] = { "textured (detail layers)", "palette", "LOD tint" };
+        ConsoleSubsystem::Get()->Info(std::string("Surface: ") + names[static_cast<int>(mode)]);
+    }
+
+    void ApplyPalette(int index) {
+        const int p = ((index % gpaletteCount) + gpaletteCount) % gpaletteCount;
+        _terrain->SetPalette(p);
+        if (_selPalette) {
+            _syncing = true;
+            _selPalette->SetSelection(p);
+            _syncing = false;
+        }
+        ConsoleSubsystem::Get()->Info("Palette " + std::to_string(p));
+    }
+
+    void AddListener(Rml::Element* el, const char* event, std::function<void()> cb) {
+        if (!el) return;
+        auto listener = std::make_unique<RmlEventCallback>(std::move(cb));
+        el->AddEventListener(event, listener.get());
+        _listeners.push_back(std::move(listener));
+    }
+
+    void SetupHUD() {
+        _hud = RmlUiManager::Get()->LoadDocument("assets/ui/streaming_hud.rml");
+        if (!_hud) {
+            ConsoleSubsystem::Get()->Warn("Streaming HUD failed to load; keyboard controls still work.");
+            return;
+        }
+        _hud->Show();
+#if defined(__EMSCRIPTEN__)
+        // Wireframe (glPolygonMode) is unavailable on WebGL — hide its hint.
+        if (auto* hint = _hud->GetElementById("hint_wireframe")) hint->SetProperty("display", "none");
+#endif
+        _selMode = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("mode_select"));
+        _selPalette = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("palette_select"));
+
+        // Native <select> fires "change" on user selection; the _syncing guard
+        // skips selections we set from code.
+        AddListener(_selMode, "change", [this] {
+            if (!_syncing && _selMode) ApplyColorMode(static_cast<TerrainColorMode>(_selMode->GetSelection()));
+        });
+        AddListener(_selPalette, "change", [this] {
+            if (!_syncing && _selPalette) ApplyPalette(_selPalette->GetSelection());
+        });
     }
 
     void OnLoad() override {
@@ -250,9 +337,15 @@ class TerrainStreamingDemo : public Application {
         );
         _groundClamp = static_cast<GroundClampComponent*>(_camGO->AddComponent<GroundClampComponent>(_terrain));
 
+        // HUD: the Surface / Palette selectors. Initialize the controls from the
+        // streamer's current state so the panel matches the terrain on load.
+        SetupHUD();
+        ApplyColorMode(_terrain->GetColorMode());
+        ApplyPalette(_terrain->GetPalette());
+
         ConsoleSubsystem::Get()->Info(
-            "WASD move, arrows look, X sprint, Z slow, R/F up/down, G ground-clamp, T teleport, P palette, L LOD "
-            "tint, I wireframe, ESC quit."
+            "WASD move, arrows look, X sprint, Z slow, R/F up/down, G ground-clamp, T teleport, SPACE surface mode, "
+            "P palette, I wireframe, ESC quit."
         );
     }
 
@@ -281,29 +374,17 @@ class TerrainStreamingDemo : public Application {
             );
         }
         if (input->IsKeyPressed(Key::G) && _groundClamp) _groundClamp->enabled = !_groundClamp->enabled;
-        if (input->IsKeyPressed(Key::P)) {
-            // P drives the Palette mode: each press advances the index and
-            // switches into Palette shading (auto-suspends the detail layers).
-            // Walk 0..5 then hand back to Textured, so P alone toggles the mode
-            // on and eventually off. Entering from another mode starts at 0.
-            _paletteCycle = (terrain.GetColorMode() == TerrainColorMode::Palette) ? (_paletteCycle + 2) % 7 - 1 : 0;
-            if (_paletteCycle < 0) {
-                terrain.SetColorMode(TerrainColorMode::Textured);
-                ConsoleSubsystem::Get()->Info("Surface: textured (detail layers)");
-            } else {
-                terrain.SetPalette(_paletteCycle);
-                terrain.SetColorMode(TerrainColorMode::Palette);
-                ConsoleSubsystem::Get()->Info("Surface: palette " + std::to_string(_paletteCycle));
-            }
+        // SPACE cycles the surface mode through the same three options as the
+        // HUD's Surface dropdown (Textured -> Palette -> LOD tint -> ...); the
+        // HUD select is kept in sync by ApplyColorMode.
+        if (input->IsKeyPressed(Key::SPACE)) {
+            const int next = (static_cast<int>(terrain.GetColorMode()) + 1) % 3;
+            ApplyColorMode(static_cast<TerrainColorMode>(next));
         }
-        if (input->IsKeyPressed(Key::L)) {
-            // L toggles LOD tint against Textured (leaving Palette mode if set).
-            const bool toLod = terrain.GetColorMode() != TerrainColorMode::LodTint;
-            terrain.SetColorMode(toLod ? TerrainColorMode::LodTint : TerrainColorMode::Textured);
-            ConsoleSubsystem::Get()->Info(
-                toLod ? "LOD tint ON — each color is a detail ring; tiles recolor as they refine" : "LOD tint OFF"
-            );
-        }
+        // P selects the palette (0..5, wrapping) — it does NOT touch the mode,
+        // so it only shows when the surface mode is Palette. Cycle to it with
+        // SPACE (or the dropdown) first.
+        if (input->IsKeyPressed(Key::P)) ApplyPalette(terrain.GetPalette() + 1);
         if (input->IsKeyPressed(Key::I)) {
             _wireframe = !_wireframe;
             GraphicsSubsystem::Get()->renderer->EnableWireframe(_wireframe);
