@@ -1,6 +1,6 @@
 # Animation Subsystem — Design
 
-Status: **proposal** (design only, no code yet)
+Status: **proposal v2** (design only, no code yet)
 
 This document proposes a unified `AnimationSubsystem` that consolidates every
 piece of animation code currently in the engine — property tweens
@@ -10,27 +10,38 @@ vertex animation (`VATClip` / `VATComponent`) — behind one subsystem, one
 shared clip library, and a small family of components with a common playback
 interface.
 
+**v2 note:** backward compatibility is explicitly *not* a requirement. This
+version deletes the Cocos-style `Action` hierarchy instead of wrapping it,
+which makes the whole system evaluate-by-time (scrubbable, reversible,
+deterministic) with no imperative escape hatch.
+
 ---
 
-## 1. Current state (what we are unifying)
+## 1. Current state (what we are replacing)
 
-| Code | Kind | Problems |
-|------|------|----------|
-| `Action` / `ActionInterval` / `ActionManager` (`action.hpp`, `action_manager.cpp`) | Property tweens (MoveTo, ScaleTo, ColorTo, Sequence, RepeatForever…), Cocos-style | Component ticks itself; raw-`new` ownership API; no pause/speed/timescale; no way to name, reuse, or re-trigger a timeline — `scene_loader.cpp` compiles CSB timelines straight into one fire-and-forget action per node |
-| `Animator2D` (`animator_2d.hpp`) | Frame-based (UV) sprite animation | Clips are stored per component (no sharing); no events; no speed control |
-| `Animate` action (`action.hpp`) | Frame-based sprite animation *again*, as an Action | Duplicates `Animator2D`; owns a private copy of the clip; header carries a long TODO about where `AnimationClip` should live |
-| `SpriteAnimator` (Examples/RPG/`rpg_entity.hpp`) | Frame-based sprite animation *a third time*, engine-free struct | Exists because the engine component wasn't convenient enough — a signal the engine API needs to absorb this use case |
-| `VATClip` / `VATComponent` (`vat.hpp`, `vat_component.cpp`) | GPU vertex animation | Playhead logic (loop/clamp/speed) re-implemented privately; clip is owned by the component so it can't be shared between instances of the same enemy mesh |
+| Code | Kind | Fate |
+|------|------|------|
+| `Action` / `ActionInterval` / `ActionManager` (`action.hpp`, `action_manager.cpp`) | Cocos-style property tweens (MoveTo, ScaleTo, Sequence, RepeatForever…); stateful, delta-stepped | **Deleted.** Replaced by keyframe `TweenTimeline` + a builder API. Easing functions survive (moved to `easing.hpp`) |
+| `Animator2D` (`animator_2d.hpp`) | Frame-based (UV) sprite animation | **Deleted.** Replaced by `FlipbookComponent` |
+| `Animate` action (`action.hpp`) | Frame-based sprite animation as an Action | **Deleted** with the Action hierarchy |
+| `SpriteAnimator` (Examples/RPG/`rpg_entity.hpp`) | Third frame-animation implementation, engine-free | **Ported** to `FlipbookComponent` (its idempotent `play()` and col/row grid addressing are absorbed into the engine API) |
+| `VATClip` / `VATComponent` (`vat.hpp`, `vat_component.cpp`) | GPU vertex animation | **Kept**, refactored: clip ownership moves to the library, playhead logic moves to the shared base |
 
-Cross-cutting gaps:
+Why delete `Action` rather than wrap it: actions are single-use mutable
+objects driven by `Step(dt)` — they cannot be seeked, scrubbed, played
+backwards, or re-triggered without re-instantiation, and `MoveBy`-style
+deltas accumulate float error over loops. Every one of those problems
+disappears if the tween representation is keyframes evaluated as a pure
+function of time. CSB scene data is *already* keyframes; the current loader
+converts keyframes → actions, losing the natural representation on the way.
 
-- **No central tick.** Each component advances time in its own `OnTick`, so
-  there is no global animation time scale (slow-mo, pause-world-but-not-UI),
-  and no single place to inspect "everything currently animating".
-- **No shared clip storage.** Every system invents its own clip type and its
-  own ownership story (owned copy, per-component map, unique_ptr).
-- **No events.** Nothing exposes "clip finished", "looped", or per-frame
-  events (footstep on frame 3), which every game ends up hand-rolling.
+Cross-cutting gaps being fixed:
+
+- **No central tick** — no global/group time scale, no "what is animating
+  right now" view.
+- **No shared clip storage** — three ad-hoc clip types with three ownership
+  stories; VAT bakes one texture set *per component instance*.
+- **No events** — nothing fires "finished", "looped", or per-frame events.
 
 ---
 
@@ -40,25 +51,22 @@ Goals
 
 1. One subsystem (`AnimationSubsystem`) that ticks all animation, owns global
    and per-group time scales, and exposes a debug view of active players.
-2. One clip library: named, shared, ref-counted animation assets
-   (`FlipbookClip`, `ActionTimeline`, `VATClip`).
-3. Three focused components sharing a common playback base:
-   `ActionTimelineComponent` (tweens/timelines), `FlipbookComponent`
-   (frame-based, drives `SpriteComponent`), `VATComponent` (GPU vertex
-   animation, refactored onto the base).
-4. Unified playback semantics — play/pause/stop/speed/loop and completion
-   events behave identically across all three.
-5. Backward compatibility during migration: `ActionManager::RunAction` and the
-   CSB loader keep working; `Animator2D` becomes a deprecated shim.
+2. One clip library: named, shared animation assets (`FlipbookClip`,
+   `TweenTimeline`, `VATClip`).
+3. Three focused components on a common playback base: `TweenComponent`,
+   `FlipbookComponent`, `VATComponent`.
+4. **Everything is evaluate-by-time.** Every player samples state as a pure
+   function of the playhead. Seek, scrub, reverse, ping-pong, fixed-tick
+   determinism (headless/netcode) work uniformly, by construction.
+5. Unified playback semantics — play/pause/stop/speed/wrap and events behave
+   identically across all three.
 
 Non-goals (for this iteration)
 
-- Skeletal animation / animation blending trees. The design leaves room for a
-  future `SkeletalComponent` as a fourth player kind, but nothing more.
-- VAT crossfading (needs shader work — two clip bindings + blend weight).
-  Clip *switching* is in scope.
-- A timeline *editor*. The editor integration is limited to the existing
-  `DrawImGui` inspector pattern.
+- Skeletal animation / blend trees (the design leaves an obvious slot).
+- VAT crossfading (needs a second texture binding + blend weight in the
+  shader). Clip *switching* is in scope.
+- A timeline editor. Editor integration = the existing `DrawImGui` pattern.
 
 ---
 
@@ -75,39 +83,40 @@ Non-goals (for this iteration)
                     register/unregister (OnAttach/OnDetach)
                               │               │               │
               ┌───────────────┴───┐   ┌───────┴────────┐   ┌──┴────────────┐
-              │ ActionTimeline-   │   │ Flipbook-      │   │ VATComponent  │
-              │ Component         │   │ Component      │   │               │
-              │ (tweens, CSB      │   │ (frame-based,  │   │ (GPU vertex   │
-              │  timelines,       │   │  drives Sprite │   │  animation)   │
-              │  RunAction API)   │   │  UVs)          │   │               │
+              │ TweenComponent    │   │ Flipbook-      │   │ VATComponent  │
+              │ (keyframe tracks  │   │ Component      │   │ (GPU vertex   │
+              │  on transform /   │   │ (frame-based,  │   │  animation)   │
+              │  color / custom)  │   │  drives Sprite │   │               │
+              │                   │   │  UVs)          │   │               │
               └───────────────────┘   └────────────────┘   └───────────────┘
                         │                     │                    │
-                  ActionTimeline        FlipbookClip            VATClip
+                  TweenTimeline         FlipbookClip            VATClip
                   (shared asset)        (shared asset)        (shared asset)
                               all stored in AnimationLibrary
 ```
 
-All three components derive from a common `AnimationComponent` base that owns
-the playback state machine. The subsystem iterates registered components once
-per frame; the components' own `OnTick` is disabled (`CanTick() == false`),
-mirroring how `CanvasDrawable`s are drawn by the batch renderer rather than
-ticking themselves.
+All three components derive from `AnimationComponent`, which owns the playback
+state machine. The subsystem iterates registered components once per frame;
+the components' own `OnTick` is disabled (`CanTick() == false`), mirroring how
+`CanvasDrawable`s are drawn by the batch renderer rather than ticking
+themselves.
 
 ### File layout
 
 ```
 Engine/include/Atmospheric/
-    animation_clip.hpp        NEW  FlipbookFrame, FlipbookClip, ActionTimeline
+    easing.hpp                NEW  EasingType + ApplyEasing (moved from action.hpp)
+    animation_clip.hpp        NEW  FlipbookClip, TweenTimeline (+ tracks/keys)
     animation_component.hpp   NEW  AnimationComponent base + PlaybackState
     animation_subsystem.hpp   NEW  AnimationSubsystem + AnimationLibrary
-    action.hpp                KEEP Action hierarchy (unchanged public API);
-                                   `Animate` reimplemented on FlipbookClip
-    action_manager.hpp        KEEP thin deprecated alias (see §7)
-    action_timeline_component.hpp NEW
+    tween_component.hpp       NEW  TweenComponent + Tween builder
     flipbook_component.hpp    NEW
-    animator_2d.hpp           DEPRECATED shim → FlipbookComponent
-    vat.hpp                   KEEP  (VATClip unchanged; gains library storage)
+    vat.hpp                   KEEP (VATClip unchanged; stored in library)
     vat_component.hpp         CHANGED derives AnimationComponent
+
+    action.hpp                DELETED (with action.cpp)
+    action_manager.hpp        DELETED (with action_manager.cpp)
+    animator_2d.hpp           DELETED (with animator_2d.cpp)
 ```
 
 ---
@@ -116,10 +125,7 @@ Engine/include/Atmospheric/
 
 ### 4.1 Playback state (shared semantics)
 
-Every player — tween timeline, flipbook, VAT — reduces to the same state
-machine, which today is re-implemented three times with three sets of bugs
-(`Animator2D` has no speed, `VATComponent` has no events, `ActionManager` has
-no pause). It is written once in the base:
+Every player reduces to the same state machine, written once in the base:
 
 ```cpp
 // animation_component.hpp
@@ -170,7 +176,9 @@ public:
 
 protected:
     // Called by AnimationSubsystem::Process with group-scaled dt already
-    // applied and `time` already advanced/wrapped. Subclasses only *sample*.
+    // applied and `time` already advanced/wrapped. Subclasses only *sample*:
+    // Evaluate MUST be a pure function of `time`. This invariant is what
+    // makes seek/scrub, reverse, ping-pong, and deterministic replay free.
     virtual void Evaluate(float time) = 0;
 
     PlaybackState _state;
@@ -178,13 +186,9 @@ protected:
 };
 ```
 
-Key decision: **the base advances and wraps time; subclasses only sample.**
-`Evaluate(t)` must be a pure function of `t` wherever possible — this is what
-makes seek/scrub in the editor, negative speed, and deterministic replay
-(relevant to the netcode work) fall out for free. The one exception is the
-imperative `RunAction` path, see §4.4.
-
 ### 4.2 Clips (shared assets) and the library
+
+#### FlipbookClip
 
 ```cpp
 // animation_clip.hpp
@@ -197,7 +201,7 @@ struct FlipbookFrame {
 struct FlipbookClip {
     std::string name;
     std::vector<FlipbookFrame> frames;
-    float GetDuration() const;   // sum of frame durations (cached)
+    float GetDuration() const;   // sum of frame durations (cached prefix sums)
 
     // Builders (absorb Animator2D::CreateAnimationFromTileset and the RPG
     // example's col/row pattern):
@@ -210,54 +214,90 @@ struct FlipbookClip {
 };
 ```
 
-`ActionTimeline` is the *declarative* counterpart of an action sequence: a
-named, reusable recipe that can be instantiated many times (unlike an
-`Action`, which is single-use mutable state):
+#### TweenTimeline (replaces the Action hierarchy)
+
+A timeline is a set of typed keyframe tracks over a fixed duration. Sampling
+is a pure function of `t`; there is no per-playback mutable state to
+instantiate, so one timeline asset serves any number of simultaneous players.
 
 ```cpp
-struct ActionTimeline {
+enum class TweenProperty {
+    Position,      // vec3, absolute (world of the CSB node / local transform)
+    Rotation,      // vec3 radians
+    Scale,         // vec3
+    Color,         // vec4 → SpriteComponent / material tint
+    Alpha,         // float → color.a only
+    Custom,        // float, delivered via callback (drive anything)
+};
+
+struct TweenKey {
+    float time;                  // seconds from timeline start
+    glm::vec4 value;             // interpreted per property (float in .x)
+    EasingType easing = EasingType::Linear;  // ease-in *to this key*
+};
+
+struct TweenTrack {
+    TweenProperty property;
+    int customId = 0;            // routes Custom tracks
+    std::vector<TweenKey> keys;  // sorted by time
+    glm::vec4 Sample(float t) const;  // binary search + eased lerp; clamps at ends
+};
+
+struct TimelineEvent { float time; int eventId; };
+
+struct TweenTimeline {
     std::string name;
-    // Factory producing a fresh action tree per playback. Keeps the whole
-    // existing Action zoo (Sequence, RepeatForever, easing…) working as the
-    // evaluation engine without copying every Action subclass into a new
-    // keyframe format. CSB loading and Lua build these.
-    std::function<std::unique_ptr<Action>()> instantiate;
-    float duration = 0.0f;       // 0 = unbounded (e.g. RepeatForever)
+    float duration = 0.0f;       // max key time (cached)
+    std::vector<TweenTrack> tracks;
+    std::vector<TimelineEvent> events;  // fired when playhead crosses them
 };
 ```
 
-The library lives inside the subsystem (scene-scoped, cleared by
-`UnloadCurrentScene` like other scene-tier assets in `AssetManager`):
+Notes on what the Action zoo maps to:
+
+- `MoveTo/RotateTo/ScaleTo/ColorTo/FadeTo` → one track with two keys.
+- `MoveBy` and friends → resolved to absolute keys at *build* time by the
+  `Tween` builder (§4.4), which reads the current value. No delta stepping
+  at runtime → no accumulated drift across loops.
+- `Sequence` → keys laid out one after another on the same track;
+  cross-property sequences are just multiple tracks with staggered keys.
+- `Spawn` (parallel) → multiple tracks, same time span.
+- `RepeatForever` → `WrapMode::Loop` on the *player*, not in the asset.
+- `CallFunc` → a `TimelineEvent`; the component dispatches by `eventId`.
+- `DelayTime` → a gap between keys.
+
+Event semantics under scrubbing: events fire on *forward* crossings during
+normal playback. `Seek` does not fire skipped events (documented; editor
+scrubbing should not trigger gameplay callbacks).
+
+#### AnimationLibrary
+
+Scene-scoped (cleared by `UnloadCurrentScene`, like scene-tier assets in
+`AssetManager`):
 
 ```cpp
 class AnimationLibrary {
 public:
-    // Register returns a stable handle; names are unique per kind.
-    FlipbookClipHandle   AddFlipbook(FlipbookClip clip);
-    TimelineHandle       AddTimeline(ActionTimeline tl);
-    VATClipHandle        AddVATClip(std::string name, std::unique_ptr<VATClip> clip);
+    FlipbookClipHandle AddFlipbook(FlipbookClip clip);
+    TimelineHandle     AddTimeline(TweenTimeline tl);
+    VATClipHandle      AddVATClip(std::string name, std::unique_ptr<VATClip> clip);
 
-    const FlipbookClip*  GetFlipbook(FlipbookClipHandle) const;   // + by-name lookups
-    const ActionTimeline* GetTimeline(TimelineHandle) const;
+    const FlipbookClip*  GetFlipbook(FlipbookClipHandle) const;  // + by-name
+    const TweenTimeline* GetTimeline(TimelineHandle) const;
     VATClip*             GetVATClip(VATClipHandle) const;
 
     void Clear();                // scene unload
 };
 ```
 
-Moving `VATClip` ownership here fixes the current "one baked texture set per
+Moving `VATClip` ownership here fixes the "one baked texture set per
 component" cost: ten VAT enemies of the same type share one clip. (The
 `VATMaterial` per instance stays — it carries the per-instance playhead.)
-
-`AnimationFrame`/`AnimationClip` from `animator_2d.hpp` are replaced by
-`FlipbookFrame`/`FlipbookClip` in `animation_clip.hpp`, which also resolves
-the long-standing TODO comment block in `action.hpp` about where those structs
-should live.
 
 ### 4.3 AnimationSubsystem
 
 Follows the established service pattern (`AudioSubsystem`-style static
-locator; owned by `Application` in construction order after graphics, before
+locator; owned by `Application`, constructed after graphics, before
 scripting):
 
 ```cpp
@@ -292,74 +332,80 @@ private:
 
 `Process(dt)` per player: skip if `!playing || !gameObject->isActive ||
 !enabled`; compute scaled dt; advance `_state.time`; apply wrap mode (firing
-`OnLooped`/`OnFinished`); call `Evaluate(time)`. Registration/unregistration
-during the walk is deferred to the end of the pass — same discipline
-`ActionManager::OnTick` already implements for its action list, now written
-once instead of per component.
+`OnLooped`/`OnFinished`); call `Evaluate(time)`. Registration changes during
+the walk are deferred to the end of the pass.
 
-Tick order: `Process` runs in the frame after entity `Tick` (game logic
-decides *what* to play) and before rendering/transform sync (so sampled poses
-are what gets drawn). This matches where `GameLayer` currently ticks the
-components anyway, so behavior is unchanged — it just becomes explicit.
+Tick order: `Process` runs after entity `Tick` (game logic decides *what* to
+play) and before rendering/transform sync (so sampled poses are what gets
+drawn).
 
-### 4.4 ActionTimelineComponent (absorbs ActionManager)
+### 4.4 TweenComponent
 
-Two modes, both first-class:
+One component, two front doors onto the same evaluation path:
 
-- **Imperative** — the existing fire-and-forget `RunAction` API, unchanged in
-  spirit. This is inherently stateful (actions mutate targets with deltas), so
-  these actions are *stepped*, not evaluated; seek/scrub does not apply to
-  them.
-- **Declarative** — named `ActionTimeline`s from the library, playable and
-  re-triggerable by name: `Play("open_menu")`. Each `Play` instantiates a
-  fresh action tree via `ActionTimeline::instantiate` and steps it; `Stop`
-  discards it. This is what the CSB loader and gameplay code should migrate
-  to.
+- **Named timelines** from the library — `Play("open_menu")`, re-triggerable,
+  what CSB loading produces.
+- **The `Tween` builder** — for code-driven one-shots ("knock this enemy back
+  0.3s"), building a small anonymous `TweenTimeline` inline and playing it.
+  This replaces `RunAction(new Sequence{...})` ergonomics.
 
 ```cpp
-class ActionTimelineComponent : public AnimationComponent {
+class TweenComponent : public AnimationComponent {
 public:
-    explicit ActionTimelineComponent(GameObject* owner);
-    std::string GetName() const override { return "ActionTimeline"; }
+    explicit TweenComponent(GameObject* owner);
+    std::string GetName() const override { return "Tween"; }
 
-    // ── imperative (ActionManager-compatible) ────────────────────────
-    void RunAction(std::unique_ptr<Action> action);
-    void RunAction(Action* action);          // takes ownership (Lua/legacy)
-    void StopAllActions();
-
-    // ── declarative (new) ────────────────────────────────────────────
     void AddTimeline(TimelineHandle tl);                 // from the library
     void AddTimeline(const std::string& libraryName);
-    bool PlayTimeline(const std::string& name);          // restarts if playing
-    void StopTimeline();
-    const std::string& GetCurrentTimeline() const;
+    bool Play(const std::string& name);                  // restarts if playing
+    using AnimationComponent::Play;                      // resume current
 
-    float GetDuration() const override;      // current timeline's duration
+    // Fire-and-forget overlay tweens: independent playheads layered on top of
+    // the main timeline (e.g. a hit-flash while the walk timeline runs).
+    // Returns an id usable with CancelOverlay.
+    int PlayOverlay(TweenTimeline tl, std::function<void()> onFinished = {});
+    void CancelOverlay(int id);
+    void CancelAllOverlays();
+
+    void SetOnEvent(std::function<void(int eventId)> cb);   // TimelineEvents
+    void SetCustomSink(std::function<void(int customId, float value)> cb);
+
+    float GetDuration() const override;      // active timeline's duration
 
 protected:
-    void Evaluate(float time) override;      // steps timeline + ad-hoc actions
-
+    void Evaluate(float time) override;      // sample active timeline tracks
+                                             // (+ step overlay playheads)
 private:
-    // ad-hoc actions (imperative path) — same deferred add/stop discipline
-    // as today's ActionManager
-    std::vector<std::unique_ptr<Action>> _actions, _actionsToAdd;
-    bool _stopRequested = false;
-
-    // declarative path
     std::vector<TimelineHandle> _timelines;
-    std::unique_ptr<Action> _activeInstance;  // current timeline instantiation
     TimelineHandle _active;
-    float _lastEvalTime = 0.0f;               // Evaluate() derives dt for Step
+    struct Overlay { int id; TweenTimeline tl; float time; /*…*/ };
+    std::vector<Overlay> _overlays;          // advanced with the same scaled dt
 };
 ```
 
-Implementation note: because `Action::Step(dt)` is delta-driven, `Evaluate`
-computes `dt = time - _lastEvalTime` and steps. Backward scrub on the
-imperative path is explicitly unsupported (documented); the declarative path
-supports restart-then-fast-forward as a cheap approximation of seek, which is
-sufficient for editor preview.
+The builder:
 
-### 4.5 FlipbookComponent (absorbs Animator2D / Animate / SpriteAnimator)
+```cpp
+// Fluent construction of a TweenTimeline. `To` targets resolve any relative
+// ("by") values against the GameObject's current state at *build* time.
+Tween(go)
+    .MoveTo(0.3f, {x, y, 0}, EasingType::QuadOut)
+    .Then()                                  // advance the cursor (sequence)
+    .ScaleTo(0.15f, {1.2f, 1.2f, 1}, EasingType::BackOut)
+    .With()                                  // stay at cursor (parallel)
+    .FadeTo(0.15f, 0.0f)
+    .Event(kHitFlashDone)
+    .Play();          // → TweenComponent::PlayOverlay on go (auto-adds the
+                      //   component if missing)
+// .Build() instead of .Play() returns the TweenTimeline for the library.
+```
+
+Callbacks: where old code interleaved `CallFunc` inside a `Sequence`, new code
+places `.Event(id)` markers and handles them in one `SetOnEvent` callback (or
+passes `onFinished` for the common "do X when done" case). This keeps the
+asset data-only — serializable, shareable, scrub-safe.
+
+### 4.5 FlipbookComponent
 
 ```cpp
 class FlipbookComponent : public AnimationComponent {
@@ -367,11 +413,10 @@ public:
     explicit FlipbookComponent(GameObject* owner);
     std::string GetName() const override { return "Flipbook"; }
 
-    // Clips come from the library (shared) or are registered locally.
     void AddClip(FlipbookClipHandle clip);
     void AddClip(const std::string& libraryName);
-    FlipbookClipHandle AddLocalClip(FlipbookClip clip);  // convenience: adds to
-                                                         // library + registers
+    FlipbookClipHandle AddLocalClip(FlipbookClip clip);  // adds to library
+                                                         // + registers here
 
     bool Play(const std::string& clipName);  // no-op if already playing it
                                              // (SpriteAnimator's idempotent play)
@@ -381,8 +426,7 @@ public:
     // Frame events: fired when playback enters a frame with eventId >= 0.
     void SetOnFrameEvent(std::function<void(int eventId)> cb);
 
-    // Optional per-clip flip override (walk-left = walk-right + flipX,
-    // halving the number of authored clips — the RPG pattern).
+    // Per-direction flip without extra clips (walk-left = walk-right + flipX).
     void SetFlipX(bool flip);
 
     float GetDuration() const override;
@@ -392,46 +436,40 @@ protected:
     void Evaluate(float time) override;      // binary-search frame, set UVs once
 
 private:
-    SpriteComponent* _sprite = nullptr;      // also probes Sprite3DComponent
+    SpriteComponent* _sprite = nullptr;      // falls back to Sprite3DComponent
     std::vector<FlipbookClipHandle> _clips;
     FlipbookClipHandle _current;
-    int _lastFrame = -1;                     // change detection: only touch the
-                                             // sprite (and fire events) on frame
-                                             // transitions
-    std::vector<float> _frameEndTimes;       // prefix sums for O(log n) sampling
+    int _lastFrame = -1;                     // only touch the sprite (and fire
+                                             // events) on frame transitions
+    std::vector<float> _frameEndTimes;       // prefix sums, O(log n) sampling
     std::function<void(int)> _onFrameEvent;
 };
 ```
 
-`Evaluate(t)` maps `t` to a frame index via prefix-summed frame end times
-(the `_splitTimes` idea from `Animate`, done once per clip instead of per
-playback), writes `SetUVs` only when the frame index changes, and fires frame
-events for the entered frame. Because it is a pure sample of `t`, wrap modes,
-negative speed and scrubbing all work with zero extra code.
-
-Works against `SpriteComponent` first; `OnAttach` falls back to
-`Sprite3DComponent` (same UV interface) so billboarded world sprites animate
-with the same component.
+`Evaluate(t)` maps `t` to a frame via the prefix sums, writes `SetUVs` only
+when the frame index changes, and fires the entered frame's event. Pure
+sampling → wrap modes, negative speed, and scrubbing need zero extra code.
 
 ### 4.6 VATComponent (refactored onto the base)
 
-Public construction stays source-compatible, plus a library-handle overload:
-
 ```cpp
+struct VATProps {
+    WrapMode wrap = WrapMode::Loop;
+    float speed = 1.0f;
+    bool playing = true;
+    float startTime = 0.0f;      // seconds (no longer normalized)
+};
+
 class VATComponent : public AnimationComponent {
 public:
-    // Existing signature (takes ownership → clip is auto-registered into the
-    // library under a generated name, so old call sites compile unchanged).
-    VATComponent(GameObject* owner, MeshHandle mesh,
-                 std::unique_ptr<VATClip> clip, const VATProps& props = {});
-    // New: share one baked clip across many instances.
+    // Clips are library assets; baking registers them once, instances share.
     VATComponent(GameObject* owner, MeshHandle mesh,
                  VATClipHandle clip, const VATProps& props = {});
 
     std::string GetName() const override { return "VAT"; }
     float GetDuration() const override;      // clip->GetDuration()
 
-    void SetClip(VATClipHandle clip);        // switch clips (e.g. walk→die)
+    void SetClip(VATClipHandle clip);        // switch clips (e.g. walk → die)
 
 protected:
     void Evaluate(float time) override;      // material->normalizedTime =
@@ -439,38 +477,32 @@ protected:
 };
 ```
 
-`VATProps{speed, loop, playing, startTime}` maps onto `PlaybackState`
-(`loop → WrapMode::Loop / ClampHold`, `startTime` is normalized → seeded via
-`Seek(startTime * duration)`); the struct is kept as a constructor convenience.
-The private loop/clamp/fmod logic in `VATComponent::OnTick` is deleted — the
-base does it. Net effect: VAT gains pause, events ("death anim finished →
-despawn", which Deathmatch currently approximates with timers), group time
-scales, and clip sharing, for less code than it has now.
+The private loop/clamp/fmod logic in today's `VATComponent::OnTick` is
+deleted — the base does it. Net effect: VAT gains pause, seek, events ("death
+anim finished → despawn", which Deathmatch currently approximates with
+timers), group time scales, and clip sharing, with less code than it has now.
 
 ---
 
-## 5. Serialization & scene loading
+## 5. Serialization & scene loading (breaking, by design)
 
-- **ComponentFactory** — register `"Flipbook"` and `"ActionTimeline"`.
-  `"Animator2D"` and `"ActionManager"` registrations stay but construct the
-  new components (the factory name is the compatibility surface; `GetName()`
-  of the shims returns the old names so editor round-trips are stable).
-- **JSON scenes** (`application.cpp` registrations): the `Animator2D`
-  deserializer's `animations` array maps 1:1 onto `FlipbookClip`s registered
-  in the library (named `"<entity>/<clip>"`) and added to a
-  `FlipbookComponent`. The `ActionManager` post-init hook (`ParseAction`)
-  keeps producing imperative `RunAction`s.
-- **CSB scenes** (`scene_loader.cpp::ParseTimelines`): instead of immediately
-  `RunAction`-ing one anonymous looped sequence per node, the parser builds an
-  `ActionTimeline` per (node, animation) whose `instantiate` closure rebuilds
-  the parsed sequence, registers it in the library, and gives the node an
-  `ActionTimelineComponent` that auto-plays it. Same runtime behavior as
-  today, but timelines become stoppable, re-triggerable and inspectable, and
-  CSB "animation list" names (currently ignored) get a natural home.
-- **Lua bindings**: `RunAction` bindings keep working (the raw-pointer
-  overload exists for exactly this). New bindings are a thin layer:
-  `entity:flipbook():play("walk")`, `animation.set_time_scale(0.2)`,
-  `entity:timeline():play("intro")`.
+- **ComponentFactory** — register `"Tween"`, `"Flipbook"`; the `"Animator2D"`
+  and `"ActionManager"` factory names are removed. Existing JSON scenes that
+  used them are migrated (the `Animator2D` `animations` array maps 1:1 onto
+  `FlipbookClip`s; `ActionManager` `actions` arrays map onto a `TweenTimeline`
+  per entry).
+- **CSB scenes** (`scene_loader.cpp::ParseTimelines`) get *simpler*: CSB
+  frames are already keyframes, so each (node, property) timeline maps
+  directly onto a `TweenTrack` (frameIndex / frameRate / speed → key time,
+  easingData → `TweenKey::easing`), grouped into one `TweenTimeline` per node,
+  registered in the library, auto-played on a `TweenComponent` with
+  `WrapMode::Loop` when `config.loopAnimations`. The keyframe → action →
+  playback double translation disappears, and CSB named animation lists
+  (currently ignored) map naturally onto multiple named timelines.
+- **Lua bindings** — regenerate for the new surface:
+  `entity:tween():play("intro")`, the `Tween` builder, `entity:flipbook():play("walk")`,
+  `animation.set_time_scale(0.2)`. The old `RunAction` bindings are dropped
+  in the same commit that ports the scripts using them.
 
 ---
 
@@ -478,46 +510,38 @@ scales, and clip sharing, for less code than it has now.
 
 - `AnimationSubsystem::DrawImGui` — one table of all registered players:
   owner name, component kind, current clip/timeline, time/duration bar,
-  playing state, group; plus global & per-group time-scale sliders. This is
-  the "what is animating right now" view the engine currently lacks.
+  playing state, group; plus global & per-group time-scale sliders.
 - `AnimationComponent::DrawImGui` — shared transport UI (play/pause/stop,
   speed drag, seek slider — generalizing what `VATComponent::DrawImGui`
   already hand-rolls) + subclass extras (clip dropdown for flipbook, VAT
-  texture stats, action count for timelines).
+  texture stats, track list for tween timelines). Scrubbing is safe because
+  `Evaluate` is pure and seek suppresses events.
 
 ---
 
-## 7. Migration plan
+## 7. Implementation plan
 
-Phased so every step compiles, runs the existing examples, and is
-independently committable:
+No compatibility shims, but still phased so each step compiles and the
+examples run (ports land in the same commit as the breaking change they
+require):
 
-1. **Foundations** — add `animation_clip.hpp`, `animation_component.hpp`,
-   `animation_subsystem.hpp/.cpp`; `Application` constructs the subsystem and
-   calls `Process` from `Update`. Nothing registers yet; zero behavior change.
-2. **FlipbookComponent** — implement on the base; reimplement `Animator2D` as
-   a deprecated subclass/shim that forwards `AddAnimation/Play/Stop` and keeps
-   its factory entry; reimplement the `Animate` action to sample a
-   `FlipbookClip` handle instead of owning a private `AnimationClip` copy.
-   Port the Animation example; optionally replace the RPG `SpriteAnimator`
-   (or leave it — examples may lag).
-3. **ActionTimelineComponent** — implement; `ActionManager` becomes
-   `using ActionManager = ActionTimelineComponent` behind a deprecation note
-   (its public surface — `RunAction` ×2, `StopAllActions` — is a strict
-   subset). Migrate `scene_loader.cpp` to build library timelines.
+1. **Foundations** — `easing.hpp`, `animation_clip.hpp`,
+   `animation_component.hpp`, `animation_subsystem.hpp/.cpp`; `Application`
+   constructs the subsystem and calls `Process` from `Update`.
+2. **FlipbookComponent** — implement; delete `animator_2d.*` and the
+   `Animate` action; port the Animation example and the RPG example's
+   `SpriteAnimator` in the same commit.
+3. **TweenComponent** — implement timeline sampling + the `Tween` builder;
+   rewrite `scene_loader.cpp` timeline parsing onto `TweenTrack`s; delete
+   `action.hpp/.cpp`, `action_manager.*`; update ComponentFactory / JSON
+   deserializers / Lua bindings; port remaining call sites.
 4. **VATComponent** — rebase onto `AnimationComponent`, move clip ownership
-   into the library, add `SetClip`. Port the Deathmatch enemy.
-5. **Cleanup** — delete `animator_2d.cpp` internals, drop the TODO block in
-   `action.hpp`, document the subsystem in `docs/`, add Lua bindings for the
-   new surface.
-
-Compatibility contract during migration: `ActionManager::RunAction(new ...)`,
-`Animator2D` factory/JSON scenes, CSB loading, and the `VATComponent`
-unique_ptr constructor all keep working unchanged.
+   into the library, add `SetClip`; port the Deathmatch enemy.
+5. **Polish** — subsystem ImGui panel, docs, Lua binding regeneration pass.
 
 ---
 
-## 8. Future extensions (explicitly out of scope, but shaped for)
+## 8. Future extensions (out of scope, but shaped for)
 
 - **Skeletal animation**: a `SkeletalComponent : AnimationComponent` sampling
   a `SkeletonClip` slots into the same subsystem, library, and transport UI.
@@ -527,5 +551,5 @@ unique_ptr constructor all keep working unchanged.
   and drives a Flipbook/VAT/Skeletal player underneath — the reason `Play` is
   idempotent and `Evaluate` is a pure sample.
 - **Determinism**: because all animation advances in one place with explicit
-  dt scaling, headless/server mode can run the subsystem at a fixed tick (or
-  skip render-only players) for the netcode use cases.
+  dt scaling and pure sampling, headless/server mode can run the subsystem at
+  a fixed tick (or skip render-only players) for the netcode use cases.
