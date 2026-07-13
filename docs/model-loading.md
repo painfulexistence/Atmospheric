@@ -94,6 +94,13 @@ concern. Defaults make an opaque thin-walled dielectric (`transmissionFactor 0`,
 `ior 1.5`, `thicknessFactor 0`, `attenuationDistance +inf`), so materials without
 the extensions are unaffected.
 
+`Examples/GLTFViewer` is the live demo (sibling of USDViewer): a committed
+self-contained `cube.gltf` via the scene-JSON `"prefab"` field, plus Khronos
+sample models (DamagedHelmet, DragonAttenuation) via `scripts/fetchGltfSamples.sh`.
+It's a **static PBR** viewer — skeletal animation/morph targets, Draco/meshopt
+compression, and KTX2 textures are the known gaps (a compressed or animated
+model still loads but shows empty geometry or the bind pose).
+
 ## USD notes
 
 USD is a first-class format: `AE_USE_TINYUSDZ` defaults **ON** on every platform
