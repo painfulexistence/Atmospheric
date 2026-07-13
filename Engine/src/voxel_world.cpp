@@ -63,7 +63,7 @@ void VoxelWorld::Init(Application* app, int seed, GameObject* root, MaterialHand
             .castShadow = false,
         }
     ));
-    sunGO->AddComponent(new SunComponent(glm::vec3(1.0f, 0.4f, 0.0f) * 50.0f, /*billboardRadius=*/15.0f));
+    sunGO->AddComponent(new SunComponent(glm::vec3(1.0f, 0.4f, 0.0f) * 50.0f, /*billboardRadius=*/10.0f));
 }
 
 void VoxelWorld::Update(float /*dt*/, const glm::vec3& cameraPos) {

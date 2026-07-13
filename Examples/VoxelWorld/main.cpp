@@ -34,6 +34,7 @@ class VoxelWorldApp : public Application {
 
         auto* worldObj = CreateGameObject();
         _world = static_cast<VoxelWorldComponent*>(worldObj->AddComponent<VoxelWorldComponent>(/*seed=*/1337));
+        _world->World().paletteIndex = 2;// "Earthy Green" (see gpaletteNames)
 
         // Water plane — large enough to cover the full view range plus fog
         // horizon. Parented to the world object so it stays in the same slot
@@ -64,6 +65,11 @@ class VoxelWorldApp : public Application {
         }
         if (auto* ssp = renderer->GetPass<ScreenSpaceGIPass>()) {
             ssp->gtaoEnabled = true;
+        }
+        // Post-process look: CRT + vignette on by default.
+        if (auto* pp = renderer->GetPass<PostProcessPass>()) {
+            pp->crtEnabled = true;
+            pp->vignetteEnabled = true;
         }
 
         ConsoleSubsystem::Get()->Info(
