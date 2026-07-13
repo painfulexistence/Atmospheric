@@ -1412,6 +1412,18 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
             mat = nm.handle;
             uvDiv = nm.texSize;
         }
+        // A mesh with no bound material (e.g. a bare USD mesh with no
+        // UsdPreviewSurface) would otherwise draw with unregistered default
+        // state. Bind a real, registered engine material so it renders like
+        // every other imported mesh instead of silently disappearing.
+        if (!mat.IsValid()) {
+            const std::string defName = fmt::format("{}:__default", baseName);
+            mat = am.GetMaterialHandle(defName);
+            if (!mat.IsValid()) {
+                am.CreateMaterial(defName, MaterialProps{});
+                mat = am.GetMaterialHandle(defName);
+            }
+        }
 
         auto* mesh = new Mesh(MeshType::PRIM);
         if (md.uvInTexels) {
