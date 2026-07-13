@@ -64,6 +64,8 @@ uniform float time;
 uniform sampler2D u_envMap;
 uniform int u_useEnv;
 uniform float u_envMaxLod;
+uniform float u_iblDiffuse;// debug scale on the diffuse IBL term (default 1.0)
+uniform float u_iblSpecular;// debug scale on the specular IBL term (default 1.0)
 
 // World-space clip plane (n, d) used by PlanarReflectionPass to cut away
 // geometry below the mirror plane; all-zero disables (dot == 0 is kept).
@@ -201,7 +203,9 @@ vec3 ComputeIBL(vec3 norm, vec3 viewDir, Surface surf) {
     vec3 prefiltered = textureLod(u_envMap, dirToEquirectUV(R), surf.roughness * u_envMaxLod).rgb;
     vec3 specular = prefiltered * F;
 
-    return (kd * diffuse + specular) * surf.ao;
+    // u_iblDiffuse / u_iblSpecular are debug/tuning scales (default 1.0). Lower
+    // the diffuse term to stop a strongly-tinted env map from washing albedo.
+    return (kd * diffuse * u_iblDiffuse + specular * u_iblSpecular) * surf.ao;
 }
 
 vec3 SurfaceColor(vec3 base) {

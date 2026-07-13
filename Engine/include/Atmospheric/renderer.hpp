@@ -1027,6 +1027,17 @@ public:
     // the real mip count, so a generous default is safe for any map size.
     float environmentMaxLod = 10.0f;
 
+    // ── IBL debug/tuning knobs (PBR ComputeIBL) ──────────────────────────────
+    // The image-based lighting term has no strength control by default, so a
+    // strongly-tinted environment map (e.g. an aquarium HDRI) washes every
+    // surface toward its colour. These scale the diffuse (albedo-tinted
+    // irradiance) and specular (reflection) IBL contributions independently;
+    // iblEnabled forces the term off without unloading the env map (the skybox
+    // still renders). All live-editable from the "IBL Debug" ImGui panel.
+    bool iblEnabled = true;
+    float iblDiffuseStrength = 1.0f;// scales the albedo-tinted diffuse irradiance
+    float iblSpecularStrength = 1.0f;// scales the mirror/reflection term
+
     // Non-null only while PlanarReflectionPass drives the scene passes with a
     // mirrored camera; passes fall back to the main camera + sceneRT when null.
     const RenderViewOverride* viewOverride = nullptr;

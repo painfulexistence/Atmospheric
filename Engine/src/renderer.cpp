@@ -2002,8 +2002,8 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             // incomplete unit (Apple's GL driver logs "unit 7 ... unloadable,
             // using zero texture" otherwise; u_useEnv=0 gates the sample).
             {
-                const bool useEnv =
-                    renderer.environmentMap.IsValid() && static_cast<uint32_t>(renderer.environmentMap) != 0;
+                const bool useEnv = renderer.iblEnabled && renderer.environmentMap.IsValid()
+                                    && static_cast<uint32_t>(renderer.environmentMap) != 0;
                 const auto& defaults = assetManager.GetDefaultTextures();
                 const GLuint envFallback = defaults.empty() ? 0 : static_cast<GLuint>(defaults[0]);
                 glActiveTexture(GL_TEXTURE7);
@@ -2011,6 +2011,8 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                 meshShader->SetUniform(std::string("u_envMap"), 7);
                 meshShader->SetUniform(std::string("u_useEnv"), useEnv ? 1 : 0);
                 meshShader->SetUniform(std::string("u_envMaxLod"), renderer.environmentMaxLod);
+                meshShader->SetUniform(std::string("u_iblDiffuse"), renderer.iblDiffuseStrength);
+                meshShader->SetUniform(std::string("u_iblSpecular"), renderer.iblSpecularStrength);
             }
 
             // VAT animation textures (units 8-9) + playback uniforms. vat.vert

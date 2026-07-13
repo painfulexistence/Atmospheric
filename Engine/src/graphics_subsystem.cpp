@@ -280,6 +280,24 @@ void GraphicsSubsystem::DrawImGui(float dt) {
         );
         ImGui::ColorEdit3("Clear color", reinterpret_cast<float*>(&renderer->clearColor));
 
+        // Image-based lighting knobs — placed above the AO/GI trees. Not gated on
+        // any pass, so it shows in every scene (the env map feeds PBR ComputeIBL
+        // directly, no VoxelChunkPass required).
+        if (ImGui::TreeNode("IBL Debug")) {
+            const bool hasEnv = renderer->environmentMap.IsValid()
+                                && static_cast<uint32_t>(renderer->environmentMap) != 0;
+            ImGui::TextDisabled(hasEnv ? "Environment map loaded." : "No env map — flat-ambient fallback.");
+            ImGui::Checkbox("Enable IBL", &renderer->iblEnabled);
+            // Diffuse tints albedo by the (blurred) env; drop it when a strongly
+            // coloured HDRI washes surfaces toward its colour. Specular is the
+            // reflection term. envMaxLod is the diffuse/roughest-spec blur level.
+            ImGui::SliderFloat("Diffuse strength", &renderer->iblDiffuseStrength, 0.0f, 2.0f);
+            ImGui::SliderFloat("Specular strength", &renderer->iblSpecularStrength, 0.0f, 2.0f);
+            ImGui::SliderFloat("Env max LOD (blur)", &renderer->environmentMaxLod, 0.0f, 12.0f);
+            ImGui::TextDisabled("Lower Diffuse to keep base colours from being\ntinted by a coloured env (e.g. the aquarium HDRI).");
+            ImGui::TreePop();
+        }
+
         // Voxel-world lighting (VoxelChunkPass): corner AO + GI, both default
         // off. Kept above bloom and the post-process effect toggles below.
         if (auto* vp = renderer->GetPass<VoxelChunkPass>()) {
