@@ -290,6 +290,7 @@ void GraphicsSubsystem::DrawImGui(float dt) {
                     ImGui::SliderFloat("SSGI thickness (m)", &ssp->ssgiThickness, 0.1f, 2.0f);
                     ImGui::SliderFloat("SSGI temporal", &ssp->ssgiBlend, 0.0f, 0.98f);
                     ImGui::SliderInt("SSGI à-trous iters", &ssp->ssgiAtrousIters, 0, 5);
+                    ImGui::Checkbox("SSGI half-res", &ssp->ssgiHalfRes);
                     ImGui::TextDisabled("Screen-space 1-bounce, SVGF-lite denoised");
                 }
                 ImGui::TreePop();

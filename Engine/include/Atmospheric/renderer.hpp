@@ -214,6 +214,7 @@ public:
     int ssgiAtrousIters = 3;
     float ssgiSigmaDepth = 0.1f;// tangent-plane distance sigma (metres)
     float ssgiSigmaLuma = 4.0f;
+    bool ssgiHalfRes = true;// trace/denoise at half res, bilinear-upsample (≈4x cheaper)
 
 private:
     void _ensureScratch(int w, int h);

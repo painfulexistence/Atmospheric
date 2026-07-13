@@ -2098,12 +2098,18 @@ void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
         ShaderProgram* trace = am.GetShader("screen_ssgi");
         ShaderProgram* comp = am.GetShader("screen_ssgi_composite");
         if (trace && comp) {
-            _ensureSSGI(w, h);
+            // Trace + temporal + à-trous run at (optionally) half resolution; the
+            // composite upsamples the result back to full res (bilinear, since the
+            // SSGI textures use GL_LINEAR). ~4x cheaper for the heavy trace.
+            const int sw = ssgiHalfRes ? std::max(1, w / 2) : w;
+            const int sh = ssgiHalfRes ? std::max(1, h / 2) : h;
+            const glm::vec2 svp(static_cast<float>(sw), static_cast<float>(sh));
+            _ensureSSGI(sw, sh);
             const int prev = 1 - _ssgiCur;
             const float blend = _ssgiPrevValid ? ssgiBlend : 0.0f;
 
             glBindFramebuffer(GL_FRAMEBUFFER, _ssgiHistFBO[_ssgiCur]);
-            glViewport(0, 0, w, h);
+            glViewport(0, 0, sw, sh);
             trace->Activate();
             trace->SetUniform(std::string("u_color"), 0);
             trace->SetUniform(std::string("u_depth"), 1);
@@ -2120,7 +2126,7 @@ void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             trace->SetUniform(std::string("u_prevViewProj"), _ssgiPrevVP);
             trace->SetUniform(std::string("u_cameraPos"), eye);
             trace->SetUniform(std::string("u_prevCameraPos"), _ssgiPrevEye);
-            trace->SetUniform(std::string("u_viewportSize"), vp);
+            trace->SetUniform(std::string("u_viewportSize"), svp);
             trace->SetUniform(std::string("u_ssgiRadius"), ssgiRadius);
             trace->SetUniform(std::string("u_ssgiThickness"), ssgiThickness);
             // Vary the sample rotation each frame so temporal accumulation
@@ -2141,7 +2147,7 @@ void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                     atrous->SetUniform(std::string("u_ssgi"), 0);
                     atrous->SetUniform(std::string("u_depth"), 1);
                     atrous->SetUniform(std::string("u_invProj"), invProj);
-                    atrous->SetUniform(std::string("u_viewportSize"), vp);
+                    atrous->SetUniform(std::string("u_viewportSize"), svp);
                     atrous->SetUniform(std::string("u_sigmaDepth"), ssgiSigmaDepth);
                     atrous->SetUniform(std::string("u_sigmaLuma"), ssgiSigmaLuma);
                     glActiveTexture(GL_TEXTURE1);
@@ -2163,7 +2169,10 @@ void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                 }
             }
 
+            // Composite back at full resolution (bilinear-upsamples the half-res
+            // SSGI). Reset the viewport — the trace/à-trous ran at half res.
             glBindFramebuffer(GL_FRAMEBUFFER, _scratchFBO);
+            glViewport(0, 0, w, h);
             comp->Activate();
             comp->SetUniform(std::string("u_color"), 0);
             comp->SetUniform(std::string("u_ssgi"), 1);
