@@ -1,7 +1,9 @@
 #pragma once
 #include "protocol.hpp"
 #include "sim_common.hpp"
-#include <Atmospheric/udp_socket.hpp>
+#include <Atmospheric/datagram_socket.hpp>
+#include <Atmospheric/net_conditioner.hpp>
+#include <Atmospheric/net_metrics.hpp>
 
 #include <cstdint>
 #include <map>
@@ -41,7 +43,9 @@ public:
 
     // Predicts one tick of movement (incl. jump/levitate/dash), latches any
     // fire this tick (aimed along the current view), and sends the input.
+    // nowMs timestamps the send so RTT can be measured when the input is acked.
     void SubmitInput(
+        uint32_t nowMs,
         uint32_t tick,
         float forward,
         float strafe,
@@ -102,6 +106,16 @@ public:
         return _cosRockets;
     }
 
+    // Netgraph data + the live link emulator (mutable so the HUD keybinds can
+    // dial latency/jitter/loss). The conditioner sits on this client's inbound
+    // snapshot path, so it works even in --local loopback play.
+    const NetMetrics& Metrics() const {
+        return _metrics;
+    }
+    NetConditioner& Conditioner() {
+        return _cond;
+    }
+
 private:
     struct Move {
         float forward = 0.0f, strafe = 0.0f, yaw = 0.0f;
@@ -111,9 +125,13 @@ private:
     static constexpr uint32_t kInterpDelayMs = 100;
     static constexpr uint32_t kInterpDelayTicks = 6;// ~100 ms at 60 Hz
 
-    UdpSocket _socket;
+    DatagramSocket _socket;
     uint32_t _serverAddr = 0;
     uint16_t _serverPort = 0;
+
+    NetConditioner _cond;
+    NetMetrics _metrics;
+    std::map<uint32_t, uint32_t> _inputSendMs;// tick -> send time, for RTT on ack
 
     bool _welcomed = false;
     int _playerId = 0;
@@ -148,5 +166,6 @@ private:
     std::vector<CosmeticRocket> _cosRockets;
 
     float InterpT(uint32_t nowMs) const;
+    void HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, uint16_t fromPort, uint32_t nowMs);
     void HandleSnapshot(const uint8_t* data, int len, uint32_t nowMs);
 };

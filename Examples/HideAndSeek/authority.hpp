@@ -1,7 +1,7 @@
 #pragma once
 #include "protocol.hpp"
 #include "sim_common.hpp"
-#include <Atmospheric/udp_socket.hpp>
+#include <Atmospheric/datagram_socket.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -77,7 +77,7 @@ private:
         uint32_t lastInputTick = 0;
     };
 
-    UdpSocket _socket;
+    DatagramSocket _socket;
     ClientSlot _slots[2];// indexed by proto::Role
     uint32_t _serverTick = 0;
     std::chrono::steady_clock::time_point _nextTick{};

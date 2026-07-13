@@ -57,32 +57,56 @@ static GLenum GetGLPrimitiveType(PrimitiveTopology topology) {
     return GL_TRIANGLES;
 }
 
+// The material a command actually draws with: its own override when set,
+// otherwise the mesh's material (the historical coupling). Centralized so the
+// sort key, batch key, and every draw loop agree on one answer.
+static MaterialHandle EffectiveMaterial(const RenderCommand& cmd) {
+    if (cmd.material.IsValid()) return cmd.material;
+    Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
+    return mesh ? mesh->GetMaterial() : MaterialHandle{};
+}
+
 struct RenderBatch {
     MeshHandle mesh;
+    MaterialHandle material;// effective material shared by every instance
     std::vector<InstanceData> instances;
 };
 
+// Merges consecutive commands sharing the same (mesh, material) into one
+// instanced batch. The queue is pre-sorted, so equal keys are adjacent. A
+// command carrying an instance span (a MeshInstancer's whole cloud) contributes
+// all of its instances at once; a plain command contributes its lone transform.
+// Scattered MeshRenderers and an instancer of the same mesh+material fold into
+// the same batch for free.
 static std::vector<RenderBatch> BuildBatches(const std::vector<Renderer::SortableCommand>& queue) {
     std::vector<RenderBatch> batches;
     RenderBatch currentBatch;
-    currentBatch.mesh = queue[0].cmd.mesh;
+    bool haveCurrent = false;
 
     for (const auto& sortable : queue) {
         const auto& cmd = sortable.cmd;
+        MaterialHandle effMat = EffectiveMaterial(cmd);
 
-        if (currentBatch.mesh != cmd.mesh) {
-            if (currentBatch.mesh.IsValid()) {
+        if (!haveCurrent || currentBatch.mesh != cmd.mesh || currentBatch.material != effMat) {
+            if (haveCurrent && !currentBatch.instances.empty()) {
                 batches.push_back(std::move(currentBatch));
             }
-            currentBatch.instances.clear();
+            currentBatch = RenderBatch{};
             currentBatch.mesh = cmd.mesh;
+            currentBatch.material = effMat;
+            haveCurrent = true;
         }
-        InstanceData instance;
-        instance.modelMatrix = cmd.transform;
-        currentBatch.instances.push_back(instance);
+
+        if (cmd.instances && cmd.instanceCount > 0) {
+            currentBatch.instances.insert(
+                currentBatch.instances.end(), cmd.instances, cmd.instances + cmd.instanceCount
+            );
+        } else {
+            currentBatch.instances.push_back(InstanceData{ cmd.transform });
+        }
     }
 
-    if (!currentBatch.instances.empty()) {
+    if (haveCurrent && !currentBatch.instances.empty()) {
         batches.push_back(std::move(currentBatch));
     }
 
@@ -323,8 +347,8 @@ static void BindVATDepthUniforms(ShaderProgram* shader, VATMaterial* vatMat) {
 }
 
 uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& cameraPos) {
-    Mesh* meshPtr = AssetManager::Get().GetMeshPtr(cmd.mesh);
-    Material* mat = meshPtr ? AssetManager::Get().ResolveMaterial(meshPtr->GetMaterial()) : nullptr;
+    MaterialHandle effMat = EffectiveMaterial(cmd);
+    Material* mat = AssetManager::Get().ResolveMaterial(effMat);
     if (!mat) return 0;
 
     // Calculate depth (distance from camera)
@@ -335,8 +359,10 @@ uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& c
     int renderQueue = mat->GetFinalRenderQueue();
 
     // Get material and mesh IDs for batching; handle IDs are stable across
-    // runs, unlike the pointer bits used before.
-    uint32_t materialID = meshPtr->GetMaterial().id & 0xFFFF;
+    // runs, unlike the pointer bits used before. Material is the *effective*
+    // one (override or mesh's), so overridden draws sort next to their true
+    // material and batch together.
+    uint32_t materialID = effMat.id & 0xFFFF;
     uint32_t meshID = cmd.mesh.id & 0xFFFF;
 
     // Generate 64-bit sort key
@@ -371,8 +397,7 @@ void Renderer::SortTransparent() {
 
 void Renderer::BucketCommands(const glm::vec3& cameraPos) {
     for (const auto& cmd : _commandList) {
-        Mesh* meshPtr = AssetManager::Get().GetMeshPtr(cmd.mesh);
-        Material* mat = meshPtr ? AssetManager::Get().ResolveMaterial(meshPtr->GetMaterial()) : nullptr;
+        Material* mat = AssetManager::Get().ResolveMaterial(EffectiveMaterial(cmd));
         if (!mat) continue;
 
         int queue = mat->GetFinalRenderQueue();
@@ -889,8 +914,16 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
                 if (!mesh->UsesRenderMesh()) continue;
                 Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
                 if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
-                VATMaterial* vatMat = dynamic_cast<VATMaterial*>(ResolveMaterialOrFallback(mesh->GetMaterial()));
-                draws.push_back({ buf, cmd.transform, vatMat });
+                VATMaterial* vatMat = dynamic_cast<VATMaterial*>(ResolveMaterialOrFallback(EffectiveMaterial(cmd)));
+                // Instance spans have no HW-instanced WebGPU path yet, so a
+                // cloud casts shadow as one draw per blade/instance (correct,
+                // just not batched). Plain draws keep their single transform.
+                if (cmd.instances && cmd.instanceCount > 0) {
+                    for (uint32_t k = 0; k < cmd.instanceCount; ++k)
+                        draws.push_back({ buf, cmd.instances[k].modelMatrix, vatMat });
+                } else {
+                    draws.push_back({ buf, cmd.transform, vatMat });
+                }
             }
         };
         collect(renderer.GetOpaqueQueue());
@@ -1027,7 +1060,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
 
         if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
-        Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+        Material* material = ResolveMaterialOrFallback(batch.material);
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
@@ -1120,7 +1153,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
 
                 if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
-                Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+                Material* material = ResolveMaterialOrFallback(batch.material);
 
                 glEnable(GL_DEPTH_TEST);
                 glDepthFunc(GL_LESS);
@@ -1448,13 +1481,26 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             const auto& cmd = sortable.cmd;
             Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
             // TERRAIN draws with the heightmap-displacement pipeline; VOXEL is
-            // handled by VoxelChunkPass.
+            // handled by VoxelChunkPass. GRASS is skipped pending a WGSL grass
+            // pipeline — its blade + instance data already sit in an RHI
+            // Grass-format RenderMesh (GPUBuffer slots 0/1), and
+            // GpuPipelineBuilder::instance() can express the layout, so the
+            // remaining work is the WGSL port of grass.vert/frag + a pipeline
+            // in _initGPU wired here.
             if (!mesh) continue;
             if (mesh->type != MeshType::PRIM && mesh->type != MeshType::TERRAIN) continue;
             if (!mesh->UsesRenderMesh()) continue;
             Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
             if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
-            draws.push_back({ buf, cmd.transform, ResolveMaterialOrFallback(mesh->GetMaterial()), mesh->type });
+            Material* effMat = ResolveMaterialOrFallback(EffectiveMaterial(cmd));
+            // No HW-instanced WebGPU path yet: expand an instance span into one
+            // draw per instance (each gets its own dynamic-offset uniform slot).
+            if (cmd.instances && cmd.instanceCount > 0) {
+                for (uint32_t k = 0; k < cmd.instanceCount; ++k)
+                    draws.push_back({ buf, cmd.instances[k].modelMatrix, effMat, mesh->type });
+            } else {
+                draws.push_back({ buf, cmd.transform, effMat, mesh->type });
+            }
         }
         if (draws.empty()) return;
 
@@ -1636,6 +1682,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
     AE_GL_PROBE(renderer, "Opaque pass: after clear");
 
     auto terrainShader = ctx->GetShader("terrain");
+    auto grassShader = ctx->GetShader("grass");
     auto colorShader = ctx->GetShader("color");
     // 1. Batching Phase
     std::vector<RenderBatch> batches;
@@ -1651,7 +1698,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
         if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
-        Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+        Material* material = ResolveMaterialOrFallback(batch.material);
 
         AE_GL_PROBE(renderer, fmt::format("Opaque pass: batch entry (type={})", static_cast<int>(mesh->type)));
 
@@ -1774,6 +1821,41 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 #endif
             AE_GL_PROBE(renderer, "Opaque pass: TERRAIN after draw");
             glBindVertexArray(0);
+            break;
+        }
+
+        case MeshType::GRASS: {
+            // Streamed grass-blade cells (TerrainStreamer's grass ring).
+            // Per-blade variation is baked into the vertex attributes; the
+            // shared GrassMaterial carries the look, the wind field, and the
+            // ring fade. Wind animates off renderer.frameTime.
+            auto* gm = dynamic_cast<GrassMaterial*>(material);
+            grassShader->Activate();
+            grassShader->SetUniform(std::string("ProjectionView"), projectionView);
+            grassShader->SetUniform(std::string("World"), instances[0].modelMatrix);
+            grassShader->SetUniform(std::string("cam_pos"), eyePos);
+            grassShader->SetUniform(std::string("u_time"), renderer.frameTime);
+            grassShader->SetUniform(std::string("u_wind_dir"), gm ? gm->windDir : glm::vec2(1.0f, 0.0f));
+            grassShader->SetUniform(std::string("u_wind_strength"), gm ? gm->windStrength : 0.0f);
+            grassShader->SetUniform(std::string("u_wind_speed"), gm ? gm->windSpeed : 1.0f);
+            grassShader->SetUniform(std::string("u_fade_start"), gm ? gm->fadeStart : 1e9f);
+            grassShader->SetUniform(std::string("u_fade_end"), gm ? gm->fadeEnd : 1e9f);
+            grassShader->SetUniform(std::string("u_root_color"), gm ? gm->rootColor : glm::vec3(0.2f));
+            grassShader->SetUniform(std::string("u_tip_color"), gm ? gm->tipColor : glm::vec3(0.8f));
+            grassShader->SetUniform(std::string("fog_color"), gm ? gm->fogColor : glm::vec3(0.0f));
+            grassShader->SetUniform(std::string("fog_density"), gm ? gm->fogDensity : 0.0f);
+            grassShader->SetUniform(std::string("main_light.direction"), mainLight->direction);
+            grassShader->SetUniform(std::string("main_light.diffuse"), mainLight->diffuse);
+
+            // The blade + instance data live in an RHI Grass-format RenderMesh;
+            // Draw() emits the instanced draw (9 verts x instance count).
+            // Skip cells with no live blades (empty scatter or pool-fresh,
+            // instances never uploaded) — nothing to draw.
+            if (mesh->UsesRenderMesh()) {
+                if (Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle())) {
+                    if (buf->GetInstanceCount() > 0) buf->Draw();
+                }
+            }
             break;
         }
 
@@ -1915,12 +1997,17 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
             // Environment map for image-based lighting (Unit 7). Shares the
             // equirect map that SkyboxPass draws; the PBR shader samples its mip
-            // chain as a cheap IBL prefilter. Invalid handle -> flat ambient.
+            // chain as a cheap IBL prefilter. Invalid handle -> flat ambient,
+            // with a default texture bound so the sampler never points at an
+            // incomplete unit (Apple's GL driver logs "unit 7 ... unloadable,
+            // using zero texture" otherwise; u_useEnv=0 gates the sample).
             {
                 const bool useEnv =
                     renderer.environmentMap.IsValid() && static_cast<uint32_t>(renderer.environmentMap) != 0;
+                const auto& defaults = assetManager.GetDefaultTextures();
+                const GLuint envFallback = defaults.empty() ? 0 : static_cast<GLuint>(defaults[0]);
                 glActiveTexture(GL_TEXTURE7);
-                glBindTexture(GL_TEXTURE_2D, useEnv ? static_cast<uint32_t>(renderer.environmentMap) : 0);
+                glBindTexture(GL_TEXTURE_2D, useEnv ? static_cast<uint32_t>(renderer.environmentMap) : envFallback);
                 meshShader->SetUniform(std::string("u_envMap"), 7);
                 meshShader->SetUniform(std::string("u_useEnv"), useEnv ? 1 : 0);
                 meshShader->SetUniform(std::string("u_envMaxLod"), renderer.environmentMaxLod);
@@ -2045,7 +2132,7 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
 
         if (!mesh || !mesh->initialized) throw std::runtime_error("Mesh uninitialized!");
 
-        Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+        Material* material = ResolveMaterialOrFallback(batch.material);
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
@@ -2064,6 +2151,9 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
         switch (mesh->type) {
         case MeshType::TERRAIN:
             // TODO: implement terrain rendering
+            break;
+        case MeshType::GRASS:
+            // Grass draws in the forward opaque pass only.
             break;
         case MeshType::SKY:
             // TODO: implement skybox rendering

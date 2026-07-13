@@ -1,4 +1,5 @@
 #pragma once
+#include "glm/mat4x4.hpp"
 #include "glm/vec2.hpp"
 #include "glm/vec3.hpp"
 #include "glm/vec4.hpp"
@@ -36,6 +37,18 @@ struct ScreenVertex {
     glm::vec2 texCoord;
 };
 
+// One grass blade for instanced rendering (see TerrainStreamer's grass ring).
+// A single canonical 9-vertex blade is drawn once per instance; everything
+// that makes a blade unique lives here (32 bytes vs ~500 for baked geometry).
+struct GrassInstance {
+    glm::vec3 root;// blade root, cell-local
+    float facing;// yaw angle (radians)
+    float length;// blade length in metres
+    float lean;// static forward lean (rest-pose bend)
+    float phase;// wind flutter phase offset
+    float hue;// [0,1] per-blade color variation
+};
+
 struct VoxelVertex {
     uint8_t x, y, z;// Local position within chunk (0-255)
     uint8_t voxel_id;// Voxel type
@@ -45,4 +58,12 @@ struct VoxelVertex {
     // a multiple of 4 bytes, so the struct must round up to 8 bytes. (WebGPU
     // reads bytes 4..7 as one Uint8x4, so ao arrives as aFace.y in VOXEL_WGSL.)
     uint8_t _pad[2];
+};
+
+// Per-instance draw data streamed into the instanced-geometry attribute buffer
+// (locations 5-8, divisor 1). One model matrix per instance; a batch uploads a
+// contiguous array of these. Lives here (rather than graphics_subsystem.hpp) so
+// RenderCommand and MeshInstancer can name it without pulling in the subsystem.
+struct InstanceData {
+    glm::mat4 modelMatrix;
 };

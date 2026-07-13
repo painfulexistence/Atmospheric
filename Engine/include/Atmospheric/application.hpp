@@ -185,8 +185,10 @@ public:
     GameObject* Instantiate(const Prefab& prefab, GameObject* parent, const std::string& baseName);
 
     // Queue a factory lambda to run at the start of the next frame, outside any
-    // entity-tick loop. Use this from Component::OnTick to safely create new
-    // GameObjects (CreateGameObject is not safe to call mid-iteration).
+    // entity-tick loop. The GameLayer tick loop itself tolerates CreateGameObject
+    // mid-tick (index-based; appends get their first Tick the same frame), so
+    // this is mainly for spawns that must NOT tick until next frame, or callers
+    // inside other entity iterations (editor, custom layers).
     void DeferSpawn(std::function<void()> cmd);
 
     // Internal: clear all scene containers (children of __root__) without

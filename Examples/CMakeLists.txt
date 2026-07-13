@@ -28,8 +28,12 @@ add_subdirectory(MultiplayerSandbox) # deterministic lockstep netplay
 if(NOT EMSCRIPTEN)
     add_subdirectory(RelayServer)    # headless UDP relay (server deployment shape)
     add_subdirectory(HideAndSeek)    # server-authoritative asymmetric PvP netcode
-    add_subdirectory(Deathmatch)     # server-authoritative FPS: lag compensation + prediction/reconciliation
 endif()
+# Deathmatch's client also builds for web as a single-player (--local) demo: the
+# embedded authority is reached over an in-process LoopbackDatagramSocket, so no
+# UDP/WebTransport is needed. Its dedicated server stays native-only (guarded
+# inside). Lag compensation + prediction/reconciliation FPS netcode.
+add_subdirectory(Deathmatch)
 
 # ── Scripting ────────────────────────────────────────────────────────────────
 add_subdirectory(LuaScripting)       # Löve2D-style Lua scripting frontend

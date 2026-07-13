@@ -180,6 +180,7 @@ set(SOURCES
     src/csg.cpp
     src/frustum.cpp
     src/mesh_renderer.cpp
+    src/mesh_instancer.cpp
     src/sprite_component.cpp
     src/sprite_3d_component.cpp
     src/text_2d_component.cpp
@@ -187,7 +188,9 @@ set(SOURCES
     src/height_field.cpp
     src/terrain_mesh_component.cpp
     src/terrain_streamer.cpp
+    src/streaming_terrain_component.cpp
     src/terrain_tile_cache.cpp
+    src/terrain_texture_gen.cpp
     src/height_field_collider_component.cpp
     src/water_component.cpp
     src/vat.cpp
@@ -284,6 +287,19 @@ list(APPEND SOURCES src/udp_relay.cpp)
 # UdpRelayClient: client-side counterpart — wraps outgoing datagrams for
 # delivery through a UdpRelay. Same zero-extra-dependency reasoning.
 list(APPEND SOURCES src/udp_relay_client.cpp)
+# NetConditioner: inbound-datagram link emulator (latency/jitter/loss/dup) for
+# exercising realtime netcode off the loopback. Pure logic, no sockets — not
+# empty on Emscripten, and dep-free so headless servers can use it too.
+# (NetMetrics is header-only — Engine/include/Atmospheric/net_metrics.hpp.)
+list(APPEND SOURCES src/net_conditioner.cpp)
+# LoopbackDatagramSocket: in-process DatagramSocket impl (no OS sockets) for
+# --local single-player on the web, where there is no raw UDP. Dep-free, pure
+# logic — compiled on all platforms (it's what DatagramSocket aliases to on web).
+list(APPEND SOURCES src/loopback_datagram_socket.cpp)
+# NetHud: the shared netgraph renderer (DrawNetHud) for the realtime examples.
+# Graphics-side (needs GraphicsSubsystem), so part of the engine target only —
+# unlike the primitives above, not for the dep-free servers.
+list(APPEND SOURCES src/net_hud.cpp)
 # RelaySubsystem: thin Application/AddSubsystem<T> wrapper around UdpRelay
 # (same zero-extra-dependency reasoning; empty TU on Emscripten).
 list(APPEND SOURCES src/relay_subsystem.cpp)

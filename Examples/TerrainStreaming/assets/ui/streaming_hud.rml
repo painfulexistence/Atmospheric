@@ -1,0 +1,34 @@
+<rml>
+<head>
+    <title>streaming_hud</title>
+    <link type="text/rcss" href="streaming_hud.rcss"/>
+</head>
+<body id="streaming_hud">
+    <div id="panel">
+        <div class="title">Streaming Terrain</div>
+
+        <div class="label">Surface</div>
+        <select id="mode_select">
+            <option value="0">Textured (layers)</option>
+            <option value="1">Palette</option>
+            <option value="2">LOD debug</option>
+        </select>
+
+        <div class="label">Palette</div>
+        <select id="palette_select">
+            <option value="0">1 - Warm Pink/Gold</option>
+            <option value="1">2 - Cool Blue/Purple</option>
+            <option value="2">3 - Earthy Green</option>
+            <option value="3">4 - Forest</option>
+            <option value="4">5 - Soft Cool</option>
+            <option value="5">6 - Vivid Mint/Coral</option>
+        </select>
+
+        <div class="hints">
+            <div class="hint">SPACE - cycle surface mode</div>
+            <div class="hint">P - select palette</div>
+            <div class="hint">I - LOD debug</div>
+        </div>
+    </div>
+</body>
+</rml>

@@ -20,8 +20,9 @@ void BindPhysicsAPI(sol::state& lua, LuaApplication* app) {
         return sol::lua_nil;
     };
 
-    // Set global gravity
-    physics["setGravity"] = [](const glm::vec3& gravity) { Physics3DSubsystem::Get()->SetGravity(gravity); };
+    // Set global gravity — bind the member pointer directly so the signature
+    // auto-tracks the C++ API (see bindings/README.md).
+    physics.set_function("setGravity", &Physics3DSubsystem::SetGravity, Physics3DSubsystem::Get());
 
     // ===== RigidbodyComponent usertype =====
     lua.new_usertype<RigidbodyComponent>(
