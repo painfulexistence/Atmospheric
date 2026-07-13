@@ -226,6 +226,12 @@ class DeathmatchGame : public Application {
             if (env.IsValid()) GraphicsSubsystem::Get()->renderer->environmentMap = env;
         }
 
+        // Default post-process look for this example: bloom + chromatic
+        // aberration on (both toggleable live in the Graphics ImGui panel).
+        auto* renderer = GraphicsSubsystem::Get()->renderer.get();
+        if (auto* bloom = renderer->GetPass<BloomPass>()) bloom->enabled = true;
+        if (auto* pp = renderer->GetPass<PostProcessPass>()) pp->caEnabled = true;
+
         // Low-poly greybox palette (concrete grey + red accents).
         MakeMaterial("dm_box_mat", glm::vec3(0.48f, 0.48f, 0.52f));
         MakeMaterial("dm_enemy_mat", glm::vec3(0.80f, 0.18f, 0.16f));
@@ -455,7 +461,10 @@ class DeathmatchGame : public Application {
         );
         // Netgraph (top-right): RTT / loss / bandwidth / prediction error /
         // pending inputs + the live conditioner knobs (keys 1-6, 0 to reset).
+        // Debug-only — it's a netcode diagnostic, not part of the shipped HUD.
+#ifndef NDEBUG
         DrawNetHud(gfx, _fontID, _net.Metrics(), _net.Conditioner(), ws.width - 258.0f, 20.0f);
+#endif
     }
 };
 
