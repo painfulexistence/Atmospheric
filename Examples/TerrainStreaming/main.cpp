@@ -180,7 +180,7 @@ class TerrainStreamingDemo : public Application {
             LightProps{
                 .type = LightType::Directional,
                 .ambient = glm::vec3(1.0f),
-                .diffuse = glm::vec3(1.0f),
+                .diffuse = glm::vec3(67.0f, 250.0f, 202.0f) / 255.0f,// mint-cyan sunlight
                 .specular = glm::vec3(1.0f),
                 .direction = glm::normalize(glm::vec3(-0.4f, -1.0f, 0.35f)),
                 .intensity = 1.0f,
@@ -342,6 +342,9 @@ class TerrainStreamingDemo : public Application {
         SetupHUD();
         ApplyColorMode(_terrain->GetColorMode());
         ApplyPalette(_terrain->GetPalette());
+
+        // Chromatic aberration on by default (toggle in the Graphics panel).
+        if (auto* pp = GraphicsSubsystem::Get()->renderer->GetPass<PostProcessPass>()) pp->caEnabled = true;
 
         ConsoleSubsystem::Get()->Info(
             "WASD move, arrows look, X sprint, Z slow, R/F up/down, G ground-clamp, T teleport, SPACE surface mode, "
