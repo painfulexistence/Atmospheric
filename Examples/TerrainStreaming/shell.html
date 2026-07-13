@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atmospheric Engine - WASM Demo</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* Stack the game view above the touch control bar so the buttons sit
+           below the canvas instead of overlapping it. */
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #stage {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 100%;
+            max-height: 100%;
+            border: 0px none;
+            background-color: #000000;
+            display: block;
+            /* To scale up to fill the stage while keeping aspect ratio (contain), uncomment below: */
+            /* width: 100%; height: 100%; object-fit: contain; */
+        }
+        
+        #canvas:focus {
+            outline: none;
+        }
+        
+        #loading-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255, 255, 255, 0.05);
+            border-radius: 50%;
+            border-top-color: #3b82f6;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 20px;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+        }
+        
+        #loading-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #f3f4f6;
+            margin-bottom: 8px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        
+        #loading-status {
+            font-size: 14px;
+            color: #9ca3af;
+            font-weight: 300;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        /* ── On-screen touch controls (mobile-browser demo) ────────────────
+           Buttons synthesize the same keyboard events the game already reads,
+           so no engine-side input changes are needed. See the script below.
+           Hidden on devices with a fine hover-capable pointer (desktops with
+           a mouse), shown on touch/coarse-pointer devices (phones, tablets). */
+        @media (hover: hover) and (pointer: fine) {
+            #touch-controls { display: none !important; }
+        }
+        #touch-controls {
+            flex: 0 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 16px;
+            padding: 10px calc(12px + env(safe-area-inset-right, 0px))
+                     calc(10px + env(safe-area-inset-bottom, 0px))
+                     calc(12px + env(safe-area-inset-left, 0px));
+            background: #0a0a0a;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #touch-controls button {
+            -webkit-tap-highlight-color: transparent;
+            touch-action: none;
+            padding: 0;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.85);
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        #touch-controls button.active {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: #fff;
+        }
+        .pad-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .pad-label {
+            font-size: 10px;
+            letter-spacing: 0.12em;
+            color: #6b7280;
+            text-transform: uppercase;
+            text-align: center;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+        .pad {
+            display: grid;
+            grid-template-columns: repeat(3, 52px);
+            grid-template-rows: repeat(3, 52px);
+            gap: 6px;
+        }
+        .pad button {
+            width: 52px;
+            height: 52px;
+            font-size: 18px;
+            border-radius: 10px;
+        }
+        .pad .up    { grid-column: 2; grid-row: 1; }
+        .pad .left  { grid-column: 1; grid-row: 2; }
+        .pad .right { grid-column: 3; grid-row: 2; }
+        .pad .down  { grid-column: 2; grid-row: 3; }
+        .actions {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+        }
+        .actions button {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            font-size: 20px;
+            font-weight: 700;
+        }
+        .actions .btn-a { margin-bottom: 26px; }
+
+        /* Narrow / portrait screens: shrink the pads and stack the action
+           buttons so all three clusters fit without overflowing off-screen. */
+        @media (max-width: 560px) {
+            #touch-controls {
+                gap: 8px;
+                padding-left: calc(6px + env(safe-area-inset-left, 0px));
+                padding-right: calc(6px + env(safe-area-inset-right, 0px));
+            }
+            .pad {
+                grid-template-columns: repeat(3, 44px);
+                grid-template-rows: repeat(3, 44px);
+                gap: 4px;
+            }
+            .pad button { width: 44px; height: 44px; font-size: 16px; }
+            .actions { flex-direction: column; gap: 8px; }
+            .actions button { width: 46px; height: 46px; font-size: 16px; }
+            .actions .btn-a { margin-bottom: 0; }
+        }
+        #btn-fullscreen {
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            z-index: 400;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 6px;
+            color: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, color 0.15s;
+        }
+        #btn-fullscreen:hover {
+            background: rgba(0, 0, 0, 0.7);
+            color: #fff;
+        }
+        #btn-fullscreen svg { display: block; }
+    </style>
+</head>
+<body>
+
+    <div id="stage">
+        <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    </div>
+
+    <!-- On-screen controls: each button carries the DOM key it emits. -->
+    <div id="touch-controls">
+        <div class="pad-group">
+            <div class="pad-label">Move</div>
+            <div class="pad">
+                <button class="up"    data-code="KeyW" data-key="w" data-keycode="87">&uarr;</button>
+                <button class="left"  data-code="KeyA" data-key="a" data-keycode="65">&larr;</button>
+                <button class="down"  data-code="KeyS" data-key="s" data-keycode="83">&darr;</button>
+                <button class="right" data-code="KeyD" data-key="d" data-keycode="68">&rarr;</button>
+            </div>
+        </div>
+        <div class="pad-group">
+            <div class="pad-label">Look</div>
+            <div class="pad">
+                <button class="up"    data-code="ArrowUp"    data-key="ArrowUp"    data-keycode="38">&uarr;</button>
+                <button class="left"  data-code="ArrowLeft"  data-key="ArrowLeft"  data-keycode="37">&larr;</button>
+                <button class="down"  data-code="ArrowDown"  data-key="ArrowDown"  data-keycode="40">&darr;</button>
+                <button class="right" data-code="ArrowRight" data-key="ArrowRight" data-keycode="39">&rarr;</button>
+            </div>
+        </div>
+        <div class="pad-group">
+            <div class="pad-label">Action</div>
+            <div class="actions">
+                <button class="btn-a" data-code="Space" data-key=" " data-keycode="32">A</button>
+                <button class="btn-b" data-code="KeyP"  data-key="p" data-keycode="80">B</button>
+            </div>
+        </div>
+    </div>
+
+    <button id="btn-fullscreen" title="Toggle fullscreen" onclick="toggleFullscreen()">
+        <svg id="fs-icon-expand" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M1 1h5v1.5H2.5V5H1V1zm9 0h5v4h-1.5V2.5H10V1zM1 10h1.5v2.5H5V14H1v-4zm9.5 2.5V10H11v4h4v-1.5h-2.5v-2z"/>
+        </svg>
+        <svg id="fs-icon-collapse" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="display:none">
+            <path d="M5 1v1.5H2.5V5H1V1h4zm6 0h4v4h-1.5V2.5H11V1zM1 11h1.5v2.5H5V15H1v-4zm9.5 2.5V11H11v4h4v-1.5h-2.5V13.5z"/>
+        </svg>
+    </button>
+
+    <div id="loading-container">
+        <div class="spinner" id="loading-spinner"></div>
+        <div id="loading-title">Atmospheric Engine</div>
+        <div id="loading-status">Downloading...</div>
+    </div>
+
+    <script type="text/javascript">
+      var statusElement = document.getElementById('loading-status');
+      var spinnerElement = document.getElementById('loading-spinner');
+      
+      var Module = {
+        preRun: [],
+        postRun: [function() {
+          var loader = document.getElementById('loading-container');
+          loader.style.opacity = 0;
+          setTimeout(function() {
+            loader.style.display = 'none';
+          }, 500);
+        }],
+        canvas: (function() {
+          var canvas = document.getElementById('canvas');
+          canvas.addEventListener("webglcontextlost", function(e) { 
+              if (typeof cleanupRan !== 'undefined' && cleanupRan) {
+                  e.preventDefault();
+                  return;
+              }
+              alert('WebGL context lost. Please reload the page.'); 
+              e.preventDefault(); 
+          }, false);
+          return canvas;
+        })(),
+        setStatus: function(text) {
+          if (!Module.setStatus.last) Module.setStatus.last = { time: Date.now(), text: '' };
+          if (text === Module.setStatus.last.text) return;
+          var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+          var now = Date.now();
+          if (m && now - Module.setStatus.last.time < 30) return; // limit update rate
+          Module.setStatus.last.time = now;
+          Module.setStatus.last.text = text;
+          if (m) {
+            text = m[1];
+          }
+          statusElement.innerHTML = text;
+        },
+        totalDependencies: 0,
+        monitorRunDependencies: function(left) {
+          this.totalDependencies = Math.max(this.totalDependencies, left);
+          Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+        }
+      };
+      Module.setStatus('Downloading...');
+    
+      // Clean up Web Workers, WebGL contexts, and Audio contexts on page unload
+      // to prevent memory leaks in iframes and avoid iOS WebContent jetsam on
+      // reload. See docs/resource-cleaning-up.md for the rationale behind
+      // ordering and the Path A / Path B split.
+      var cleanupRan = false;
+      function cleanupWorkers(e) {
+        // ── Path A: BFCache freeze ──────────────────────────────────────
+        // Page being frozen, not torn down. Destructive cleanup here would
+        // wreck the runtime if user navigates back. Only safe action is to
+        // disqualify BFCache so the next real reload uses Path B.
+        if (e && e.persisted) {
+          try {
+            var req = indexedDB.open('__bfcache_evict__');
+            req.onsuccess = function(ev) { ev.target.result.close(); };
+          } catch (_) {}
+          return;
+        }
+
+        // ── Path B: real unload ────────────────────────────────────────
+        // pagehide + unload can both fire on desktop Safari; idempotency
+        // guard makes the second call a no-op.
+        if (cleanupRan) return;
+        cleanupRan = true;
+        console.log("Cleaning up Emscripten Web Workers, WebGL, and Audio contexts...");
+
+        // B2. Explicitly lose the WebGL context to release GPU resources immediately.
+        var canvas = document.getElementById('canvas');
+        try {
+          if (canvas) {
+            var gl = canvas.getContext('webgl2') || canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+            if (gl) {
+              var loseContextExt = gl.getExtension('WEBGL_lose_context');
+              if (loseContextExt) {
+                loseContextExt.loseContext();
+                console.log("WebGL context lost explicitly.");
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error losing WebGL context:", e);
+        }
+
+        // B2a. Detach canvas backing store. loseContext invalidates GL state
+        //      but does NOT free the canvas framebuffer (multi-MB on retina).
+        try {
+          if (canvas) {
+            canvas.width = 1; canvas.height = 1;
+            if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
+          }
+        } catch (e) { console.error(e); }
+
+        // B3. Close all Web Audio API contexts. AudioContext.close() returns
+        //     a Promise — DO NOT await. The synchronous detach happens before
+        //     close() returns; awaiting freezes pagehide.
+        try {
+          if (window.AudioManager && typeof window.AudioManager.shutdown === 'function') {
+            try {
+              window.AudioManager.shutdown();
+              window.AudioManager = null;
+              console.log("window.AudioManager shut down successfully.");
+            } catch (err) {
+              console.error("Error shutting down window.AudioManager:", err);
+            }
+          }
+          if (typeof AL !== 'undefined' && AL.contexts) {
+            AL.contexts.forEach(function(ctx) {
+              if (ctx && ctx.audioCtx && typeof ctx.audioCtx.close === 'function') {
+                ctx.audioCtx.close();
+              }
+            });
+          }
+          if (typeof SDL2 !== 'undefined' && SDL2.audioContext && typeof SDL2.audioContext.close === 'function') {
+            SDL2.audioContext.close();
+          }
+          if (typeof Module !== 'undefined' && Module) {
+            for (var prop in Module) {
+              if (Module[prop] && typeof Module[prop].close === 'function' &&
+                  (Module[prop].constructor && (Module[prop].constructor.name === 'AudioContext' || Module[prop].constructor.name === 'webkitAudioContext'))) {
+                Module[prop].close();
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error closing AudioContext:", e);
+        }
+
+        // B4. Null HEAP* views + WASM module handles. Each view is an independent
+        //     strong reference to the linear-memory ArrayBuffer; Safari needs
+        //     all of them dropped before the heap can GC.
+        try {
+          if (typeof Module !== 'undefined') {
+            Module.HEAPU8  = null; Module.HEAP8   = null;
+            Module.HEAPU16 = null; Module.HEAP16  = null;
+            Module.HEAPU32 = null; Module.HEAP32  = null;
+            Module.HEAPF32 = null; Module.HEAPF64 = null;
+            if (Module.wasmMemory)      Module.wasmMemory      = null;
+            if (Module.asm)             Module.asm             = null;
+            if (Module.wasmExports)     Module.wasmExports     = null;  // Emscripten 3.x renamed asm → wasmExports
+            if (Module.preloadedImages) Module.preloadedImages = null;
+            if (Module.preloadedAudios) Module.preloadedAudios = null;
+            if (Module.preloadedWasm)   Module.preloadedWasm   = null;
+          }
+        } catch (e) { console.error(e); }
+
+        // B5. Terminate Emscripten pthread Workers. POINT OF NO RETURN —
+        //     any cross-thread WASM call after this hangs forever. Must come
+        //     last among runtime-touching steps. Engine's post.js wrap of
+        //     terminateAllThreads already includes a manual worker.terminate
+        //     sweep, so no extra sweep needed here.
+        try {
+          if (typeof Module !== 'undefined' && typeof Module.terminateAllThreads === 'function') {
+            Module.terminateAllThreads();
+            console.log("Emscripten threads terminated successfully.");
+          }
+        } catch (e) {
+          console.error("Error during thread cleanup:", e);
+        }
+
+        // B6. Null Module last — every previous step reads Module.
+        if (typeof Module !== 'undefined') Module = null;
+      }
+      // ── Fullscreen ────────────────────────────────────────────────────────
+      function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(function() {});
+        } else {
+          document.exitFullscreen();
+        }
+      }
+      document.addEventListener("fullscreenchange", function() {
+        var fs = !!document.fullscreenElement;
+        document.getElementById("fs-icon-expand").style.display  = fs ? "none" : "";
+        document.getElementById("fs-icon-collapse").style.display = fs ? "" : "none";
+      });
+      document.addEventListener("keydown", function(e) {
+        if (e.key === "F" && !e.ctrlKey && !e.metaKey && !e.altKey) toggleFullscreen();
+      });
+
+      window.addEventListener('pagehide', cleanupWorkers);
+      window.addEventListener('unload', cleanupWorkers);
+
+      // ── On-screen touch controls ──────────────────────────────────────────
+      // The engine polls keyboard state through GLFW (glfwGetKey), and GLFW's
+      // Emscripten port derives that state from DOM keydown/keyup events. So a
+      // button just needs to dispatch a synthetic keyboard event and the game
+      // reads it exactly like a real key press — no C++ / export changes.
+      (function () {
+        var canvas = document.getElementById('canvas');
+
+        function fireKey(type, btn) {
+          var keyCode = parseInt(btn.dataset.keycode, 10);
+          var ev = new KeyboardEvent(type, {
+            key: btn.dataset.key,
+            code: btn.dataset.code,
+            bubbles: true,
+            cancelable: true,
+            view: window
+          });
+          // Emscripten's GLFW port maps physical keys via event.keyCode, which
+          // is 0 on synthetic events unless forced. `which` mirrors it for
+          // legacy code paths.
+          Object.defineProperty(ev, 'keyCode', { get: function () { return keyCode; } });
+          Object.defineProperty(ev, 'which',   { get: function () { return keyCode; } });
+          var target = (window.Module && Module.canvas) ? Module.canvas : canvas;
+          target.dispatchEvent(ev);
+        }
+
+        var buttons = document.querySelectorAll('#touch-controls button[data-keycode]');
+        buttons.forEach(function (btn) {
+          var pressed = false;
+          function press(e) {
+            e.preventDefault();
+            if (pressed) return;
+            pressed = true;
+            btn.classList.add('active');
+            try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+            fireKey('keydown', btn);
+          }
+          function release(e) {
+            if (e) e.preventDefault();
+            if (!pressed) return;
+            pressed = false;
+            btn.classList.remove('active');
+            fireKey('keyup', btn);
+          }
+          btn.addEventListener('pointerdown', press);
+          btn.addEventListener('pointerup', release);
+          btn.addEventListener('pointercancel', release);
+          btn.addEventListener('pointerleave', release);
+          // Releasing focus (tab switch, alert) must not latch a key on.
+          window.addEventListener('blur', function () { release(); });
+        });
+      })();
+    </script>
+    {{{ SCRIPT }}}
+</body>
+</html>
