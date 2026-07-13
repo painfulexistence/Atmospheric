@@ -1,5 +1,15 @@
 #version 410 core
 
+// GLES/WebGL2 needs explicit precision, and sampler3D (u_giRadiance, added for
+// VoxelGI/VXAO) has no default precision there. Declaring any precision here
+// also opts this shader out of the loader's auto-injection, so cover float/int
+// too. (Desktop core profile ignores this block.)
+#ifdef GL_ES
+precision highp float;
+precision highp int;
+precision highp sampler3D;
+#endif
+
 in vec3 v_worldPos;
 in vec3 v_normal;
 flat in uint v_voxelId;
