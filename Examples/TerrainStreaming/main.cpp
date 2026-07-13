@@ -317,10 +317,18 @@ class TerrainStreamingDemo : public Application {
             })
         );
 
+        // Rivers: one global flow-accumulation pass derives a drainage network
+        // from the same height source the tiles use, meshed into draped flowing
+        // ribbons. The owner sits at the origin — river vertices are world-space.
+        auto* riverGO = CreateGameObject(glm::vec3(0.0f));
+        riverGO->SetName("Rivers");
+        auto* river = static_cast<RiverComponent*>(riverGO->AddComponent<RiverComponent>(_terrain, RiverProps{}));
+
         const auto bootMs =
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _bootTime).count();
         ConsoleSubsystem::Get()->Info(
-            "TerrainStreaming: full 10.24km x 10.24km horizon ready in " + std::to_string(bootMs) + "ms"
+            "TerrainStreaming: full 10.24km x 10.24km horizon ready in " + std::to_string(bootMs) + "ms ("
+            + std::to_string(river->RiverCount()) + " rivers, " + std::to_string(river->TriangleCount()) + " tris)"
         );
 
         // Spawn high enough for an establishing vista over the valley — at

@@ -1,4 +1,5 @@
 #pragma once
+#include "vertex.hpp"
 #include <cstdint>
 #include <functional>
 #include <glm/vec2.hpp>
@@ -53,4 +54,28 @@ std::vector<RiverPolyline> BuildRiverNetwork(
     float worldSize,
     float heightScale,
     const RiverNetworkParams& params
+);
+
+// Draped ribbon mesh for a river network. Each polyline becomes a triangle
+// strip two vertices wide (±width about the centreline), with y sampled from
+// the exact height source (+bankLift so it sits just above the bed) so the
+// water hugs the terrain. UV.x runs 0..1 bank-to-bank; UV.y accumulates
+// distance/uvMetresPerV downstream so the water shader can scroll foam/normals
+// along the flow. Tangent points downstream (flow direction), bitangent across.
+// Appends into verts/indices (indexed triangles, uint16). Widths are clamped so
+// one river fits in a uint16 index space; huge networks are already bounded by
+// RiverNetworkParams::maxRivers.
+struct RiverMeshParams {
+    float bankLift = 0.4f;// metres the surface sits above the sampled bed
+    float uvMetresPerV = 8.0f;// world metres per V unit (foam/normal tiling along flow)
+    float widthGain = 1.0f;// multiply node widths (art control)
+};
+
+void BuildRiverMesh(
+    const std::vector<RiverPolyline>& rivers,
+    const std::function<float(float, float)>& height01,
+    float heightScale,
+    const RiverMeshParams& params,
+    std::vector<Vertex>& verts,
+    std::vector<uint16_t>& indices
 );

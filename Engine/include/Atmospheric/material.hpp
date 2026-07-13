@@ -254,6 +254,27 @@ public:
     }
 };
 
+// Draped river ribbons (MeshType::RIVER). Flow-animated water: normals + foam
+// scroll along the ribbon's V axis (downstream), fresnel-blended deep/shallow
+// water with a sun glint, alpha-blended over the terrain. Shares the terrain's
+// aerial-perspective fog so distant rivers recede with the hills.
+class RiverMaterial : public Material {
+public:
+    glm::vec3 shallowColor = glm::vec3(0.28f, 0.52f, 0.55f);// bank/edge water
+    glm::vec3 deepColor = glm::vec3(0.05f, 0.16f, 0.24f);// channel centre
+    float flowSpeed = 0.35f;// V-scroll speed of the ripple/foam (units/sec)
+    float rippleStrength = 0.35f;// normal-perturbation amount
+    float glint = 0.6f;// specular sun-glint intensity
+    float alpha = 0.82f;// overall surface opacity
+    glm::vec3 fogColor = glm::vec3(0.62f, 0.71f, 0.85f);
+    float fogDensity = 0.0f;
+
+    RiverMaterial() : Material(MaterialProps{}) {
+        renderQueue = RenderQueue::Transparent;// alpha-blended over terrain
+        renderState.cull = CullMode::None;// ribbon seen from either bank
+    }
+};
+
 class TerrainMaterial : public Material {
 public:
     static constexpr int MAX_LAYERS = 4;

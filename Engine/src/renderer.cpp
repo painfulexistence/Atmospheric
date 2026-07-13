@@ -2079,6 +2079,53 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
         return;
     }
 
+    // ── Rivers (transparent) ─────────────────────────────────────────────────
+    // Drawn here, at the tail of the opaque pass, so the terrain has already
+    // filled the depth buffer: rivers depth-test against the banks but don't
+    // write depth (they're translucent) and blend over the ground. They sit in
+    // the transparent queue (back-to-front sorted) so they never pollute the
+    // opaque batching. Main view only — reflections/portals skip them.
+    {
+        auto riverShader = ctx->GetShader("river");
+        bool began = false;
+        for (const auto& sortable : renderer.GetTransparentQueue()) {
+            Mesh* rmesh = AssetManager::Get().GetMeshPtr(sortable.cmd.mesh);
+            if (!rmesh || rmesh->type != MeshType::RIVER || !rmesh->initialized) continue;
+            auto* rm = dynamic_cast<RiverMaterial*>(ResolveMaterialOrFallback(EffectiveMaterial(sortable.cmd)));
+            if (!began) {
+                riverShader->Activate();
+                riverShader->SetUniform(std::string("ProjectionView"), projectionView);
+                riverShader->SetUniform(std::string("cam_pos"), eyePos);
+                riverShader->SetUniform(std::string("u_time"), renderer.frameTime);
+                riverShader->SetUniform(std::string("main_light.direction"), mainLight->direction);
+                riverShader->SetUniform(std::string("main_light.diffuse"), mainLight->diffuse);
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                glDepthMask(GL_FALSE);// depth-test against terrain, don't occlude
+                glDisable(GL_CULL_FACE);
+                began = true;
+            }
+            riverShader->SetUniform(std::string("World"), sortable.cmd.transform);
+            riverShader->SetUniform(std::string("u_flow_speed"), rm ? rm->flowSpeed : 0.3f);
+            riverShader->SetUniform(std::string("u_ripple"), rm ? rm->rippleStrength : 0.3f);
+            riverShader->SetUniform(std::string("u_glint"), rm ? rm->glint : 0.5f);
+            riverShader->SetUniform(std::string("u_alpha"), rm ? rm->alpha : 0.8f);
+            riverShader->SetUniform(
+                std::string("u_shallow_color"), rm ? rm->shallowColor : glm::vec3(0.3f, 0.5f, 0.55f)
+            );
+            riverShader->SetUniform(std::string("u_deep_color"), rm ? rm->deepColor : glm::vec3(0.05f, 0.16f, 0.24f));
+            riverShader->SetUniform(std::string("fog_color"), rm ? rm->fogColor : glm::vec3(0.0f));
+            riverShader->SetUniform(std::string("fog_density"), rm ? rm->fogDensity : 0.0f);
+            glBindVertexArray(rmesh->vao);
+            glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(rmesh->triCount * 3), GL_UNSIGNED_SHORT, nullptr);
+        }
+        if (began) {
+            glBindVertexArray(0);
+            glDepthMask(GL_TRUE);
+            glDisable(GL_BLEND);
+        }
+    }
+
     ctx->_debugLineCount = ctx->debugLines.size() / 2;
     if (ctx->debugLines.size() > 0) {
         // glDisable(GL_DEPTH_TEST);

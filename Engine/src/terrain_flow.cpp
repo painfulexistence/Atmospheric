@@ -240,3 +240,61 @@ std::vector<RiverPolyline> BuildRiverNetwork(
 
     return out;
 }
+
+void BuildRiverMesh(
+    const std::vector<RiverPolyline>& rivers,
+    const std::function<float(float, float)>& height01,
+    float heightScale,
+    const RiverMeshParams& params,
+    std::vector<Vertex>& verts,
+    std::vector<uint16_t>& indices
+) {
+    for (const auto& river : rivers) {
+        const auto& nodes = river.nodes;
+        if (nodes.size() < 2) continue;
+
+        const uint16_t base = static_cast<uint16_t>(verts.size());
+        // A uint16 index buffer caps one river at 32k centreline nodes (2 verts
+        // each); real rivers are far shorter, but guard so a pathological one
+        // can't overflow the strip.
+        const size_t maxNodes = std::min<size_t>(nodes.size(), 32000);
+
+        float distance = 0.0f;// accumulated along-flow length -> UV.y
+        for (size_t i = 0; i < maxNodes; ++i) {
+            const glm::vec2 p = nodes[i].pos;
+            // Flow tangent from neighbours (central difference), normalized.
+            const glm::vec2 a = nodes[i > 0 ? i - 1 : i].pos;
+            const glm::vec2 b = nodes[i + 1 < maxNodes ? i + 1 : i].pos;
+            glm::vec2 tan2 = b - a;
+            const float tl = glm::length(tan2);
+            tan2 = tl > 1e-4f ? tan2 / tl : glm::vec2(1.0f, 0.0f);
+            const glm::vec2 side2(-tan2.y, tan2.x);// left-hand perpendicular
+
+            if (i > 0) distance += glm::length(p - nodes[i - 1].pos);
+            const float v = distance / std::max(params.uvMetresPerV, 1e-3f);
+            const float w = nodes[i].width * params.widthGain;
+
+            for (int s = 0; s < 2; ++s) {
+                const float sign = (s == 0) ? -1.0f : 1.0f;// left, right bank
+                const glm::vec2 wp = p + side2 * (sign * w);
+                const float y = height01(wp.x, wp.y) * heightScale + params.bankLift;
+                Vertex vert;
+                vert.position = glm::vec3(wp.x, y, wp.y);
+                vert.uv = glm::vec2(s == 0 ? 0.0f : 1.0f, v);
+                vert.normal = glm::vec3(0.0f, 1.0f, 0.0f);// water faces up
+                vert.tangent = glm::vec3(tan2.x, 0.0f, tan2.y);// downstream (flow dir)
+                vert.bitangent = glm::vec3(side2.x, 0.0f, side2.y);
+                verts.push_back(vert);
+            }
+        }
+
+        // Two triangles per segment between consecutive vertex pairs (L,R).
+        for (size_t i = 0; i + 1 < maxNodes; ++i) {
+            const uint16_t l0 = static_cast<uint16_t>(base + i * 2);
+            const uint16_t r0 = static_cast<uint16_t>(l0 + 1);
+            const uint16_t l1 = static_cast<uint16_t>(l0 + 2);
+            const uint16_t r1 = static_cast<uint16_t>(l0 + 3);
+            indices.insert(indices.end(), { l0, r0, l1, r0, r1, l1 });
+        }
+    }
+}
