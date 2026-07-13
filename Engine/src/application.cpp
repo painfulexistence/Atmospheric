@@ -1174,8 +1174,11 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
     for (size_t i = 0; i < prefab.materials.size(); ++i) {
         const PrefabMaterial& pm = prefab.materials[i];
         const std::string matName = fmt::format("{}:{}", baseName, pm.name.empty() ? std::to_string(i) : pm.name);
-        if (Material* existing = am.GetMaterial(matName)) {
-            matHandles[i] = am.GetMaterialHandle(existing);
+        // Reuse an already-registered material of this name. Use the non-throwing
+        // handle lookup — GetMaterial() throws when absent, which is the common
+        // case here (first instantiation), so it must not gate creation.
+        if (MaterialHandle existing = am.GetMaterialHandle(matName); existing.IsValid()) {
+            matHandles[i] = existing;
             continue;
         }
         auto texAt = [&](int idx) {
@@ -1222,8 +1225,11 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
         auto it = namedMats.find(name);
         if (it != namedMats.end()) return it->second;
         NamedMat nm;
-        if (Material* existing = am.GetMaterial(name)) {
-            nm.handle = am.GetMaterialHandle(existing);
+        // A pre-registered engine material of this name wins; else fall through to
+        // the textures/<name>.* convention. Non-throwing lookup — GetMaterial()
+        // throws when absent, which would kill the texture-file fallback below.
+        if (MaterialHandle existing = am.GetMaterialHandle(name); existing.IsValid()) {
+            nm.handle = existing;
         } else {
             for (const char* ext : { ".png", ".jpg", ".jpeg", ".tga" }) {
                 const std::string path = "textures/" + name + ext;
