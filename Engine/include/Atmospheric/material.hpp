@@ -200,13 +200,14 @@ public:
 class VATClip;
 
 // Material for a mesh whose vertices are displaced by a Vertex Animation Texture
-// (see vat.hpp). Carries the clip (non-owning — the VATComponent owns it) and
-// the current normalized playhead the renderer feeds to vat.vert. Rendered by
-// the standard opaque pass with the "vat" shader instead of "color"; all the
-// usual surface/texture fields are inherited and still apply.
+// (see vat.hpp). Carries the clip (non-owning — the AnimationLibrary owns it,
+// pointed at by the driving VATComponent) and the current normalized playhead
+// the renderer feeds to vat.vert. Rendered by the standard opaque pass with the
+// "vat" shader instead of "color"; all the usual surface/texture fields are
+// inherited and still apply.
 class VATMaterial : public Material {
 public:
-    // Non-owning; the owning VATComponent outlives the material's use in a draw.
+    // Non-owning; the AnimationLibrary clip outlives the material's use in a draw.
     VATClip* clip = nullptr;
     float normalizedTime = 0.0f;// playhead in [0, 1], advanced by VATComponent
 

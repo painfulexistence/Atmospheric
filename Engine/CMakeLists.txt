@@ -203,9 +203,7 @@ set(SOURCES
     src/physics_debug_drawer.cpp
     src/input_subsystem.cpp
     src/scene.cpp
-    src/action.cpp
-    src/action_manager.cpp
-    src/animator_2d.cpp
+    src/easing.cpp
     src/animation_clip.cpp
     src/animator_component.cpp
     src/animation_subsystem.cpp
