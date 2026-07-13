@@ -209,6 +209,11 @@ public:
     float ssgiRadius = 4.0f;// view-space march distance (metres)
     float ssgiThickness = 0.5f;// depth gap counted as a hit (metres)
     float ssgiBlend = 0.9f;// temporal history weight (0 = no accumulation)
+    // à-trous spatial denoise (SVGF-lite): edge-stopped by tangent-plane
+    // distance + luma. 0 iterations = temporal only.
+    int ssgiAtrousIters = 3;
+    float ssgiSigmaDepth = 0.1f;// tangent-plane distance sigma (metres)
+    float ssgiSigmaLuma = 4.0f;
 
 private:
     void _ensureScratch(int w, int h);
@@ -220,6 +225,9 @@ private:
     // for history validation) + previous-frame reprojection state.
     GLuint _ssgiHist[2] = { 0, 0 };
     GLuint _ssgiHistFBO[2] = { 0, 0 };
+    // à-trous ping-pong (display-only; never fed back into history).
+    GLuint _atrousTex[2] = { 0, 0 };
+    GLuint _atrousFBO[2] = { 0, 0 };
     int _ssgiW = 0, _ssgiH = 0;
     int _ssgiCur = 0;
     int _ssgiFrame = 0;// varies the per-frame sample rotation for temporal integration

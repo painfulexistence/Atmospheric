@@ -2010,18 +2010,22 @@ void ScreenSpaceGIPass::_ensureScratch(int w, int h) {
 
 void ScreenSpaceGIPass::_ensureSSGI(int w, int h) {
     if (_ssgiHist[0] && _ssgiW == w && _ssgiH == h) return;
-    for (int i = 0; i < 2; ++i) {
-        if (_ssgiHist[i]) glDeleteTextures(1, &_ssgiHist[i]);
-        if (_ssgiHistFBO[i] == 0) glGenFramebuffers(1, &_ssgiHistFBO[i]);
-        glGenTextures(1, &_ssgiHist[i]);
-        glBindTexture(GL_TEXTURE_2D, _ssgiHist[i]);
+    auto makeRT = [&](GLuint& tex, GLuint& fbo) {
+        if (tex) glDeleteTextures(1, &tex);
+        if (fbo == 0) glGenFramebuffers(1, &fbo);
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glBindFramebuffer(GL_FRAMEBUFFER, _ssgiHistFBO[i]);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _ssgiHist[i], 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+    };
+    for (int i = 0; i < 2; ++i) {
+        makeRT(_ssgiHist[i], _ssgiHistFBO[i]);// temporal history ping-pong
+        makeRT(_atrousTex[i], _atrousFBO[i]);// à-trous ping-pong
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     _ssgiW = w;
@@ -2127,6 +2131,38 @@ void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             glDrawArrays(GL_TRIANGLES, 0, 6);
             glBindVertexArray(0);
 
+            // à-trous spatial denoise (display-only; not fed back into history).
+            // Iterations with a growing step, edge-stopped by tangent-plane
+            // distance + luma. filtered = the last output (or the raw accum).
+            GLuint filtered = _ssgiHist[_ssgiCur];
+            if (ssgiAtrousIters > 0) {
+                if (ShaderProgram* atrous = am.GetShader("screen_ssgi_atrous")) {
+                    atrous->Activate();
+                    atrous->SetUniform(std::string("u_ssgi"), 0);
+                    atrous->SetUniform(std::string("u_depth"), 1);
+                    atrous->SetUniform(std::string("u_invProj"), invProj);
+                    atrous->SetUniform(std::string("u_viewportSize"), vp);
+                    atrous->SetUniform(std::string("u_sigmaDepth"), ssgiSigmaDepth);
+                    atrous->SetUniform(std::string("u_sigmaLuma"), ssgiSigmaLuma);
+                    glActiveTexture(GL_TEXTURE1);
+                    glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
+                    GLuint source = _ssgiHist[_ssgiCur];
+                    int dst = 0;
+                    for (int it = 0; it < ssgiAtrousIters; ++it) {
+                        glBindFramebuffer(GL_FRAMEBUFFER, _atrousFBO[dst]);
+                        atrous->SetUniform(std::string("u_stepSize"), static_cast<float>(1 << it));
+                        glActiveTexture(GL_TEXTURE0);
+                        glBindTexture(GL_TEXTURE_2D, source);
+                        glBindVertexArray(renderer.gl.screenQuadVAO);
+                        glDrawArrays(GL_TRIANGLES, 0, 6);
+                        glBindVertexArray(0);
+                        source = _atrousTex[dst];
+                        dst = 1 - dst;
+                    }
+                    filtered = source;
+                }
+            }
+
             glBindFramebuffer(GL_FRAMEBUFFER, _scratchFBO);
             comp->Activate();
             comp->SetUniform(std::string("u_color"), 0);
@@ -2135,10 +2171,9 @@ void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, src->GetTextureID());
             glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, _ssgiHist[_ssgiCur]);
+            glBindTexture(GL_TEXTURE_2D, filtered);
             glActiveTexture(GL_TEXTURE2);
             glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
-            comp->SetUniform(std::string("u_viewportSize"), vp);
             comp->SetUniform(std::string("u_ssgiStrength"), ssgiStrength);
             glBindVertexArray(renderer.gl.screenQuadVAO);
             glDrawArrays(GL_TRIANGLES, 0, 6);

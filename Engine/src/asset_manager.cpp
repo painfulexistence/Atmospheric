@@ -417,6 +417,8 @@ void AssetManager::LoadDefaultShaders() {
             { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/microvoxel_atrous.frag" } },
           { "screen_gtao", { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/screen_gtao.frag" } },
           { "screen_ssgi", { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/screen_ssgi.frag" } },
+          { "screen_ssgi_atrous",
+            { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/screen_ssgi_atrous.frag" } },
           { "screen_ssgi_composite",
             { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/screen_ssgi_composite.frag" } },
           { "water", { .vert = "assets/shaders/water.vert", .frag = "assets/shaders/water.frag" } },
