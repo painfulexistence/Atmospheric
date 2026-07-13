@@ -191,6 +191,7 @@ set(SOURCES
     src/streaming_terrain_component.cpp
     src/terrain_tile_cache.cpp
     src/terrain_texture_gen.cpp
+    src/terrain_flow.cpp
     src/height_field_collider_component.cpp
     src/water_component.cpp
     src/vat.cpp
