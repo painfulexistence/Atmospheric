@@ -17,12 +17,13 @@
 class NetConditioner {
 public:
     // Tunable live; safe to change any frame.
-    int latencyMs = 0;   // base one-way delay added to every delivered packet
-    int jitterMs = 0;    // uniform +/- added to latency (reordering falls out of this)
+    int latencyMs = 0;// base one-way delay added to every delivered packet
+    int jitterMs = 0;// uniform +/- added to latency (reordering falls out of this)
     float lossPct = 0.0f;// 0..100: chance to drop a packet outright
-    float dupPct = 0.0f; // 0..100: chance to also deliver a second copy
+    float dupPct = 0.0f;// 0..100: chance to also deliver a second copy
 
-    explicit NetConditioner(uint32_t seed = 0x9E3779B9u) : _rng(seed ? seed : 1u) {}
+    explicit NetConditioner(uint32_t seed = 0x9E3779B9u) : _rng(seed ? seed : 1u) {
+    }
 
     bool Active() const {
         return latencyMs != 0 || jitterMs != 0 || lossPct > 0.0f || dupPct > 0.0f;
@@ -54,8 +55,8 @@ private:
     float _lossEwma = 0.0f;
 
     uint32_t NextU32();// xorshift32
-    float NextUnit();  // [0,1)
-    int NextJitter();  // [-jitterMs, +jitterMs]
+    float NextUnit();// [0,1)
+    int NextJitter();// [-jitterMs, +jitterMs]
     void Enqueue(uint32_t nowMs, uint32_t addr, uint16_t port, const uint8_t* data, int len);
 };
 
@@ -65,7 +66,7 @@ private:
 // receive source so it works over both a UdpSocket and Emscripten's WebRTC glue.
 //   recv(buf, maxLen, fromAddr, fromPort) -> bytes (>0), or <=0 when drained
 //   handle(buf, len, fromAddr, fromPort)
-template <class Recv, class Handle>
+template<class Recv, class Handle>
 void PumpConditioned(NetConditioner& cond, NetMetrics& metrics, uint32_t nowMs, Recv&& recv, Handle&& handle) {
     metrics.Roll(nowMs);
     uint8_t buf[1500];

@@ -6,9 +6,9 @@
 namespace {
     // Quick red/amber/green reading for latency- and loss-like quantities.
     glm::vec4 RatingColor(float value, float goodBelow, float badAbove) {
-        if (value < goodBelow) return glm::vec4(0.55f, 0.9f, 0.55f, 1.0f); // green
-        if (value < badAbove) return glm::vec4(0.95f, 0.85f, 0.45f, 1.0f); // amber
-        return glm::vec4(0.95f, 0.45f, 0.42f, 1.0f);                       // red
+        if (value < goodBelow) return glm::vec4(0.55f, 0.9f, 0.55f, 1.0f);// green
+        if (value < badAbove) return glm::vec4(0.95f, 0.85f, 0.45f, 1.0f);// amber
+        return glm::vec4(0.95f, 0.45f, 0.42f, 1.0f);// red
     }
 
     std::string Fmt(const char* f, float v) {
@@ -19,17 +19,12 @@ namespace {
 }// namespace
 
 void DrawNetHud(
-    GraphicsSubsystem* gfx,
-    FontHandle font,
-    const NetMetrics& m,
-    const NetConditioner& cond,
-    float x,
-    float y
+    GraphicsSubsystem* gfx, FontHandle font, const NetMetrics& m, const NetConditioner& cond, float x, float y
 ) {
     if (!gfx) return;
 
     const float scale = 0.6f;
-    const float lh = 22.0f;    // line height
+    const float lh = 22.0f;// line height
     const glm::vec4 label(0.72f, 0.76f, 0.82f, 1.0f);
     const glm::vec4 dim(0.6f, 0.63f, 0.68f, 1.0f);
 
@@ -55,12 +50,7 @@ void DrawNetHud(
 
     gfx->DrawText(font, "bw", x, row, scale, label);
     gfx->DrawText(
-        font,
-        Fmt("%.0f", m.kbpsIn) + "/" + Fmt("%.0f", m.kbpsOut) + " kbit dn/up",
-        x + 60.0f,
-        row,
-        scale,
-        dim
+        font, Fmt("%.0f", m.kbpsIn) + "/" + Fmt("%.0f", m.kbpsOut) + " kbit dn/up", x + 60.0f, row, scale, dim
     );
     row += lh;
 

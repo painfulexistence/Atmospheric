@@ -15,10 +15,5 @@
 // screen space. Lives in the engine (not per-example) because it needs
 // GraphicsSubsystem and is identical across all three consumers.
 void DrawNetHud(
-    GraphicsSubsystem* gfx,
-    FontHandle font,
-    const NetMetrics& m,
-    const NetConditioner& cond,
-    float x,
-    float y
+    GraphicsSubsystem* gfx, FontHandle font, const NetMetrics& m, const NetConditioner& cond, float x, float y
 );

@@ -38,11 +38,12 @@ void NetConditioner::Push(uint32_t nowMs, uint32_t fromAddr, uint16_t fromPort, 
     _lossEwma += ((drop ? 1.0f : 0.0f) - _lossEwma) * kAlpha;
     if (drop) return;
     Enqueue(nowMs, fromAddr, fromPort, data, len);
-    if (dupPct > 0.0f && NextUnit() * 100.0f < dupPct)
-        Enqueue(nowMs, fromAddr, fromPort, data, len);
+    if (dupPct > 0.0f && NextUnit() * 100.0f < dupPct) Enqueue(nowMs, fromAddr, fromPort, data, len);
 }
 
-bool NetConditioner::Pop(uint32_t nowMs, uint32_t& fromAddr, uint16_t& fromPort, uint8_t* buf, int maxLen, int& outLen) {
+bool NetConditioner::Pop(
+    uint32_t nowMs, uint32_t& fromAddr, uint16_t& fromPort, uint8_t* buf, int maxLen, int& outLen
+) {
     // Pick the earliest-due packet that is due now. Serial-number comparison
     // (int32_t of the difference) so it stays correct across uint32 ms wrap and
     // preserves arrival order when jitter == 0.
@@ -57,7 +58,8 @@ bool NetConditioner::Pop(uint32_t nowMs, uint32_t& fromAddr, uint16_t& fromPort,
     Held& h = _q[best];
     int n = static_cast<int>(h.bytes.size());
     if (n > maxLen) n = maxLen;
-    for (int i = 0; i < n; i++) buf[i] = h.bytes[i];
+    for (int i = 0; i < n; i++)
+        buf[i] = h.bytes[i];
     outLen = n;
     fromAddr = h.fromAddr;
     fromPort = h.fromPort;

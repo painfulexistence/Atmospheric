@@ -65,7 +65,8 @@ int LoopbackDatagramSocket::RecvFrom(uint8_t* buf, int maxLen, uint32_t& fromAdd
     _inbox.pop_front();
     int n = static_cast<int>(dg.bytes.size());
     if (n > maxLen) n = maxLen;
-    for (int i = 0; i < n; i++) buf[i] = dg.bytes[i];
+    for (int i = 0; i < n; i++)
+        buf[i] = dg.bytes[i];
     fromAddr = kLoopbackAddr;
     fromPort = dg.srcPort;
     return n;

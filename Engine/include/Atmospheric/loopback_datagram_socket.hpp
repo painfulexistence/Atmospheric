@@ -43,6 +43,6 @@ private:
         uint16_t srcPort;
         std::vector<uint8_t> bytes;
     };
-    uint16_t _port = 0;         // 0 = closed
+    uint16_t _port = 0;// 0 = closed
     std::deque<Datagram> _inbox;// datagrams delivered to this socket, awaiting RecvFrom
 };
