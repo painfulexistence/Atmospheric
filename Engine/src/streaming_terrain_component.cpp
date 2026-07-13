@@ -47,7 +47,7 @@ void StreamingTerrainComponent::DrawImGui() {
     // The three shading modes are mutually exclusive — one selector, not
     // overlapping toggles. Palette / LOD tint suspend the detail layers so
     // their flat colours show (see SetColorMode).
-    static const char* modeNames[] = { "Textured (layers)", "Palette", "LOD tint" };
+    static const char* modeNames[] = { "Textured (layers)", "Palette", "LOD debug" };
     int mode = static_cast<int>(_streamer.GetColorMode());
     if (ImGui::Combo("Surface", &mode, modeNames, 3)) _streamer.SetColorMode(static_cast<TerrainColorMode>(mode));
 

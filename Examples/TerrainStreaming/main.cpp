@@ -37,9 +37,9 @@ private:
 //
 // Controls: WASD move, arrows look, X sprint (x50), Z slow, R/F up/down,
 //           G toggle ground-clamp, T teleport +2km (streaming stress test),
-//           SPACE cycle surface mode (textured / palette / LOD tint),
+//           SPACE cycle surface mode (textured / palette / LOD debug),
 //           P select palette (Palette mode only),
-//           I jump to LOD-tint debug (LOD colours + wireframe), ESC quit.
+//           I jump to LOD debug (LOD colours + wireframe), ESC quit.
 // A HUD panel exposes the same surface-mode and palette selectors.
 
 // Keeps the fly camera above the streamed terrain. Ticks after the
@@ -121,7 +121,7 @@ class TerrainStreamingDemo : public Application {
         // tint (via I, SPACE, or the dropdown) turns wireframe on, leaving it
         // turns it off. No-op on WebGL where glPolygonMode is unavailable.
         GraphicsSubsystem::Get()->renderer->EnableWireframe(mode == TerrainColorMode::LodTint);
-        const char* names[] = { "textured (detail layers)", "palette", "LOD tint + wireframe" };
+        const char* names[] = { "textured (detail layers)", "palette", "LOD debug" };
         ConsoleSubsystem::Get()->Info(std::string("Surface: ") + names[static_cast<int>(mode)]);
     }
 
@@ -345,7 +345,7 @@ class TerrainStreamingDemo : public Application {
 
         ConsoleSubsystem::Get()->Info(
             "WASD move, arrows look, X sprint, Z slow, R/F up/down, G ground-clamp, T teleport, SPACE surface mode, "
-            "P palette, I LOD-tint debug, ESC quit."
+            "P palette, I LOD debug, ESC quit."
         );
     }
 

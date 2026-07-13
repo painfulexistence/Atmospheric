@@ -11,7 +11,7 @@
         <select id="mode_select">
             <option value="0">Textured (layers)</option>
             <option value="1">Palette</option>
-            <option value="2">LOD tint</option>
+            <option value="2">LOD debug</option>
         </select>
 
         <div class="label">Palette</div>
@@ -27,7 +27,7 @@
         <div class="hints">
             <div class="hint">SPACE - cycle surface mode</div>
             <div class="hint">P - select palette</div>
-            <div class="hint">I - LOD tint debug</div>
+            <div class="hint">I - LOD debug</div>
         </div>
     </div>
 </body>
