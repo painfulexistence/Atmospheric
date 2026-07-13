@@ -43,12 +43,15 @@ if(EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/ui
             ${EM_PRELOAD_STAGING_DIR}/ui
         COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/textures
+            ${EM_PRELOAD_STAGING_DIR}/textures
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes
             ${EM_PRELOAD_STAGING_DIR}/scenes
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/models
             ${EM_PRELOAD_STAGING_DIR}/models
-        COMMENT "Staging Emscripten preload assets (shaders, fonts, ui, scenes, models) for ${GAME_NAME}"
+        COMMENT "Staging Emscripten preload assets (shaders, fonts, ui, textures, scenes, models) for ${GAME_NAME}"
     )
     add_dependencies(${GAME_TARGET} stage_${GAME_NAME}_em_preload)
 
@@ -59,9 +62,19 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/shaders@assets/shaders"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/ui@assets/ui"
+        # Default PBR textures (default_*.ktx2) — LoadDefaultTextures() reads
+        # these synchronously when useDefaultTextures=true, so they must be in
+        # MEMFS. ae_copy_engine_assets skips Emscripten, hence this preload.
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/textures@assets/textures"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/models@assets/models"
     )
+
+    # Release builds use the centered custom shell (matches other examples);
+    # Debug keeps Emscripten's default shell for easier console/stdout debugging.
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_link_options(${GAME_TARGET} PRIVATE "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell.html")
+    endif()
 else()
     # ── Native build ─────────────────────────────────────────────────────────
     if(NOT IOS)
