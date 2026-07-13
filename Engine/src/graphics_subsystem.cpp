@@ -245,51 +245,52 @@ void GraphicsSubsystem::DrawImGui(float dt) {
         // Voxel-world lighting (VoxelChunkPass): corner AO + GI, both default
         // off. Kept above bloom and the post-process effect toggles below.
         if (auto* vp = renderer->GetPass<VoxelChunkPass>()) {
+            auto* ssp = renderer->GetPass<ScreenSpaceGIPass>();
             if (ImGui::TreeNode("Ambient Occlusion")) {
-                ImGui::Checkbox("Corner (baked)", &vp->aoEnabled);
-                if (vp->aoEnabled) {
-                    ImGui::SliderFloat("Corner strength", &vp->aoStrength, 0.0f, 1.0f);
+                // Corner AO is the crisp per-block contact term — independent, as
+                // it stacks with a broad AO. VXAO and GTAO are both "broad" AO, so
+                // they're one mutually-exclusive choice (running both just
+                // double-darkens).
+                ImGui::Checkbox("Corner AO (baked)", &vp->aoEnabled);
+                if (vp->aoEnabled) ImGui::SliderFloat("Corner strength", &vp->aoStrength, 0.0f, 1.0f);
+
+                int broad = vp->vxaoEnabled ? 1 : ((ssp && ssp->gtaoEnabled) ? 2 : 0);
+                if (ImGui::Combo("Broad AO", &broad, "Off\0VXAO (cone-traced)\0GTAO (screen-space)\0")) {
+                    vp->vxaoEnabled = (broad == 1);
+                    if (ssp) ssp->gtaoEnabled = (broad == 2);
                 }
-                ImGui::Checkbox("VXAO (cone-traced)", &vp->vxaoEnabled);
-                if (vp->vxaoEnabled) {
+                if (broad == 1) {
                     ImGui::SliderFloat("VXAO strength", &vp->vxaoStrength, 0.0f, 1.0f);
-                    ImGui::TextDisabled("Reuses the VoxelGI grid (built even if GI is off)");
-                }
-                if (auto* ssgi = renderer->GetPass<ScreenSpaceGIPass>()) {
-                    ImGui::Checkbox("GTAO (screen-space)", &ssgi->gtaoEnabled);
-                    if (ssgi->gtaoEnabled) {
-                        ImGui::SliderFloat("GTAO strength", &ssgi->gtaoStrength, 0.0f, 1.0f);
-                        ImGui::SliderFloat("GTAO radius (m)", &ssgi->gtaoRadius, 0.1f, 3.0f);
-                        ImGui::TextDisabled("Screen-space horizon AO (depth-based)");
-                    }
+                    ImGui::TextDisabled("World-space, reuses the VoxelGI grid");
+                } else if (broad == 2 && ssp) {
+                    ImGui::SliderFloat("GTAO strength", &ssp->gtaoStrength, 0.0f, 1.0f);
+                    ImGui::SliderFloat("GTAO radius (m)", &ssp->gtaoRadius, 0.1f, 3.0f);
+                    ImGui::TextDisabled("Screen-space horizon AO (depth-based)");
                 }
                 ImGui::TreePop();
             }
             if (ImGui::TreeNode("Global Illumination")) {
                 using GIMode = VoxelChunkPass::GIMode;
-                // VoxelGI (world-space cone tracing) and SSGI (screen-space) are
-                // independent systems — either or both. VoxelGI lives on the
-                // voxel pass; SSGI on ScreenSpaceGIPass.
-                bool voxelGiOn = vp->giMode == GIMode::VoxelGI;
-                if (ImGui::Checkbox("VoxelGI (cone tracing)", &voxelGiOn)) {
-                    vp->giMode = voxelGiOn ? GIMode::VoxelGI : GIMode::Off;
+                // One exclusive GI mode across VoxelGI (voxel pass, world-space)
+                // and SSGI (screen-space).
+                int gi = (vp->giMode == GIMode::VoxelGI) ? 1 : ((ssp && ssp->ssgiEnabled) ? 2 : 0);
+                if (ImGui::Combo("Mode", &gi, "Off\0VoxelGI (cone tracing)\0SSGI (screen-space)\0")) {
+                    vp->giMode = (gi == 1) ? GIMode::VoxelGI : GIMode::Off;
+                    if (ssp) ssp->ssgiEnabled = (gi == 2);
                 }
-                if (vp->giMode == GIMode::VoxelGI) {
+                if (gi == 1) {
                     ImGui::SliderFloat("VoxelGI strength", &vp->giStrength, 0.0f, 3.0f);
                     ImGui::SliderInt("Cascade dim (m)", &vp->giVoxelDim, 32, 128);
                     // Injection is amortized across frames; fewer slabs/frame
                     // = smoother (no hitch) but the grid refreshes slower.
                     ImGui::SliderInt("Inject slabs/frame", &vp->giInjectSlabs, 1, 16);
-                }
-                if (auto* ssgi = renderer->GetPass<ScreenSpaceGIPass>()) {
-                    ImGui::Checkbox("SSGI (screen-space)", &ssgi->ssgiEnabled);
-                    if (ssgi->ssgiEnabled) {
-                        ImGui::SliderFloat("SSGI strength", &ssgi->ssgiStrength, 0.0f, 3.0f);
-                        ImGui::SliderFloat("SSGI radius (m)", &ssgi->ssgiRadius, 0.5f, 12.0f);
-                        ImGui::SliderFloat("SSGI thickness (m)", &ssgi->ssgiThickness, 0.1f, 2.0f);
-                        ImGui::SliderFloat("SSGI temporal", &ssgi->ssgiBlend, 0.0f, 0.98f);
-                        ImGui::TextDisabled("Screen-space 1-bounce, temporally accumulated");
-                    }
+                } else if (gi == 2 && ssp) {
+                    ImGui::SliderFloat("SSGI strength", &ssp->ssgiStrength, 0.0f, 3.0f);
+                    ImGui::SliderFloat("SSGI radius (m)", &ssp->ssgiRadius, 0.5f, 12.0f);
+                    ImGui::SliderFloat("SSGI thickness (m)", &ssp->ssgiThickness, 0.1f, 2.0f);
+                    ImGui::SliderFloat("SSGI temporal", &ssp->ssgiBlend, 0.0f, 0.98f);
+                    ImGui::SliderInt("SSGI à-trous iters", &ssp->ssgiAtrousIters, 0, 5);
+                    ImGui::TextDisabled("Screen-space 1-bounce, SVGF-lite denoised");
                 }
                 ImGui::TreePop();
             }

@@ -94,21 +94,26 @@ class VoxelWorldApp : public Application {
         }
         // Cycle global illumination: Off -> VoxelGI -> SSGI -> Off. Also
         // selectable in the GI panel (Engine Subsystems > Graphics).
-        // G toggles VoxelGI (world-space cone tracing); K toggles SSGI
-        // (screen-space). Both also live in the GI panel.
+        // G toggles VoxelGI, K toggles SSGI — mutually exclusive (one GI mode at
+        // a time), matching the GI panel combo. Both also live in the panel.
+        Renderer* gr = GraphicsSubsystem::Get()->renderer.get();
         if (InputSubsystem::Get()->IsKeyPressed(Key::G)) {
-            if (auto* vp = GraphicsSubsystem::Get()->renderer->GetPass<VoxelChunkPass>()) {
-                using GIMode = VoxelChunkPass::GIMode;
+            using GIMode = VoxelChunkPass::GIMode;
+            auto* vp = gr->GetPass<VoxelChunkPass>();
+            auto* ssgi = gr->GetPass<ScreenSpaceGIPass>();
+            if (vp) {
                 vp->giMode = (vp->giMode == GIMode::VoxelGI) ? GIMode::Off : GIMode::VoxelGI;
-                ConsoleSubsystem::Get()->Info(
-                    vp->giMode == GIMode::VoxelGI ? "VoxelGI: on (cone tracing)" : "VoxelGI: off"
-                );
+                if (vp->giMode == GIMode::VoxelGI && ssgi) ssgi->ssgiEnabled = false;
+                ConsoleSubsystem::Get()->Info(vp->giMode == GIMode::VoxelGI ? "GI: VoxelGI (cone tracing)" : "GI: off");
             }
         }
         if (InputSubsystem::Get()->IsKeyPressed(Key::K)) {
-            if (auto* ssgi = GraphicsSubsystem::Get()->renderer->GetPass<ScreenSpaceGIPass>()) {
+            auto* ssgi = gr->GetPass<ScreenSpaceGIPass>();
+            auto* vp = gr->GetPass<VoxelChunkPass>();
+            if (ssgi) {
                 ssgi->ssgiEnabled = !ssgi->ssgiEnabled;
-                ConsoleSubsystem::Get()->Info(ssgi->ssgiEnabled ? "SSGI: on (screen-space)" : "SSGI: off");
+                if (ssgi->ssgiEnabled && vp) vp->giMode = VoxelChunkPass::GIMode::Off;
+                ConsoleSubsystem::Get()->Info(ssgi->ssgiEnabled ? "GI: SSGI (screen-space)" : "GI: off");
             }
         }
         if (InputSubsystem::Get()->IsKeyDown(Key::E)) {
