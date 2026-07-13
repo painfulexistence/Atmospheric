@@ -1,4 +1,6 @@
 #include "terrain_flow.hpp"
+#include "spline.hpp"
+#include "spline_mesh.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -20,14 +22,6 @@ namespace {
 
     inline int Idx(int x, int y, int n) {
         return y * n + x;
-    }
-
-    // Catmull-Rom point for smoothing the blocky grid-traced path.
-    glm::vec2 CatmullRom(const glm::vec2& p0, const glm::vec2& p1, const glm::vec2& p2, const glm::vec2& p3, float t) {
-        const float t2 = t * t, t3 = t2 * t;
-        return 0.5f
-               * ((2.0f * p1) + (-p0 + p2) * t + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t2
-                  + (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * t3);
     }
 
 }// namespace
@@ -199,40 +193,44 @@ std::vector<RiverPolyline> BuildRiverNetwork(
     std::vector<RiverPolyline> out;
     out.reserve(raw.size());
     for (const auto& line : raw) {
-        // Grid-cell centres -> world points + widths.
+        // Grid-cell centres -> world points + widths + water-surface elevation.
+        // surfaceY = the FILLED elevation (priority-flood output): already
+        // monotonically non-increasing downstream and hugging the terrain, with
+        // filled basins standing in as lakes — the natural water level, no
+        // canyon-cutting. The ribbon drapes onto this and the carve floors the
+        // bed just below it.
         std::vector<glm::vec2> pts;
         std::vector<float> widths;
+        std::vector<float> surf;
         pts.reserve(line.cells.size());
         for (int c : line.cells) {
             pts.push_back(worldOf(c % n, c / n));
             widths.push_back(widthOf(acc[c]));
+            surf.push_back(filled[c]);
         }
 
-        // Catmull-Rom resample (4 samples/segment) for a flowing curve instead
-        // of 45-degree grid steps; widths lerp along the same parameter.
+        // Resample the blocky 45°-grid path into a flowing curve with the
+        // shared Catmull-Rom Spline; widths lerp along the same segment param.
+        Spline<glm::vec2> spline;
+        spline.SetPoints(pts);
         RiverPolyline poly;
         const int seg = 4;
-        for (size_t k = 0; k + 1 < pts.size(); ++k) {
-            const glm::vec2& p1 = pts[k];
-            const glm::vec2& p2 = pts[k + 1];
-            const glm::vec2& p0 = pts[k > 0 ? k - 1 : k];
-            const glm::vec2& p3 = pts[k + 2 < pts.size() ? k + 2 : k + 1];
-            const int steps = (k + 2 == pts.size()) ? seg : seg;// include endpoint on last seg below
-            for (int t = 0; t < steps; ++t) {
-                const float u = static_cast<float>(t) / seg;
-                RiverNode nd;
-                nd.pos = CatmullRom(p0, p1, p2, p3, u);
-                nd.flow = std::clamp((widths[k] - params.minWidth) / std::max(params.widthScale, 1e-3f), 0.05f, 1.0f);
-                nd.width = widths[k] + (widths[k + 1] - widths[k]) * u;
-                poly.nodes.push_back(nd);
-            }
-        }
-        // Final node (mouth).
-        if (!pts.empty()) {
+        const int segCount = static_cast<int>(pts.size()) - 1;
+        const int total = segCount * seg;
+        auto flowOf = [&](float wpx) {
+            return std::clamp((wpx - params.minWidth) / std::max(params.widthScale, 1e-3f), 0.05f, 1.0f);
+        };
+        for (int t = 0; t <= total; ++t) {
+            const float gt = static_cast<float>(t) / static_cast<float>(total);// 0..1 over the spline
+            const float fseg = gt * segCount;// which control segment
+            const int k = std::min(segCount - 1, static_cast<int>(fseg));
+            const float local = fseg - k;
+            const size_t k1 = std::min<size_t>(k + 1, widths.size() - 1);
             RiverNode nd;
-            nd.pos = pts.back();
-            nd.width = widths.back();
-            nd.flow = std::clamp((widths.back() - params.minWidth) / std::max(params.widthScale, 1e-3f), 0.05f, 1.0f);
+            nd.pos = spline.Sample(gt);
+            nd.width = widths[k] + (widths[k1] - widths[k]) * local;
+            nd.flow = flowOf(nd.width);
+            nd.surfaceY = surf[k] + (surf[k1] - surf[k]) * local;
             poly.nodes.push_back(nd);
         }
         if (static_cast<int>(poly.nodes.size()) >= params.minNodes) out.push_back(std::move(poly));
@@ -249,52 +247,100 @@ void BuildRiverMesh(
     std::vector<Vertex>& verts,
     std::vector<uint16_t>& indices
 ) {
+    // Position each centreline at the water surface, then hand it to the shared
+    // ribbon mesher. Prefer the node's carved water-surface profile (surfaceY,
+    // filled by BuildHydrology) so the ribbon is a smooth flat sheet sitting in
+    // the incised channel; fall back to draping on the height source when the
+    // network wasn't carved (surfaceY unset).
     for (const auto& river : rivers) {
-        const auto& nodes = river.nodes;
-        if (nodes.size() < 2) continue;
+        if (river.nodes.size() < 2) continue;
+        std::vector<glm::vec3> centreline;
+        std::vector<float> halfWidths;
+        centreline.reserve(river.nodes.size());
+        halfWidths.reserve(river.nodes.size());
+        for (const auto& nd : river.nodes) {
+            const float bed = (nd.surfaceY > 0.0f) ? nd.surfaceY : height01(nd.pos.x, nd.pos.y) * heightScale;
+            centreline.emplace_back(nd.pos.x, bed + params.bankLift, nd.pos.y);
+            halfWidths.push_back(nd.width * params.widthGain);
+        }
+        BuildRibbonMesh(centreline, halfWidths, params.uvMetresPerV, verts, indices);
+    }
+}
 
-        const uint16_t base = static_cast<uint16_t>(verts.size());
-        // A uint16 index buffer caps one river at 32k centreline nodes (2 verts
-        // each); real rivers are far shorter, but guard so a pathological one
-        // can't overflow the strip.
-        const size_t maxNodes = std::min<size_t>(nodes.size(), 32000);
+// ── River incision (erosion) ────────────────────────────────────────────────
 
-        float distance = 0.0f;// accumulated along-flow length -> UV.y
-        for (size_t i = 0; i < maxNodes; ++i) {
-            const glm::vec2 p = nodes[i].pos;
-            // Flow tangent from neighbours (central difference), normalized.
-            const glm::vec2 a = nodes[i > 0 ? i - 1 : i].pos;
-            const glm::vec2 b = nodes[i + 1 < maxNodes ? i + 1 : i].pos;
-            glm::vec2 tan2 = b - a;
-            const float tl = glm::length(tan2);
-            tan2 = tl > 1e-4f ? tan2 / tl : glm::vec2(1.0f, 0.0f);
-            const glm::vec2 side2(-tan2.y, tan2.x);// left-hand perpendicular
+float RiverCarveField::SampleDepth(float wx, float wz) const {
+    const float half = 0.5f * _worldSize;
+    const float fx = (wx + half) / _worldSize * _n - 0.5f;
+    const float fz = (wz + half) / _worldSize * _n - 0.5f;
+    const int x0 = static_cast<int>(std::floor(fx)), z0 = static_cast<int>(std::floor(fz));
+    const float tx = fx - x0, tz = fz - z0;
+    auto at = [&](int x, int z) {
+        if (x < 0 || z < 0 || x >= _n || z >= _n) return 0.0f;
+        return _depth[static_cast<size_t>(z) * _n + x];
+    };
+    const float a = at(x0, z0), b = at(x0 + 1, z0), c = at(x0, z0 + 1), d = at(x0 + 1, z0 + 1);
+    return (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * tz;
+}
 
-            if (i > 0) distance += glm::length(p - nodes[i - 1].pos);
-            const float v = distance / std::max(params.uvMetresPerV, 1e-3f);
-            const float w = nodes[i].width * params.widthGain;
+TerrainHydrology BuildHydrology(
+    const std::function<float(float, float)>& base01,
+    float worldSize,
+    float heightScale,
+    const RiverNetworkParams& network,
+    const CarveParams& carveParams
+) {
+    TerrainHydrology hydro;
+    hydro.rivers = BuildRiverNetwork(base01, worldSize, heightScale, network);
+    // surfaceY is already the filled-surface water level (set in BuildRiverNetwork).
 
-            for (int s = 0; s < 2; ++s) {
-                const float sign = (s == 0) ? -1.0f : 1.0f;// left, right bank
-                const glm::vec2 wp = p + side2 * (sign * w);
-                const float y = height01(wp.x, wp.y) * heightScale + params.bankLift;
-                Vertex vert;
-                vert.position = glm::vec3(wp.x, y, wp.y);
-                vert.uv = glm::vec2(s == 0 ? 0.0f : 1.0f, v);
-                vert.normal = glm::vec3(0.0f, 1.0f, 0.0f);// water faces up
-                vert.tangent = glm::vec3(tan2.x, 0.0f, tan2.y);// downstream (flow dir)
-                vert.bitangent = glm::vec3(side2.x, 0.0f, side2.y);
-                verts.push_back(vert);
+    const int cn = std::max(16, carveParams.gridResolution);
+    const float cell = worldSize / static_cast<float>(cn);
+    const float half = 0.5f * worldSize;
+    auto carve = std::make_shared<RiverCarveField>(cn, worldSize);
+    auto& grid = carve->grid();
+
+    // Stamp a FLAT channel floor: within channelHalf, lower the terrain *to*
+    // (surfaceY - bedDepth); past it, taper the carve back up to the natural
+    // terrain over bankBlend. depthAtCell = base(cell) - floor gives a level
+    // bed regardless of the base bumpiness. MAX across nodes so confluences
+    // take the deepest (lowest) floor.
+    for (const auto& river : hydro.rivers) {
+        for (const auto& nd : river.nodes) {
+            const float channelHalf = nd.width * carveParams.channelWiden;
+            const float outer = channelHalf + nd.width * carveParams.bankBlend;
+            const float floorElev = nd.surfaceY - carveParams.bedDepth;
+
+            const int cx = static_cast<int>((nd.pos.x + half) / cell);
+            const int cz = static_cast<int>((nd.pos.y + half) / cell);
+            const int r = static_cast<int>(std::ceil(outer / cell)) + 1;
+            for (int dz = -r; dz <= r; ++dz) {
+                for (int dx = -r; dx <= r; ++dx) {
+                    const int gx = cx + dx, gz = cz + dz;
+                    if (gx < 0 || gz < 0 || gx >= cn || gz >= cn) continue;
+                    const float wx = (gx + 0.5f) * cell - half, wz = (gz + 0.5f) * cell - half;
+                    const float dist = std::sqrt((wx - nd.pos.x) * (wx - nd.pos.x) + (wz - nd.pos.y) * (wz - nd.pos.y));
+                    if (dist >= outer) continue;
+                    // Depth needed to bring this cell down to the flat floor.
+                    const float cellBase = base01(wx, wz) * heightScale;
+                    float d = cellBase - floorElev;// >0 where terrain is above the floor
+                    if (d <= 0.0f) continue;
+                    // Full carve within the channel, smooth taper out to the banks.
+                    if (dist > channelHalf) {
+                        const float u = (dist - channelHalf) / std::max(outer - channelHalf, 1e-3f);
+                        d *= 1.0f - (u * u * (3.0f - 2.0f * u));
+                    }
+                    float& g = grid[static_cast<size_t>(gz) * cn + gx];
+                    if (d > g) g = d;
+                }
             }
         }
-
-        // Two triangles per segment between consecutive vertex pairs (L,R).
-        for (size_t i = 0; i + 1 < maxNodes; ++i) {
-            const uint16_t l0 = static_cast<uint16_t>(base + i * 2);
-            const uint16_t r0 = static_cast<uint16_t>(l0 + 1);
-            const uint16_t l1 = static_cast<uint16_t>(l0 + 2);
-            const uint16_t r1 = static_cast<uint16_t>(l0 + 3);
-            indices.insert(indices.end(), { l0, r0, l1, r0, r1, l1 });
-        }
     }
+
+    hydro.carve = carve;
+    const float hs = heightScale > 0.0f ? heightScale : 1.0f;
+    hydro.carvedHeight01 = [base01, carve, hs](float wx, float wz) {
+        return std::clamp(base01(wx, wz) - carve->SampleDepth(wx, wz) / hs, 0.0f, 1.0f);
+    };
+    return hydro;
 }

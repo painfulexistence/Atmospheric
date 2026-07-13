@@ -13,8 +13,12 @@ class StreamingTerrainComponent;
 // and renders them with the flowing-water RiverMaterial. Visual-only (no
 // collision/physics). Build once; the network is static for a given world.
 //
-//   auto* go = CreateGameObject(glm::vec3(0.0f));   // must be at the origin —
-//   go->AddComponent<RiverComponent>(terrainComponent, RiverProps{ ... });
+//   // Carve first so the terrain has valleys, then drape the water into them:
+//   auto hydro = BuildHydrology(base01, worldSize, heightScale, {}, {});
+//   props.heightFn = hydro.carvedHeight01;               // terrain follows it
+//   ... build the StreamingTerrain ...
+//   auto* go = CreateGameObject(glm::vec3(0.0f));         // must be at the origin
+//   go->AddComponent<RiverComponent>(terrainComp, hydro.rivers, RiverProps{});
 // river mesh vertices are already world-space, so the owner transform stays I.
 struct RiverProps {
     RiverNetworkParams network;// flow-accumulation / extraction tuning
@@ -33,7 +37,15 @@ struct RiverProps {
 
 class RiverComponent : public Component {
 public:
-    RiverComponent(GameObject* owner, StreamingTerrainComponent* terrain, const RiverProps& props = {});
+    // `rivers` is the precomputed network (from BuildHydrology, so it matches
+    // the carve the terrain was built with). Ribbons drape onto the terrain's
+    // current — carved — height, so the water sits in the incised channels.
+    RiverComponent(
+        GameObject* owner,
+        StreamingTerrainComponent* terrain,
+        std::vector<RiverPolyline> rivers,
+        const RiverProps& props = {}
+    );
 
     std::string GetName() const override {
         return "River";
@@ -51,6 +63,7 @@ public:
 
 private:
     StreamingTerrainComponent* _terrain = nullptr;
+    std::vector<RiverPolyline> _rivers;
     RiverProps _props;
     MeshHandle _mesh;
     Material* _material = nullptr;

@@ -200,6 +200,13 @@ struct IVec2Hash {
     }
 };
 
+// Build the engine's standard OpenSimplex2 FBm height source (world metres ->
+// [0,1]) from noise params. The streamer uses this internally when no custom
+// heightFn is set; expose it so callers can obtain the exact same base height
+// up front (river carving composes on top of it, then feeds the result back in
+// as heightFn).
+std::function<float(float, float)> MakeFbmHeightSource(const NoiseHeightFieldParams& params);
+
 // Mutually-exclusive surface shading (see TerrainStreamer::SetColorMode).
 enum class TerrainColorMode {
     Textured,// detail layers (or palette fallback when no layers)

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <glm/vec2.hpp>
+#include <memory>
 #include <vector>
 
 // Hydrology for the streamed terrain: derive a river network from the height
@@ -24,6 +25,10 @@ struct RiverNode {
     glm::vec2 pos{ 0.0f };// world XZ (metres)
     float width = 0.0f;// channel half-width in metres (grows downstream)
     float flow = 0.0f;// normalized drainage [0,1] (for flow speed / depth)
+    // Water-surface elevation (world metres), filled by BuildHydrology: the
+    // river's smooth, monotonically-falling longitudinal profile. 0 = unset
+    // (the ribbon then drapes on the terrain height instead).
+    float surfaceY = 0.0f;
 };
 
 // One continuous river from a source down to the sea/map edge/confluence.
@@ -78,4 +83,64 @@ void BuildRiverMesh(
     const RiverMeshParams& params,
     std::vector<Vertex>& verts,
     std::vector<uint16_t>& indices
+);
+
+// ── River incision (erosion) ────────────────────────────────────────────────
+// Without carving, the flat-ish water ribbon is draped over the raw bumpy
+// terrain and the bumps poke through it. A real river cuts a channel: this
+// rasterizes an incision-depth field from the network — deepest at the
+// centreline, tapering out past the banks — that the terrain height source
+// subtracts, so the water ends up sitting IN a valley with banks rising on
+// either side. The carve grid is sampled bilinearly and is read-only after
+// build (thread-safe for the worker-thread height source).
+struct CarveParams {
+    int gridResolution = 1024;// carve grid per side (finer than flow for crisp banks)
+    // The channel floor is cut to the water surface minus bedDepth and FLATTENED
+    // (terrain is lowered *to* that floor, not by a constant), so the bed is
+    // level under the water and local humps along the course are sliced through.
+    float bedDepth = 3.0f;// channel floor below the water surface (metres)
+    float channelWiden = 1.6f;// flat-floor half-width = river width * this
+    float bankBlend = 2.6f;// taper distance from the channel back up to terrain (* width)
+};
+
+// Bilinearly-sampled incision-depth field (metres to subtract from height).
+class RiverCarveField {
+public:
+    RiverCarveField(int n, float worldSize) : _n(n), _worldSize(worldSize), _depth(static_cast<size_t>(n) * n, 0.0f) {
+    }
+    float SampleDepth(float wx, float wz) const;// metres, bilinear, 0 outside rivers
+    std::vector<float>& grid() {
+        return _depth;
+    }
+    int n() const {
+        return _n;
+    }
+    float worldSize() const {
+        return _worldSize;
+    }
+
+private:
+    int _n;
+    float _worldSize;
+    std::vector<float> _depth;
+};
+
+// Rivers + the carve field that incises them, built from a base height source.
+struct TerrainHydrology {
+    std::vector<RiverPolyline> rivers;
+    std::shared_ptr<RiverCarveField> carve;
+    // base height with the river channels subtracted, clamped to [0,1] — feed
+    // this to StreamingTerrainProps::heightFn so tiles/colliders/scatter all
+    // follow the carved valleys, and drape the river ribbons onto it.
+    std::function<float(float, float)> carvedHeight01;
+};
+
+// One-shot: derive the network from base01, build the carve field, and return
+// the carved height source. worldSize/heightScale match the terrain.
+TerrainHydrology BuildHydrology(
+    const std::function<float(float, float)>& base01,
+    float worldSize,
+    float heightScale,
+    const RiverNetworkParams& network,
+    const CarveParams& carve
 );

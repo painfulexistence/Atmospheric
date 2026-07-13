@@ -77,6 +77,7 @@ class TerrainStreamingDemo : public Application {
     // drives it from its own OnTick, so the app just holds a handle for height
     // queries / debug toggles.
     StreamingTerrainComponent* _terrain = nullptr;
+    TerrainHydrology _hydro;// rivers + carve field (built in OnLoad, feeds terrain + RiverComponent)
     CameraComponent* _cam = nullptr;
     GameObject* _camGO = nullptr;
     GroundClampComponent* _groundClamp = nullptr;
@@ -213,6 +214,18 @@ class TerrainStreamingDemo : public Application {
         const auto dirtLayer = TerrainTextureGen::GenerateDirt();
         const auto snowLayer = TerrainTextureGen::GenerateSnow();
 
+        // Hydrology up front: build the base FBm height, derive the river
+        // network + an incision (carve) field from it, and feed the CARVED
+        // height to the terrain so tiles/colliders/scatter all follow real
+        // river valleys. Rivers are draped into those valleys below. Building
+        // this before the terrain is what lets the water sit in a channel
+        // instead of clipping through raw bumps.
+        const NoiseHeightFieldParams noiseParams{
+            .resolution = 0, .seed = 20260705, .frequency = 0.0007f, .octaves = 9
+        };
+        auto base01 = MakeFbmHeightSource(noiseParams);
+        _hydro = BuildHydrology(base01, 10240.0f, 500.0f, RiverNetworkParams{}, CarveParams{});
+
         // The terrain GameObject roots every tile/collider/entity; the
         // component's OnAttach prewarms the world (synchronous, ~1 frame) and
         // its OnTick streams thereafter — no per-frame work left in the app.
@@ -233,8 +246,10 @@ class TerrainStreamingDemo : public Application {
                 .lodCount = 4,
                 .lod0RadiusTiles = 2,
                 .paletteIndex = 2,// earthy green
-                // ~1.4km feature wavelength: enough distinct ridges/valleys
-                // across 10km that traversal reads as covering ground.
+                // River-carved FBm: same noise as noiseParams above, with the
+                // channels incised in (see BuildHydrology). Bumped cacheVersion
+                // so pre-carve bakes don't get replayed.
+                .heightFn = _hydro.carvedHeight01,
                 .noise = { .resolution = 0, .seed = 20260705, .frequency = 0.0007f, .octaves = 9 },
         // Baked-tile cache: first run generates + stores, every run
         // after boots from pure IO (watch "cache" in the stats line).
@@ -245,6 +260,9 @@ class TerrainStreamingDemo : public Application {
 #if !defined(__EMSCRIPTEN__)
                 .cacheDir = FileSystem::Get().BasePath() + "cache/terrain",
 #endif
+                // Bumped so pre-carve height bakes aren't replayed (the height
+                // source now subtracts the river channels).
+                .cacheVersion = 2,
                 // Detail layers + splat = the full Gaea texturing path, fed by
                 // the procedural generators above. Tiling is repeats per tile
                 // edge (world period = 512m / tiling): grass repeats every 4m,
@@ -322,7 +340,8 @@ class TerrainStreamingDemo : public Application {
         // ribbons. The owner sits at the origin — river vertices are world-space.
         auto* riverGO = CreateGameObject(glm::vec3(0.0f));
         riverGO->SetName("Rivers");
-        auto* river = static_cast<RiverComponent*>(riverGO->AddComponent<RiverComponent>(_terrain, RiverProps{}));
+        auto* river =
+            static_cast<RiverComponent*>(riverGO->AddComponent<RiverComponent>(_terrain, _hydro.rivers, RiverProps{}));
 
         const auto bootMs =
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _bootTime).count();

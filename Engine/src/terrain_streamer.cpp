@@ -19,6 +19,22 @@
 #include <algorithm>
 #include <cmath>
 
+// Standalone FBm height source (shared by TerrainStreamer::Init and any caller
+// that needs the terrain's exact base height before the streamer exists — e.g.
+// building river hydrology to carve into the terrain). Returns world metres ->
+// normalized [0,1]; the shared_ptr keeps the noise alive for the closure.
+std::function<float(float, float)> MakeFbmHeightSource(const NoiseHeightFieldParams& p) {
+    auto noise = std::make_shared<FastNoiseLite>();
+    noise->SetSeed(p.seed);
+    noise->SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
+    noise->SetFrequency(p.frequency);
+    noise->SetFractalType(FastNoiseLite::FractalType_FBm);
+    noise->SetFractalOctaves(p.octaves);
+    noise->SetFractalLacunarity(p.lacunarity);
+    noise->SetFractalGain(p.gain);
+    return [noise](float wx, float wz) { return noise->GetNoise(wx, wz) * 0.5f + 0.5f; };
+}
+
 // ── per-LOD geometry ─────────────────────────────────────────────────────────
 
 int TerrainStreamer::HeightRes(int lod) const {
@@ -83,19 +99,7 @@ void TerrainStreamer::Init(Application* app, const StreamingTerrainProps& props,
     _pool.resize(_props.lodCount);
     _stats.tilesPerSide = _tilesPerSide;
 
-    if (!_props.heightFn) {
-        auto noise = std::make_shared<FastNoiseLite>();
-        noise->SetSeed(_props.noise.seed);
-        noise->SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
-        noise->SetFrequency(_props.noise.frequency);
-        noise->SetFractalType(FastNoiseLite::FractalType_FBm);
-        noise->SetFractalOctaves(_props.noise.octaves);
-        noise->SetFractalLacunarity(_props.noise.lacunarity);
-        noise->SetFractalGain(_props.noise.gain);
-        _heightFn = [noise](float wx, float wz) { return noise->GetNoise(wx, wz) * 0.5f + 0.5f; };
-    } else {
-        _heightFn = _props.heightFn;
-    }
+    _heightFn = _props.heightFn ? _props.heightFn : MakeFbmHeightSource(_props.noise);
 
     // Disk tile cache: hash every input that shapes the generated heights so
     // stale bakes can never be replayed after a parameter change.
