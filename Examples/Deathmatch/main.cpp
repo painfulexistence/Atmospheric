@@ -248,19 +248,24 @@ class DeathmatchGame : public Application {
         // resolve to the palette materials created here (Instantiate looks each
         // material up by name); its light entities become the arena's point
         // lights. The ground reaches the HDRI horizon so objects sit on ground.
-        auto matte = [&](const std::string& name, glm::vec3 rgb, float rough, float metal = 0.0f) {
+        // PBR palette. roughness/metalness are what give the greybox a "finished"
+        // read: pbr.frag samples both from these solid maps, and with the HDRI
+        // environment loaded above, metallic surfaces pick up real reflections.
+        // So the surfaces are deliberately contrasted — matte concrete vs. brushed
+        // metal trim vs. glossy dark glass — rather than flat same-roughness fills.
+        auto pbr = [&](const std::string& name, glm::vec3 rgb, float rough, float metal) {
             Material* m = MakeMaterial(name, rgb);
             m->roughnessMap = MakeSolidTexture(glm::vec3(rough));
             m->metallicMap = MakeSolidTexture(glm::vec3(metal));
             return m;
         };
-        matte("dm_ground_mat", glm::vec3(0.14f, 0.15f, 0.17f), 0.9f);// asphalt apron
-        matte("dm_pillar_mat", glm::vec3(0.40f, 0.42f, 0.47f), 0.9f);// props / quarter-pipe
-        matte("dm_far_mat", glm::vec3(0.20f, 0.21f, 0.24f), 0.9f);// skyline silhouettes
-        matte("dm_wall_mat", glm::vec3(0.42f, 0.40f, 0.37f), 0.85f);// warm concrete walls
-        matte("dm_trim_mat", glm::vec3(0.23f, 0.23f, 0.25f), 0.8f);// graphite caps/curbs
-        matte("dm_accent_mat", glm::vec3(0.70f, 0.16f, 0.13f), 0.6f);// signal-red stripes
-        matte("dm_window_mat", glm::vec3(0.05f, 0.07f, 0.10f), 0.15f, 0.3f);// dark glass
+        pbr("dm_ground_mat", glm::vec3(0.13f, 0.14f, 0.16f), 0.92f, 0.0f);// matte asphalt apron
+        pbr("dm_wall_mat", glm::vec3(0.44f, 0.42f, 0.38f), 0.82f, 0.0f);// matte warm concrete
+        pbr("dm_pillar_mat", glm::vec3(0.42f, 0.44f, 0.49f), 0.75f, 0.08f);// props / quarter-pipe, faint sheen
+        pbr("dm_far_mat", glm::vec3(0.20f, 0.21f, 0.24f), 0.95f, 0.0f);// matte skyline silhouettes
+        pbr("dm_trim_mat", glm::vec3(0.26f, 0.27f, 0.30f), 0.40f, 0.75f);// brushed-metal caps/curbs/barriers (IBL)
+        pbr("dm_accent_mat", glm::vec3(0.72f, 0.15f, 0.12f), 0.50f, 0.10f);// painted signal-red
+        pbr("dm_window_mat", glm::vec3(0.04f, 0.06f, 0.09f), 0.05f, 0.60f);// dark glossy glass, sharp reflections
 
         auto cubeMesh = am.CreateCubeMesh("dm_cube", 1.0f);
         am.GetMeshPtr(cubeMesh)->SetMaterial(am.GetMaterialHandle("dm_box_mat"));
