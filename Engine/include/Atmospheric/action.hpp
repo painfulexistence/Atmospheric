@@ -1,6 +1,7 @@
 #pragma once
 
 #include "component.hpp"
+#include "easing.hpp"
 #include "game_object.hpp"
 #include <functional>
 #include <glm/glm.hpp>
@@ -14,43 +15,8 @@ class SpriteComponent;
 // Forward declaration of AnimationClip (we'll keep it in animator_2d.hpp or move it later)
 struct AnimationClip;
 
-// Easing types (compatible with Cocos Studio CSB format)
-enum class EasingType {
-    Linear = 0,
-    SineIn = 1,
-    SineOut = 2,
-    SineInOut = 3,
-    QuadIn = 4,
-    QuadOut = 5,
-    QuadInOut = 6,
-    CubicIn = 7,
-    CubicOut = 8,
-    CubicInOut = 9,
-    QuartIn = 10,
-    QuartOut = 11,
-    QuartInOut = 12,
-    QuintIn = 13,
-    QuintOut = 14,
-    QuintInOut = 15,
-    ExpoIn = 16,
-    ExpoOut = 17,
-    ExpoInOut = 18,
-    CircIn = 19,
-    CircOut = 20,
-    CircInOut = 21,
-    BackIn = 22,
-    BackOut = 23,
-    BackInOut = 24,
-    ElasticIn = 25,
-    ElasticOut = 26,
-    ElasticInOut = 27,
-    BounceIn = 28,
-    BounceOut = 29,
-    BounceInOut = 30,
-};
-
-// Apply easing function to t (0.0 to 1.0)
-float ApplyEasing(float t, EasingType type);
+// EasingType / ApplyEasing moved to easing.hpp so the unified animation stack
+// (animation_clip.hpp) can share them without pulling in the whole Action zoo.
 
 class Action {
 public:

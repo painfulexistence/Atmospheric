@@ -8,6 +8,7 @@
 #endif
 #include "action.hpp"
 #include "action_manager.hpp"
+#include "animation_subsystem.hpp"
 #include "animator_2d.hpp"
 #include "asset_manager.hpp"
 #include "camera_component.hpp"
@@ -256,6 +257,7 @@ Application::Application(AppConfig config) : _config(config) {
     _graphics = std::make_unique<GraphicsSubsystem>();
     _physics = std::make_unique<Physics3DSubsystem>();
     _physics2D = std::make_unique<Physics2DSubsystem>();
+    _animation = std::make_unique<AnimationSubsystem>();
 
     _assetManager = std::make_unique<AssetManager>();
     _rmlUi = std::make_unique<RmlUiManager>();
@@ -733,6 +735,7 @@ void Application::Run() {
     }
     _physics->Init(this);// Note that physics debug drawer is dependent on graphics server
     _physics2D->Init(this);
+    _animation->Init(this);
     for (auto& subsystem : _subsystems) {
         subsystem->Init(this);
     }
@@ -1483,6 +1486,11 @@ void Application::Update(const FrameData& props) {
     for (const auto& layer : _layers) {
         layer->OnUpdate(dt);
     }
+
+    // Sample all animation after game logic (OnUpdate + component OnTick via the
+    // GameLayer above) has decided what should be playing this frame, and before
+    // rendering, so the poses drawn are this frame's.
+    _animation->Process(dt);
 
     float time = GetWindowTime();
 

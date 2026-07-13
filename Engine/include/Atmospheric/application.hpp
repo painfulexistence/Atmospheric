@@ -23,6 +23,7 @@ class VideoRecorder;
 class AssetManager;
 class RmlUiManager;
 class UIPageManager;
+class AnimationSubsystem;
 struct SceneBlueprint;
 
 struct FrameData {
@@ -244,6 +245,7 @@ private:
     std::unique_ptr<GraphicsSubsystem> _graphics;
     std::unique_ptr<Physics3DSubsystem> _physics;
     std::unique_ptr<Physics2DSubsystem> _physics2D;
+    std::unique_ptr<AnimationSubsystem> _animation;
     std::unique_ptr<AssetManager> _assetManager;
     std::unique_ptr<RmlUiManager> _rmlUi;
     std::unique_ptr<UIPageManager> _uiPages;// dies before _rmlUi (closes documents through it)
