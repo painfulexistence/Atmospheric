@@ -21,6 +21,11 @@ class Sprite3DComponent;
 // via cached prefix sums, writes the sprite UVs only when the frame changes,
 // and fires a frame event on entering a frame whose eventId >= 0. Because it is
 // pure, wrap modes / reverse / scrubbing all work with no extra code.
+//
+// It also works with no sprite target at all, as a pure frame clock: it still
+// advances the frame and fires events, and GetCurrentUV() lets an immediate-mode
+// consumer read the current frame's UVs to draw itself (the role the RPG
+// example's ad-hoc SpriteAnimator used to fill).
 // ─────────────────────────────────────────────────────────────────────────────
 class FlipbookComponent : public AnimatorComponent {
 public:
@@ -51,6 +56,9 @@ public:
     int GetCurrentFrame() const {
         return _lastFrame;
     }
+    // Current frame's UVs, for immediate-mode consumers that draw themselves
+    // (no SpriteComponent needed). Returns false if there is no current clip.
+    bool GetCurrentUV(glm::vec2& outMin, glm::vec2& outMax) const;
 
     void SetOnFrameEvent(std::function<void(int)> cb) {
         _onFrameEvent = std::move(cb);

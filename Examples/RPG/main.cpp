@@ -20,9 +20,10 @@ class RPGGame : public Application {
 
     // ── world entities ─────────────────────────────────────────────────
     Player _player;
-    SpriteAnimator _playerAnim;
+    GameObject* _playerAnimGO = nullptr;// host for the player's FlipbookComponent
+    FlipbookComponent* _playerFlip = nullptr;
     std::vector<Enemy> _enemies;
-    std::vector<SpriteAnimator> _enemyAnims;
+    std::vector<FlipbookComponent*> _enemyFlips;// one per enemy, hosted on its AI GameObject
     std::vector<NPC> _npcs;
 
     // ── camera ─────────────────────────────────────────────────────────
@@ -160,10 +161,14 @@ public:
         _player.w = _player.h = cs;
         _player.initSkills();
         _player.initItems();
-        _playerAnim.addClip("idle", MakeClip(0, { 0, 1 }, 0.4f));
-        _playerAnim.addClip("walk", MakeClip(0, { 0, 1, 2, 3 }, 0.12f));
-        _playerAnim.addClip("attack", MakeClip(1, { 0, 1, 2 }, 0.1f, false));
-        _playerAnim.play("idle");
+        _playerAnimGO = CreateGameObject();
+        _playerAnimGO->SetName("PlayerAnim");
+        _playerFlip = static_cast<FlipbookComponent*>(_playerAnimGO->AddComponent<FlipbookComponent>());
+        _playerFlip->SetWrapMode(WrapMode::Loop);
+        _playerFlip->AddLocalClip(MakeClip("idle", 0, { 0, 1 }, 0.4f));
+        _playerFlip->AddLocalClip(MakeClip("walk", 0, { 0, 1, 2, 3 }, 0.12f));
+        _playerFlip->AddLocalClip(MakeClip("attack", 1, { 0, 1, 2 }, 0.1f));
+        _playerFlip->Play("idle");
 
         // Enemies — define archetypes
         auto makeSlime = [&](float ex, float ey) {
@@ -202,12 +207,7 @@ public:
             Enemy e = (idx % 3 == 0) ? makeSlime(ex, ey) : (idx % 3 == 1) ? makeGoblin(ex, ey) : makeOrc(ex, ey);
             e.w = e.h = cs;
             _enemies.push_back(std::move(e));
-            SpriteAnimator a;
-            a.addClip("idle", MakeClip(0, { 0, 1 }, 0.6f));
-            a.addClip("walk", MakeClip(0, { 0, 1, 2, 3 }, 0.15f));
-            a.play("idle");
-            _enemyAnims.push_back(std::move(a));
-            idx++;
+            idx++;// FlipbookComponents are created on the enemy AI GameObjects below
         }
 
         // NPCs
@@ -244,7 +244,7 @@ public:
         auto* battleObj = CreateGameObject();
         battleObj->SetName("BattleSystem");
         battleObj->AddComponent<BattleSystemComponent>(
-            &_player, &_playerAnim, &_enemies, &_mode, &_transition, _fontID, _playerTex, _enemyTex, _screenW, _screenH
+            &_player, _playerFlip, &_enemies, &_mode, &_transition, _fontID, _playerTex, _enemyTex, _screenW, _screenH
         );
         _battleComp = battleObj->GetComponent<BattleSystemComponent>();
 
@@ -259,12 +259,21 @@ public:
 
         // Enemy AI components — update _enemies[i].x/y/aggro each tick and
         // trigger battles on player contact.
+        _enemyFlips.clear();
         for (size_t i = 0; i < _enemies.size(); i++) {
             auto* eObj = CreateGameObject();
             eObj->SetName("Enemy_" + std::to_string(i));
+
+            auto* flip = static_cast<FlipbookComponent*>(eObj->AddComponent<FlipbookComponent>());
+            flip->SetWrapMode(WrapMode::Loop);
+            flip->AddLocalClip(MakeClip("idle", 0, { 0, 1 }, 0.6f));
+            flip->AddLocalClip(MakeClip("walk", 0, { 0, 1, 2, 3 }, 0.15f));
+            flip->Play("idle");
+            _enemyFlips.push_back(flip);
+
             eObj->AddComponent<EnemyAIComponent>(
                 &_enemies[i],
-                &_enemyAnims[i],
+                flip,
                 static_cast<int>(i),
                 EnemyAICallbacks{
                     [this]() { return vec2(_player.cx(), _player.cy()); },
@@ -332,12 +341,14 @@ public:
     }
 
 private:
-    static AnimClip MakeClip(int row, std::vector<int> cols, float dur, bool loop = true) {
-        AnimClip c;
-        c.loop = loop;
+    // Build a FlipbookClip from a row + column list of the 4x2 sprite sheet.
+    // FromGrid bakes the same UVs the old col/row math produced (col/4, row/2).
+    static FlipbookClip MakeClip(const std::string& name, int row, std::vector<int> cols, float dur) {
+        std::vector<std::pair<int, int>> cells;
+        cells.reserve(cols.size());
         for (int col : cols)
-            c.frames.push_back({ col, row, dur });
-        return c;
+            cells.push_back({ col, row });
+        return FlipbookClip::FromGrid(name, 4, 2, cells, dur);
     }
 
     void CameraFollow(float tcx, float tcy) {
@@ -356,8 +367,8 @@ private:
     void UpdateExplore(float dt) {
         auto* inp = InputSubsystem::Get();
 
-        _playerAnim.play(_player.moving ? "walk" : "idle");
-        _playerAnim.update(dt);
+        _playerFlip->Play(_player.moving ? "walk" : "idle");
+        // Frame advance is driven centrally by AnimationSubsystem.
 
         // NPC interaction
         if (inp->IsKeyPressed(Key::E)) {
@@ -400,18 +411,16 @@ private:
         for (size_t i = 0; i < _enemies.size(); i++) {
             if (!_enemies[i].alive) continue;
             const Enemy& e = _enemies[i];
-            auto [fc, fr] = _enemyAnims[i].currentFrame();
             float sx = e.x - camX, sy = e.y - camY;
-            vec2 uv0{ static_cast<float>(fc) / ccols, static_cast<float>(fr) / crows };
-            vec2 uv1{ static_cast<float>(fc + 1) / ccols, static_cast<float>(fr + 1) / crows };
+            vec2 uv0{ 0, 0 }, uv1{ 1.0f / ccols, 1.0f / crows };
+            _enemyFlips[i]->GetCurrentUV(uv0, uv1);
             gfx->DrawSprite2D(sx, sy, e.w, e.h, _enemyTex, uv0, uv1);
         }
 
         {
-            auto [fc, fr] = _playerAnim.currentFrame();
             float sx = _player.x - camX, sy = _player.y - camY;
-            vec2 uv0{ static_cast<float>(fc) / ccols, static_cast<float>(fr) / crows };
-            vec2 uv1{ static_cast<float>(fc + 1) / ccols, static_cast<float>(fr + 1) / crows };
+            vec2 uv0{ 0, 0 }, uv1{ 1.0f / ccols, 1.0f / crows };
+            _playerFlip->GetCurrentUV(uv0, uv1);
             gfx->DrawSprite2D(sx, sy, _player.w, _player.h, _playerTex, uv0, uv1);
         }
 

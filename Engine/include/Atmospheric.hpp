@@ -1,6 +1,10 @@
 #pragma once
+#include "Atmospheric/action_timeline_component.hpp"
+#include "Atmospheric/animation_subsystem.hpp"
+#include "Atmospheric/animator_component.hpp"
 #include "Atmospheric/application.hpp"
 #include "Atmospheric/asset_manager.hpp"
+#include "Atmospheric/flipbook_component.hpp"
 #include "Atmospheric/component_factory.hpp"
 #include "Atmospheric/console_subsystem.hpp"
 #include "Atmospheric/deserializer.hpp"

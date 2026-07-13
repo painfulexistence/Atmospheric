@@ -72,15 +72,32 @@ bool FlipbookComponent::Play(const std::string& clipName) {
     // Already playing this exact clip → idempotent no-op (SpriteAnimator semantics).
     if (_currentName == clipName && _state.playing) return true;
 
-    FlipbookClipHandle target = lib->FindFlipbook(clipName);
+    // Resolve among THIS component's own clips (clip names are commonly reused
+    // across entities — e.g. every actor has an "idle" — so a global by-name
+    // lookup would return the wrong entity's clip).
+    FlipbookClipHandle target;
+    for (FlipbookClipHandle h : _clips) {
+        const FlipbookClip* c = lib->GetFlipbook(h);
+        if (c && c->name == clipName) {
+            target = h;
+            break;
+        }
+    }
     if (!target.IsValid()) return false;
-    // Only accept clips this component was given.
-    if (std::find(_clips.begin(), _clips.end(), target) == _clips.end()) return false;
 
     BindClip(target);
     _state.time = 0.0f;
     _state.playing = true;
     Evaluate(_state.time);
+    return true;
+}
+
+bool FlipbookComponent::GetCurrentUV(glm::vec2& outMin, glm::vec2& outMax) const {
+    if (!_clip || _lastFrame < 0 || _lastFrame >= static_cast<int>(_clip->frames.size())) return false;
+    const FlipbookFrame& f = _clip->frames[_lastFrame];
+    outMin = f.uvMin;
+    outMax = f.uvMax;
+    if (_flipX) std::swap(outMin.x, outMax.x);
     return true;
 }
 
@@ -93,7 +110,6 @@ void FlipbookComponent::SetFlipX(bool flip) {
 
 void FlipbookComponent::Evaluate(float time) {
     if (!_clip || _frameEndTimes.empty()) return;
-    if (!_sprite && !_sprite3D) return;
 
     // First frame whose accumulated end time is strictly greater than `time`.
     auto it = std::upper_bound(_frameEndTimes.begin(), _frameEndTimes.end(), time);
@@ -103,12 +119,17 @@ void FlipbookComponent::Evaluate(float time) {
     if (frame == _lastFrame) return;// no visible change
     _lastFrame = frame;
 
-    const FlipbookFrame& f = _clip->frames[frame];
-    glm::vec2 mn = f.uvMin, mx = f.uvMax;
-    if (_flipX) std::swap(mn.x, mx.x);
-    if (_sprite) _sprite->SetUVs(mn, mx);
-    if (_sprite3D) _sprite3D->SetUVs(mn, mx);
+    // Push UVs to a sprite target if we have one; otherwise we are a pure frame
+    // clock and an immediate-mode consumer reads GetCurrentUV()/GetCurrentFrame().
+    if (_sprite || _sprite3D) {
+        const FlipbookFrame& f = _clip->frames[frame];
+        glm::vec2 mn = f.uvMin, mx = f.uvMax;
+        if (_flipX) std::swap(mn.x, mx.x);
+        if (_sprite) _sprite->SetUVs(mn, mx);
+        if (_sprite3D) _sprite3D->SetUVs(mn, mx);
+    }
 
+    const FlipbookFrame& f = _clip->frames[frame];
     if (f.eventId >= 0 && _onFrameEvent) _onFrameEvent(f.eventId);
 }
 
