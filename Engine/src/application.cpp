@@ -1040,6 +1040,14 @@ static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::s
             mb.roughnessMap = matVal.value("roughnessMap", std::string(""));
             mb.metallicMap = matVal.value("metallicMap", std::string(""));
             mb.heightMap = matVal.value("heightMap", std::string(""));
+            // Transmission / volume / IOR (glTF KHR_materials_* equivalents).
+            mb.transmissionFactor = matVal.value("transmissionFactor", mb.transmissionFactor);
+            mb.ior = matVal.value("ior", mb.ior);
+            mb.thicknessFactor = matVal.value("thicknessFactor", mb.thicknessFactor);
+            mb.attenuationDistance = matVal.value("attenuationDistance", mb.attenuationDistance);
+            mb.attenuationColor = ParseVec3(matVal.value("attenuationColor", nlohmann::json::array()), mb.attenuationColor);
+            mb.transmissionMap = matVal.value("transmissionMap", std::string(""));
+            mb.thicknessMap = matVal.value("thicknessMap", std::string(""));
             bp.materials.push_back(std::move(mb));
         }
     }
@@ -1106,7 +1114,15 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
         if (!mb.roughnessMap.empty()) props.roughnessMap = TextureHandle(mb.roughnessMap);
         if (!mb.metallicMap.empty()) props.metallicMap = TextureHandle(mb.metallicMap);
         if (!mb.heightMap.empty()) props.heightMap = TextureHandle(mb.heightMap);
-        AssetManager::Get().CreateMaterial(mb.name, props);
+        Material* mat = AssetManager::Get().CreateMaterial(mb.name, props);
+        // Transmission/volume/IOR live on Material, not MaterialProps (data only).
+        mat->transmissionFactor = mb.transmissionFactor;
+        mat->ior = mb.ior;
+        mat->thicknessFactor = mb.thicknessFactor;
+        mat->attenuationDistance = mb.attenuationDistance;
+        mat->attenuationColor = mb.attenuationColor;
+        if (!mb.transmissionMap.empty()) mat->transmissionMap = TextureHandle(mb.transmissionMap);
+        if (!mb.thicknessMap.empty()) mat->thicknessMap = TextureHandle(mb.thicknessMap);
     }
     if (!bp.materials.empty()) ENGINE_LOG("JSON Materials created.");
 

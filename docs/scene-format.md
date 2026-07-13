@@ -26,6 +26,16 @@ A scene is a JSON file under `assets/scenes/<name>.json`, loaded by
 | `meshes` | string[] | Reserved (parsed, not yet wired — mesh files load via `prefab` today). |
 | `entities` | object[] | The scene graph roots (see below). |
 
+### `materials` keys
+
+Per named material: `diffuse`, `specular`, `ambient` (`[r,g,b]`), `shininess`,
+`cullFaceEnabled`, and texture-path maps `baseMap` / `normalMap` / `aoMap` /
+`roughnessMap` / `metallicMap` / `heightMap`. Transmission/refraction (mirrors
+the glTF `KHR_materials_transmission`/`_volume`/`_ior` import — data only, no
+shader yet): `transmissionFactor` (0), `ior` (1.5), `thicknessFactor` (0),
+`attenuationDistance` (+inf), `attenuationColor` (`[1,1,1]`), and the
+`transmissionMap` / `thicknessMap` paths. Omit them for an opaque material.
+
 ## Entity
 
 ```jsonc

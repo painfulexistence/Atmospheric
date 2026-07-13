@@ -1,6 +1,7 @@
 #pragma once
 #include "shader.hpp"
 #include <glm/vec3.hpp>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
@@ -17,6 +18,18 @@ struct MaterialBlueprint {
     float shininess = 0.25f;
     bool cullFaceEnabled = true;
     std::string baseMap, normalMap, aoMap, roughnessMap, metallicMap, heightMap;
+
+    // Transmission / volume / IOR — mirrors the glTF-imported fields on Material
+    // (KHR_materials_transmission/_volume/_ior). Data only; no shader reads them
+    // yet. Defaults = opaque thin-walled dielectric, so materials omitting these
+    // keys are unaffected. transmissionMap/thicknessMap are asset paths (as the
+    // other maps), resolved in LoadSceneResources.
+    float transmissionFactor = 0.0f;
+    float ior = 1.5f;
+    float thicknessFactor = 0.0f;
+    float attenuationDistance = std::numeric_limits<float>::infinity();
+    glm::vec3 attenuationColor = glm::vec3(1.0f);
+    std::string transmissionMap, thicknessMap;
 };
 
 // Resolved, instantiation-ready description of one entity (and its children).
