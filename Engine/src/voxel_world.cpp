@@ -63,7 +63,7 @@ void VoxelWorld::Init(Application* app, int seed, GameObject* root, MaterialHand
             .castShadow = false,
         }
     ));
-    sunGO->AddComponent(new SunComponent());
+    sunGO->AddComponent(new SunComponent(glm::vec3(1.0f, 0.4f, 0.0f) * 50.0f, /*billboardRadius=*/10.0f));
 }
 
 void VoxelWorld::Update(float /*dt*/, const glm::vec3& cameraPos) {
@@ -251,6 +251,7 @@ void VoxelWorld::CarveSphere(const glm::vec3& center, float radius) {
             }
         }
     }
+    giDirty = true;// carving changed the voxels; the VCT grid must re-inject
 }
 
 // ── private ──────────────────────────────────────────────────────────────────
@@ -282,6 +283,7 @@ void VoxelWorld::LoadChunk(glm::ivec3 pos) {
     VoxelChunkComponent* chunk = AcquireSlot(pos);
     _chunkMap[pos] = chunk;
     GenerateChunkTerrain(chunk);
+    giDirty = true;// new voxels streamed in; refresh the VCT grid
 }
 
 void VoxelWorld::UnloadChunk(glm::ivec3 pos) {

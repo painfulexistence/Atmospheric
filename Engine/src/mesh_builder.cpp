@@ -636,6 +636,9 @@ void VoxelMeshBuilder::PushFace(glm::ivec3 pos, FaceDir dir, uint8_t voxelId) {
         v3 = { x, static_cast<uint8_t>(y + 1), z, voxelId, faceId };
         break;
     }
+    // No AO baked for single faces (open by default) — otherwise ao would
+    // aggregate-init to 0 and the face would render fully occluded.
+    v0.ao = v1.ao = v2.ao = v3.ao = 3;
     _vertices.push_back(v0);
     _vertices.push_back(v1);
     _vertices.push_back(v2);
@@ -654,7 +657,7 @@ void VoxelMeshBuilder::PushCube(glm::ivec3 pos, uint8_t voxelId) {
 }
 
 void VoxelMeshBuilder::PushGreedyFace(
-    glm::ivec3 pos, FaceDir dir, uint8_t voxelId, int w, int h, int uAxis, int vAxis
+    glm::ivec3 pos, FaceDir dir, uint8_t voxelId, int w, int h, int uAxis, int vAxis, const uint8_t* ao
 ) {
     auto faceId = static_cast<uint8_t>(dir);
     auto x = static_cast<uint8_t>(pos.x);
@@ -713,12 +716,45 @@ void VoxelMeshBuilder::PushGreedyFace(
         break;
     }
 
-    _vertices.push_back(v0);
-    _vertices.push_back(v1);
-    _vertices.push_back(v2);
-    _vertices.push_back(v2);
-    _vertices.push_back(v3);
-    _vertices.push_back(v0);
+    // Bake corner AO. The canonical corners C00, Cw0, Cwh, C0h map to v0..v3 in
+    // a face-specific order because each face lays its quad out (and winds it)
+    // differently above; kAoOrder[faceId] gives that permutation.
+    if (ao) {
+        static const uint8_t kAoOrder[6][4] = {
+            { 0, 1, 2, 3 },// TOP
+            { 3, 2, 1, 0 },// BOTTOM
+            { 2, 3, 0, 1 },// RIGHT
+            { 1, 0, 3, 2 },// LEFT
+            { 3, 0, 1, 2 },// FRONT
+            { 2, 1, 0, 3 },// BACK
+        };
+        const uint8_t* ord = kAoOrder[faceId];
+        v0.ao = ao[ord[0]];
+        v1.ao = ao[ord[1]];
+        v2.ao = ao[ord[2]];
+        v3.ao = ao[ord[3]];
+    } else {
+        v0.ao = v1.ao = v2.ao = v3.ao = 3;
+    }
+
+    // Anisotropy fix: the default diagonal runs v0-v2. If that would split the
+    // quad across its two brighter corners, flip to the v1-v3 diagonal so the
+    // darkened gradient stays symmetric instead of creasing along one triangle.
+    if (v0.ao + v2.ao > v1.ao + v3.ao) {
+        _vertices.push_back(v1);
+        _vertices.push_back(v2);
+        _vertices.push_back(v3);
+        _vertices.push_back(v3);
+        _vertices.push_back(v0);
+        _vertices.push_back(v1);
+    } else {
+        _vertices.push_back(v0);
+        _vertices.push_back(v1);
+        _vertices.push_back(v2);
+        _vertices.push_back(v2);
+        _vertices.push_back(v3);
+        _vertices.push_back(v0);
+    }
 }
 
 void VoxelMeshBuilder::Clear() {

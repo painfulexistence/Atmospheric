@@ -24,20 +24,28 @@ precision highp sampler2D;
 
 in vec2 v_uv;
 
-uniform usampler3D u_volume;
-uniform usampler3D u_occupancy;
-uniform sampler2D  u_palette;
-uniform sampler2D  u_history;      // rgb = accumulated indirect, a = camera distance
+// Brute-force multi-volume trace: each ray tests every registered volume in its
+// own local space at full resolution and takes the nearest hit, so light bleeds
+// across volumes (A's glowstone lights B). GL can't dynamically index a sampler
+// array, so the samplers are explicit and dispatched by an if-chain over
+// u_volumeCount (raycastOne takes the sampler as a parameter — GLSL allows it).
+const int MAX_VOLUMES = 4;
+uniform usampler3D u_vol0, u_vol1, u_vol2, u_vol3;
+uniform usampler3D u_occ0, u_occ1, u_occ2, u_occ3;
+uniform vec3  u_origins[MAX_VOLUMES];
+uniform float u_voxelSizes[MAX_VOLUMES];
+uniform int   u_gridDims[MAX_VOLUMES];
+uniform int   u_volumeCount;
+uniform int   u_brickDim;      // shared brick size (8)
+uniform int   u_maxRaySteps;
+uniform float u_voxelSize;     // representative voxel size, for ray-offset epsilons
+uniform sampler2D  u_palette;  // shared palette (material -> albedo + emission)
+uniform sampler2D  u_history;  // rgb = accumulated indirect, a = camera distance
 
 uniform mat4  u_invViewProj;
 uniform mat4  u_prevViewProj;
 uniform vec3  u_cameraPos;
 uniform vec3  u_prevCameraPos;
-uniform vec3  u_volumeOrigin;
-uniform float u_voxelSize;
-uniform int   u_gridDim;
-uniform int   u_brickDim;
-uniform int   u_maxRaySteps;
 uniform vec3  u_sunDir;
 uniform vec3  u_sunColor;
 uniform float u_sunIntensity;
@@ -45,7 +53,8 @@ uniform int   u_frameIndex;
 uniform float u_blend;             // history weight (e.g. 0.93)
 uniform float u_emissiveStrength;  // HDR multiplier for palette-alpha emission
 
-out vec4 fragColor;
+layout(location = 0) out vec4 fragColor;// rgb = accumulated indirect, a = camera distance
+layout(location = 1) out vec4 outNormal;// xyz = primary hit normal (for the à-trous denoiser)
 
 const float PI = 3.1415927;
 
@@ -58,29 +67,31 @@ struct Hit {
 
 // ── DDA (keep in sync with microvoxel.frag) ─────────────────────────────────
 
-Hit traverseBrick(vec3 ro, vec3 rd, vec3 invDir, float tStart, ivec3 brickCell, vec3 enterNormal) {
+Hit traverseBrick(
+    usampler3D vol, vec3 origin, float vsize, int bd, vec3 ro, vec3 rd, vec3 invDir, float tStart, ivec3 brickCell,
+    vec3 enterNormal
+) {
     Hit r;
     r.hit = false; r.t = tStart; r.normal = enterNormal; r.material = 0u;
 
-    int bd = u_brickDim;
     ivec3 lo = brickCell * bd;
     ivec3 hi = lo + bd - 1;
 
-    float eps = u_voxelSize * 1e-3;
+    float eps = vsize * 1e-3;
     vec3 p = ro + rd * (tStart + eps);
-    ivec3 cell = clamp(ivec3(floor((p - u_volumeOrigin) / u_voxelSize)), lo, hi);
+    ivec3 cell = clamp(ivec3(floor((p - origin) / vsize)), lo, hi);
 
     ivec3 stepDir = ivec3(sign(rd));
-    vec3 tDelta = abs(vec3(u_voxelSize) * invDir);
+    vec3 tDelta = abs(vec3(vsize) * invDir);
     vec3 stepPos = vec3(greaterThan(rd, vec3(0.0)));
-    vec3 boundary = u_volumeOrigin + (vec3(cell) + stepPos) * u_voxelSize;
+    vec3 boundary = origin + (vec3(cell) + stepPos) * vsize;
     vec3 tMax = mix(vec3(1e30), (boundary - ro) * invDir, notEqual(rd, vec3(0.0)));
 
     float t = tStart;
     vec3 normal = enterNormal;
 
     for (int i = 0; i < 3 * bd + 1; i++) {
-        uint mat = texelFetch(u_volume, cell, 0).r;
+        uint mat = texelFetch(vol, cell, 0).r;
         if (mat != 0u) {
             r.hit = true; r.t = t; r.normal = normal; r.material = mat;
             return r;
@@ -102,13 +113,13 @@ Hit traverseBrick(vec3 ro, vec3 rd, vec3 invDir, float tStart, ivec3 brickCell, 
     return r;
 }
 
-Hit raycast(vec3 ro, vec3 rd) {
+Hit raycastOne(usampler3D vol, usampler3D occ, vec3 origin, float vsize, int gdim, int bd, int maxSteps, vec3 ro, vec3 rd) {
     Hit r;
     r.hit = false; r.t = 0.0; r.normal = vec3(0.0); r.material = 0u;
 
     vec3 invDir = mix(vec3(1e30), 1.0 / rd, notEqual(rd, vec3(0.0)));
-    vec3 bmin = u_volumeOrigin;
-    vec3 bmax = bmin + vec3(float(u_gridDim)) * u_voxelSize;
+    vec3 bmin = origin;
+    vec3 bmax = bmin + vec3(float(gdim)) * vsize;
 
     vec3 tA = (bmin - ro) * invDir;
     vec3 tB = (bmax - ro) * invDir;
@@ -130,11 +141,11 @@ Hit raycast(vec3 ro, vec3 rd) {
         else                             enterNormal = vec3(0.0, 0.0, -sign(rd.z));
     }
 
-    float brickSize = u_voxelSize * float(u_brickDim);
-    ivec3 brickGrid = ivec3(u_gridDim / u_brickDim);
+    float brickSize = vsize * float(bd);
+    ivec3 brickGrid = ivec3(gdim / bd);
 
     float t = max(tEnter, 0.0);
-    float eps = u_voxelSize * 1e-3;
+    float eps = vsize * 1e-3;
     vec3 p = ro + rd * (t + eps);
     ivec3 cell = clamp(ivec3(floor((p - bmin) / brickSize)), ivec3(0), brickGrid - 1);
 
@@ -146,9 +157,9 @@ Hit raycast(vec3 ro, vec3 rd) {
 
     vec3 normal = enterNormal;
 
-    for (int i = 0; i < u_maxRaySteps; i++) {
-        if (texelFetch(u_occupancy, cell, 0).r != 0u) {
-            Hit h = traverseBrick(ro, rd, invDir, t, cell, normal);
+    for (int i = 0; i < maxSteps; i++) {
+        if (texelFetch(occ, cell, 0).r != 0u) {
+            Hit h = traverseBrick(vol, origin, vsize, bd, ro, rd, invDir, t, cell, normal);
             if (h.hit) return h;
         }
         if (tMax.x < tMax.y && tMax.x < tMax.z) {
@@ -167,6 +178,30 @@ Hit raycast(vec3 ro, vec3 rd) {
         if (t > tExit) break;
     }
     return r;
+}
+
+// Brute-force nearest hit across all active volumes (each in its own local
+// space). GL can't index a sampler array, so dispatch explicitly per slot.
+Hit raycast(vec3 ro, vec3 rd) {
+    Hit best;
+    best.hit = false; best.t = 1e30; best.normal = vec3(0.0); best.material = 0u;
+    if (u_volumeCount > 0) {
+        Hit h = raycastOne(u_vol0, u_occ0, u_origins[0], u_voxelSizes[0], u_gridDims[0], u_brickDim, u_maxRaySteps, ro, rd);
+        if (h.hit && h.t < best.t) best = h;
+    }
+    if (u_volumeCount > 1) {
+        Hit h = raycastOne(u_vol1, u_occ1, u_origins[1], u_voxelSizes[1], u_gridDims[1], u_brickDim, u_maxRaySteps, ro, rd);
+        if (h.hit && h.t < best.t) best = h;
+    }
+    if (u_volumeCount > 2) {
+        Hit h = raycastOne(u_vol2, u_occ2, u_origins[2], u_voxelSizes[2], u_gridDims[2], u_brickDim, u_maxRaySteps, ro, rd);
+        if (h.hit && h.t < best.t) best = h;
+    }
+    if (u_volumeCount > 3) {
+        Hit h = raycastOne(u_vol3, u_occ3, u_origins[3], u_voxelSizes[3], u_gridDims[3], u_brickDim, u_maxRaySteps, ro, rd);
+        if (h.hit && h.t < best.t) best = h;
+    }
+    return best;
 }
 
 // ── GI ──────────────────────────────────────────────────────────────────────
@@ -192,6 +227,7 @@ void main() {
     Hit h = raycast(ro, rd);
     if (!h.hit) {
         fragColor = vec4(0.0);// alpha 0 = no history
+        outNormal = vec4(0.0);// zero normal = no surface (à-trous rejects it)
         return;
     }
 
@@ -252,4 +288,5 @@ void main() {
     }
 
     fragColor = vec4(result, camDist);
+    outNormal = vec4(n, 1.0);
 }

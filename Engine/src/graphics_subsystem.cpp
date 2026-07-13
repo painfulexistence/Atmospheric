@@ -241,6 +241,62 @@ void GraphicsSubsystem::DrawImGui(float dt) {
             "Average frame rate: %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate
         );
         ImGui::ColorEdit3("Clear color", reinterpret_cast<float*>(&renderer->clearColor));
+
+        // Voxel-world lighting (VoxelChunkPass): corner AO + GI, both default
+        // off. Kept above bloom and the post-process effect toggles below.
+        if (auto* vp = renderer->GetPass<VoxelChunkPass>()) {
+            auto* ssp = renderer->GetPass<ScreenSpaceGIPass>();
+            if (ImGui::TreeNode("Ambient Occlusion")) {
+                // Corner AO is the crisp per-block contact term — independent, as
+                // it stacks with a broad AO. VXAO and GTAO are both "broad" AO, so
+                // they're one mutually-exclusive choice (running both just
+                // double-darkens).
+                ImGui::Checkbox("Corner AO (baked)", &vp->aoEnabled);
+                if (vp->aoEnabled) ImGui::SliderFloat("Corner strength", &vp->aoStrength, 0.0f, 1.0f);
+
+                int broad = vp->vxaoEnabled ? 1 : ((ssp && ssp->gtaoEnabled) ? 2 : 0);
+                if (ImGui::Combo("Broad AO", &broad, "Off\0VXAO (cone-traced)\0GTAO (screen-space)\0")) {
+                    vp->vxaoEnabled = (broad == 1);
+                    if (ssp) ssp->gtaoEnabled = (broad == 2);
+                }
+                if (broad == 1) {
+                    ImGui::SliderFloat("VXAO strength", &vp->vxaoStrength, 0.0f, 1.0f);
+                    ImGui::TextDisabled("World-space, reuses the VoxelGI grid");
+                } else if (broad == 2 && ssp) {
+                    ImGui::SliderFloat("GTAO strength", &ssp->gtaoStrength, 0.0f, 1.0f);
+                    ImGui::SliderFloat("GTAO radius (m)", &ssp->gtaoRadius, 0.1f, 3.0f);
+                    ImGui::TextDisabled("Screen-space horizon AO (depth-based)");
+                }
+                ImGui::TreePop();
+            }
+            if (ImGui::TreeNode("Global Illumination")) {
+                using GIMode = VoxelChunkPass::GIMode;
+                // One exclusive GI mode across VoxelGI (voxel pass, world-space)
+                // and SSGI (screen-space).
+                int gi = (vp->giMode == GIMode::VoxelGI) ? 1 : ((ssp && ssp->ssgiEnabled) ? 2 : 0);
+                if (ImGui::Combo("Mode", &gi, "Off\0VoxelGI (cone tracing)\0SSGI (screen-space)\0")) {
+                    vp->giMode = (gi == 1) ? GIMode::VoxelGI : GIMode::Off;
+                    if (ssp) ssp->ssgiEnabled = (gi == 2);
+                }
+                if (gi == 1) {
+                    ImGui::SliderFloat("VoxelGI strength", &vp->giStrength, 0.0f, 3.0f);
+                    ImGui::SliderInt("Cascade dim (m)", &vp->giVoxelDim, 32, 128);
+                    // Injection is amortized across frames; fewer slabs/frame
+                    // = smoother (no hitch) but the grid refreshes slower.
+                    ImGui::SliderInt("Inject slabs/frame", &vp->giInjectSlabs, 1, 16);
+                } else if (gi == 2 && ssp) {
+                    ImGui::SliderFloat("SSGI strength", &ssp->ssgiStrength, 0.0f, 3.0f);
+                    ImGui::SliderFloat("SSGI radius (m)", &ssp->ssgiRadius, 0.5f, 12.0f);
+                    ImGui::SliderFloat("SSGI thickness (m)", &ssp->ssgiThickness, 0.1f, 2.0f);
+                    ImGui::SliderFloat("SSGI temporal", &ssp->ssgiBlend, 0.0f, 0.98f);
+                    ImGui::SliderInt("SSGI à-trous iters", &ssp->ssgiAtrousIters, 0, 5);
+                    ImGui::Checkbox("SSGI half-res", &ssp->ssgiHalfRes);
+                    ImGui::TextDisabled("Screen-space 1-bounce, SVGF-lite denoised");
+                }
+                ImGui::TreePop();
+            }
+        }
+
         if (auto* bloom = renderer->GetPass<BloomPass>()) {
             ImGui::Checkbox("Bloom", &bloom->enabled);
         }
@@ -260,6 +316,7 @@ void GraphicsSubsystem::DrawImGui(float dt) {
             ImGui::SameLine();
             ImGui::Checkbox("Vignette", &pp->vignetteEnabled);
         }
+
         ImGui::Text("Opaque Queue Size: %d", static_cast<int>(renderer->GetOpaqueQueue().size()));
 
 #ifdef AE_GPU_TIMER_ENABLED

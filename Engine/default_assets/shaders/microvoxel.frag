@@ -44,6 +44,8 @@ uniform float u_ambient;
 uniform int   u_shadowEnabled;
 uniform float u_aoStrength;    // 0 disables corner AO
 uniform float u_giStrength;    // 0 = flat ambient, >0 = traced indirect
+uniform sampler2D u_giRaw;     // raw (un-denoised) GI, for the split-screen compare
+uniform float u_giSplitX;      // <0 = off; else screen-x in [0,1]: left = raw, right = denoised
 uniform int   u_debugMode;     // 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
 uniform float u_emissiveStrength;  // HDR multiplier for palette-alpha emission
 uniform int   u_reflectionsEnabled;// per-material mirror reflections (row 1 of palette)
@@ -274,7 +276,12 @@ void main() {
     // so occlusion and color bleeding emerge naturally), else flat ambient.
     vec3 indirect;
     if (u_giStrength > 0.0) {
-        indirect = texture(u_giTex, v_uv).rgb * u_giStrength;
+        // Split-screen compare: left half samples the raw (un-denoised) GI,
+        // right half the denoised GI, so the à-trous effect is visible in one
+        // frame. u_giSplitX < 0 disables it (always denoised).
+        vec3 gi = (u_giSplitX >= 0.0 && v_uv.x < u_giSplitX) ? texture(u_giRaw, v_uv).rgb
+                                                             : texture(u_giTex, v_uv).rgb;
+        indirect = gi * u_giStrength;
     } else {
         vec3 skyAmbient = mix(vec3(0.20, 0.22, 0.28), vec3(0.45, 0.55, 0.75), h.normal.y * 0.5 + 0.5);
         indirect = skyAmbient * u_ambient;
@@ -338,8 +345,12 @@ void main() {
     else if (u_debugMode == 2) color = h.normal * 0.5 + 0.5;
     else if (u_debugMode == 3) color = vec3(ao);
     else if (u_debugMode == 4) color = vec3(shadow);
-    else if (u_debugMode == 5) color = texture(u_giTex, v_uv).rgb;
+    else if (u_debugMode == 5)
+        color = (u_giSplitX >= 0.0 && v_uv.x < u_giSplitX) ? texture(u_giRaw, v_uv).rgb : texture(u_giTex, v_uv).rgb;
     else if (u_debugMode == 6) color = vec3(float(h.material) / 8.0);
+
+    // Split-screen divider so the raw|denoised boundary is legible.
+    if (u_giSplitX >= 0.0 && abs(v_uv.x - u_giSplitX) < 0.0012) color = vec3(1.0);
 
     // Scene convention: gamma-encoded color into sceneRT (see pbr.frag); the
     // tonemap pass decodes with pow(2.2) first.
