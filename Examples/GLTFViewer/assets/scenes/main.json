@@ -5,9 +5,10 @@
   "entities": [
     {
       "name": "MainCamera",
-      "position": [3.0, 2.0, 4.5],
+      "position": [-3.0, 2.0, -3.0],
       "components": [
-        { "type": "CameraComponent", "fieldOfView": 60.0, "nearClip": 0.05, "farClip": 200.0 },
+        { "type": "CameraComponent", "fieldOfView": 60.0, "nearClip": 0.05, "farClip": 200.0,
+          "verticalAngle": -0.34, "horizontalAngle": 0.785 },
         { "type": "CameraController3D", "moveSpeed": 6.0 }
       ]
     },
