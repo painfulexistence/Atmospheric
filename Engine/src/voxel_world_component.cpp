@@ -20,6 +20,18 @@ void VoxelWorldComponent::OnAttach() {
     _voxelMatHandle = assets.GetMaterialHandle(vm);
     _world.Init(gameObject->GetApp(), _seed, gameObject, _voxelMatHandle);
     _camera = gameObject->GetApp()->GetMainCamera();
+
+    // Register the world so VoxelChunkPass can reach its raw voxels to inject the
+    // VoxelGI (VCT) radiance grid when GI mode is VoxelGI.
+    if (Renderer* r = GraphicsSubsystem::Get()->renderer.get()) {
+        if (auto* pass = r->GetPass<VoxelChunkPass>()) pass->RegisterWorld(&_world);
+    }
+}
+
+void VoxelWorldComponent::OnDetach() {
+    if (Renderer* r = GraphicsSubsystem::Get()->renderer.get()) {
+        if (auto* pass = r->GetPass<VoxelChunkPass>()) pass->UnregisterWorld(&_world);
+    }
 }
 
 void VoxelWorldComponent::OnTick(float dt) {

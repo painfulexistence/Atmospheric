@@ -34,6 +34,7 @@ class VoxelWorldApp : public Application {
 
         auto* worldObj = CreateGameObject();
         _world = static_cast<VoxelWorldComponent*>(worldObj->AddComponent<VoxelWorldComponent>(/*seed=*/1337));
+        _world->World().paletteIndex = 2;// "Earthy Green" (see gpaletteNames)
 
         // Water plane — large enough to cover the full view range plus fog
         // horizon. Parented to the world object so it stays in the same slot
@@ -55,10 +56,25 @@ class VoxelWorldApp : public Application {
             bloom->threshold = 0.6f;
             bloom->bloomStrength = 0.06f;
         }
+        // Default lighting for the demo: corner AO (crisp contact) + GTAO (broad,
+        // cheap screen-space) + VoxelGI (world-space bounce). SSGI is left off —
+        // it's noisier and heavier; toggle it with K to compare.
+        if (auto* vp = renderer->GetPass<VoxelChunkPass>()) {
+            vp->aoEnabled = true;
+            vp->giMode = VoxelChunkPass::GIMode::VoxelGI;
+        }
+        if (auto* ssp = renderer->GetPass<ScreenSpaceGIPass>()) {
+            ssp->gtaoEnabled = true;
+        }
+        // Post-process look: CRT + vignette on by default.
+        if (auto* pp = renderer->GetPass<PostProcessPass>()) {
+            pp->crtEnabled = true;
+            pp->vignetteEnabled = true;
+        }
 
         ConsoleSubsystem::Get()->Info(
-            "VoxelWorld loaded. WASD move, RF up/down, Arrow keys look, Z slow, X sprint, P palette, I wireframe, ESC "
-            "quit."
+            "VoxelWorld loaded. WASD move, RF up/down, Arrow keys look, Z slow, X sprint, P palette, I wireframe, O "
+            "corner AO, G VoxelGI, K SSGI, ESC quit."
         );
         ConsoleSubsystem::Get()->Info(
             "Hold E to dig — greedy-meshed 1m voxels, so carving re-meshes the affected chunks."
@@ -83,6 +99,38 @@ class VoxelWorldApp : public Application {
         if (InputSubsystem::Get()->IsKeyPressed(Key::I)) {
             _wireframe = !_wireframe;
             GraphicsSubsystem::Get()->renderer->EnableWireframe(_wireframe);
+        }
+        // Toggle the greedy mesher's baked corner AO (contact-edge darkening).
+        // The mesh already carries it per vertex; this just scales its influence.
+        if (InputSubsystem::Get()->IsKeyPressed(Key::O)) {
+            if (auto* vp = GraphicsSubsystem::Get()->renderer->GetPass<VoxelChunkPass>()) {
+                vp->aoEnabled = !vp->aoEnabled;
+                ConsoleSubsystem::Get()->Info(vp->aoEnabled ? "Corner AO: on" : "Corner AO: off");
+            }
+        }
+        // Cycle global illumination: Off -> VoxelGI -> SSGI -> Off. Also
+        // selectable in the GI panel (Engine Subsystems > Graphics).
+        // G toggles VoxelGI, K toggles SSGI — mutually exclusive (one GI mode at
+        // a time), matching the GI panel combo. Both also live in the panel.
+        Renderer* gr = GraphicsSubsystem::Get()->renderer.get();
+        if (InputSubsystem::Get()->IsKeyPressed(Key::G)) {
+            using GIMode = VoxelChunkPass::GIMode;
+            auto* vp = gr->GetPass<VoxelChunkPass>();
+            auto* ssgi = gr->GetPass<ScreenSpaceGIPass>();
+            if (vp) {
+                vp->giMode = (vp->giMode == GIMode::VoxelGI) ? GIMode::Off : GIMode::VoxelGI;
+                if (vp->giMode == GIMode::VoxelGI && ssgi) ssgi->ssgiEnabled = false;
+                ConsoleSubsystem::Get()->Info(vp->giMode == GIMode::VoxelGI ? "GI: VoxelGI (cone tracing)" : "GI: off");
+            }
+        }
+        if (InputSubsystem::Get()->IsKeyPressed(Key::K)) {
+            auto* ssgi = gr->GetPass<ScreenSpaceGIPass>();
+            auto* vp = gr->GetPass<VoxelChunkPass>();
+            if (ssgi) {
+                ssgi->ssgiEnabled = !ssgi->ssgiEnabled;
+                if (ssgi->ssgiEnabled && vp) vp->giMode = VoxelChunkPass::GIMode::Off;
+                ConsoleSubsystem::Get()->Info(ssgi->ssgiEnabled ? "GI: SSGI (screen-space)" : "GI: off");
+            }
         }
         if (InputSubsystem::Get()->IsKeyDown(Key::E)) {
             const glm::vec3 ro = mainCamera->GetEyePosition();

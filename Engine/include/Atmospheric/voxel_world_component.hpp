@@ -20,6 +20,7 @@ public:
         return "VoxelWorld";
     }
     void OnAttach() override;
+    void OnDetach() override;
     void OnTick(float dt) override;
     void DrawImGui() override;
 

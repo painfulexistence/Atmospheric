@@ -3,6 +3,7 @@
 #include "frustum.hpp"
 #include "renderer.hpp"
 #include "voxel_chunk_component.hpp"
+#include "voxel_gi.hpp"
 #include <glm/vec3.hpp>
 #include <unordered_map>
 #include <vector>
@@ -68,6 +69,12 @@ public:
     MaterialHandle GetVoxelMaterial() const {
         return _voxelMaterial;
     }
+
+    // Voxel Cone Tracing radiance grid for this world (see voxel_gi.hpp). Driven
+    // by VoxelChunkPass when GI mode is VoxelGI. giDirty forces a re-inject after
+    // the voxel data changes (terrain stream-in, carving).
+    VoxelConeGI coneGI;
+    bool giDirty = true;
 
 private:
     using ChunkMap = std::unordered_map<glm::ivec3, VoxelChunkComponent*, IVec3Hash>;

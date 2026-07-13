@@ -205,6 +205,7 @@ void Renderer::Init(int width, int height) {
     );// raymarched micro voxels (renders registered VoxelVolumeComponents)
     _renderGraph->AddPass(std::make_unique<PortalSurfacePass>());// portal windows in the main view
     _renderGraph->AddPass(std::make_unique<MSAAResolvePass>());
+    _renderGraph->AddPass(std::make_unique<ScreenSpaceGIPass>());// screen-space AO/GI on the resolved opaque scene
     _renderGraph->AddPass(std::make_unique<WaterPass>());
     _renderGraph->AddPass(std::make_unique<WorldCanvasPass>());// World sprites with depth testing
     _renderGraph->AddPass(std::make_unique<CanvasPass>());// 2D sprites, world space ortho, with no depth testing
@@ -2241,6 +2242,221 @@ void MSAAResolvePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
     glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.finalFBO);
 
     renderer.CheckErrors("MSAA resolve pass");
+}
+
+void ScreenSpaceGIPass::_ensureScratch(int w, int h) {
+    if (_scratchFBO && _scratchW == w && _scratchH == h) return;
+    if (_scratchTex) glDeleteTextures(1, &_scratchTex);
+    if (_scratchFBO == 0) glGenFramebuffers(1, &_scratchFBO);
+    glGenTextures(1, &_scratchTex);
+    glBindTexture(GL_TEXTURE_2D, _scratchTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindFramebuffer(GL_FRAMEBUFFER, _scratchFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _scratchTex, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    _scratchW = w;
+    _scratchH = h;
+}
+
+void ScreenSpaceGIPass::_ensureSSGI(int w, int h) {
+    if (_ssgiHist[0] && _ssgiW == w && _ssgiH == h) return;
+    auto makeRT = [&](GLuint& tex, GLuint& fbo) {
+        if (tex) glDeleteTextures(1, &tex);
+        if (fbo == 0) glGenFramebuffers(1, &fbo);
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+    };
+    for (int i = 0; i < 2; ++i) {
+        makeRT(_ssgiHist[i], _ssgiHistFBO[i]);// temporal history ping-pong
+        makeRT(_atrousTex[i], _atrousFBO[i]);// à-trous ping-pong
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    _ssgiW = w;
+    _ssgiH = h;
+    _ssgiPrevValid = false;// fresh buffers — no usable history yet
+}
+
+// Screen-space AO/GI over the resolved opaque scene: GTAO (multiply) then SSGI
+// (additive). Both reconstruct from the resolved depth; each ping-pongs the
+// scene color through a scratch target and blits the result back, so SSGI sees
+// the AO'd color when both are on.
+void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;// GL path only for now
+#endif
+    ZoneScopedN("ScreenSpaceGIPass");
+    if (!gtaoEnabled && !ssgiEnabled) return;
+    if (!ssgiEnabled) _ssgiPrevValid = false;// invalidate history while SSGI is off
+
+    CameraComponent* cam = ctx->GetMainCamera();
+    if (!cam) return;
+    RenderTarget* src = renderer.msaaResolveRT ? renderer.msaaResolveRT.get() : renderer.sceneRT.get();
+    if (!src) return;
+    const int w = static_cast<int>(src->GetWidth());
+    const int h = static_cast<int>(src->GetHeight());
+    if (w <= 0 || h <= 0) return;
+    _ensureScratch(w, h);
+
+    AssetManager& am = AssetManager::Get();
+    const GLuint srcFBO = static_cast<GLRenderTarget*>(src)->GetNativeFBOID();
+    const glm::mat4 proj = cam->GetProjectionMatrix();
+    const glm::mat4 invProj = glm::inverse(proj);
+    const glm::mat4 viewProj = proj * cam->GetViewMatrix();
+    const glm::mat4 invViewProj = glm::inverse(viewProj);
+    const glm::vec3 eye = cam->GetEyePosition();
+    const glm::vec2 vp(static_cast<float>(w), static_cast<float>(h));
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glViewport(0, 0, w, h);
+
+    // GTAO: color*AO -> scratch -> blit back into the resolved color.
+    if (gtaoEnabled) {
+        if (ShaderProgram* sh = am.GetShader("screen_gtao")) {
+            glBindFramebuffer(GL_FRAMEBUFFER, _scratchFBO);
+            sh->Activate();
+            sh->SetUniform(std::string("u_color"), 0);
+            sh->SetUniform(std::string("u_depth"), 1);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, src->GetTextureID());
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
+            sh->SetUniform(std::string("u_proj"), proj);
+            sh->SetUniform(std::string("u_invProj"), invProj);
+            sh->SetUniform(std::string("u_viewportSize"), vp);
+            sh->SetUniform(std::string("u_aoRadius"), gtaoRadius);
+            sh->SetUniform(std::string("u_aoStrength"), gtaoStrength);
+            glBindVertexArray(renderer.gl.screenQuadVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, _scratchFBO);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, srcFBO);
+            glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        }
+    }
+
+    // SSGI: trace one-bounce indirect (temporally accumulated) into the current
+    // history slot, then blur+add -> scratch -> blit back into the resolved color.
+    if (ssgiEnabled) {
+        ShaderProgram* trace = am.GetShader("screen_ssgi");
+        ShaderProgram* comp = am.GetShader("screen_ssgi_composite");
+        if (trace && comp) {
+            // Trace + temporal + à-trous run at (optionally) half resolution; the
+            // composite upsamples the result back to full res (bilinear, since the
+            // SSGI textures use GL_LINEAR). ~4x cheaper for the heavy trace.
+            const int sw = ssgiHalfRes ? std::max(1, w / 2) : w;
+            const int sh = ssgiHalfRes ? std::max(1, h / 2) : h;
+            const glm::vec2 svp(static_cast<float>(sw), static_cast<float>(sh));
+            _ensureSSGI(sw, sh);
+            const int prev = 1 - _ssgiCur;
+            const float blend = _ssgiPrevValid ? ssgiBlend : 0.0f;
+
+            glBindFramebuffer(GL_FRAMEBUFFER, _ssgiHistFBO[_ssgiCur]);
+            glViewport(0, 0, sw, sh);
+            trace->Activate();
+            trace->SetUniform(std::string("u_color"), 0);
+            trace->SetUniform(std::string("u_depth"), 1);
+            trace->SetUniform(std::string("u_history"), 2);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, src->GetTextureID());
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, _ssgiHist[prev]);
+            trace->SetUniform(std::string("u_proj"), proj);
+            trace->SetUniform(std::string("u_invProj"), invProj);
+            trace->SetUniform(std::string("u_invViewProj"), invViewProj);
+            trace->SetUniform(std::string("u_prevViewProj"), _ssgiPrevVP);
+            trace->SetUniform(std::string("u_cameraPos"), eye);
+            trace->SetUniform(std::string("u_prevCameraPos"), _ssgiPrevEye);
+            trace->SetUniform(std::string("u_viewportSize"), svp);
+            trace->SetUniform(std::string("u_ssgiRadius"), ssgiRadius);
+            trace->SetUniform(std::string("u_ssgiThickness"), ssgiThickness);
+            // Vary the sample rotation each frame so temporal accumulation
+            // integrates different samples (real variance reduction).
+            trace->SetUniform(std::string("u_frameIndex"), _ssgiFrame);
+            trace->SetUniform(std::string("u_blend"), blend);
+            glBindVertexArray(renderer.gl.screenQuadVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+
+            // à-trous spatial denoise (display-only; not fed back into history).
+            // Iterations with a growing step, edge-stopped by tangent-plane
+            // distance + luma. filtered = the last output (or the raw accum).
+            GLuint filtered = _ssgiHist[_ssgiCur];
+            if (ssgiAtrousIters > 0) {
+                if (ShaderProgram* atrous = am.GetShader("screen_ssgi_atrous")) {
+                    atrous->Activate();
+                    atrous->SetUniform(std::string("u_ssgi"), 0);
+                    atrous->SetUniform(std::string("u_depth"), 1);
+                    atrous->SetUniform(std::string("u_invProj"), invProj);
+                    atrous->SetUniform(std::string("u_viewportSize"), svp);
+                    atrous->SetUniform(std::string("u_sigmaDepth"), ssgiSigmaDepth);
+                    atrous->SetUniform(std::string("u_sigmaLuma"), ssgiSigmaLuma);
+                    glActiveTexture(GL_TEXTURE1);
+                    glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
+                    GLuint source = _ssgiHist[_ssgiCur];
+                    int dst = 0;
+                    for (int it = 0; it < ssgiAtrousIters; ++it) {
+                        glBindFramebuffer(GL_FRAMEBUFFER, _atrousFBO[dst]);
+                        atrous->SetUniform(std::string("u_stepSize"), static_cast<float>(1 << it));
+                        glActiveTexture(GL_TEXTURE0);
+                        glBindTexture(GL_TEXTURE_2D, source);
+                        glBindVertexArray(renderer.gl.screenQuadVAO);
+                        glDrawArrays(GL_TRIANGLES, 0, 6);
+                        glBindVertexArray(0);
+                        source = _atrousTex[dst];
+                        dst = 1 - dst;
+                    }
+                    filtered = source;
+                }
+            }
+
+            // Composite back at full resolution (bilinear-upsamples the half-res
+            // SSGI). Reset the viewport — the trace/à-trous ran at half res.
+            glBindFramebuffer(GL_FRAMEBUFFER, _scratchFBO);
+            glViewport(0, 0, w, h);
+            comp->Activate();
+            comp->SetUniform(std::string("u_color"), 0);
+            comp->SetUniform(std::string("u_ssgi"), 1);
+            comp->SetUniform(std::string("u_depth"), 2);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, src->GetTextureID());
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, filtered);
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
+            comp->SetUniform(std::string("u_ssgiStrength"), ssgiStrength);
+            glBindVertexArray(renderer.gl.screenQuadVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, _scratchFBO);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, srcFBO);
+            glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+            // Roll reprojection sources forward and swap the history slot.
+            _ssgiPrevVP = viewProj;
+            _ssgiPrevEye = eye;
+            _ssgiPrevValid = true;
+            _ssgiCur = prev;
+            _ssgiFrame++;
+        }
+    }
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    renderer.CheckErrors("screen-space GI pass");
 }
 
 // WorldCanvasPass: World sprites with depth testing
