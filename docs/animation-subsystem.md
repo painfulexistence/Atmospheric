@@ -21,7 +21,7 @@ deterministic) with no imperative escape hatch.
 
 | Code | Kind | Fate |
 |------|------|------|
-| `Action` / `ActionInterval` / `ActionManager` (`action.hpp`, `action_manager.cpp`) | Cocos-style property tweens (MoveTo, ScaleTo, Sequence, RepeatForever…); stateful, delta-stepped | **Deleted.** Replaced by keyframe `TweenTimeline` + a builder API. Easing functions survive (moved to `easing.hpp`) |
+| `Action` / `ActionInterval` / `ActionManager` (`action.hpp`, `action_manager.cpp`) | Cocos-style property tweens (MoveTo, ScaleTo, Sequence, RepeatForever…); stateful, delta-stepped | **Deleted.** Replaced by keyframe `ActionTimeline` + a builder API. Easing functions survive (moved to `easing.hpp`) |
 | `Animator2D` (`animator_2d.hpp`) | Frame-based (UV) sprite animation | **Deleted.** Replaced by `FlipbookComponent` |
 | `Animate` action (`action.hpp`) | Frame-based sprite animation as an Action | **Deleted** with the Action hierarchy |
 | `SpriteAnimator` (Examples/RPG/`rpg_entity.hpp`) | Third frame-animation implementation, engine-free | **Ported** to `FlipbookComponent` (its idempotent `play()` and col/row grid addressing are absorbed into the engine API) |
@@ -52,8 +52,8 @@ Goals
 1. One subsystem (`AnimationSubsystem`) that ticks all animation, owns global
    and per-group time scales, and exposes a debug view of active players.
 2. One clip library: named, shared animation assets (`FlipbookClip`,
-   `TweenTimeline`, `VATClip`).
-3. Three focused components on a common playback base: `TweenComponent`,
+   `ActionTimeline`, `VATClip`).
+3. Three focused components on a common playback base: `ActionTimelineComponent`,
    `FlipbookComponent`, `VATComponent`.
 4. **Everything is evaluate-by-time.** Every player samples state as a pure
    function of the playhead. Seek, scrub, reverse, ping-pong, fixed-tick
@@ -83,14 +83,14 @@ Non-goals (for this iteration)
                     register/unregister (OnAttach/OnDetach)
                               │               │               │
               ┌───────────────┴───┐   ┌───────┴────────┐   ┌──┴────────────┐
-              │ TweenComponent    │   │ Flipbook-      │   │ VATComponent  │
-              │ (keyframe tracks  │   │ Component      │   │ (GPU vertex   │
-              │  on transform /   │   │ (frame-based,  │   │  animation)   │
-              │  color / custom)  │   │  drives Sprite │   │               │
-              │                   │   │  UVs)          │   │               │
+              │ ActionTimeline-   │   │ Flipbook-      │   │ VATComponent  │
+              │ Component         │   │ Component      │   │ (GPU vertex   │
+              │ (keyframe tracks  │   │ (frame-based,  │   │  animation)   │
+              │  on transform /   │   │  drives Sprite │   │               │
+              │  color / custom)  │   │  UVs)          │   │               │
               └───────────────────┘   └────────────────┘   └───────────────┘
                         │                     │                    │
-                  TweenTimeline         FlipbookClip            VATClip
+                  ActionTimeline         FlipbookClip            VATClip
                   (shared asset)        (shared asset)        (shared asset)
                               all stored in AnimationLibrary
 ```
@@ -101,15 +101,54 @@ the components' own `OnTick` is disabled (`CanTick() == false`), mirroring how
 `CanvasDrawable`s are drawn by the batch renderer rather than ticking
 themselves.
 
+### What is shared vs. what stays separate
+
+Unification here does **not** mean 2D and 3D animation evaluate through one
+code path. The three players share only the parts that are genuinely
+dimension-agnostic — timekeeping and asset storage. Sampling and the write
+target stay per-kind:
+
+| Layer | Shared? | Detail |
+|-------|---------|--------|
+| Playhead state machine (play/pause/speed/seek/WrapMode, finished/looped events) | ✅ one implementation | `AnimationComponent` base; pure time arithmetic, knows nothing about 2D/3D |
+| Ticking + time scales | ✅ one implementation | `AnimationSubsystem::Process`; global + group scales |
+| Clip storage | ✅ one registry | `AnimationLibrary` (named handles); clip *types* stay distinct |
+| Sampling (`Evaluate(t)`) | ❌ per component | keyframe interpolation vs. frame lookup vs. normalized-time passthrough |
+| Write target | ❌ per component | transform/color (2D & 3D) vs. sprite UVs (2D) vs. `VATMaterial` playhead (3D GPU) |
+
+So there are exactly **three concrete components** (plus the abstract base,
+which is not attachable by itself):
+
+1. `ActionTimelineComponent` — property tweens/timelines; works on any
+   GameObject, 2D or 3D, because transform and color are shared concepts.
+2. `FlipbookComponent` — the 2D (and billboard-sprite) frame-animation path.
+   This *is* `Animator2D`, renamed and rebuilt on the base — 2D animation is
+   not being removed, its component is being replaced 1:1 (the rename exists
+   because "flipbook" says what it does, and because the engine currently has
+   three copies of this logic to collapse into one).
+3. `VATComponent` — the 3D GPU vertex-animation path.
+
+### Naming
+
+This design keeps the engine's established "Action" vocabulary for the tween
+system: the asset is `ActionTimeline`, its tracks/keys are `ActionTrack` /
+`ActionKey`, and the component is `ActionTimelineComponent`. One deliberate
+exception: the bare name `Action` is **retired**, not reused. In the old
+system an `Action` was an executable behavior object (`Step(dt)`, lifecycle);
+a keyframe is a passive data point. Reusing the old name for a semantically
+different thing would mislead anyone (or any old sample code) carrying the
+Cocos-era meaning, so keys are `ActionKey` — same family prefix, no false
+continuity.
+
 ### File layout
 
 ```
 Engine/include/Atmospheric/
     easing.hpp                NEW  EasingType + ApplyEasing (moved from action.hpp)
-    animation_clip.hpp        NEW  FlipbookClip, TweenTimeline (+ tracks/keys)
+    animation_clip.hpp        NEW  FlipbookClip, ActionTimeline (+ tracks/keys)
     animation_component.hpp   NEW  AnimationComponent base + PlaybackState
     animation_subsystem.hpp   NEW  AnimationSubsystem + AnimationLibrary
-    tween_component.hpp       NEW  TweenComponent + Tween builder
+    action_timeline_component.hpp       NEW  ActionTimelineComponent + Tween builder
     flipbook_component.hpp    NEW
     vat.hpp                   KEEP (VATClip unchanged; stored in library)
     vat_component.hpp         CHANGED derives AnimationComponent
@@ -214,14 +253,14 @@ struct FlipbookClip {
 };
 ```
 
-#### TweenTimeline (replaces the Action hierarchy)
+#### ActionTimeline (replaces the Action hierarchy)
 
 A timeline is a set of typed keyframe tracks over a fixed duration. Sampling
 is a pure function of `t`; there is no per-playback mutable state to
 instantiate, so one timeline asset serves any number of simultaneous players.
 
 ```cpp
-enum class TweenProperty {
+enum class ActionProperty {
     Position,      // vec3, absolute (world of the CSB node / local transform)
     Rotation,      // vec3 radians
     Scale,         // vec3
@@ -230,25 +269,25 @@ enum class TweenProperty {
     Custom,        // float, delivered via callback (drive anything)
 };
 
-struct TweenKey {
+struct ActionKey {
     float time;                  // seconds from timeline start
     glm::vec4 value;             // interpreted per property (float in .x)
     EasingType easing = EasingType::Linear;  // ease-in *to this key*
 };
 
-struct TweenTrack {
-    TweenProperty property;
+struct ActionTrack {
+    ActionProperty property;
     int customId = 0;            // routes Custom tracks
-    std::vector<TweenKey> keys;  // sorted by time
+    std::vector<ActionKey> keys;  // sorted by time
     glm::vec4 Sample(float t) const;  // binary search + eased lerp; clamps at ends
 };
 
 struct TimelineEvent { float time; int eventId; };
 
-struct TweenTimeline {
+struct ActionTimeline {
     std::string name;
     float duration = 0.0f;       // max key time (cached)
-    std::vector<TweenTrack> tracks;
+    std::vector<ActionTrack> tracks;
     std::vector<TimelineEvent> events;  // fired when playhead crosses them
 };
 ```
@@ -279,11 +318,11 @@ Scene-scoped (cleared by `UnloadCurrentScene`, like scene-tier assets in
 class AnimationLibrary {
 public:
     FlipbookClipHandle AddFlipbook(FlipbookClip clip);
-    TimelineHandle     AddTimeline(TweenTimeline tl);
+    TimelineHandle     AddTimeline(ActionTimeline tl);
     VATClipHandle      AddVATClip(std::string name, std::unique_ptr<VATClip> clip);
 
     const FlipbookClip*  GetFlipbook(FlipbookClipHandle) const;  // + by-name
-    const TweenTimeline* GetTimeline(TimelineHandle) const;
+    const ActionTimeline* GetTimeline(TimelineHandle) const;
     VATClip*             GetVATClip(VATClipHandle) const;
 
     void Clear();                // scene unload
@@ -339,21 +378,21 @@ Tick order: `Process` runs after entity `Tick` (game logic decides *what* to
 play) and before rendering/transform sync (so sampled poses are what gets
 drawn).
 
-### 4.4 TweenComponent
+### 4.4 ActionTimelineComponent
 
 One component, two front doors onto the same evaluation path:
 
 - **Named timelines** from the library — `Play("open_menu")`, re-triggerable,
   what CSB loading produces.
 - **The `Tween` builder** — for code-driven one-shots ("knock this enemy back
-  0.3s"), building a small anonymous `TweenTimeline` inline and playing it.
+  0.3s"), building a small anonymous `ActionTimeline` inline and playing it.
   This replaces `RunAction(new Sequence{...})` ergonomics.
 
 ```cpp
-class TweenComponent : public AnimationComponent {
+class ActionTimelineComponent : public AnimationComponent {
 public:
-    explicit TweenComponent(GameObject* owner);
-    std::string GetName() const override { return "Tween"; }
+    explicit ActionTimelineComponent(GameObject* owner);
+    std::string GetName() const override { return "ActionTimeline"; }
 
     void AddTimeline(TimelineHandle tl);                 // from the library
     void AddTimeline(const std::string& libraryName);
@@ -363,7 +402,7 @@ public:
     // Fire-and-forget overlay tweens: independent playheads layered on top of
     // the main timeline (e.g. a hit-flash while the walk timeline runs).
     // Returns an id usable with CancelOverlay.
-    int PlayOverlay(TweenTimeline tl, std::function<void()> onFinished = {});
+    int PlayOverlay(ActionTimeline tl, std::function<void()> onFinished = {});
     void CancelOverlay(int id);
     void CancelAllOverlays();
 
@@ -378,7 +417,7 @@ protected:
 private:
     std::vector<TimelineHandle> _timelines;
     TimelineHandle _active;
-    struct Overlay { int id; TweenTimeline tl; float time; /*…*/ };
+    struct Overlay { int id; ActionTimeline tl; float time; /*…*/ };
     std::vector<Overlay> _overlays;          // advanced with the same scaled dt
 };
 ```
@@ -386,7 +425,7 @@ private:
 The builder:
 
 ```cpp
-// Fluent construction of a TweenTimeline. `To` targets resolve any relative
+// Fluent construction of a ActionTimeline. `To` targets resolve any relative
 // ("by") values against the GameObject's current state at *build* time.
 Tween(go)
     .MoveTo(0.3f, {x, y, 0}, EasingType::QuadOut)
@@ -395,9 +434,9 @@ Tween(go)
     .With()                                  // stay at cursor (parallel)
     .FadeTo(0.15f, 0.0f)
     .Event(kHitFlashDone)
-    .Play();          // → TweenComponent::PlayOverlay on go (auto-adds the
+    .Play();          // → ActionTimelineComponent::PlayOverlay on go (auto-adds the
                       //   component if missing)
-// .Build() instead of .Play() returns the TweenTimeline for the library.
+// .Build() instead of .Play() returns the ActionTimeline for the library.
 ```
 
 Callbacks: where old code interleaved `CallFunc` inside a `Sequence`, new code
@@ -486,21 +525,21 @@ timers), group time scales, and clip sharing, with less code than it has now.
 
 ## 5. Serialization & scene loading (breaking, by design)
 
-- **ComponentFactory** — register `"Tween"`, `"Flipbook"`; the `"Animator2D"`
+- **ComponentFactory** — register `"ActionTimeline"`, `"Flipbook"`; the `"Animator2D"`
   and `"ActionManager"` factory names are removed. Existing JSON scenes that
   used them are migrated (the `Animator2D` `animations` array maps 1:1 onto
-  `FlipbookClip`s; `ActionManager` `actions` arrays map onto a `TweenTimeline`
+  `FlipbookClip`s; `ActionManager` `actions` arrays map onto a `ActionTimeline`
   per entry).
 - **CSB scenes** (`scene_loader.cpp::ParseTimelines`) get *simpler*: CSB
   frames are already keyframes, so each (node, property) timeline maps
-  directly onto a `TweenTrack` (frameIndex / frameRate / speed → key time,
-  easingData → `TweenKey::easing`), grouped into one `TweenTimeline` per node,
-  registered in the library, auto-played on a `TweenComponent` with
+  directly onto a `ActionTrack` (frameIndex / frameRate / speed → key time,
+  easingData → `ActionKey::easing`), grouped into one `ActionTimeline` per node,
+  registered in the library, auto-played on a `ActionTimelineComponent` with
   `WrapMode::Loop` when `config.loopAnimations`. The keyframe → action →
   playback double translation disappears, and CSB named animation lists
   (currently ignored) map naturally onto multiple named timelines.
 - **Lua bindings** — regenerate for the new surface:
-  `entity:tween():play("intro")`, the `Tween` builder, `entity:flipbook():play("walk")`,
+  `entity:timeline():play("intro")`, the `Tween` builder, `entity:flipbook():play("walk")`,
   `animation.set_time_scale(0.2)`. The old `RunAction` bindings are dropped
   in the same commit that ports the scripts using them.
 
@@ -531,8 +570,8 @@ require):
 2. **FlipbookComponent** — implement; delete `animator_2d.*` and the
    `Animate` action; port the Animation example and the RPG example's
    `SpriteAnimator` in the same commit.
-3. **TweenComponent** — implement timeline sampling + the `Tween` builder;
-   rewrite `scene_loader.cpp` timeline parsing onto `TweenTrack`s; delete
+3. **ActionTimelineComponent** — implement timeline sampling + the `Tween` builder;
+   rewrite `scene_loader.cpp` timeline parsing onto `ActionTrack`s; delete
    `action.hpp/.cpp`, `action_manager.*`; update ComponentFactory / JSON
    deserializers / Lua bindings; port remaining call sites.
 4. **VATComponent** — rebase onto `AnimationComponent`, move clip ownership
