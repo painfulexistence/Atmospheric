@@ -147,9 +147,13 @@ void GLBuffer::SetupVertexAttributes() {
         glVertexAttribIPointer(
             2, 1, GL_UNSIGNED_BYTE, sizeof(VoxelVertex), reinterpret_cast<void*>(4 * sizeof(uint8_t))
         );
+        glVertexAttribIPointer(
+            3, 1, GL_UNSIGNED_BYTE, sizeof(VoxelVertex), reinterpret_cast<void*>(5 * sizeof(uint8_t))
+        );
         glEnableVertexAttribArray(0);
         glEnableVertexAttribArray(1);
         glEnableVertexAttribArray(2);
+        glEnableVertexAttribArray(3);
         break;
 
     case VertexFormat::Grass:

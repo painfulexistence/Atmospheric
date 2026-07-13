@@ -53,9 +53,11 @@ struct VoxelVertex {
     uint8_t x, y, z;// Local position within chunk (0-255)
     uint8_t voxel_id;// Voxel type
     uint8_t face_id;// Face direction (0-5: +Y, -Y, +X, -X, +Z, -Z)
+    uint8_t ao;// Baked corner ambient occlusion, 0 (fully occluded) .. 3 (open)
     // Trailing padding: WebGPU requires GPUVertexBufferLayout.arrayStride to be
-    // a multiple of 4 bytes, so the struct must round up from 5 to 8 bytes.
-    uint8_t _pad[3];
+    // a multiple of 4 bytes, so the struct must round up to 8 bytes. (WebGPU
+    // reads bytes 4..7 as one Uint8x4, so ao arrives as aFace.y in VOXEL_WGSL.)
+    uint8_t _pad[2];
 };
 
 // Per-instance draw data streamed into the instanced-geometry attribute buffer

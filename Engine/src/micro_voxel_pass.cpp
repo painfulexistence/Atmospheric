@@ -123,28 +123,50 @@ void MicroVoxelPass::_uploadGL(VoxelVolumeComponent* v) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-// Creates/resizes the GI accumulation ping-pong targets; history is cleared on
-// (re)creation (alpha 0 = invalid sample).
+// Creates/resizes the GI accumulation ping-pong targets, the shared normal
+// target (MRT attachment 1), and the à-trous denoiser ping-pong; GI history is
+// cleared on (re)creation (alpha 0 = invalid sample).
 void MicroVoxelPass::_ensureGIRenderTargets(int w, int h) {
     if (_giW == w && _giH == h && _giTexGL[0] != 0) return;
     _giW = w;
     _giH = h;
-    for (int i = 0; i < 2; i++) {
-        if (_giTexGL[i] == 0) {
-            glGenTextures(1, &_giTexGL[i]);
-            glGenFramebuffers(1, &_giFBOGL[i]);
-        }
-        glBindTexture(GL_TEXTURE_2D, _giTexGL[i]);
+
+    auto makeRGBA16F = [w, h](GLuint& tex) {
+        if (tex == 0) glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
+    };
+
+    // Shared normal target — attached as MRT slot 1 on both GI FBOs (only the
+    // one being traced writes it each frame; the à-trous reads it).
+    makeRGBA16F(_giNormalTexGL);
+
+    const GLenum giBufs[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+    for (int i = 0; i < 2; i++) {
+        if (_giFBOGL[i] == 0) glGenFramebuffers(1, &_giFBOGL[i]);
+        makeRGBA16F(_giTexGL[i]);
         glBindFramebuffer(GL_FRAMEBUFFER, _giFBOGL[i]);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _giTexGL[i], 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, _giNormalTexGL, 0);
+        glDrawBuffers(2, giBufs);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
     }
+
+    // À-trous ping-pong (single attachment each).
+    const GLenum oneBuf[1] = { GL_COLOR_ATTACHMENT0 };
+    for (int i = 0; i < 2; i++) {
+        if (_atrousFBOGL[i] == 0) glGenFramebuffers(1, &_atrousFBOGL[i]);
+        makeRGBA16F(_atrousTexGL[i]);
+        glBindFramebuffer(GL_FRAMEBUFFER, _atrousFBOGL[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _atrousTexGL[i], 0);
+        glDrawBuffers(1, oneBuf);
+    }
+
     glBindTexture(GL_TEXTURE_2D, 0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -275,12 +297,12 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     VoxelVolumeComponent* vol = _volumes[0];// stage 1: render the first registered volume
     if (vol->volume.empty()) return;
 
-    // Read grid config + world origin from the active volume; the rest of the
-    // pass uses these as locals so the uniform setup below is unchanged.
-    const int gridDim = vol->gridDim;
+    // Representative grid config from the first volume; the GI subpass uses these
+    // as fallbacks, and the GL main loop reads per-volume values in its own loop.
+    // (gridDim / world origin are per-volume too and only the WebGPU single-volume
+    // path needs the primary's, so they're read inline there.)
     const int brickDim = vol->brickDim;
     const float voxelSize = vol->voxelSize;
-    const glm::vec3 volumeOrigin = vol->GetOrigin();
 
     CameraComponent* camera = ctx->GetMainCamera();
     if (!camera) return;
@@ -308,6 +330,8 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, static_cast<uint32_t>(renderer.sceneRT->GetNumSamples()));
         }
         // WebGPU stays single-volume (renders _volumes[0]) for now.
+        const int gridDim = vol->gridDim;
+        const glm::vec3 volumeOrigin = vol->GetOrigin();
         if (vol->dirty || _uploadedVolume != vol) {
             _uploadGPU(vol);
             vol->dirty = false;
@@ -374,19 +398,25 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             v->dirty = false;
         }
     }
-    const GLVolume& primaryTex = _glVolumes[vol];// vol == _volumes[0]; GI traces this one
+    const GLVolume& primaryTex = _glVolumes[vol];// vol == _volumes[0]; palette source
+    // Active (non-empty, uploaded) volumes the GI traces brute-force (nearest hit
+    // across all of them, so light bleeds between volumes).
+    std::vector<VoxelVolumeComponent*> giVolumes;
+    for (auto* av : _volumes)
+        if (!av->volume.empty() && _glVolumes.find(av) != _glVolumes.end()) giVolumes.push_back(av);
 
     auto [width, height] = Window::Get()->GetPhysicalSize();
 
     // ── GI subpass: trace one diffuse bounce per pixel and accumulate ───────
     bool giActive = giStrength > 0.0f;
     ShaderProgram* giShader = giActive ? AssetManager::Get().GetShader("microvoxel_gi") : nullptr;
+    // GI traces at reduced resolution (indirect light is low frequency); the
+    // composite upsamples with bilinear filtering via uv sampling.
+    const float giScale = glm::clamp(giResolutionScale, 0.25f, 1.0f);
+    const int giW = std::max(1, static_cast<int>(static_cast<float>(width) * giScale));
+    const int giH = std::max(1, static_cast<int>(static_cast<float>(height) * giScale));
+    GLuint giResultTex = 0;// GI texture the composite samples (denoised when enabled)
     if (giActive && giShader) {
-        // GI traces at reduced resolution (indirect light is low frequency);
-        // the composite upsamples with bilinear filtering via uv sampling.
-        const float giScale = glm::clamp(giResolutionScale, 0.25f, 1.0f);
-        const int giW = std::max(1, static_cast<int>(static_cast<float>(width) * giScale));
-        const int giH = std::max(1, static_cast<int>(static_cast<float>(height) * giScale));
         _ensureGIRenderTargets(giW, giH);
         const int prev = 1 - _giCur;
         if (!_prevViewValid) {// first frame: reproject onto itself (blend rejects via alpha 0)
@@ -409,9 +439,7 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         giShader->SetUniform(std::string("u_prevViewProj"), _prevViewProj);
         giShader->SetUniform(std::string("u_cameraPos"), cameraPos);
         giShader->SetUniform(std::string("u_prevCameraPos"), _prevCameraPos);
-        giShader->SetUniform(std::string("u_volumeOrigin"), volumeOrigin);
-        giShader->SetUniform(std::string("u_voxelSize"), voxelSize);
-        giShader->SetUniform(std::string("u_gridDim"), gridDim);
+        giShader->SetUniform(std::string("u_voxelSize"), voxelSize);// representative, for ray offsets
         giShader->SetUniform(std::string("u_brickDim"), brickDim);
         giShader->SetUniform(std::string("u_maxRaySteps"), maxRaySteps);
         giShader->SetUniform(std::string("u_sunDir"), sunDir);
@@ -420,22 +448,72 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         giShader->SetUniform(std::string("u_frameIndex"), _giFrame);
         giShader->SetUniform(std::string("u_blend"), giBlend);
         giShader->SetUniform(std::string("u_emissiveStrength"), emissiveStrength);
-        giShader->SetUniform(std::string("u_volume"), 0);
-        giShader->SetUniform(std::string("u_occupancy"), 1);
-        giShader->SetUniform(std::string("u_palette"), 2);
-        giShader->SetUniform(std::string("u_history"), 3);
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_3D, primaryTex.volumeTex);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_3D, primaryTex.occupancyTex);
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, primaryTex.paletteTex);
-        glActiveTexture(GL_TEXTURE3);
+        // Bind up to MAX_VOLUMES (matches the shader) volume/occupancy pairs on
+        // units 0..7; every slot gets a valid texture (unused ones fall back to
+        // the primary) for macOS sampler validation. u_volumeCount bounds the
+        // shader's dispatch: all volumes when cross-volume, else just the primary.
+        constexpr int kMaxGiVolumes = 4;// must match MAX_VOLUMES in microvoxel_gi.frag
+        const int giCount = giCrossVolume ? std::min(static_cast<int>(giVolumes.size()), kMaxGiVolumes) : 1;
+        giShader->SetUniform(std::string("u_volumeCount"), giCount);
+        const char* volNames[kMaxGiVolumes] = { "u_vol0", "u_vol1", "u_vol2", "u_vol3" };
+        const char* occNames[kMaxGiVolumes] = { "u_occ0", "u_occ1", "u_occ2", "u_occ3" };
+        for (int i = 0; i < kMaxGiVolumes; i++) {
+            VoxelVolumeComponent* av = (i < static_cast<int>(giVolumes.size())) ? giVolumes[i] : vol;
+            const GLVolume& gvol = _glVolumes[av];
+            const std::string idx = "[" + std::to_string(i) + "]";
+            giShader->SetUniform(std::string("u_origins") + idx, av->GetOrigin());
+            giShader->SetUniform(std::string("u_voxelSizes") + idx, av->voxelSize);
+            giShader->SetUniform(std::string("u_gridDims") + idx, av->gridDim);
+            giShader->SetUniform(std::string(volNames[i]), i * 2);
+            giShader->SetUniform(std::string(occNames[i]), i * 2 + 1);
+            glActiveTexture(GL_TEXTURE0 + i * 2);
+            glBindTexture(GL_TEXTURE_3D, gvol.volumeTex);
+            glActiveTexture(GL_TEXTURE0 + i * 2 + 1);
+            glBindTexture(GL_TEXTURE_3D, gvol.occupancyTex);
+        }
+        giShader->SetUniform(std::string("u_palette"), 8);
+        giShader->SetUniform(std::string("u_history"), 9);
+        glActiveTexture(GL_TEXTURE8);
+        glBindTexture(GL_TEXTURE_2D, primaryTex.paletteTex);// palette shared across volumes
+        glActiveTexture(GL_TEXTURE9);
         glBindTexture(GL_TEXTURE_2D, _giTexGL[prev]);
 
         DrawScreenQuadVAO(renderer.gl.screenQuadVAO);
         _giFrame++;
+
+        // ── Spatial denoise: à-trous edge-stopping over the accumulated GI ──
+        // History stays the raw temporal accumulation (_giTexGL); the à-trous
+        // output is display-only, so filtered results are never fed back into
+        // history (no progressive over-blurring). The viewport is still giW×giH
+        // from the trace above. The composite samples giResultTex.
+        giResultTex = _giTexGL[_giCur];
+        ShaderProgram* atrous = giAtrousIterations > 0 ? AssetManager::Get().GetShader("microvoxel_atrous") : nullptr;
+        if (atrous) {
+            atrous->Activate();
+            atrous->SetUniform(
+                std::string("u_texelSize"), glm::vec2(1.0f / static_cast<float>(giW), 1.0f / static_cast<float>(giH))
+            );
+            atrous->SetUniform(std::string("u_sigmaDepth"), giSigmaDepth);
+            atrous->SetUniform(std::string("u_sigmaNormal"), giSigmaNormal);
+            atrous->SetUniform(std::string("u_sigmaLuma"), giSigmaLuma);
+            atrous->SetUniform(std::string("u_gi"), 0);
+            atrous->SetUniform(std::string("u_giNormal"), 1);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, _giNormalTexGL);// constant across iterations
+            GLuint src = _giTexGL[_giCur];
+            int dst = 0;
+            for (int it = 0; it < giAtrousIterations; it++) {
+                glBindFramebuffer(GL_FRAMEBUFFER, _atrousFBOGL[dst]);
+                atrous->SetUniform(std::string("u_stepSize"), 1 << it);// 1, 2, 4, ...
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, src);
+                DrawScreenQuadVAO(renderer.gl.screenQuadVAO);
+                src = _atrousTexGL[dst];
+                dst = 1 - dst;
+            }
+            giResultTex = src;
+        }
     } else {
         giActive = false;
     }
@@ -484,6 +562,8 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     shader->SetUniform(std::string("u_occupancy"), 1);
     shader->SetUniform(std::string("u_palette"), 2);
     shader->SetUniform(std::string("u_giTex"), 3);
+    shader->SetUniform(std::string("u_giRaw"), 4);
+    shader->SetUniform(std::string("u_giSplitX"), giActive ? giSplitCompare : -1.0f);
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
@@ -508,9 +588,10 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         const glm::mat4 model =
             glm::translate(glm::mat4(1.0f), boxCenter) * glm::scale(glm::mat4(1.0f), glm::vec3(boxExtent * 0.5f));
 
-        // GI is traced against the primary volume only, so its screen-space
-        // buffer is valid only for that volume's pixels; others use flat ambient.
-        const bool useGI = giActive && v == vol;
+        // Cross-volume GI traces the merged global grid, so its screen-space
+        // buffer is valid for every volume's pixels; single-volume GI is valid
+        // only for the primary, and others fall back to flat ambient.
+        const bool useGI = giActive && (giCrossVolume || v == vol);
 
         shader->SetUniform(std::string("u_model"), model);
         shader->SetUniform(std::string("u_volumeOrigin"), vOrigin);
@@ -530,6 +611,10 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         // warns + substitutes a zero texture otherwise. This volume's palette
         // stands in when GI is off (the composite doesn't sample u_giTex then).
         glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, (useGI && giResultTex) ? giResultTex : gv.paletteTex);
+        // Unit 4: raw (un-denoised) GI for the split-screen compare. Fall back to
+        // this volume's palette when GI is off (macOS validates every sampler).
+        glActiveTexture(GL_TEXTURE4);
         glBindTexture(GL_TEXTURE_2D, (useGI && _giTexGL[_giCur]) ? _giTexGL[_giCur] : gv.paletteTex);
 
         glBindVertexArray(renderer.gl.skyboxVAO);
