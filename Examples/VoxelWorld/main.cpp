@@ -55,6 +55,16 @@ class VoxelWorldApp : public Application {
             bloom->threshold = 0.6f;
             bloom->bloomStrength = 0.06f;
         }
+        // Default lighting for the demo: corner AO (crisp contact) + GTAO (broad,
+        // cheap screen-space) + VoxelGI (world-space bounce). SSGI is left off —
+        // it's noisier and heavier; toggle it with K to compare.
+        if (auto* vp = renderer->GetPass<VoxelChunkPass>()) {
+            vp->aoEnabled = true;
+            vp->giMode = VoxelChunkPass::GIMode::VoxelGI;
+        }
+        if (auto* ssp = renderer->GetPass<ScreenSpaceGIPass>()) {
+            ssp->gtaoEnabled = true;
+        }
 
         ConsoleSubsystem::Get()->Info(
             "VoxelWorld loaded. WASD move, RF up/down, Arrow keys look, Z slow, X sprint, P palette, I wireframe, O "
