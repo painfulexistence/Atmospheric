@@ -26,10 +26,10 @@ Prefab ImportUSDPrefab(const std::string& path) {
 
 #include <asset-resolution.hh>
 #include <composition.hh>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <optional>
-#include <cstdlib>
 #include <set>
 #include <tuple>
 #include <tydra/render-data.hh>
@@ -239,7 +239,7 @@ namespace {
         const size_t split = t.find('/', 1);
         if (split == std::string::npos) return;
         const std::string rootComp = t.substr(0, split);// e.g. "/Prop"
-        const std::string suffix = t.substr(split);     // e.g. "/Looks/Mat"
+        const std::string suffix = t.substr(split);// e.g. "/Looks/Mat"
         std::string anc = holder;
         while (true) {
             if (prims.count(anc + suffix)) {
@@ -613,12 +613,7 @@ Prefab ImportUSDPrefab(const std::string& path) {
         auto it = displayColorMats.find(key);
         if (it != displayColorMats.end()) return it->second;
         PrefabMaterial pm;
-        pm.name = fmt::format(
-            "displayColor_{:02x}{:02x}{:02x}",
-            std::get<0>(key),
-            std::get<1>(key),
-            std::get<2>(key)
-        );
+        pm.name = fmt::format("displayColor_{:02x}{:02x}{:02x}", std::get<0>(key), std::get<1>(key), std::get<2>(key));
         pm.baseColor = c;
         pm.roughness = 0.8f;// matte, close to usdview's default shading
         pm.metallic = 0.0f;
