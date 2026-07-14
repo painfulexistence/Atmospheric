@@ -46,10 +46,9 @@ TerrainMeshComponent::TerrainMeshComponent(
 
     // Copy base material props if caller provided a material.
     if (props.material) {
+        // specular/ambient/shininess are Blinn-Phong-only now and unused by
+        // terrain.frag, so only the shared surface inputs are copied.
         terrainMat->diffuse = props.material->diffuse;
-        terrainMat->specular = props.material->specular;
-        terrainMat->ambient = props.material->ambient;
-        terrainMat->shininess = props.material->shininess;
         terrainMat->baseMap = props.material->baseMap;
         terrainMat->normalMap = props.material->normalMap;
         terrainMat->aoMap = props.material->aoMap;

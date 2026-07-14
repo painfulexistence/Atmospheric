@@ -12,10 +12,14 @@
 // TextureHandles in LoadSceneResources (Phase 2). An empty path means "no map".
 struct MaterialBlueprint {
     std::string name;
+    // "pbr" (default, metallic/roughness) or "blinnphong" (legacy specular).
+    std::string shading = "pbr";
     glm::vec3 diffuse = glm::vec3(0.55f, 0.55f, 0.55f);
-    glm::vec3 specular = glm::vec3(0.70f, 0.70f, 0.70f);
-    glm::vec3 ambient = glm::vec3(0.00f, 0.00f, 0.00f);
-    float shininess = 0.25f;
+    float roughnessFactor = 1.0f;// PBR: scales the roughness map / stands alone
+    float metallicFactor = 1.0f; // PBR: scales the metallic map
+    glm::vec3 specular = glm::vec3(0.70f, 0.70f, 0.70f);// BlinnPhong only
+    glm::vec3 ambient = glm::vec3(0.00f, 0.00f, 0.00f); // BlinnPhong only
+    float shininess = 0.25f;                            // BlinnPhong only
     bool cullFaceEnabled = true;
     std::string baseMap, normalMap, aoMap, roughnessMap, metallicMap, heightMap;
 

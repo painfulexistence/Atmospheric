@@ -54,6 +54,9 @@ uniform sampler2D normal_map_unit;
 uniform sampler2D ao_map_unit;
 uniform sampler2D roughness_map_unit;
 uniform sampler2D metallic_map_unit;
+uniform float u_roughnessFactor;// PBRMaterial scalar; scales the roughness map
+uniform float u_metallicFactor; // PBRMaterial scalar; scales the metallic map
+uniform int u_useBlinnPhong;// 1 -> BlinnPhongMaterial (legacy specular); 0 -> PBR Cook-Torrance
 uniform sampler2D shadow_map_unit;
 uniform samplerCube omni_shadow_map_unit;
 uniform float time;
@@ -97,6 +100,12 @@ float DirectionalShadow(vec3 shadowCoords, float bias);
 
 float PointShadow(vec3 shadowCoords, float bias);
 
+// Dispatch to the active shading model. BlinnPhongMaterial sets u_useBlinnPhong.
+vec3 EvalBRDF(vec3 norm, vec3 lightDir, vec3 viewDir, Surface surf) {
+    return (u_useBlinnPhong == 1) ? BlinnPhongBRDF(norm, lightDir, viewDir, surf)
+                                  : CookTorranceBRDF(norm, lightDir, viewDir, surf);
+}
+
 vec3 CalculateDirectionalLight(DirLight light, vec3 norm, vec3 viewDir, Surface surf) {
     vec3 lightDir = normalize(-light.direction);
 
@@ -105,7 +114,7 @@ vec3 CalculateDirectionalLight(DirLight light, vec3 norm, vec3 viewDir, Surface 
     float shadow = float(light.cast_shadow) * DirectionalShadow(lightSpaceFragCoords * 0.5 + 0.5, ShadowBias(norm, lightDir));
     vec3 radiance = light.diffuse * clamp(1.0 - shadow, 0.0, 1.0);
 
-    return CookTorranceBRDF(norm, lightDir, viewDir, surf) * radiance * clamp(dot(norm, lightDir), 0.0, 1.0);
+    return EvalBRDF(norm, lightDir, viewDir, surf) * radiance * clamp(dot(norm, lightDir), 0.0, 1.0);
 }
 
 vec3 CalculatePointLight(PointLight light, vec3 norm, vec3 viewDir, Surface surf) {
@@ -119,7 +128,7 @@ vec3 CalculatePointLight(PointLight light, vec3 norm, vec3 viewDir, Surface surf
     // the raw color at 1m, far too dim to read at room distances.
     vec3 radiance = attenuation * light.intensity * light.diffuse * clamp(1.0 - shadow, 0.0, 1.0);
 
-    return CookTorranceBRDF(norm, lightDir, viewDir, surf) * radiance * clamp(dot(norm, lightDir), 0.0, 1.0);
+    return EvalBRDF(norm, lightDir, viewDir, surf) * radiance * clamp(dot(norm, lightDir), 0.0, 1.0);
 }
 
 vec3 BlinnPhongBRDF(vec3 norm, vec3 lightDir, vec3 viewDir, Surface surf) {
@@ -218,11 +227,11 @@ float SurfaceAO() {
 }
 
 float SurfaceRoughness() {
-    return texture(roughness_map_unit, tex_uv).r;
+    return clamp(texture(roughness_map_unit, tex_uv).r * u_roughnessFactor, 0.0, 1.0);
 }
 
 float SurfaceMetallic() {
-    return texture(metallic_map_unit, tex_uv).r;
+    return clamp(texture(metallic_map_unit, tex_uv).r * u_metallicFactor, 0.0, 1.0);
 }
 
 float ShadowBias(vec3 norm, vec3 lightDir) {

@@ -1565,8 +1565,12 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             }
 
             glm::vec3 diffuse = mat ? mat->diffuse : glm::vec3(0.55f);
-            glm::vec3 specular = mat ? mat->specular : glm::vec3(0.7f);
-            glm::vec3 matAmbient = mat ? mat->ambient : glm::vec3(0.0f);
+            // The WGSL deferred fs shades PBR (Cook-Torrance from roughness/metallic);
+            // these specular/ambient/shininess slots are packed but unread, so the
+            // legacy defaults are fine now that the Phong terms live on BlinnPhongMaterial.
+            auto* bpMat = dynamic_cast<BlinnPhongMaterial*>(mat);
+            glm::vec3 specular = bpMat ? bpMat->specular : glm::vec3(0.7f);
+            glm::vec3 matAmbient = bpMat ? bpMat->ambient : glm::vec3(0.0f);
 
             glm::vec4 d4(diffuse, 0.0f), s4(specular, 0.0f), a4(matAmbient, 0.0f);
             std::memcpy(slot + 64, &d4, sizeof(glm::vec4));
@@ -1587,7 +1591,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                 );
                 std::memcpy(slot + 112, &vatParams, sizeof(glm::vec4));
             } else {
-                glm::vec4 sh4(mat ? mat->shininess : 0.25f, 0.0f, 0.0f, 0.0f);
+                glm::vec4 sh4(bpMat ? bpMat->shininess : 0.25f, 0.0f, 0.0f, 0.0f);
                 std::memcpy(slot + 112, &sh4, sizeof(glm::vec4));
             }
         }
@@ -1737,9 +1741,8 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             terrainShader->SetUniform(std::string("main_light.ProjectionView"), mainLight->GetProjectionViewMatrix(0));
 
             terrainShader->SetUniform(std::string("surf_params.diffuse"), material->diffuse);
-            terrainShader->SetUniform(std::string("surf_params.specular"), material->specular);
-            terrainShader->SetUniform(std::string("surf_params.ambient"), material->ambient);
-            terrainShader->SetUniform(std::string("surf_params.shininess"), material->shininess);
+            // specular/ambient/shininess moved off the base Material; terrain.frag
+            // uses a fixed ambient and no specular term, so nothing to bind here.
 
             auto* tm = dynamic_cast<TerrainMaterial*>(material);
             terrainShader->SetUniform(std::string("tessellation_factor"), tm ? tm->tessellationFactor : 16.0f);
@@ -1749,7 +1752,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             terrainShader->SetUniform(std::string("fog_color"), tm ? tm->fogColor : glm::vec3(0.0f));
             terrainShader->SetUniform(std::string("fog_density"), tm ? tm->fogDensity : 0.0f);
             glActiveTexture(GL_TEXTURE7);
-            TextureHandle heightMap = material->heightMap;
+            TextureHandle heightMap = tm ? tm->heightMap : TextureHandle{};
             if (heightMap.IsValid() && static_cast<uint32_t>(heightMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(heightMap));
             } else {
@@ -1876,6 +1879,10 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             // The lookup is lazy so scenes without VAT never require the shader.
             VATMaterial* vatMat = dynamic_cast<VATMaterial*>(material);
             ShaderProgram* meshShader = vatMat ? ctx->GetShader("vat") : colorShader;
+            // Shading-model params now live in the leaf material types (base
+            // Material carries only the shared surface inputs).
+            auto* pbrMat = dynamic_cast<PBRMaterial*>(material);
+            auto* blinnMat = dynamic_cast<BlinnPhongMaterial*>(material);
 
             meshShader->Activate();
             meshShader->SetUniform(std::string("u_clipPlane"), rv.clipPlane);
@@ -1930,9 +1937,14 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             meshShader->SetUniform(std::string("ProjectionView"), projectionView);
             // Surface parameters
             meshShader->SetUniform(std::string("surf_params.diffuse"), material->diffuse);
-            meshShader->SetUniform(std::string("surf_params.specular"), material->specular);
-            meshShader->SetUniform(std::string("surf_params.ambient"), material->ambient);
-            meshShader->SetUniform(std::string("surf_params.shininess"), material->shininess);
+            // Blinn-Phong terms (only read by the shader when u_useBlinnPhong==1).
+            meshShader->SetUniform(std::string("surf_params.specular"), blinnMat ? blinnMat->specular : glm::vec3(0.7f));
+            meshShader->SetUniform(std::string("surf_params.ambient"), blinnMat ? blinnMat->ambient : glm::vec3(0.0f));
+            meshShader->SetUniform(std::string("surf_params.shininess"), blinnMat ? blinnMat->shininess : 0.25f);
+            meshShader->SetUniform(std::string("u_useBlinnPhong"), blinnMat ? 1 : 0);
+            // PBR scalar factors that scale the roughness/metallic maps.
+            meshShader->SetUniform(std::string("u_roughnessFactor"), pbrMat ? pbrMat->roughnessFactor : 1.0f);
+            meshShader->SetUniform(std::string("u_metallicFactor"), pbrMat ? pbrMat->metallicFactor : 1.0f);
 
             // Material textures - dynamically bound to Units 2-6
             // Base Map (Unit 2)

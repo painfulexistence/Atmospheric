@@ -506,11 +506,16 @@ void GraphicsSubsystem::DrawImGui(float dt) {
                     ImGui::Text("AO Map ID: %d", static_cast<int>(m->aoMap));
                     ImGui::Text("Roughness Map ID: %d", static_cast<int>(m->roughnessMap));
                     ImGui::Text("Metallic Map ID: %d", static_cast<int>(m->metallicMap));
-                    ImGui::Text("Height Map ID: %d", static_cast<int>(m->heightMap));
-                    ImGui::Text("Ambient: %.3f, %.3f, %.3f", m->ambient.x, m->ambient.y, m->ambient.z);
                     ImGui::Text("Diffuse: %.3f, %.3f, %.3f", m->diffuse.x, m->diffuse.y, m->diffuse.z);
-                    ImGui::Text("Specular: %.3f, %.3f, %.3f", m->specular.x, m->specular.y, m->specular.z);
-                    ImGui::Text("Shininess: %.3f", m->shininess);
+                    // Shading-model-specific fields now live on the leaf types.
+                    if (auto* pbr = dynamic_cast<PBRMaterial*>(m.get()))
+                        ImGui::Text("Roughness/Metallic factor: %.3f / %.3f", pbr->roughnessFactor, pbr->metallicFactor);
+                    if (auto* bp = dynamic_cast<BlinnPhongMaterial*>(m.get())) {
+                        ImGui::Text("Specular: %.3f, %.3f, %.3f", bp->specular.x, bp->specular.y, bp->specular.z);
+                        ImGui::Text("Shininess: %.3f", bp->shininess);
+                    }
+                    if (auto* tm = dynamic_cast<TerrainMaterial*>(m.get()))
+                        ImGui::Text("Height Map ID: %d", static_cast<int>(tm->heightMap));
                     ImGui::TreePop();
                 }
             }

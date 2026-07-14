@@ -74,22 +74,35 @@ struct RenderState {
     }
 };
 
+// Interchange data-bag for every material kind (JSON scenes, importers, script
+// bindings all fill this). It is a superset — a given Material subclass reads
+// only the fields it understands (PBRMaterial ignores specular/shininess,
+// BlinnPhongMaterial ignores roughness/metallic, etc.).
 struct MaterialProps {
     TextureHandle baseMap;
     TextureHandle normalMap;
     TextureHandle aoMap;
     TextureHandle roughnessMap;
     TextureHandle metallicMap;
-    TextureHandle heightMap;
+    TextureHandle heightMap;// TerrainMaterial only
     glm::vec3 diffuse = glm::vec3(.55, .55, .55);
-    glm::vec3 specular = glm::vec3(.7, .7, .7);
-    glm::vec3 ambient = glm::vec3(0, 0, 0);
-    float shininess = .25;
+    float roughnessFactor = 1.0f;// PBR: scales the roughness map (or stands alone)
+    float metallicFactor = 1.0f; // PBR: scales the metallic map
+    glm::vec3 specular = glm::vec3(.7, .7, .7);// BlinnPhong only
+    glm::vec3 ambient = glm::vec3(0, 0, 0);    // BlinnPhong only
+    float shininess = .25;                     // BlinnPhong only
     bool cullFaceEnabled = true;
     PrimitiveTopology primitiveType = PrimitiveTopology::Triangles;
     PolygonMode polygonMode = PolygonMode::Fill;
 };
 
+// Base surface material. Holds the inputs shared by every shading model and
+// read generically by all render backends: the albedo tint plus the base /
+// normal / AO / roughness / metallic maps. Shading-model-specific parameters
+// live in the leaf types — roughness/metallic *factors* on PBRMaterial, the
+// specular/shininess Phong terms on BlinnPhongMaterial, heightMap on
+// TerrainMaterial. Instantiate this directly only for a neutral fallback;
+// scenes and importers create PBRMaterial (the default) via CreateMaterial.
 class Material {
 public:
     TextureHandle baseMap;
@@ -97,11 +110,7 @@ public:
     TextureHandle aoMap;
     TextureHandle roughnessMap;
     TextureHandle metallicMap;
-    TextureHandle heightMap;
     glm::vec3 diffuse = glm::vec3(.55, .55, .55);
-    glm::vec3 specular = glm::vec3(.7, .7, .7);
-    glm::vec3 ambient = glm::vec3(0, 0, 0);
-    float shininess = .25;
 
     // Consolidated render-state: blend, cull, depth, polygon, topology.
     // MaterialProps still exposes cullFaceEnabled/primitiveType/polygonMode
@@ -159,15 +168,46 @@ public:
         aoMap = props.aoMap;
         roughnessMap = props.roughnessMap;
         metallicMap = props.metallicMap;
-        heightMap = props.heightMap;
         diffuse = props.diffuse;
-        specular = props.specular;
-        ambient = props.ambient;
-        shininess = props.shininess;
         renderState.cull = props.cullFaceEnabled ? CullMode::Back : CullMode::None;
         renderState.topology = props.primitiveType;
         renderState.polygon = props.polygonMode;
     }
+};
+
+// The default surface shading model (metallic/roughness, Cook-Torrance in
+// pbr.frag). Base for most materials — every importer and JSON scene produces
+// one via AssetManager::CreateMaterial. The roughness/metallic *maps* live on
+// the base (shared, read generically); PBRMaterial adds the scalar factors that
+// scale them, so a material can set roughness/metalness without a 1x1 texture.
+class PBRMaterial : public Material {
+public:
+    float roughnessFactor = 1.0f;
+    float metallicFactor = 1.0f;
+
+    explicit PBRMaterial(const MaterialProps& props = MaterialProps{}) : Material(props) {
+        roughnessFactor = props.roughnessFactor;
+        metallicFactor = props.metallicFactor;
+    }
+
+    void DrawImGui() override;
+};
+
+// Legacy Blinn-Phong shading (diffuse/specular/ambient/shininess, blinnphong
+// shader). Opt-in alternative to PBRMaterial for stylised or retro surfaces.
+class BlinnPhongMaterial : public Material {
+public:
+    glm::vec3 specular = glm::vec3(.7, .7, .7);
+    glm::vec3 ambient = glm::vec3(0, 0, 0);
+    float shininess = .25f;
+
+    explicit BlinnPhongMaterial(const MaterialProps& props = MaterialProps{}) : Material(props) {
+        specular = props.specular;
+        ambient = props.ambient;
+        shininess = props.shininess;
+    }
+
+    void DrawImGui() override;
 };
 
 class WaterMaterial : public Material {
@@ -216,16 +256,17 @@ class VATClip;
 // (see vat.hpp). Carries the clip (non-owning — the VATComponent owns it) and
 // the current normalized playhead the renderer feeds to vat.vert. Rendered by
 // the standard opaque pass with the "vat" shader instead of "color"; all the
-// usual surface/texture fields are inherited and still apply.
-class VATMaterial : public Material {
+// usual surface/texture fields are inherited and still apply. Reuses pbr.frag,
+// so it is a PBRMaterial (inherits the roughness/metallic factors too).
+class VATMaterial : public PBRMaterial {
 public:
     // Non-owning; the owning VATComponent outlives the material's use in a draw.
     VATClip* clip = nullptr;
     float normalizedTime = 0.0f;// playhead in [0, 1], advanced by VATComponent
 
-    VATMaterial() : Material(MaterialProps{}) {
+    VATMaterial() : PBRMaterial(MaterialProps{}) {
     }
-    explicit VATMaterial(const MaterialProps& props) : Material(props) {
+    explicit VATMaterial(const MaterialProps& props) : PBRMaterial(props) {
     }
 };
 
@@ -271,6 +312,9 @@ class TerrainMaterial : public Material {
 public:
     static constexpr int MAX_LAYERS = 4;
 
+    // Displacement / normal source for the terrain shader; baked from the height
+    // field by TerrainMeshComponent / TerrainStreamer (was on the base Material).
+    TextureHandle heightMap;
     float heightScale = 32.0f;
     float tessellationFactor = 16.0f;
     float worldSize = 1024.0f;// XZ extent; needed to derive normals from the heightmap
@@ -293,6 +337,7 @@ public:
     TerrainMaterial() : Material(MaterialProps{}) {
     }
     explicit TerrainMaterial(const MaterialProps& props) : Material(props) {
+        heightMap = props.heightMap;
     }
 
     void DrawImGui() override;

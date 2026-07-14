@@ -15,17 +15,25 @@ void Material::DrawImGui() {
     if (ImGui::SliderInt("Roughness map ID", &roughnessMapID, -1, textureCount - 1)) roughnessMap = roughnessMapID;
     int metallicMapID = metallicMap;
     if (ImGui::SliderInt("Metallic map ID", &metallicMapID, -1, textureCount - 1)) metallicMap = metallicMapID;
-    int heightMapID = heightMap;
-    if (ImGui::SliderInt("Height map ID", &heightMapID, -1, textureCount - 1)) heightMap = heightMapID;
     ImGui::ColorEdit3("Diffuse", &diffuse.r);
-    ImGui::ColorEdit3("Specular", &specular.r);
-    ImGui::ColorEdit3("Ambient", &ambient.r);
-    ImGui::DragFloat("Shininess", &shininess, 0.0f, 1.0f);
     static const char* cullNames[] = { "None", "Front", "Back" };
     int cullIdx = static_cast<int>(renderState.cull);
     if (ImGui::Combo("Cull mode", &cullIdx, cullNames, IM_ARRAYSIZE(cullNames))) {
         renderState.cull = static_cast<CullMode>(cullIdx);
     }
+}
+
+void PBRMaterial::DrawImGui() {
+    Material::DrawImGui();
+    ImGui::DragFloat("Roughness factor", &roughnessFactor, 0.01f, 0.0f, 1.0f);
+    ImGui::DragFloat("Metallic factor", &metallicFactor, 0.01f, 0.0f, 1.0f);
+}
+
+void BlinnPhongMaterial::DrawImGui() {
+    Material::DrawImGui();
+    ImGui::ColorEdit3("Specular", &specular.r);
+    ImGui::ColorEdit3("Ambient", &ambient.r);
+    ImGui::DragFloat("Shininess", &shininess, 0.0f, 1.0f);
 }
 
 // VoxelMaterial's DrawImGui is defined inline as a no-op — VoxelChunkPass
@@ -35,6 +43,9 @@ void Material::DrawImGui() {
 
 void TerrainMaterial::DrawImGui() {
     Material::DrawImGui();
+    int textureCount = static_cast<int>(AssetManager::Get().GetTextures().size());
+    int heightMapID = heightMap;
+    if (ImGui::SliderInt("Height map ID", &heightMapID, -1, textureCount - 1)) heightMap = heightMapID;
     ImGui::DragFloat("Height Scale", &heightScale, 0.5f, 0.0f, 256.0f);
     ImGui::DragFloat("Tessellation", &tessellationFactor, 0.5f, 1.0f, 64.0f);
     // Fallback height-palette selection (only visible without color/detail maps).

@@ -9,6 +9,8 @@
 
 class Mesh;
 class Material;
+class PBRMaterial;
+class BlinnPhongMaterial;
 class WaterMaterial;
 class TerrainMaterial;
 class GrassMaterial;
@@ -58,6 +60,7 @@ public:
 
     Material* CreateMaterial(const std::string& name, const MaterialProps& props);
     Material* CreateMaterial(const MaterialProps& props);
+    BlinnPhongMaterial* CreateBlinnPhongMaterial(const std::string& name, const MaterialProps& props);
     WaterMaterial* CreateWaterMaterial();
     PortalMaterial* CreatePortalMaterial();
     TerrainMaterial* CreateTerrainMaterial();

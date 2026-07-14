@@ -1161,7 +1161,10 @@ static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::s
         for (const auto& [name, matVal] : j["materials"].items()) {
             MaterialBlueprint mb;
             mb.name = name;
+            mb.shading = matVal.value("shading", mb.shading);
             mb.diffuse = ParseVec3(matVal.value("diffuse", nlohmann::json::array()), mb.diffuse);
+            mb.roughnessFactor = matVal.value("roughnessFactor", mb.roughnessFactor);
+            mb.metallicFactor = matVal.value("metallicFactor", mb.metallicFactor);
             mb.specular = ParseVec3(matVal.value("specular", nlohmann::json::array()), mb.specular);
             mb.ambient = ParseVec3(matVal.value("ambient", nlohmann::json::array()), mb.ambient);
             mb.shininess = matVal.value("shininess", mb.shininess);
@@ -1237,6 +1240,8 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
     for (const auto& mb : bp.materials) {
         MaterialProps props;
         props.diffuse = mb.diffuse;
+        props.roughnessFactor = mb.roughnessFactor;
+        props.metallicFactor = mb.metallicFactor;
         props.specular = mb.specular;
         props.ambient = mb.ambient;
         props.shininess = mb.shininess;
@@ -1247,7 +1252,10 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
         if (!mb.roughnessMap.empty()) props.roughnessMap = TextureHandle(mb.roughnessMap);
         if (!mb.metallicMap.empty()) props.metallicMap = TextureHandle(mb.metallicMap);
         if (!mb.heightMap.empty()) props.heightMap = TextureHandle(mb.heightMap);
-        Material* mat = AssetManager::Get().CreateMaterial(mb.name, props);
+        // Default shading is PBR; "shading":"blinnphong" opts into the legacy path.
+        Material* mat = (mb.shading == "blinnphong")
+                            ? static_cast<Material*>(AssetManager::Get().CreateBlinnPhongMaterial(mb.name, props))
+                            : AssetManager::Get().CreateMaterial(mb.name, props);
         // Transmission/volume/IOR live on Material, not MaterialProps (data only).
         mat->transmissionFactor = mb.transmissionFactor;
         mat->ior = mb.ior;

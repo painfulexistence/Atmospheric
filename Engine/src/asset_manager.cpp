@@ -515,7 +515,8 @@ void AssetManager::ReloadShaders() {
 
 void AssetManager::LoadMaterials(const std::vector<MaterialProps>& materialDefs) {
     for (const auto& props : materialDefs) {
-        materials.push_back(std::make_unique<Material>(props));
+        // Default shading model is PBR (metallic/roughness).
+        materials.push_back(std::make_unique<PBRMaterial>(props));
     }
 }
 
@@ -527,7 +528,8 @@ Material* AssetManager::CreateMaterial(const std::string& name, const MaterialPr
         return GetMaterialByID(it->second);
     }
 
-    auto material = std::make_unique<Material>(props);
+    // Default shading model is PBR — importers and JSON scenes get a PBRMaterial.
+    auto material = std::make_unique<PBRMaterial>(props);
     auto* ptr = material.get();
     materials.push_back(std::move(material));
     _materialCache[name] = _nextMaterialID++;
@@ -535,10 +537,23 @@ Material* AssetManager::CreateMaterial(const std::string& name, const MaterialPr
 }
 
 Material* AssetManager::CreateMaterial(const MaterialProps& props) {
-    auto material = std::make_unique<Material>(props);
+    auto material = std::make_unique<PBRMaterial>(props);
     auto* ptr = material.get();
     materials.push_back(std::move(material));
     _materialCache["unnamed_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return ptr;
+}
+
+BlinnPhongMaterial* AssetManager::CreateBlinnPhongMaterial(const std::string& name, const MaterialProps& props) {
+    auto it = _materialCache.find(name);
+    if (it != _materialCache.end()) {
+        ENGINE_LOG("Material '{}' already exists, returning existing material", name);
+        return dynamic_cast<BlinnPhongMaterial*>(GetMaterialByID(it->second));
+    }
+    auto material = std::make_unique<BlinnPhongMaterial>(props);
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
+    _materialCache[name] = _nextMaterialID++;
     return ptr;
 }
 
