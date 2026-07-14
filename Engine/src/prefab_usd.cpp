@@ -323,6 +323,16 @@ namespace {
                 tinyusdz::Layer composited;
                 if (tinyusdz::CompositeInherits(src, &composited, warn, err)) src = std::move(composited);
             }
+            // Defer variant composition until references/payloads are fully
+            // settled. Kitchen_set-style props author the variant *selection* on
+            // an outer prim whose variantSet blocks are empty shells; the
+            // populated blocks arrive from a deeper reference→payload→reference
+            // chain. Consuming the selection while the blocks are still empty
+            // destroys it, and the late-arriving content (the prop's Looks +
+            // material bindings) is dropped with it — meshes import, materials
+            // vanish. Variant content can itself introduce new arcs, so the
+            // loop keeps iterating afterwards.
+            if (unresolved) continue;
             if (src.check_unresolved_variant()) {
                 unresolved = true;
                 tinyusdz::Layer composited;
