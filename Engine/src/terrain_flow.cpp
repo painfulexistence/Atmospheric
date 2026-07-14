@@ -193,20 +193,13 @@ std::vector<RiverPolyline> BuildRiverNetwork(
     std::vector<RiverPolyline> out;
     out.reserve(raw.size());
     for (const auto& line : raw) {
-        // Grid-cell centres -> world points + widths + water-surface elevation.
-        // surfaceY = the FILLED elevation (priority-flood output): already
-        // monotonically non-increasing downstream and hugging the terrain, with
-        // filled basins standing in as lakes — the natural water level, no
-        // canyon-cutting. The ribbon drapes onto this and the carve floors the
-        // bed just below it.
+        // Grid-cell centres -> world points + widths.
         std::vector<glm::vec2> pts;
         std::vector<float> widths;
-        std::vector<float> surf;
         pts.reserve(line.cells.size());
         for (int c : line.cells) {
             pts.push_back(worldOf(c % n, c / n));
             widths.push_back(widthOf(acc[c]));
-            surf.push_back(filled[c]);
         }
 
         // Resample the blocky 45°-grid path into a flowing curve with the
@@ -230,10 +223,37 @@ std::vector<RiverPolyline> BuildRiverNetwork(
             nd.pos = spline.Sample(gt);
             nd.width = widths[k] + (widths[k1] - widths[k]) * local;
             nd.flow = flowOf(nd.width);
-            nd.surfaceY = surf[k] + (surf[k1] - surf[k]) * local;
+            // Raw water surface = the true (unfilled) terrain elevation, so the
+            // river follows the valley's real downhill grade (not the flat
+            // priority-flood surface). Smoothed below to remove the ripples the
+            // carve then slices out of the bed.
+            nd.surfaceY = height01(nd.pos.x, nd.pos.y) * heightScale;
             poly.nodes.push_back(nd);
         }
-        if (static_cast<int>(poly.nodes.size()) >= params.minNodes) out.push_back(std::move(poly));
+
+        // Smooth the surface profile along the river (a few moving-average
+        // passes) so the water reads as a calm sheet following the valley, not
+        // a jittery drape over every bump. Kept per-river; the carve floors the
+        // bed a fixed depth below this, so the banks still rise around it.
+        auto& nodes = poly.nodes;
+        for (int pass = 0; pass < 3; ++pass) {
+            std::vector<float> s(nodes.size());
+            for (size_t i = 0; i < nodes.size(); ++i) {
+                const size_t lo = i >= 2 ? i - 2 : 0;
+                const size_t hi = std::min(nodes.size() - 1, i + 2);
+                float sum = 0.0f;
+                int cnt = 0;
+                for (size_t j = lo; j <= hi; ++j) {
+                    sum += nodes[j].surfaceY;
+                    ++cnt;
+                }
+                s[i] = sum / cnt;
+            }
+            for (size_t i = 0; i < nodes.size(); ++i)
+                nodes[i].surfaceY = s[i];
+        }
+
+        if (static_cast<int>(nodes.size()) >= params.minNodes) out.push_back(std::move(poly));
     }
 
     return out;
@@ -269,15 +289,15 @@ void BuildRiverMesh(
 
 // ── River incision (erosion) ────────────────────────────────────────────────
 
-float RiverCarveField::SampleDepth(float wx, float wz) const {
+float RiverCarveField::SampleFloor(float wx, float wz) const {
     const float half = 0.5f * _worldSize;
     const float fx = (wx + half) / _worldSize * _n - 0.5f;
     const float fz = (wz + half) / _worldSize * _n - 0.5f;
     const int x0 = static_cast<int>(std::floor(fx)), z0 = static_cast<int>(std::floor(fz));
     const float tx = fx - x0, tz = fz - z0;
     auto at = [&](int x, int z) {
-        if (x < 0 || z < 0 || x >= _n || z >= _n) return 0.0f;
-        return _depth[static_cast<size_t>(z) * _n + x];
+        if (x < 0 || z < 0 || x >= _n || z >= _n) return NO_FLOOR;
+        return _floor[static_cast<size_t>(z) * _n + x];
     };
     const float a = at(x0, z0), b = at(x0 + 1, z0), c = at(x0, z0 + 1), d = at(x0 + 1, z0 + 1);
     return (a + (b - a) * tx) + ((c + (d - c) * tx) - (a + (b - a) * tx)) * tz;
@@ -300,15 +320,20 @@ TerrainHydrology BuildHydrology(
     auto carve = std::make_shared<RiverCarveField>(cn, worldSize);
     auto& grid = carve->grid();
 
-    // Stamp a FLAT channel floor: within channelHalf, lower the terrain *to*
-    // (surfaceY - bedDepth); past it, taper the carve back up to the natural
-    // terrain over bankBlend. depthAtCell = base(cell) - floor gives a level
-    // bed regardless of the base bumpiness. MAX across nodes so confluences
-    // take the deepest (lowest) floor.
+    // Stamp a FLAT channel floor elevation: within channelHalf the floor is
+    // (surfaceY - bedDepth); past it, it ramps back UP above the terrain over
+    // bankBlend so the carve tapers smoothly to nothing at the banks. Store the
+    // MIN floor across nodes (deepest channel wins at confluences). Carved
+    // terrain = min(base, floor), computed at full resolution below, so the
+    // coarse grid can't leave the bed above the water.
     for (const auto& river : hydro.rivers) {
         for (const auto& nd : river.nodes) {
-            const float channelHalf = nd.width * carveParams.channelWiden;
-            const float outer = channelHalf + nd.width * carveParams.bankBlend;
+            // Floor the flat channel to at least one grid cell wide, so a thin
+            // stream (whose real channel is narrower than a cell) still lands on
+            // the grid instead of falling between cells and leaving the water
+            // stranded above uncarved terrain.
+            const float channelHalf = std::max(nd.width * carveParams.channelWiden, cell);
+            const float outer = channelHalf + std::max(nd.width * carveParams.bankBlend, cell);
             const float floorElev = nd.surfaceY - carveParams.bedDepth;
 
             const int cx = static_cast<int>((nd.pos.x + half) / cell);
@@ -321,17 +346,16 @@ TerrainHydrology BuildHydrology(
                     const float wx = (gx + 0.5f) * cell - half, wz = (gz + 0.5f) * cell - half;
                     const float dist = std::sqrt((wx - nd.pos.x) * (wx - nd.pos.x) + (wz - nd.pos.y) * (wz - nd.pos.y));
                     if (dist >= outer) continue;
-                    // Depth needed to bring this cell down to the flat floor.
-                    const float cellBase = base01(wx, wz) * heightScale;
-                    float d = cellBase - floorElev;// >0 where terrain is above the floor
-                    if (d <= 0.0f) continue;
-                    // Full carve within the channel, smooth taper out to the banks.
+                    // Flat floor inside the channel; ramp it up out to the banks
+                    // so min(base,floor) stops carving smoothly (raise ~ bank
+                    // relief so the floor clears the terrain past `outer`).
+                    float f = floorElev;
                     if (dist > channelHalf) {
                         const float u = (dist - channelHalf) / std::max(outer - channelHalf, 1e-3f);
-                        d *= 1.0f - (u * u * (3.0f - 2.0f * u));
+                        f += (u * u * (3.0f - 2.0f * u)) * (carveParams.bedDepth + 40.0f);
                     }
                     float& g = grid[static_cast<size_t>(gz) * cn + gx];
-                    if (d > g) g = d;
+                    if (f < g) g = f;
                 }
             }
         }
@@ -340,7 +364,9 @@ TerrainHydrology BuildHydrology(
     hydro.carve = carve;
     const float hs = heightScale > 0.0f ? heightScale : 1.0f;
     hydro.carvedHeight01 = [base01, carve, hs](float wx, float wz) {
-        return std::clamp(base01(wx, wz) - carve->SampleDepth(wx, wz) / hs, 0.0f, 1.0f);
+        const float baseM = base01(wx, wz) * hs;
+        const float floorM = carve->SampleFloor(wx, wz);// huge outside rivers -> no-op
+        return std::clamp(std::min(baseM, floorM) / hs, 0.0f, 1.0f);
     };
     return hydro;
 }

@@ -103,14 +103,20 @@ struct CarveParams {
     float bankBlend = 2.6f;// taper distance from the channel back up to terrain (* width)
 };
 
-// Bilinearly-sampled incision-depth field (metres to subtract from height).
+// Bilinearly-sampled channel-FLOOR-elevation field (world metres). Stores the
+// target floor, not a depth: the carved terrain is min(base, floor), which can
+// never leave the ground above the floor no matter how steep the full-res base
+// is between grid cells (a depth field can, which pokes the water). Cells with
+// no river hold a sentinel far above any terrain, so the min is a no-op there.
 class RiverCarveField {
 public:
-    RiverCarveField(int n, float worldSize) : _n(n), _worldSize(worldSize), _depth(static_cast<size_t>(n) * n, 0.0f) {
+    static constexpr float NO_FLOOR = 1e9f;
+    RiverCarveField(int n, float worldSize)
+      : _n(n), _worldSize(worldSize), _floor(static_cast<size_t>(n) * n, NO_FLOOR) {
     }
-    float SampleDepth(float wx, float wz) const;// metres, bilinear, 0 outside rivers
+    float SampleFloor(float wx, float wz) const;// metres, bilinear; huge outside rivers
     std::vector<float>& grid() {
-        return _depth;
+        return _floor;
     }
     int n() const {
         return _n;
@@ -122,7 +128,7 @@ public:
 private:
     int _n;
     float _worldSize;
-    std::vector<float> _depth;
+    std::vector<float> _floor;
 };
 
 // Rivers + the carve field that incises them, built from a base height source.
