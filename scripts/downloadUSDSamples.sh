@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Download Pixar's Kitchen_set USD sample into Examples/USDViewer/assets/models/kitchen.
-# Kept out of the repo (~30MB). Official source: openusd.org downloads page.
+# Download USD sample scenes into Examples/USDViewer/assets/models.
+# Currently Pixar's Kitchen_set (~30MB) — the reference/payload composition test
+# the importer flattens on load. Kept out of the repo; source: openusd.org.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DEST="Examples/USDViewer/assets/models/kitchen"

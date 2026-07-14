@@ -23,9 +23,173 @@ Prefab ImportUSDPrefab(const std::string& path) {
 #else
 
 #include <tinyusdz.hh>
+
+#include <asset-resolution.hh>
+#include <composition.hh>
+#include <cstring>
+#include <map>
 #include <tydra/render-data.hh>
 
 namespace {
+
+    // ── FileSystem-backed asset resolver ─────────────────────────────────────
+    // Referenced/payloaded sub-USDs and material textures are loaded through the
+    // engine FileSystem (not tinyusdz's own fopen), so they resolve identically
+    // on native (disk) and web (prefetched cache) — the same reason the root
+    // file is read via ReadSync. A transient byte cache avoids reading each
+    // sub-asset twice (size_fun then read_fun).
+    struct FsResolverCtx {
+        std::map<std::string, FileSystem::Bytes> cache;// resolved key -> bytes
+    };
+
+    std::string NormalizeRel(std::string p) {
+        if (p.rfind("./", 0) == 0) p = p.substr(2);
+        return p;
+    }
+
+    // tinyusdz passes the referencing layer's directory in `searchPaths` when it
+    // descends into nested references, so joining the asset path against each
+    // search dir resolves deeply-nested sub-files (e.g. Kitchen_set → assets/ →
+    // assets/props/).
+    int FsResolve(
+        const char* asset,
+        const std::vector<std::string>& searchPaths,
+        std::string* resolved,
+        std::string* err,
+        void* /*ud*/
+    ) {
+        const std::string a = NormalizeRel(asset);
+        for (const auto& sp : searchPaths) {
+            const std::string base = NormalizeRel(sp);
+            const std::string cand = (base.empty() || base == ".") ? a : base + "/" + a;
+            if (FileSystem::Get().Exists(cand)) {
+                *resolved = cand;
+                return 0;
+            }
+        }
+        if (FileSystem::Get().Exists(a)) {// last resort: relative to the asset root
+            *resolved = a;
+            return 0;
+        }
+        if (err) *err = fmt::format("asset not found: {}", asset);
+        return -1;
+    }
+
+    FileSystem::Bytes* FsFetch(FsResolverCtx* ctx, const char* resolved) {
+        auto it = ctx->cache.find(resolved);
+        if (it == ctx->cache.end()) {
+            FileSystem::Bytes b = FileSystem::Get().ReadSync(resolved);
+            if (b.empty()) return nullptr;
+            it = ctx->cache.emplace(resolved, std::move(b)).first;
+        }
+        return &it->second;
+    }
+
+    int FsSize(const char* resolved, uint64_t* nbytes, std::string* err, void* ud) {
+        FileSystem::Bytes* b = FsFetch(static_cast<FsResolverCtx*>(ud), resolved);
+        if (!b) {
+            if (err) *err = fmt::format("read failed: {}", resolved);
+            return -1;
+        }
+        *nbytes = b->size();
+        return 0;
+    }
+
+    int FsRead(
+        const char* resolved,
+        uint64_t req,
+        uint8_t* out,
+        uint64_t* nbytes,
+        std::string* err,
+        void* ud
+    ) {
+        FileSystem::Bytes* b = FsFetch(static_cast<FsResolverCtx*>(ud), resolved);
+        if (!b) {
+            if (err) *err = fmt::format("read failed: {}", resolved);
+            return -1;
+        }
+        const uint64_t n = std::min<uint64_t>(req, b->size());
+        std::memcpy(out, b->data(), n);
+        *nbytes = n;
+        return 0;
+    }
+
+    tinyusdz::AssetResolutionHandler MakeFsHandler(FsResolverCtx* ctx) {
+        tinyusdz::AssetResolutionHandler h;
+        h.resolve_fun = &FsResolve;
+        h.size_fun = &FsSize;
+        h.read_fun = &FsRead;
+        h.write_fun = nullptr;
+        h.userdata = ctx;
+        return h;
+    }
+
+    // Load a USDA/USDC root as a Layer and flatten LIVRPS composition arcs
+    // (subLayers, references, payloads, inherits, variants) into a single Stage.
+    // tinyusdz does NOT compose by default — a plain LoadUSDFromMemory of a file
+    // built from references/payloads (e.g. Pixar's Kitchen_set) yields zero
+    // geometry because the referenced Prims are never pulled in. `baseDir` is the
+    // virtual directory of the root file; sub-assets are read via `ctx`.
+    bool ComposeStage(
+        const FileSystem::Bytes& bytes,
+        const std::string& virtualPath,
+        const std::string& baseDir,
+        FsResolverCtx* ctx,
+        tinyusdz::Stage* outStage,
+        std::string* warn,
+        std::string* err
+    ) {
+        tinyusdz::Layer root;
+        if (!tinyusdz::LoadLayerFromMemory(bytes.data(), bytes.size(), virtualPath, &root, warn, err))
+            return false;
+
+        tinyusdz::AssetResolutionResolver resolver;
+        resolver.register_wildcard_asset_resolution_handler(MakeFsHandler(ctx));
+        const std::string cwd = baseDir.empty() ? "." : baseDir;
+        resolver.set_search_paths({ cwd });
+        resolver.set_current_working_path(cwd);
+
+        tinyusdz::Layer src = root;
+        {
+            tinyusdz::Layer composited;
+            if (tinyusdz::CompositeSublayers(resolver, src, &composited, warn, err))
+                src = std::move(composited);
+        }
+        // References/payloads can nest (a referenced layer references more); loop
+        // until no arc remains unresolved (bounded to avoid a pathological cycle).
+        constexpr int kMaxIterations = 128;
+        for (int i = 0; i < kMaxIterations; ++i) {
+            bool unresolved = false;
+            if (src.check_unresolved_references()) {
+                unresolved = true;
+                tinyusdz::Layer composited;
+                if (!tinyusdz::CompositeReferences(resolver, src, &composited, warn, err)) return false;
+                src = std::move(composited);
+            }
+            if (src.check_unresolved_payload()) {
+                unresolved = true;
+                tinyusdz::Layer composited;
+                if (!tinyusdz::CompositePayload(resolver, src, &composited, warn, err)) return false;
+                src = std::move(composited);
+            }
+            if (src.check_unresolved_inherits()) {
+                unresolved = true;
+                tinyusdz::Layer composited;
+                if (tinyusdz::CompositeInherits(src, &composited, warn, err)) src = std::move(composited);
+            }
+            if (src.check_unresolved_variant()) {
+                unresolved = true;
+                tinyusdz::Layer composited;
+                if (tinyusdz::CompositeVariant(src, &composited, warn, err)) src = std::move(composited);
+            }
+            if (!unresolved) break;
+        }
+
+        // Preserve stage metas (upAxis / metersPerUnit) — LayerToStage keeps what
+        // we seed here, and the importer reads them below for the root transform.
+        outStage->metas() = root.metas();
+        return tinyusdz::LayerToStage(src, outStage, warn, err);
+    }
 
     // tinyusdz matrices are row-major with USD's row-vector (pre-multiply)
     // convention; copying rows into glm columns yields the equivalent
@@ -126,9 +290,32 @@ Prefab ImportUSDPrefab(const std::string& path) {
         return Prefab{};
     }
 
+    // Virtual (relative) directory of the root file — the key space the
+    // FileSystem resolver works in (NOT the absolute realPath), so referenced
+    // sub-files and textures resolve on web (cache) and native (disk) alike.
+    std::string baseDir;
+    {
+        const size_t vslash = path.find_last_of("/\\");
+        if (vslash != std::string::npos) baseDir = path.substr(0, vslash);
+    }
+
+    // USDZ is a self-contained zip archive; its internal assets are resolved by
+    // the USDZ loader itself, so the memory loader is the right path there.
+    // Everything else (usda/usdc) goes through composition so files built from
+    // references/payloads (e.g. Kitchen_set) actually pull in their geometry.
+    auto endsWith = [](const std::string& s, const char* suf) {
+        const size_t n = std::strlen(suf);
+        return s.size() >= n && s.compare(s.size() - n, n, suf) == 0;
+    };
+    const bool isUsdz = endsWith(path, ".usdz") || endsWith(realPath, ".usdz");
+
     tinyusdz::Stage stage;
     std::string warn, err;
-    if (!tinyusdz::LoadUSDFromMemory(bytes.data(), bytes.size(), realPath, &stage, &warn, &err)) {
+    FsResolverCtx fsctx;
+    const bool loaded =
+        isUsdz ? tinyusdz::LoadUSDFromMemory(bytes.data(), bytes.size(), realPath, &stage, &warn, &err)
+               : ComposeStage(bytes, path, baseDir, &fsctx, &stage, &warn, &err);
+    if (!loaded) {
         if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab '{}': {}", path, warn));
         if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab '{}' error: {}", path, err));
         return Prefab{};
@@ -137,8 +324,28 @@ Prefab ImportUSDPrefab(const std::string& path) {
 
     tinyusdz::tydra::RenderSceneConverter converter;
     tinyusdz::tydra::RenderSceneConverterEnv env(stage);
-    const size_t slash = realPath.find_last_of("/\\");
-    if (slash != std::string::npos) env.set_search_paths({ realPath.substr(0, slash) });
+    if (isUsdz) {
+        // USDZ textures are embedded in the archive and resolved by tinyusdz's
+        // own asset map; the absolute base dir is the search root as before.
+        const size_t s = realPath.find_last_of("/\\");
+        if (s != std::string::npos) env.set_search_paths({ realPath.substr(0, s) });
+    } else {
+        // Resolve material textures through the same FileSystem-backed handler.
+        // Search the root dir plus every sub-asset directory pulled in during
+        // composition (fsctx keys), so textures beside deeply-nested sub-USDs
+        // (Kitchen_set scatters them across assets/*/) are found.
+        env.asset_resolver.register_wildcard_asset_resolution_handler(MakeFsHandler(&fsctx));
+        std::vector<std::string> searchPaths;
+        if (!baseDir.empty()) searchPaths.push_back(baseDir);
+        for (const auto& [key, _] : fsctx.cache) {
+            const size_t s = key.find_last_of("/\\");
+            if (s != std::string::npos) searchPaths.push_back(key.substr(0, s));
+        }
+        std::sort(searchPaths.begin(), searchPaths.end());
+        searchPaths.erase(std::unique(searchPaths.begin(), searchPaths.end()), searchPaths.end());
+        if (searchPaths.empty()) searchPaths.push_back(".");
+        env.set_search_paths(searchPaths);
+    }
     env.scene_config.load_texture_assets = true;// decode textures for materials
     // Keep 8-bit texels 8-bit — Tydra otherwise converts textures to fp32
     // (observed: a 768x768 jpg became a 9.4MB float buffer).
@@ -236,7 +443,8 @@ Prefab ImportUSDPrefab(const std::string& path) {
         return node;
     };
 
-    out.root.name = (slash == std::string::npos) ? realPath : realPath.substr(slash + 1);
+    const size_t nameSlash = realPath.find_last_of("/\\");
+    out.root.name = (nameSlash == std::string::npos) ? realPath : realPath.substr(nameSlash + 1);
     if (rscene.default_root_node < rscene.nodes.size()) {
         out.root.children.push_back(buildNode(rscene.nodes[rscene.default_root_node]));
     } else {

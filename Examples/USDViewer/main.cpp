@@ -10,7 +10,7 @@
 //     scene JSON via the "prefab" entity field (always present).
 //   • assets/models/kitchen/Kitchen_set.usd — Pixar's Kitchen_set, the real
 //     composition stress test. Not committed (large); fetch it with
-//     scripts/fetchKitchenSet.sh, and OnLoad imports it when present.
+//     scripts/downloadUSDSamples.sh, and OnLoad imports it when present.
 //     Kitchen_set is Z-up in cm — the importer's stage upAxis/metersPerUnit
 //     handling orients and scales it automatically.
 //
@@ -46,7 +46,7 @@ class USDViewer : public Application {
             }
         } else {
             ConsoleSubsystem::Get()->Info(
-                "Kitchen_set not found — run scripts/fetchKitchenSet.sh to download it "
+                "Kitchen_set not found — run scripts/downloadUSDSamples.sh to download it "
                 "(showing the committed sample cube instead)"
             );
         }

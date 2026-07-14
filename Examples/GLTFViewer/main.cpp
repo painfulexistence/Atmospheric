@@ -6,7 +6,7 @@
 //   • assets/models/cube.gltf — a tiny committed PBR sample (brushed copper),
 //     declared from the scene JSON's "prefab" field; always renders.
 //   • assets/models/<Khronos sample>.gltf — the real PBR / transmission test
-//     models. Not committed (large); fetch with scripts/fetchGltfSamples.sh,
+//     models. Not committed (large); fetch with scripts/downloadGLTFSamples.sh,
 //     and OnLoad imports one when present.
 //
 // This is a STATIC PBR viewer: full node hierarchy, PBR materials + textures,
@@ -53,7 +53,7 @@ class GLTFViewer : public Application {
             return;
         }
         ConsoleSubsystem::Get()->Info(
-            "No Khronos sample found — run scripts/fetchGltfSamples.sh to download "
+            "No Khronos sample found — run scripts/downloadGLTFSamples.sh to download "
             "DamagedHelmet / TransmissionTest (showing the committed sample cube instead)"
         );
     }

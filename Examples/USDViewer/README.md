@@ -32,7 +32,7 @@ Two assets:
   Z-up, cm units, hundreds of meshes with references. Fetch it once:
 
   ```bash
-  ./scripts/fetchKitchenSet.sh
+  ./scripts/downloadUSDSamples.sh
   ```
 
   On the next launch, USDViewer imports `assets/models/kitchen/Kitchen_set.usd`

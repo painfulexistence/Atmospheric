@@ -26,7 +26,7 @@ from the scene JSON's `"prefab"` field.
   Fetch them once:
 
   ```bash
-  ./scripts/fetchGltfSamples.sh
+  ./scripts/downloadGLTFSamples.sh
   ```
 
   On the next launch, GLTFViewer imports the first present of `DamagedHelmet`,
