@@ -35,7 +35,14 @@ class USDViewer : public Application {
         if (FileSystem::Get().Exists(kitchen)) {
             Prefab prefab = ImportPrefab(kitchen);
             if (prefab.ok) {
-                Instantiate(prefab, nullptr, "Kitchen_set");
+                GameObject* root = Instantiate(prefab, nullptr, "Kitchen_set");
+                // Kitchen_set is authored in centimetres but omits the
+                // `metersPerUnit` stage metadatum, so tinyusdz reports the 1.0
+                // default and the importer applies no unit scale — the set comes
+                // in 100x too large. Scale the instance to metres here. (SetScale
+                // recomposes from the decomposed transform, preserving the
+                // importer's Z-up -> Y-up root rotation.)
+                if (root) root->SetScale(glm::vec3(0.01f));
                 size_t verts = 0;
                 for (const auto& md : prefab.meshes)
                     verts += md.vertices.size();
