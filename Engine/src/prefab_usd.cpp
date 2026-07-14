@@ -96,14 +96,7 @@ namespace {
         return 0;
     }
 
-    int FsRead(
-        const char* resolved,
-        uint64_t req,
-        uint8_t* out,
-        uint64_t* nbytes,
-        std::string* err,
-        void* ud
-    ) {
+    int FsRead(const char* resolved, uint64_t req, uint8_t* out, uint64_t* nbytes, std::string* err, void* ud) {
         FileSystem::Bytes* b = FsFetch(static_cast<FsResolverCtx*>(ud), resolved);
         if (!b) {
             if (err) *err = fmt::format("read failed: {}", resolved);
@@ -128,15 +121,13 @@ namespace {
     // Resolve an asset path the way tinyusdz's LoadAsset does — against the
     // PrimSpec's own asset-resolution state first (set as composition descends
     // into sub-layers), then the root base dir — and verify via FileSystem.
-    std::optional<std::string> PeekResolve(
-        const std::string& assetPath,
-        const tinyusdz::PrimSpec& ps,
-        const std::string& baseDir
-    ) {
+    std::optional<std::string>
+        PeekResolve(const std::string& assetPath, const tinyusdz::PrimSpec& ps, const std::string& baseDir) {
         std::vector<std::string> dirs;
         const std::string& cwp = ps.get_current_working_path();
         if (!cwp.empty()) dirs.push_back(cwp);
-        for (const auto& s : ps.get_asset_search_paths()) dirs.push_back(s);
+        for (const auto& s : ps.get_asset_search_paths())
+            dirs.push_back(s);
         if (!baseDir.empty()) dirs.push_back(baseDir);
         dirs.push_back(".");
         const std::string a = NormalizeRel(assetPath);
@@ -152,9 +143,7 @@ namespace {
     // Read the effective root prim of a referenced/payloaded layer (defaultPrim,
     // else the first prim) — the prim the arc implicitly targets. Cached by path.
     bool PeekDefaultPrim(
-        const std::string& resolved,
-        tinyusdz::Path* out,
-        std::map<std::string, tinyusdz::Path>& cache
+        const std::string& resolved, tinyusdz::Path* out, std::map<std::string, tinyusdz::Path>& cache
     ) {
         auto it = cache.find(resolved);
         if (it != cache.end()) {
@@ -168,9 +157,8 @@ namespace {
             std::string w, e;
             if (tinyusdz::LoadLayerFromMemory(b.data(), b.size(), resolved, &layer, &w, &e)
                 && !layer.primspecs().empty()) {
-                const std::string name = layer.metas().defaultPrim.valid()
-                                             ? layer.metas().defaultPrim.str()
-                                             : layer.primspecs().begin()->first;
+                const std::string name = layer.metas().defaultPrim.valid() ? layer.metas().defaultPrim.str()
+                                                                           : layer.primspecs().begin()->first;
                 result = tinyusdz::Path("/" + name, "");
             }
         }
@@ -191,14 +179,12 @@ namespace {
     // for every path-valued field (material/skel bindings, collections,
     // connections), not just one kind.
     void FillArcPrimPaths(
-        tinyusdz::PrimSpec& ps,
-        const std::string& baseDir,
-        std::map<std::string, tinyusdz::Path>& cache
+        tinyusdz::PrimSpec& ps, const std::string& baseDir, std::map<std::string, tinyusdz::Path>& cache
     ) {
         auto fix = [&](auto& arcs) {
             for (auto& arc : arcs) {
                 if (arc.asset_path.GetAssetPath().empty()) continue;// internal (inherit-like) arc
-                if (arc.prim_path.is_valid()) continue;             // already explicit
+                if (arc.prim_path.is_valid()) continue;// already explicit
                 const auto resolved = PeekResolve(arc.asset_path.GetAssetPath(), ps, baseDir);
                 if (!resolved) continue;
                 tinyusdz::Path dp;
@@ -207,7 +193,8 @@ namespace {
         };
         if (ps.metas().references) fix(ps.metas().references.value().second);
         if (ps.metas().payload) fix(ps.metas().payload.value().second);
-        for (auto& c : ps.children()) FillArcPrimPaths(c, baseDir, cache);
+        for (auto& c : ps.children())
+            FillArcPrimPaths(c, baseDir, cache);
     }
 
     // Load a USDA/USDC root as a Layer and flatten LIVRPS composition arcs
@@ -226,8 +213,7 @@ namespace {
         std::string* err
     ) {
         tinyusdz::Layer root;
-        if (!tinyusdz::LoadLayerFromMemory(bytes.data(), bytes.size(), virtualPath, &root, warn, err))
-            return false;
+        if (!tinyusdz::LoadLayerFromMemory(bytes.data(), bytes.size(), virtualPath, &root, warn, err)) return false;
 
         tinyusdz::AssetResolutionResolver resolver;
         resolver.register_wildcard_asset_resolution_handler(MakeFsHandler(ctx));
@@ -238,8 +224,7 @@ namespace {
         tinyusdz::Layer src = root;
         {
             tinyusdz::Layer composited;
-            if (tinyusdz::CompositeSublayers(resolver, src, &composited, warn, err))
-                src = std::move(composited);
+            if (tinyusdz::CompositeSublayers(resolver, src, &composited, warn, err)) src = std::move(composited);
         }
         // References/payloads can nest (a referenced layer references more); loop
         // until no arc remains unresolved (bounded to avoid a pathological cycle).
@@ -249,7 +234,8 @@ namespace {
             bool unresolved = false;
             // Supply defaultPrim as the arc prefix before flattening this level so
             // tinyusdz retargets the sub-layer's internal binding/connection paths.
-            for (auto& kv : src.primspecs()) FillArcPrimPaths(kv.second, baseDir, defaultPrimCache);
+            for (auto& kv : src.primspecs())
+                FillArcPrimPaths(kv.second, baseDir, defaultPrimCache);
             if (src.check_unresolved_references()) {
                 unresolved = true;
                 tinyusdz::Layer composited;
@@ -402,9 +388,8 @@ Prefab ImportUSDPrefab(const std::string& path) {
     tinyusdz::Stage stage;
     std::string warn, err;
     FsResolverCtx fsctx;
-    const bool loaded =
-        isUsdz ? tinyusdz::LoadUSDFromMemory(bytes.data(), bytes.size(), realPath, &stage, &warn, &err)
-               : ComposeStage(bytes, path, baseDir, &fsctx, &stage, &warn, &err);
+    const bool loaded = isUsdz ? tinyusdz::LoadUSDFromMemory(bytes.data(), bytes.size(), realPath, &stage, &warn, &err)
+                               : ComposeStage(bytes, path, baseDir, &fsctx, &stage, &warn, &err);
     if (!loaded) {
         if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab '{}': {}", path, warn));
         if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab '{}' error: {}", path, err));
