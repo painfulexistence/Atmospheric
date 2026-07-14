@@ -19,6 +19,22 @@
 #include <algorithm>
 #include <cmath>
 
+// Standalone FBm height source (shared by TerrainStreamer::Init and any caller
+// that needs the terrain's exact base height before the streamer exists — e.g.
+// building river hydrology to carve into the terrain). Returns world metres ->
+// normalized [0,1]; the shared_ptr keeps the noise alive for the closure.
+std::function<float(float, float)> MakeFbmHeightSource(const NoiseHeightFieldParams& p) {
+    auto noise = std::make_shared<FastNoiseLite>();
+    noise->SetSeed(p.seed);
+    noise->SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
+    noise->SetFrequency(p.frequency);
+    noise->SetFractalType(FastNoiseLite::FractalType_FBm);
+    noise->SetFractalOctaves(p.octaves);
+    noise->SetFractalLacunarity(p.lacunarity);
+    noise->SetFractalGain(p.gain);
+    return [noise](float wx, float wz) { return noise->GetNoise(wx, wz) * 0.5f + 0.5f; };
+}
+
 // ── per-LOD geometry ─────────────────────────────────────────────────────────
 
 int TerrainStreamer::HeightRes(int lod) const {
@@ -83,19 +99,7 @@ void TerrainStreamer::Init(Application* app, const StreamingTerrainProps& props,
     _pool.resize(_props.lodCount);
     _stats.tilesPerSide = _tilesPerSide;
 
-    if (!_props.heightFn) {
-        auto noise = std::make_shared<FastNoiseLite>();
-        noise->SetSeed(_props.noise.seed);
-        noise->SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
-        noise->SetFrequency(_props.noise.frequency);
-        noise->SetFractalType(FastNoiseLite::FractalType_FBm);
-        noise->SetFractalOctaves(_props.noise.octaves);
-        noise->SetFractalLacunarity(_props.noise.lacunarity);
-        noise->SetFractalGain(_props.noise.gain);
-        _heightFn = [noise](float wx, float wz) { return noise->GetNoise(wx, wz) * 0.5f + 0.5f; };
-    } else {
-        _heightFn = _props.heightFn;
-    }
+    _heightFn = _props.heightFn ? _props.heightFn : MakeFbmHeightSource(_props.noise);
 
     // Disk tile cache: hash every input that shapes the generated heights so
     // stale bakes can never be replayed after a parameter change.
@@ -783,6 +787,7 @@ void TerrainStreamer::UpdateGrass(const glm::vec3& cameraPos) {
 
         // Copies for the worker — it must never touch `this`.
         auto heightFn = _heightFn;
+        auto maskFn = _props.grassMaskFn;
         const float cellSize = cell, heightScale = _props.heightScale;
         const float density = _props.grassDensity, avgHeight = _props.grassBladeHeight;
         const float maxSlope = _props.grassMaxSlope, worldHalf = 0.5f * _props.worldSize;
@@ -792,6 +797,7 @@ void TerrainStreamer::UpdateGrass(const glm::vec3& cameraPos) {
 
         JobSystem::Get()->Execute([job,
                                    heightFn,
+                                   maskFn,
                                    cellSize,
                                    heightScale,
                                    density,
@@ -820,6 +826,9 @@ void TerrainStreamer::UpdateGrass(const glm::vec3& cameraPos) {
                 const float patch = GrassValueNoise(wx * 0.045f, wz * 0.045f, seed);
                 const float driftProb = (patch - 0.25f) * 1.8f;
                 if (GrassRand(rng) > driftProb + coverage * (1.0f - driftProb)) continue;
+
+                // River/water suppression (probabilistic for a feathered edge).
+                if (maskFn && GrassRand(rng) < maskFn(wx, wz)) continue;
 
                 const float h01 = heightFn(wx, wz);
                 if (h01 < band.x || h01 > band.y) continue;

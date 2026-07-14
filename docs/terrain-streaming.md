@@ -169,6 +169,24 @@ sanity), and `SetGrassColors` retints root/tip — the demo keys those to the
 grass detail layer so blades blend into the textured ground. All three are on
 the ImGui panel.
 
+**Rivers (hydrology-derived, flowing).** `RiverComponent` derives a river
+network the way a Gaea flow export would, but procedurally: one global pass at
+attach (`TerrainFlow::BuildRiverNetwork`) computes where water flows across the
+*whole* terrain, so rivers can't be done per-tile — a tile's flow depends on
+everything uphill. It samples the exact height source on a coarse global grid,
+**fills depressions** (priority-flood + epsilon, Barnes 2014 — the one thing
+that turns an un-eroded FBm's thousands of local pits into long connected
+rivers), routes D8 flow, accumulates drainage, and traces the high-drainage
+cells into Catmull-Rom-smoothed polylines with width ∝ √drainage. `BuildRiverMesh`
+drapes each polyline into a triangle-strip ribbon — y resampled from the fine
+height source per vertex so the water hugs the bed, UV.y accumulating downstream
+for flow. `river.vert/frag` render it in the transparent tail of the forward
+pass (depth-tested against the banks, no depth write): two downstream-scrolling
+noise bands perturb the normal, fresnel blends deep→shallow colour, a sun glint
+sparkles on the ripple, bank foam streaks along the current, same aerial fog as
+the terrain. Swap `BuildRiverNetwork` for a Gaea flow-map loader and the ribbon
++ shader are unchanged. GL/GLES only for now (WebGPU skips RIVER like GRASS).
+
 **Gaea-grade sources, live splat texturing.** The height source is a
 pluggable `heightFn(wx, wz) → [0,1]` called in world metres on worker
 threads — the default is OpenSimplex2 FBm, but a Gaea tiled-export sampler or

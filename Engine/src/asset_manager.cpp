@@ -430,6 +430,7 @@ void AssetManager::LoadDefaultShaders() {
             { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/screen_ssgi_composite.frag" } },
           { "water", { .vert = "assets/shaders/water.vert", .frag = "assets/shaders/water.frag" } },
           { "grass", { .vert = "assets/shaders/grass.vert", .frag = "assets/shaders/grass.frag" } },
+          { "river", { .vert = "assets/shaders/river.vert", .frag = "assets/shaders/river.frag" } },
           { "portal", { .vert = "assets/shaders/portal.vert", .frag = "assets/shaders/portal.frag" } },
           // Vertex Animation Texture playback: vat.vert displaces vertices from
           // the animation texture, then reuses pbr.frag for identical shading.
@@ -566,6 +567,14 @@ GrassMaterial* AssetManager::CreateGrassMaterial() {
     auto* ptr = material.get();
     materials.push_back(std::move(material));
     _materialCache["grass_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return ptr;
+}
+
+RiverMaterial* AssetManager::CreateRiverMaterial() {
+    auto material = std::make_unique<RiverMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
+    _materialCache["river_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
     return ptr;
 }
 

@@ -20,7 +20,8 @@ enum class MeshType {
     DEBUG = 3,// Debug lines, wireframes
     CANVAS = 4,// UI/Canvas elements
     VOXEL = 5,// Voxel chunk meshes
-    GRASS = 6// Streamed grass-blade cells (wind-animated in grass.vert)
+    GRASS = 6,// Streamed grass-blade cells (wind-animated in grass.vert)
+    RIVER = 7// Draped river ribbons (flow-animated water in river.vert/frag)
 };
 
 enum class UpdateFrequency {
