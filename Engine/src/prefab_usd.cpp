@@ -111,15 +111,24 @@ namespace {
 }// namespace
 
 Prefab ImportUSDPrefab(const std::string& path) {
-    // Resolve against the executable dir (like .map) so loading is independent of
-    // the working directory, and so it reads from Emscripten's MEMFS. tinyusdz
-    // then resolves external references relative to this path. Fall back to the
-    // raw path so the loader still reports its own open error.
+    // Read the bytes through FileSystem, not tinyusdz's own fopen(): on web the
+    // file is fetched into the FileSystem cache (keyed by this relative path) and
+    // never touches a real filesystem, so LoadUSDFromFile()'s fopen() fails with
+    // "File open error". ReadSync returns the cached bytes on web and reads disk
+    // on native; realPath is passed as the base dir for external-reference
+    // resolution (self-contained assets ignore it).
     const std::string realPath = FileSystem::Get().ResolvePath(path).value_or(path);
+    FileSystem::Bytes bytes = FileSystem::Get().ReadSync(path);
+    if (bytes.empty()) {
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format("ImportUSDPrefab '{}': file not found (native) or not prefetched (web)", path)
+        );
+        return Prefab{};
+    }
 
     tinyusdz::Stage stage;
     std::string warn, err;
-    if (!tinyusdz::LoadUSDFromFile(realPath, &stage, &warn, &err)) {
+    if (!tinyusdz::LoadUSDFromMemory(bytes.data(), bytes.size(), realPath, &stage, &warn, &err)) {
         if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab '{}': {}", path, warn));
         if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab '{}' error: {}", path, err));
         return Prefab{};

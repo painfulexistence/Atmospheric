@@ -136,13 +136,31 @@ Prefab ImportGLTFPrefab(const std::string& path) {
         nullptr
     );
 
-    // Resolve against the executable dir (like .map / USD) so loading is
-    // independent of the working directory and reads from MEMFS on web; tinygltf
-    // resolves external .bin/textures relative to this path. Fall back to the raw
-    // path so the loader still reports its own open error.
+    // Read the bytes through FileSystem, not tinygltf's own fopen(): on web the
+    // file is fetched into the FileSystem cache (keyed by this relative path) and
+    // never touches a real filesystem, so LoadASCII/BinaryFromFile's fopen()
+    // fails. baseDir (dir of realPath) is the search path tinygltf uses for
+    // external .bin/textures; the committed sample embeds its buffer, so it is
+    // only relevant to on-disk (native) assets with external dependencies.
     const std::string realPath = FileSystem::Get().ResolvePath(path).value_or(path);
-    const bool result = realPath.ends_with(".glb") ? loader.LoadBinaryFromFile(&model, &err, &warn, realPath)
-                                                   : loader.LoadASCIIFromFile(&model, &err, &warn, realPath);
+    const size_t slash = realPath.find_last_of("/\\");
+    const std::string baseDir = (slash == std::string::npos) ? std::string() : realPath.substr(0, slash);
+    FileSystem::Bytes bytes = FileSystem::Get().ReadSync(path);
+    if (bytes.empty()) {
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format("ImportGLTFPrefab '{}': file not found (native) or not prefetched (web)", path)
+        );
+        return Prefab{};
+    }
+    const bool result =
+        path.ends_with(".glb")
+            ? loader.LoadBinaryFromMemory(
+                  &model, &err, &warn, bytes.data(), static_cast<unsigned int>(bytes.size()), baseDir
+              )
+            : loader.LoadASCIIFromString(
+                  &model, &err, &warn, reinterpret_cast<const char*>(bytes.data()),
+                  static_cast<unsigned int>(bytes.size()), baseDir
+              );
     if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportGLTFPrefab '{}': {}", path, warn));
     if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportGLTFPrefab '{}' error: {}", path, err));
     if (!result) return Prefab{};
