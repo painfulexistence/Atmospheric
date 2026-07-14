@@ -224,7 +224,23 @@ class TerrainStreamingDemo : public Application {
             .resolution = 0, .seed = 20260705, .frequency = 0.0007f, .octaves = 9
         };
         auto base01 = MakeFbmHeightSource(noiseParams);
-        _hydro = BuildHydrology(base01, 10240.0f, 500.0f, RiverNetworkParams{}, CarveParams{});
+        // Deeper/broader incision than the defaults so the carved valleys read
+        // clearly from altitude (a 3 m channel vanishes against 500 m relief).
+        const CarveParams carveParams{ .bedDepth = 10.0f, .channelWiden = 2.2f, .bankBlend = 3.5f };
+        _hydro = BuildHydrology(base01, 10240.0f, 500.0f, RiverNetworkParams{}, carveParams);
+
+        // Keep grass out of the river channels: suppress where the terrain was
+        // incised (carve amount = base - carved floor), feathered over a few
+        // metres so the grass line isn't a hard edge. Thread-safe reads.
+        const float heightScale = 500.0f;
+        auto carve = _hydro.carve;
+        std::function<float(float, float)> grassMask = [base01, carve, heightScale](float wx, float wz) {
+            const float baseM = base01(wx, wz) * heightScale;
+            const float carveM = std::max(0.0f, baseM - carve->SampleFloor(wx, wz));
+            // 0 on dry ground, ramps to 1 once ~4 m of channel has been cut.
+            const float t = std::clamp((carveM - 1.0f) / 3.0f, 0.0f, 1.0f);
+            return t * t * (3.0f - 2.0f * t);
+        };
 
         // The terrain GameObject roots every tile/collider/entity; the
         // component's OnAttach prewarms the world (synchronous, ~1 frame) and
@@ -260,9 +276,10 @@ class TerrainStreamingDemo : public Application {
 #if !defined(__EMSCRIPTEN__)
                 .cacheDir = FileSystem::Get().BasePath() + "cache/terrain",
 #endif
-                // Bumped so pre-carve height bakes aren't replayed (the height
-                // source now subtracts the river channels).
-                .cacheVersion = 2,
+                // Bump whenever the carved height changes (the disk cache only
+                // hashes noise params + a custom-fn flag, not the carve itself,
+                // so a stale bake would otherwise replay old/uncarved tiles).
+                .cacheVersion = 4,
                 // Detail layers + splat = the full Gaea texturing path, fed by
                 // the procedural generators above. Tiling is repeats per tile
                 // edge (world period = 512m / tiling): grass repeats every 4m,
@@ -328,6 +345,7 @@ class TerrainStreamingDemo : public Application {
                 // LAYERS carry the peaks now, not bald palette terrain.
                 .grassHeightBand = { 0.02f, 0.64f },
                 .grassCoverage = 0.7f,
+                .grassMaskFn = grassMask,// no grass in the river channels
                 .grassRootColor = { 0.10f, 0.15f, 0.06f },// shadowed base, matches layer soil/dark green
                 .grassTipColor = { 0.965f, 0.949f, 0.388f },// golden-yellow tip (R246 G242 B99), tuned live
                 .grassWindStrength = 0.45f,

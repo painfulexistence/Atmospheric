@@ -185,6 +185,12 @@ struct StreamingTerrainProps {
     // carpet inside the height band. Values in between lift the thin drifts
     // toward full without killing the variation.
     float grassCoverage = 0.0f;
+    // Optional per-point grass suppression [0,1] (0 = keep, 1 = no grass),
+    // sampled on worker threads (must be thread-safe). Use it to keep grass out
+    // of rivers/water/roads — the demo feeds the river carve so blades don't
+    // grow in the channel. The value is a probability, so a soft 0→1 ramp
+    // feathers the grass-free edge instead of a hard line.
+    std::function<float(float wx, float wz)> grassMaskFn;
     glm::vec3 grassRootColor{ 0.24f, 0.17f, 0.07f };
     glm::vec3 grassTipColor{ 0.93f, 0.76f, 0.38f };// golden pampas
     glm::vec2 grassWindDir{ 0.8f, 0.6f };
