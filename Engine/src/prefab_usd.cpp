@@ -28,6 +28,7 @@ Prefab ImportUSDPrefab(const std::string& path) {
 #include <composition.hh>
 #include <cstring>
 #include <map>
+#include <optional>
 #include <tydra/render-data.hh>
 
 namespace {
@@ -124,6 +125,91 @@ namespace {
         return h;
     }
 
+    // Resolve an asset path the way tinyusdz's LoadAsset does — against the
+    // PrimSpec's own asset-resolution state first (set as composition descends
+    // into sub-layers), then the root base dir — and verify via FileSystem.
+    std::optional<std::string> PeekResolve(
+        const std::string& assetPath,
+        const tinyusdz::PrimSpec& ps,
+        const std::string& baseDir
+    ) {
+        std::vector<std::string> dirs;
+        const std::string& cwp = ps.get_current_working_path();
+        if (!cwp.empty()) dirs.push_back(cwp);
+        for (const auto& s : ps.get_asset_search_paths()) dirs.push_back(s);
+        if (!baseDir.empty()) dirs.push_back(baseDir);
+        dirs.push_back(".");
+        const std::string a = NormalizeRel(assetPath);
+        for (const auto& d : dirs) {
+            const std::string base = NormalizeRel(d);
+            const std::string cand = (base.empty() || base == ".") ? a : base + "/" + a;
+            if (FileSystem::Get().Exists(cand)) return cand;
+        }
+        if (FileSystem::Get().Exists(a)) return a;
+        return std::nullopt;
+    }
+
+    // Read the effective root prim of a referenced/payloaded layer (defaultPrim,
+    // else the first prim) — the prim the arc implicitly targets. Cached by path.
+    bool PeekDefaultPrim(
+        const std::string& resolved,
+        tinyusdz::Path* out,
+        std::map<std::string, tinyusdz::Path>& cache
+    ) {
+        auto it = cache.find(resolved);
+        if (it != cache.end()) {
+            *out = it->second;
+            return it->second.is_valid();
+        }
+        tinyusdz::Path result;// invalid by default
+        FileSystem::Bytes b = FileSystem::Get().ReadSync(resolved);
+        if (!b.empty()) {
+            tinyusdz::Layer layer;
+            std::string w, e;
+            if (tinyusdz::LoadLayerFromMemory(b.data(), b.size(), resolved, &layer, &w, &e)
+                && !layer.primspecs().empty()) {
+                const std::string name = layer.metas().defaultPrim.valid()
+                                             ? layer.metas().defaultPrim.str()
+                                             : layer.primspecs().begin()->first;
+                result = tinyusdz::Path("/" + name, "");
+            }
+        }
+        cache[resolved] = result;
+        *out = result;
+        return result.is_valid();
+    }
+
+    // Fill in the implicit prim_path (the referenced layer's defaultPrim) on every
+    // reference/payload arc that omits one. tinyusdz translates a referenced
+    // layer's internal target/connection paths across the arc via
+    // ReplaceRootPrimPathRec(srcPrefix = arc.prim_path, ...) — but when the arc
+    // relies on defaultPrim (the common `@file.usd@` form, no `</Prim>`),
+    // arc.prim_path is empty, so the translation no-ops and bindings such as
+    // `material:binding = </Prop/Looks/Mat>` dangle after flattening (the mesh
+    // survives, its material is dropped). Supplying the defaultPrim as the
+    // prefix — exactly what the arc means — makes the existing translation fire,
+    // for every path-valued field (material/skel bindings, collections,
+    // connections), not just one kind.
+    void FillArcPrimPaths(
+        tinyusdz::PrimSpec& ps,
+        const std::string& baseDir,
+        std::map<std::string, tinyusdz::Path>& cache
+    ) {
+        auto fix = [&](auto& arcs) {
+            for (auto& arc : arcs) {
+                if (arc.asset_path.GetAssetPath().empty()) continue;// internal (inherit-like) arc
+                if (arc.prim_path.is_valid()) continue;             // already explicit
+                const auto resolved = PeekResolve(arc.asset_path.GetAssetPath(), ps, baseDir);
+                if (!resolved) continue;
+                tinyusdz::Path dp;
+                if (PeekDefaultPrim(*resolved, &dp, cache)) arc.prim_path = dp;
+            }
+        };
+        if (ps.metas().references) fix(ps.metas().references.value().second);
+        if (ps.metas().payload) fix(ps.metas().payload.value().second);
+        for (auto& c : ps.children()) FillArcPrimPaths(c, baseDir, cache);
+    }
+
     // Load a USDA/USDC root as a Layer and flatten LIVRPS composition arcs
     // (subLayers, references, payloads, inherits, variants) into a single Stage.
     // tinyusdz does NOT compose by default — a plain LoadUSDFromMemory of a file
@@ -158,8 +244,12 @@ namespace {
         // References/payloads can nest (a referenced layer references more); loop
         // until no arc remains unresolved (bounded to avoid a pathological cycle).
         constexpr int kMaxIterations = 128;
+        std::map<std::string, tinyusdz::Path> defaultPrimCache;
         for (int i = 0; i < kMaxIterations; ++i) {
             bool unresolved = false;
+            // Supply defaultPrim as the arc prefix before flattening this level so
+            // tinyusdz retargets the sub-layer's internal binding/connection paths.
+            for (auto& kv : src.primspecs()) FillArcPrimPaths(kv.second, baseDir, defaultPrimCache);
             if (src.check_unresolved_references()) {
                 unresolved = true;
                 tinyusdz::Layer composited;
