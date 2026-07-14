@@ -41,9 +41,9 @@ if(EMSCRIPTEN)
     # emscripten --preload-file requires the source path to exist at link time.
     # POST_BUILD is too late; we use a PRE_LINK target instead.
     #
-    # Textures are intentionally NOT included here — they are loaded at runtime
-    # via FileSystem::Prefetch (emscripten_fetch + IndexedDB), which avoids
-    # bloating the .data bundle and reduces peak WASM heap usage.
+    # Textures are staged next to the .html so the dev server serves them, but
+    # NOT --preload-file'd — they are fetched at runtime via FileSystem::Prefetch
+    # (emscripten_fetch + IndexedDB), keeping the .data bundle small.
     set(EM_PRELOAD_STAGING_DIR ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}/assets)
 
     add_custom_target(stage_${GAME_NAME}_em_preload
@@ -65,6 +65,9 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/ui
             ${EM_PRELOAD_STAGING_DIR}/ui
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/textures
+            ${EM_PRELOAD_STAGING_DIR}/textures
         COMMENT "Staging Emscripten preload assets (shaders, fonts, scenes, ui) for ${GAME_NAME}"
     )
     add_dependencies(${GAME_TARGET} stage_${GAME_NAME}_em_preload)

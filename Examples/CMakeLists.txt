@@ -4,7 +4,7 @@
 # Atmospheric-Starter repo.)
 
 # ── 2D ───────────────────────────────────────────────────────────────────────
-add_subdirectory(Animation)          # sprite-sheet 2D animation (Animator2D)
+add_subdirectory(Animation)          # sprite-sheet 2D animation (FlipbookComponent)
 add_subdirectory(MidnightSkyraiders) # 2D sprite gameplay
 add_subdirectory(CardBattle)         # immediate-mode 2D primitives, asset-free
 add_subdirectory(RPG)                # 2D tilemap + 2D lighting + animation

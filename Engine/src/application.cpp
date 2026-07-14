@@ -6,15 +6,16 @@
 #ifdef __APPLE__
 #include <TargetConditionals.h>
 #endif
-#include "action.hpp"
-#include "action_manager.hpp"
-#include "animator_2d.hpp"
+#include "action_timeline_component.hpp"
+#include "animation_subsystem.hpp"
 #include "asset_manager.hpp"
 #include "camera_component.hpp"
 #include "camera_controller_3d.hpp"
 #include "component_factory.hpp"
 #include "deserializer.hpp"
+#include "easing.hpp"
 #include "file_system.hpp"
+#include "flipbook_component.hpp"
 #include "game_layer.hpp"
 #include "game_object.hpp"
 #include "job_system.hpp"
@@ -258,6 +259,7 @@ Application::Application(AppConfig config) : _config(config) {
     _graphics = std::make_unique<GraphicsSubsystem>();
     _physics = std::make_unique<Physics3DSubsystem>();
     _physics2D = std::make_unique<Physics2DSubsystem>();
+    _animation = std::make_unique<AnimationSubsystem>();
 
     _assetManager = std::make_unique<AssetManager>();
     _rmlUi = std::make_unique<RmlUiManager>();
@@ -743,45 +745,36 @@ void Application::RegisterComponents() {
         return mr;
     });
 
-    // ── Animator2D ────────────────────────────────────────────────────────────
-    // Clip data is read via ReadArray so it lives entirely inside this lambda.
-    ComponentFactory::Register("Animator2D", [](GameObject* o, Deserializer& d) -> Component* {
-        auto* animator = new Animator2D(o);
+    // ── Flipbook (frame-based sprite animation; replaces Animator2D) ────────────
+    // Clip data is read via ReadArray so it lives entirely inside this lambda;
+    // each clip is registered in the AnimationLibrary and bound to the component.
+    ComponentFactory::Register("Flipbook", [](GameObject* o, Deserializer& d) -> Component* {
+        auto* flip = new FlipbookComponent(o);
         for (auto& animD : d.ReadArray("animations")) {
-            AnimationClip clip;
+            FlipbookClip clip;
             animD->Read("name", clip.name, std::string(""));
-            animD->Read("loop", clip.loop, true);
             for (auto& frameD : animD->ReadArray("frames")) {
-                AnimationFrame f;
+                FlipbookFrame f;
                 frameD->Read("duration", f.duration, 0.1f);
                 frameD->Read("uvMin", f.uvMin, glm::vec2(0.0f));
                 frameD->Read("uvMax", f.uvMax, glm::vec2(1.0f));
                 clip.frames.push_back(f);
             }
-            if (!clip.name.empty()) animator->AddAnimation(clip.name, clip);
+            if (!clip.name.empty()) flip->AddLocalClip(std::move(clip));
         }
         std::string autoPlay;
         d.Read("autoPlay", autoPlay, std::string(""));
-        if (!autoPlay.empty()) animator->Play(autoPlay);
-        return animator;
+        if (!autoPlay.empty()) flip->Play(autoPlay);
+        return flip;
     });
 
-    // ── ActionManager ─────────────────────────────────────────────────────────
-    // Action parsing is recursive and format-specific; we delegate back to the
-    // existing ParseAction helper by capturing the JSON node via ReadArray.
-    // This preserves all easing / Sequence / RepeatForever logic without
-    // duplicating it in the lambda.
-    ComponentFactory::Register("ActionManager", [](GameObject* o, Deserializer& d) -> Component* {
-        auto* mgr = new ActionManager(o);
-        // ParseAction expects a raw nlohmann::json, so we reach through the
-        // Deserializer only to enumerate the top-level "actions" array.
-        // Each element is reconstructed as a JSONDeserializer-owned value.
-        // Since ParseAction is a file-local static function declared later in
-        // this translation unit, ActionManager registration is wired up in
-        // Application::RegisterActionManager() called from RegisterComponents.
-        // See below for the ActionManager post-init hook.
-        (void)d;// actions wired up in ParseEntity fallback for now
-        return mgr;
+    // ── ActionTimeline (property tweens; replaces ActionManager) ────────────────
+    // The recursive, format-specific "actions" JSON is parsed in the ParseEntity
+    // post-init hook (BuildTimelineFromActions), where the raw json node is in
+    // hand; the registration itself just creates the component.
+    ComponentFactory::Register("ActionTimeline", [](GameObject* o, Deserializer& d) -> Component* {
+        (void)d;// "actions" wired up in the ParseEntity post-init hook below
+        return new ActionTimelineComponent(o);
     });
 }
 
@@ -816,6 +809,7 @@ void Application::Run() {
     }
     _physics->Init(this);// Note that physics debug drawer is dependent on graphics server
     _physics2D->Init(this);
+    _animation->Init(this);
     for (auto& subsystem : _subsystems) {
         subsystem->Init(this);
     }
@@ -973,24 +967,20 @@ static EasingType ParseEasingType(const std::string& easingStr) {
     return EasingType::Linear;
 }
 
-static std::unique_ptr<Action> ParseAction(const nlohmann::json& val) {
-    if (!val.is_object()) return nullptr;
+// Append one JSON action node to a Tween builder. Sequence lays its children
+// end-to-end (.Then()); RepeatForever sets `loop` and expands its inner action.
+// Leaf actions become one tween segment each. Returns the builder for chaining.
+static void AppendActionToTween(Tween& tw, const nlohmann::json& val, bool& loop) {
+    if (!val.is_object()) return;
 
     std::string type = val.value("type", "");
     float duration = val.value("duration", 0.0f);
-    std::string easingStr = val.value("easing", "Linear");
-    EasingType easing = ParseEasingType(easingStr);
+    EasingType easing = ParseEasingType(val.value("easing", "Linear"));
 
     if (type == "MoveTo") {
-        glm::vec3 pos = ParseVec3(val.value("position", nlohmann::json::array()), glm::vec3(0.0f));
-        auto action = std::make_unique<MoveTo>(duration, pos);
-        action->SetEasing(easing);
-        return action;
+        tw.MoveTo(duration, ParseVec3(val.value("position", nlohmann::json::array()), glm::vec3(0.0f)), easing);
     } else if (type == "MoveBy") {
-        glm::vec3 delta = ParseVec3(val.value("deltaPosition", nlohmann::json::array()), glm::vec3(0.0f));
-        auto action = std::make_unique<MoveBy>(duration, delta);
-        action->SetEasing(easing);
-        return action;
+        tw.MoveBy(duration, ParseVec3(val.value("deltaPosition", nlohmann::json::array()), glm::vec3(0.0f)), easing);
     } else if (type == "RotateTo") {
         glm::vec3 rot(0.0f);
         if (val.contains("rotation") && val["rotation"].is_array() && !val["rotation"].empty()) {
@@ -998,65 +988,53 @@ static std::unique_ptr<Action> ParseAction(const nlohmann::json& val) {
             rot.y = val["rotation"].size() >= 2 ? glm::radians(val["rotation"][1].get<float>()) : 0.0f;
             rot.z = val["rotation"].size() >= 3 ? glm::radians(val["rotation"][2].get<float>()) : 0.0f;
         }
-        auto action = std::make_unique<RotateTo>(duration, rot);
-        action->SetEasing(easing);
-        return action;
-    } else if (type == "RotateBy") {
-        glm::vec3 delta(0.0f);
-        if (val.contains("deltaRotation") && val["deltaRotation"].is_array() && !val["deltaRotation"].empty()) {
-            delta.x = glm::radians(val["deltaRotation"][0].get<float>());
-            delta.y = val["deltaRotation"].size() >= 2 ? glm::radians(val["deltaRotation"][1].get<float>()) : 0.0f;
-            delta.z = val["deltaRotation"].size() >= 3 ? glm::radians(val["deltaRotation"][2].get<float>()) : 0.0f;
-        }
-        auto action = std::make_unique<RotateBy>(duration, delta);
-        action->SetEasing(easing);
-        return action;
+        tw.RotateTo(duration, rot, easing);
     } else if (type == "ScaleTo") {
-        glm::vec3 scale = ParseVec3(val.value("scale", nlohmann::json::array()), glm::vec3(1.0f));
-        auto action = std::make_unique<ScaleTo>(duration, scale);
-        action->SetEasing(easing);
-        return action;
+        tw.ScaleTo(duration, ParseVec3(val.value("scale", nlohmann::json::array()), glm::vec3(1.0f)), easing);
     } else if (type == "ColorTo") {
-        glm::vec4 color = ParseVec4(val.value("color", nlohmann::json::array()), glm::vec4(1.0f));
-        auto action = std::make_unique<ColorTo>(duration, color);
-        action->SetEasing(easing);
-        return action;
+        tw.ColorTo(duration, ParseVec4(val.value("color", nlohmann::json::array()), glm::vec4(1.0f)), easing);
     } else if (type == "FadeTo") {
-        float alpha = val.value("alpha", 1.0f);
-        auto action = std::make_unique<FadeTo>(duration, alpha);
-        action->SetEasing(easing);
-        return action;
+        tw.FadeTo(duration, val.value("alpha", 1.0f), easing);
     } else if (type == "Sequence") {
-        std::vector<FiniteTimeAction*> seqActions;
         if (val.contains("actions") && val["actions"].is_array()) {
             for (const auto& actVal : val["actions"]) {
-                auto parsed = ParseAction(actVal);
-                if (parsed) {
-                    if (auto* fta = dynamic_cast<FiniteTimeAction*>(parsed.get())) {
-                        parsed.release();// Sequence takes ownership below
-                        seqActions.push_back(fta);
-                    } else {
-                        spdlog::warn("ParseAction: Sequence only supports FiniteTimeActions. Action ignored.");
-                    }
-                }
+                AppendActionToTween(tw, actVal, loop);
+                tw.Then();
             }
-        }
-        if (!seqActions.empty()) {
-            return std::make_unique<Sequence>(seqActions);
         }
     } else if (type == "RepeatForever") {
-        if (val.contains("action")) {
-            auto parsed = ParseAction(val["action"]);
-            if (parsed) {
-                if (auto* interval = dynamic_cast<ActionInterval*>(parsed.get())) {
-                    parsed.release();// RepeatForever takes ownership
-                    return std::make_unique<RepeatForever>(interval);
-                }
-                spdlog::warn("ParseAction: RepeatForever only supports ActionIntervals. Action ignored.");
-            }
-        }
+        loop = true;
+        if (val.contains("action")) AppendActionToTween(tw, val["action"], loop);
+    } else {
+        spdlog::warn("BuildTimelineFromActions: unsupported action type '{}' — ignored", type);
     }
-    return nullptr;
+}
+
+// Build (and play) an ActionTimeline on `go` from a JSON "actions" array. Each
+// top-level element is laid sequentially; a RepeatForever anywhere makes the
+// whole timeline loop.
+static void BuildTimelineFromActions(GameObject* go, const nlohmann::json& actionsArray) {
+    if (!actionsArray.is_array() || actionsArray.empty()) return;
+    auto* sub = AnimationSubsystem::Get();
+    if (!sub) return;
+
+    Tween tw(go);
+    bool loop = false;
+    for (const auto& actVal : actionsArray) {
+        AppendActionToTween(tw, actVal, loop);
+        tw.Then();
+    }
+
+    ActionTimeline timeline = tw.Build();
+    if (timeline.tracks.empty()) return;
+    timeline.name = go->GetName() + "_json";
+    TimelineHandle handle = sub->Library().AddTimeline(std::move(timeline));
+
+    auto* atc = go->GetComponent<ActionTimelineComponent>();
+    if (!atc) atc = static_cast<ActionTimelineComponent*>(go->AddComponent<ActionTimelineComponent>());
+    atc->AddTimeline(handle);
+    atc->SetWrapMode(loop ? WrapMode::Loop : WrapMode::Once);
+    atc->Play(go->GetName() + "_json");
 }
 
 static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameObject* parent) {
@@ -1082,16 +1060,13 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
                 JSONDeserializer d(compVal);
                 ComponentFactory::Create(type, go, d);
 
-                // Special post-init for ActionManager: the ParseAction helper is
-                // a file-local static that cannot be captured in a Register lambda
-                // (it is declared below in this TU).  We run the actions here, after
-                // the ActionManager component has been created by the registry.
-                if (type == "ActionManager") {
-                    auto* mgr = go->GetComponent<ActionManager>();
-                    if (mgr && compVal.contains("actions") && compVal["actions"].is_array()) {
-                        for (const auto& actionVal : compVal["actions"]) {
-                            if (auto a = ParseAction(actionVal)) mgr->RunAction(std::move(a));
-                        }
+                // Special post-init for ActionTimeline: the action-JSON parser is
+                // a file-local static needing the raw json node, so we build the
+                // timeline here after the component has been created by the
+                // registry.
+                if (type == "ActionTimeline") {
+                    if (compVal.contains("actions") && compVal["actions"].is_array()) {
+                        BuildTimelineFromActions(go, compVal["actions"]);
                     }
                 }
             } else {
@@ -1867,6 +1842,11 @@ void Application::Update(const FrameData& props) {
     for (const auto& layer : _layers) {
         layer->OnUpdate(dt);
     }
+
+    // Sample all animation after game logic (OnUpdate + component OnTick via the
+    // GameLayer above) has decided what should be playing this frame, and before
+    // rendering, so the poses drawn are this frame's.
+    _animation->Process(dt);
 
     float time = GetWindowTime();
 
