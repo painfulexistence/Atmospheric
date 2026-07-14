@@ -138,16 +138,14 @@ void AnimationSubsystem::Process(float dt) {
 }
 
 void AnimationSubsystem::DrawImGui(float dt) {
-    if (!ImGui::Begin("Animation")) {
-        ImGui::End();
-        return;
-    }
+    // Sits inside the editor's "Engine Subsystems" window as a CollapsingHeader,
+    // consistent with the sibling subsystems (Graphics/Physics/Audio).
+    if (!ImGui::CollapsingHeader("Animation")) return;
 
     ImGui::SliderFloat("Global time scale", &_timeScale, 0.0f, 2.0f);
     ImGui::Text("Active players: %zu", _players.size());
-    ImGui::Separator();
 
-    if (ImGui::BeginTable("players", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
+    if (ImGui::BeginTable("anim_players", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
         ImGui::TableSetupColumn("Owner");
         ImGui::TableSetupColumn("Kind");
         ImGui::TableSetupColumn("Time");
@@ -167,5 +165,4 @@ void AnimationSubsystem::DrawImGui(float dt) {
         }
         ImGui::EndTable();
     }
-    ImGui::End();
 }
