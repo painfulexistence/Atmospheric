@@ -180,7 +180,7 @@ set(SOURCES
     src/csg.cpp
     src/frustum.cpp
     src/mesh_renderer_component.cpp
-    src/mesh_instancer.cpp
+    src/mesh_instancer_component.cpp
     src/sprite_component.cpp
     src/sprite_3d_component.cpp
     src/text_2d_component.cpp

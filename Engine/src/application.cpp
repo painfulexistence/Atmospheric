@@ -22,7 +22,7 @@
 #include "light_component.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "mesh_instancer.hpp"
+#include "mesh_instancer_component.hpp"
 #include "mesh_renderer_component.hpp"
 #include "prefab.hpp"
 #include "rigidbody_2d_component.hpp"
@@ -589,7 +589,7 @@ void Application::RegisterComponents() {
         return new VoxelWorldComponent(o, seed);
     });
 
-    // ── MeshInstancer (one prototype mesh drawn N times) ──────────────────────
+    // ── MeshInstancerComponent (one prototype mesh drawn N times) ──────────────────────
     // Declares a cloud of instances of one mesh — the CPU-cheap way to place
     // thousands of props (trees, rocks, debris) without a GameObject each.
     // Prototype: "mesh": "<name>" references a mesh loaded elsewhere; otherwise
@@ -597,7 +597,7 @@ void Application::RegisterComponents() {
     // primitive. "material" is an optional shared override (falls back to the
     // prototype's own material). "instances" is a list of TRS entries in the
     // entity convention — position (world units), rotation (degrees), scale.
-    ComponentFactory::Register("MeshInstancer", [](GameObject* o, Deserializer& d) -> Component* {
+    ComponentFactory::Register("MeshInstancerComponent", [](GameObject* o, Deserializer& d) -> Component* {
         MeshInstancerProps p;
         auto& assets = AssetManager::Get();
 
@@ -645,7 +645,7 @@ void Application::RegisterComponents() {
             p.localTransforms.push_back(local);
         }
 
-        return new MeshInstancer(o, std::move(p));
+        return new MeshInstancerComponent(o, std::move(p));
     });
 
     // ── ShapeRendererComponent ────────────────────────────────────────────────

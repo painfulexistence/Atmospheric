@@ -9,7 +9,7 @@
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_builder.hpp"
-#include "mesh_instancer.hpp"
+#include "mesh_instancer_component.hpp"
 #include "mesh_renderer_component.hpp"
 #include "rigidbody_component.hpp"
 #include "terrain_tile_cache.hpp"
@@ -591,7 +591,7 @@ void TerrainStreamer::UpdateEntities(glm::ivec2 camTile) {
         for (const auto& placement : _props.placeEntitiesFn(ctx)) {
             if (isInstanced(placement.type)) {
                 // World-space TRS; the cloud GameObject sits at the origin so
-                // these pass through MeshInstancer's goTransform * local as-is.
+                // these pass through MeshInstancerComponent's goTransform * local as-is.
                 clouds[placement.type].push_back(
                     glm::translate(glm::mat4(1.0f), placement.position)
                     * glm::rotate(glm::mat4(1.0f), placement.yaw, glm::vec3(0.0f, 1.0f, 0.0f))
@@ -629,9 +629,9 @@ void TerrainStreamer::UpdateEntities(glm::ivec2 camTile) {
                 go = _app->CreateGameObject(glm::vec3(0.0f));
                 go->SetName(fmt::format("entity_cloud_{}", type));
                 go->parent = _root;
-                go->AddComponent<MeshInstancer>(MeshInstancerProps{ .prototype = _props.entityMeshes[type] });
+                go->AddComponent<MeshInstancerComponent>(MeshInstancerProps{ .prototype = _props.entityMeshes[type] });
             }
-            if (auto* instancer = go->GetComponent<MeshInstancer>()) {
+            if (auto* instancer = go->GetComponent<MeshInstancerComponent>()) {
                 instancer->SetTransforms(std::move(transforms));
             }
             go->SetActive(true);

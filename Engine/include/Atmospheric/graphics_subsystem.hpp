@@ -37,12 +37,12 @@ struct CameraData {
 };
 
 // InstanceData moved to vertex.hpp (included above) so RenderCommand and
-// MeshInstancer can reference it without depending on this subsystem header.
+// MeshInstancerComponent can reference it without depending on this subsystem header.
 
 class Renderer;
 
 class MeshRendererComponent;
-class MeshInstancer;
+class MeshInstancerComponent;
 class CanvasDrawable;
 class SpriteComponent;
 class CameraComponent;
@@ -62,7 +62,7 @@ public:
     std::vector<MeshRendererComponent*> renderables;
     // Instanced clouds — each submits one span command covering all its
     // instances, instead of one command per instance like `renderables`.
-    std::vector<MeshInstancer*> instancers;
+    std::vector<MeshInstancerComponent*> instancers;
     std::vector<CanvasDrawable*> canvasDrawables;
     std::vector<LightComponent*> directionalLights;
     std::vector<LightComponent*> pointLights;
@@ -116,7 +116,7 @@ public:
     MeshHandle GetMesh(const std::string& name) const;
 
     MeshRendererComponent* RegisterMesh(MeshRendererComponent* mesh);
-    MeshInstancer* RegisterInstancer(MeshInstancer* instancer);
+    MeshInstancerComponent* RegisterInstancer(MeshInstancerComponent* instancer);
     CameraComponent* RegisterCamera(CameraComponent* camera);
     LightComponent* RegisterLight(LightComponent* light);
     SunComponent* RegisterSun(SunComponent* sun);
@@ -125,7 +125,7 @@ public:
     void UnregisterCamera(CameraComponent* camera);
     void UnregisterLight(LightComponent* light);
     void UnregisterMesh(MeshRendererComponent* mesh);
-    void UnregisterInstancer(MeshInstancer* instancer);
+    void UnregisterInstancer(MeshInstancerComponent* instancer);
     void UnregisterCanvasDrawable(CanvasDrawable* drawable);
 
     // ===== Render Target Management =====

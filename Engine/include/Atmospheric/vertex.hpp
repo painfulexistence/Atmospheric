@@ -63,7 +63,7 @@ struct VoxelVertex {
 // Per-instance draw data streamed into the instanced-geometry attribute buffer
 // (locations 5-8, divisor 1). One model matrix per instance; a batch uploads a
 // contiguous array of these. Lives here (rather than graphics_subsystem.hpp) so
-// RenderCommand and MeshInstancer can name it without pulling in the subsystem.
+// RenderCommand and MeshInstancerComponent can name it without pulling in the subsystem.
 struct InstanceData {
     glm::mat4 modelMatrix;
 };

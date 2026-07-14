@@ -11,7 +11,7 @@
 #include "light_component.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "mesh_instancer.hpp"
+#include "mesh_instancer_component.hpp"
 #include "mesh_renderer_component.hpp"
 #include "renderer.hpp"
 #include "sprite_component.hpp"
@@ -616,7 +616,7 @@ MeshRendererComponent* GraphicsSubsystem::RegisterMesh(MeshRendererComponent* me
     return mesh;
 }
 
-MeshInstancer* GraphicsSubsystem::RegisterInstancer(MeshInstancer* instancer) {
+MeshInstancerComponent* GraphicsSubsystem::RegisterInstancer(MeshInstancerComponent* instancer) {
     instancers.push_back(instancer);
     return instancer;
 }
@@ -666,7 +666,7 @@ void GraphicsSubsystem::UnregisterLight(LightComponent* light) {
     }
 }
 
-void GraphicsSubsystem::UnregisterInstancer(MeshInstancer* instancer) {
+void GraphicsSubsystem::UnregisterInstancer(MeshInstancerComponent* instancer) {
     auto it = std::find(instancers.begin(), instancers.end(), instancer);
     if (it != instancers.end()) {
         instancers.erase(it);

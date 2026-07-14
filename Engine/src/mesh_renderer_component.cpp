@@ -13,7 +13,9 @@ MeshRendererComponent::~MeshRendererComponent() {
 }
 
 std::string MeshRendererComponent::GetName() const {
-    return std::string("MeshRendererComponent");
+    // Display name for the ImGui inspector — drops the "Component" suffix, matching
+    // ShapeRendererComponent etc. (the class/scene-type keeps it).
+    return std::string("MeshRenderer");
 }
 
 void MeshRendererComponent::OnAttach() {

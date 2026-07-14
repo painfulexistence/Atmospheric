@@ -189,7 +189,7 @@ class TerrainStreamingDemo : public Application {
         ));
 
         // Entity prototype meshes: one mesh + material per type, drawn via
-        // per-tile MeshInstancer clouds (see .entityMeshes below), so all
+        // per-tile MeshInstancerComponent clouds (see .entityMeshes below), so all
         // trees across the whole ring collapse into one instanced draw.
         auto& am = AssetManager::Get();
         Mesh* tree = MeshBuilder::CreateCube(1.0f);
@@ -291,7 +291,7 @@ class TerrainStreamingDemo : public Application {
                         }
                         return out;
                     },
-                // Instanced clouds: one MeshInstancer per (tile, type) instead
+                // Instanced clouds: one MeshInstancerComponent per (tile, type) instead
                 // of a GameObject per tree/rock — the whole ring is a handful
                 // of commands, and BuildBatches folds every tile's cloud of the
                 // same mesh into a single instanced draw.

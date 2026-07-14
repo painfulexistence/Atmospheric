@@ -74,7 +74,7 @@ struct RenderBatch {
 
 // Merges consecutive commands sharing the same (mesh, material) into one
 // instanced batch. The queue is pre-sorted, so equal keys are adjacent. A
-// command carrying an instance span (a MeshInstancer's whole cloud) contributes
+// command carrying an instance span (a MeshInstancerComponent's whole cloud) contributes
 // all of its instances at once; a plain command contributes its lone transform.
 // Scattered MeshRenderers and an instancer of the same mesh+material fold into
 // the same batch for free.
