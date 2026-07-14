@@ -29,6 +29,7 @@ Prefab ImportUSDPrefab(const std::string& path) {
 #include <cstring>
 #include <map>
 #include <optional>
+#include <set>
 #include <tydra/render-data.hh>
 
 namespace {
@@ -204,6 +205,64 @@ namespace {
             FillArcPrimPaths(c, baseDir, cache);
     }
 
+    // ── Post-composition dangling-target repair ──────────────────────────────
+    // tinyusdz retargets a referenced layer's internal paths (`ReplaceRootPrimPathRec`)
+    // but does NOT descend into variantSet content, so a `material:binding` (and
+    // the material's shader `.connect`) authored inside a variant keeps pointing
+    // at the pre-flatten namespace after the variant is composed — the mesh loads
+    // but its material is dropped. Kitchen_set wraps every prop in a
+    // modelingVariant, which is why it flattened to thousands of meshes yet zero
+    // materials. Repair any still-dangling absolute target here: strip its root
+    // component and rebind it to the matching subtree under the nearest ancestor
+    // of the holding prim that actually exists. Only unresolved targets are
+    // touched, so correctly-retargeted paths are left alone.
+    void CollectPrimPaths(const tinyusdz::PrimSpec& ps, const std::string& parent, std::set<std::string>& out) {
+        const std::string path = parent + "/" + ps.name();
+        out.insert(path);
+        for (const auto& c : ps.children())
+            CollectPrimPaths(c, path, out);
+    }
+
+    void RetargetDangling(tinyusdz::Path& target, const std::string& holder, const std::set<std::string>& prims) {
+        if (!target.is_absolute_path()) return;
+        const std::string t = target.prim_part();
+        if (t.empty() || t == "/" || prims.count(t)) return;// unresolved only
+        const size_t split = t.find('/', 1);
+        if (split == std::string::npos) return;
+        const std::string rootComp = t.substr(0, split);// e.g. "/Prop"
+        const std::string suffix = t.substr(split);     // e.g. "/Looks/Mat"
+        std::string anc = holder;
+        while (true) {
+            if (prims.count(anc + suffix)) {
+                target.replace_prefix(tinyusdz::Path(rootComp, ""), tinyusdz::Path(anc, ""));
+                return;
+            }
+            const size_t s = anc.find_last_of('/');
+            if (s == std::string::npos || s == 0) break;
+            anc = anc.substr(0, s);
+        }
+    }
+
+    void FixDanglingTargets(tinyusdz::PrimSpec& ps, const std::string& parent, const std::set<std::string>& prims) {
+        const std::string self = parent + "/" + ps.name();
+        for (auto& [name, prop] : ps.props()) {
+            if (prop.is_relationship()) {
+                auto& rel = prop.relationship();
+                if (rel.is_path()) {
+                    RetargetDangling(rel.targetPath, self, prims);
+                } else if (rel.is_pathvector()) {
+                    for (auto& p : rel.targetPathVector)
+                        RetargetDangling(p, self, prims);
+                }
+            } else if (prop.is_attribute_connection()) {
+                for (auto& c : prop.attribute().connections())
+                    RetargetDangling(c, self, prims);
+            }
+        }
+        for (auto& c : ps.children())
+            FixDanglingTargets(c, self, prims);
+    }
+
     // Load a USDA/USDC root as a Layer and flatten LIVRPS composition arcs
     // (subLayers, references, payloads, inherits, variants) into a single Stage.
     // tinyusdz does NOT compose by default — a plain LoadUSDFromMemory of a file
@@ -270,6 +329,16 @@ namespace {
         }
 
         ctx->resolver = nullptr;// `resolver` dies with this scope — don't dangle
+
+        // Rebind any binding/connection paths left dangling by variant composition.
+        {
+            std::set<std::string> prims;
+            for (auto& [name, ps] : src.primspecs())
+                CollectPrimPaths(ps, "", prims);
+            for (auto& [name, ps] : src.primspecs())
+                FixDanglingTargets(ps, "", prims);
+        }
+
         // Preserve stage metas (upAxis / metersPerUnit) — LayerToStage keeps what
         // we seed here, and the importer reads them below for the root transform.
         outStage->metas() = root.metas();
