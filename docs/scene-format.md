@@ -32,10 +32,10 @@ A scene is a JSON file under `assets/scenes/<name>.json`, loaded by
 Cook-Torrance) or `"blinnphong"` (legacy specular).
 
 Shared keys (both models): `diffuse` (`[r,g,b]`), `cullFaceEnabled`, and the
-texture-path maps `baseMap` / `normalMap` / `aoMap`.
+texture-path maps `baseMap` / `normalMap`.
 
-PBR keys: `roughnessFactor` (default 1) and `metallicFactor` (default 0) plus
-optional `roughnessMap` / `metallicMap` paths. glTF semantics: the shaded value
+PBR keys: `aoMap` (ambient occlusion), `roughnessFactor` (default 1) and
+`metallicFactor` (default 0) plus optional `roughnessMap` / `metallicMap` paths. glTF semantics: the shaded value
 is `map × factor`, and an *absent* map counts as white — so with no maps the
 factors stand alone (no 1×1 solid texture needed).
 Transmission/refraction (PBR only; mirrors the glTF

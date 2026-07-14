@@ -503,10 +503,10 @@ void GraphicsSubsystem::DrawImGui(float dt) {
                 if (ImGui::TreeNode("Mat")) {
                     ImGui::Text("Base Map ID: %d", static_cast<int>(m->baseMap));
                     ImGui::Text("Normal Map ID: %d", static_cast<int>(m->normalMap));
-                    ImGui::Text("AO Map ID: %d", static_cast<int>(m->aoMap));
                     ImGui::Text("Diffuse: %.3f, %.3f, %.3f", m->diffuse.x, m->diffuse.y, m->diffuse.z);
                     // Shading-model-specific fields live on the leaf types.
                     if (auto* pbr = dynamic_cast<PBRMaterial*>(m.get())) {
+                        ImGui::Text("AO Map ID: %d", static_cast<int>(pbr->aoMap));
                         ImGui::Text("Roughness Map ID: %d", static_cast<int>(pbr->roughnessMap));
                         ImGui::Text("Metallic Map ID: %d", static_cast<int>(pbr->metallicMap));
                         ImGui::Text("Roughness/Metallic factor: %.3f / %.3f", pbr->roughnessFactor, pbr->metallicFactor);

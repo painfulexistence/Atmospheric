@@ -44,14 +44,15 @@ TerrainMeshComponent::TerrainMeshComponent(
     terrainMat->tessellationFactor = props.tessellationFactor;
     terrainMat->worldSize = props.worldSize;
 
-    // Copy base material props if caller provided a material.
+    // Copy base material props if caller provided a material. specular/ambient/
+    // shininess are Blinn-Phong-only and unused by terrain.frag, so only the
+    // shared surface inputs are copied; aoMap comes across when the source is a
+    // PBRMaterial (TerrainMaterial is itself a PBRMaterial).
     if (props.material) {
-        // specular/ambient/shininess are Blinn-Phong-only now and unused by
-        // terrain.frag, so only the shared surface inputs are copied.
         terrainMat->diffuse = props.material->diffuse;
         terrainMat->baseMap = props.material->baseMap;
         terrainMat->normalMap = props.material->normalMap;
-        terrainMat->aoMap = props.material->aoMap;
+        if (auto* pbr = dynamic_cast<PBRMaterial*>(props.material)) terrainMat->aoMap = pbr->aoMap;
     }
 
     // Load the optional high-fidelity surface maps (path fields win over any

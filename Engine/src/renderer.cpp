@@ -1788,9 +1788,10 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                 terrainShader->SetUniform(std::string("normal_map_unit"), 3);
                 terrainShader->SetUniform(std::string("has_normal_map"), mat->normalMap.IsValid() ? 1 : 0);
 
-                bindTex2D(4, mat->aoMap, 2);
+                TextureHandle aoMap = tm ? tm->aoMap : TextureHandle{};// aoMap is a PBRMaterial field
+                bindTex2D(4, aoMap, 2);
                 terrainShader->SetUniform(std::string("ao_map_unit"), 4);
-                terrainShader->SetUniform(std::string("has_ao_map"), mat->aoMap.IsValid() ? 1 : 0);
+                terrainShader->SetUniform(std::string("has_ao_map"), aoMap.IsValid() ? 1 : 0);
 
                 TextureHandle splat = tm ? tm->splatMap : TextureHandle{};
                 bindTex2D(5, splat, 0);
@@ -1973,9 +1974,9 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             }
             meshShader->SetUniform(std::string("normal_map_unit"), 3);
 
-            // AO Map (Unit 4)
+            // AO Map (Unit 4) — PBRMaterial only.
             glActiveTexture(GL_TEXTURE4);
-            TextureHandle aoMap = material->aoMap;
+            TextureHandle aoMap = pbrMat ? pbrMat->aoMap : TextureHandle{};
             if (aoMap.IsValid() && static_cast<uint32_t>(aoMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(aoMap));
             } else if (assetManager.GetDefaultTextures().size() > 2) {
@@ -2185,7 +2186,9 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
             // Handled by VoxelChunkPass.
             break;
         case MeshType::PRIM:
-        default:
+        default: {
+            // AO / roughness / metallic (units 4-6) are PBRMaterial fields.
+            auto* pbrMat = dynamic_cast<PBRMaterial*>(material);
             // Material textures - dynamically bound to Units 2-6
             // Base Map (Unit 2)
             glActiveTexture(GL_TEXTURE2);
@@ -2211,9 +2214,9 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
             }
             geometryShader->SetUniform("normalMap", 3);
 
-            // AO Map (Unit 4)
+            // AO Map (Unit 4) — PBRMaterial only.
             glActiveTexture(GL_TEXTURE4);
-            TextureHandle aoMap = material->aoMap;
+            TextureHandle aoMap = pbrMat ? pbrMat->aoMap : TextureHandle{};
             if (aoMap.IsValid() && static_cast<uint32_t>(aoMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(aoMap));
             } else if (assetManager.GetDefaultTextures().size() > 2) {
@@ -2226,8 +2229,6 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
             // Roughness / Metallic (Units 5-6) — PBRMaterial only; same glTF
             // map*factor contract as the forward pass (absent map = white).
             {
-                auto* pbrMat = dynamic_cast<PBRMaterial*>(material);
-
                 glActiveTexture(GL_TEXTURE5);
                 TextureHandle roughnessMap = pbrMat ? pbrMat->roughnessMap : TextureHandle{};
                 const bool hasRoughnessMap = roughnessMap.IsValid() && static_cast<uint32_t>(roughnessMap) != 0;
@@ -2273,6 +2274,7 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
                 );
             }
             glBindVertexArray(0);
+        }
         }
     }
 

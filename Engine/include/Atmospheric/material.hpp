@@ -101,17 +101,17 @@ struct MaterialProps {
 };
 
 // Base surface material. Deliberately shading-model-agnostic: only the inputs
-// every model shares (albedo tint + base/normal/AO maps) plus render-state and
-// queue placement live here. Everything that encodes a specific shading model
-// belongs to the leaf types — metallic/roughness maps+factors and the
-// transmission set on PBRMaterial, the specular/shininess Phong terms on
-// BlinnPhongMaterial, heightMap on TerrainMaterial. Scenes and importers
+// that describe the surface itself — the albedo tint, its texture and a normal
+// map — live here, because every lit model (PBR, Blinn-Phong, …) consumes the
+// same albedo + normal in the same way. Everything that encodes light response
+// belongs to the leaf types: ambient occlusion, metallic/roughness maps+factors
+// and the transmission set on PBRMaterial; the specular/shininess Phong terms
+// on BlinnPhongMaterial; heightMap on TerrainMaterial. Scenes and importers
 // create PBRMaterial (the engine default) via AssetManager::CreateMaterial.
 class Material {
 public:
     TextureHandle baseMap;
     TextureHandle normalMap;
-    TextureHandle aoMap;
     glm::vec3 diffuse = glm::vec3(.55, .55, .55);
 
     // Consolidated render-state: blend, cull, depth, polygon, topology.
@@ -155,7 +155,6 @@ public:
     Material(const MaterialProps& props) {
         baseMap = props.baseMap;
         normalMap = props.normalMap;
-        aoMap = props.aoMap;
         diffuse = props.diffuse;
         renderState.cull = props.cullFaceEnabled ? CullMode::Back : CullMode::None;
         renderState.topology = props.primitiveType;
@@ -170,6 +169,7 @@ public:
 // stand alone and no 1x1 solid texture is needed.
 class PBRMaterial : public Material {
 public:
+    TextureHandle aoMap;// ambient occlusion — a PBR-pipeline input (modulates indirect light)
     TextureHandle roughnessMap;
     TextureHandle metallicMap;
     float roughnessFactor = 1.0f;
@@ -189,6 +189,7 @@ public:
     glm::vec3 attenuationColor = glm::vec3(1.0f);// Beer-Lambert tint through the volume
 
     explicit PBRMaterial(const MaterialProps& props = MaterialProps{}) : Material(props) {
+        aoMap = props.aoMap;
         roughnessMap = props.roughnessMap;
         metallicMap = props.metallicMap;
         roughnessFactor = props.roughnessFactor;
@@ -284,10 +285,10 @@ struct TerrainLayer {
 };
 
 // Terrain surface description. Designed around WorldCreator/Gaea exports:
-//   heightMap (inherited) — 16-bit displacement map (baked by TerrainMeshComponent)
-//   baseMap   (inherited) — full-terrain color/texture map, 0-1 UV
-//   normalMap (inherited) — full-terrain normal map (overrides heightmap-derived normals)
-//   aoMap     (inherited) — full-terrain ambient occlusion
+//   heightMap             — 16-bit displacement map (baked by TerrainMeshComponent)
+//   baseMap   (Material)  — full-terrain color/texture map, 0-1 UV
+//   normalMap (Material)  — full-terrain normal map (overrides heightmap-derived normals)
+//   aoMap     (PBR)       — full-terrain ambient occlusion
 //   splatMap              — RGBA weight masks for up to 4 detail layers
 //                           (Gaea flow/wear/deposit masks packed into channels)
 // All maps are optional; with none set the shader falls back to the legacy
@@ -313,12 +314,18 @@ public:
     }
 };
 
-class TerrainMaterial : public Material {
+// A terrain IS a PBR surface (albedo + normal + AO + per-layer roughness),
+// lit by the same physically-based model — so it derives from PBRMaterial and
+// adds the terrain-specific machinery (heightmap displacement, tessellation,
+// splat-blended detail layers, aerial fog). The current terrain.frag still
+// shades Lambertian-diffuse and ignores roughness/metallic, but those inherited
+// fields are semantically correct and the natural home for a future PBR pass.
+class TerrainMaterial : public PBRMaterial {
 public:
     static constexpr int MAX_LAYERS = 4;
 
     // Displacement / normal source for the terrain shader; baked from the height
-    // field by TerrainMeshComponent / TerrainStreamer (was on the base Material).
+    // field by TerrainMeshComponent / TerrainStreamer.
     TextureHandle heightMap;
     float heightScale = 32.0f;
     float tessellationFactor = 16.0f;
@@ -339,9 +346,9 @@ public:
     glm::vec3 fogColor = glm::vec3(0.62f, 0.71f, 0.85f);
     float fogDensity = 0.0f;
 
-    TerrainMaterial() : Material(MaterialProps{}) {
+    TerrainMaterial() : PBRMaterial(MaterialProps{}) {
     }
-    explicit TerrainMaterial(const MaterialProps& props) : Material(props) {
+    explicit TerrainMaterial(const MaterialProps& props) : PBRMaterial(props) {
         heightMap = props.heightMap;
     }
 

@@ -9,8 +9,6 @@ void Material::DrawImGui() {
     if (ImGui::SliderInt("Base map ID", &baseMapID, -1, textureCount - 1)) baseMap = baseMapID;
     int normalMapID = normalMap;
     if (ImGui::SliderInt("Normal map ID", &normalMapID, -1, textureCount - 1)) normalMap = normalMapID;
-    int aoMapID = aoMap;
-    if (ImGui::SliderInt("AO map ID", &aoMapID, -1, textureCount - 1)) aoMap = aoMapID;
     ImGui::ColorEdit3("Diffuse", &diffuse.r);
     static const char* cullNames[] = { "None", "Front", "Back" };
     int cullIdx = static_cast<int>(renderState.cull);
@@ -22,6 +20,8 @@ void Material::DrawImGui() {
 void PBRMaterial::DrawImGui() {
     Material::DrawImGui();
     int textureCount = static_cast<int>(AssetManager::Get().GetTextures().size());
+    int aoMapID = aoMap;
+    if (ImGui::SliderInt("AO map ID", &aoMapID, -1, textureCount - 1)) aoMap = aoMapID;
     int roughnessMapID = roughnessMap;
     if (ImGui::SliderInt("Roughness map ID", &roughnessMapID, -1, textureCount - 1)) roughnessMap = roughnessMapID;
     int metallicMapID = metallicMap;
@@ -43,7 +43,7 @@ void BlinnPhongMaterial::DrawImGui() {
 // edited from VoxelWorldComponent.
 
 void TerrainMaterial::DrawImGui() {
-    Material::DrawImGui();
+    PBRMaterial::DrawImGui();// terrain is a PBR surface (albedo/normal/AO + factors)
     int textureCount = static_cast<int>(AssetManager::Get().GetTextures().size());
     int heightMapID = heightMap;
     if (ImGui::SliderInt("Height map ID", &heightMapID, -1, textureCount - 1)) heightMap = heightMapID;
