@@ -37,9 +37,13 @@ if(EMSCRIPTEN)
 
     set(EM_PRELOAD_STAGING_DIR ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/DeathmatchClient/assets)
 
-    # Preload engine defaults (shaders/fonts/ui) + Deathmatch's scene. NOT the
-    # optional 2k HDRI (assets/textures/*.exr): it's guarded by FileSystem::Exists
-    # and the sky falls back to a gradient, so it stays out of the wasm bundle.
+    # Preload engine defaults (shaders/fonts/ui) + Deathmatch's scene, the
+    # arena.map level geometry, and the HDRI env. The map is required (the
+    # static environment shell is map-driven), and the .exr is the arena's
+    # image-based lighting — both must be in MEMFS since ae_copy_engine_assets
+    # skips Emscripten. NOTE: the 2k HDRI is ~24 MB, which dominates the wasm
+    # .data download; swap in a smaller HDRI (or drop the textures preload to
+    # fall back to the gradient sky) if bundle size matters.
     add_custom_target(stage_DeathmatchClient_em_preload
         COMMAND ${CMAKE_COMMAND} -E make_directory ${EM_PRELOAD_STAGING_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -50,7 +54,11 @@ if(EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/ui ${EM_PRELOAD_STAGING_DIR}/ui
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes ${EM_PRELOAD_STAGING_DIR}/scenes
-        COMMENT "Staging Emscripten preload assets (shaders, fonts, ui, scenes) for DeathmatchClient"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/maps ${EM_PRELOAD_STAGING_DIR}/maps
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/textures ${EM_PRELOAD_STAGING_DIR}/textures
+        COMMENT "Staging Emscripten preload assets (shaders, fonts, ui, scenes, maps, textures) for DeathmatchClient"
     )
     add_dependencies(DeathmatchClient stage_DeathmatchClient_em_preload)
 
@@ -67,6 +75,8 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/ui@assets/ui"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/maps@assets/maps"
+        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/textures@assets/textures"
         # The lobby is the entry point (INVOKE_RUN=0), so the custom shell is
         # applied in all build types, not just Release.
         "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell.html"
