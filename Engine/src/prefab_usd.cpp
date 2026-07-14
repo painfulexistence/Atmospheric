@@ -31,6 +31,7 @@ Prefab ImportUSDPrefab(const std::string& path) {
 #include <optional>
 #include <cstdlib>
 #include <set>
+#include <tuple>
 #include <tydra/render-data.hh>
 #include <tydra/scene-access.hh>
 #include <usda-writer.hh>
@@ -192,8 +193,13 @@ namespace {
     void FillArcPrimPaths(
         tinyusdz::PrimSpec& ps, const std::string& baseDir, std::map<std::string, tinyusdz::Path>& cache
     ) {
-        auto fix = [&](auto& arcs) {
-            for (auto& arc : arcs) {
+        auto fix = [&](auto& arcsPair) {
+            // The pinned compositor rejects `add`-qualified arcs outright
+            // (Kitchen_set.usd uses `add references`); on a flatten of a single
+            // layer stack `add` and `prepend` produce the same result, and
+            // `prepend` takes the supported InheritPrimSpec path.
+            if (arcsPair.first == tinyusdz::ListEditQual::Add) arcsPair.first = tinyusdz::ListEditQual::Prepend;
+            for (auto& arc : arcsPair.second) {
                 if (arc.asset_path.GetAssetPath().empty()) continue;// internal (inherit-like) arc
                 if (arc.prim_path.is_valid()) continue;// already explicit
                 const auto resolved = PeekResolve(arc.asset_path.GetAssetPath(), ps, baseDir);
@@ -202,8 +208,8 @@ namespace {
                 if (PeekDefaultPrim(*resolved, &dp, cache)) arc.prim_path = dp;
             }
         };
-        if (ps.metas().references) fix(ps.metas().references.value().second);
-        if (ps.metas().payload) fix(ps.metas().payload.value().second);
+        if (ps.metas().references) fix(ps.metas().references.value());
+        if (ps.metas().payload) fix(ps.metas().payload.value());
         for (auto& c : ps.children())
             FillArcPrimPaths(c, baseDir, cache);
     }
@@ -590,6 +596,38 @@ Prefab ImportUSDPrefab(const std::string& path) {
     }
 
     // ── Meshes (chunked; keep a per-RenderMesh list for node references) ─────
+    // Meshes with no bound material fall back to their `displayColor` primvar,
+    // synthesized into a shared PrefabMaterial per distinct color. This is how
+    // pre-UsdPreviewSurface assets (e.g. Pixar's 2016 Kitchen_set, which has no
+    // UsdShade materials at all — usdview colors it from displayColor) keep
+    // their authored look. Tydra puts a 1-element displayColor primvar into
+    // RenderMesh::displayColor (default 0.18 grey, usdview's fallback too).
+    std::map<std::tuple<int, int, int>, int> displayColorMats;
+    auto displayColorMaterial = [&](const tinyusdz::tydra::RenderMesh& rmesh) -> int {
+        const glm::vec3 c(rmesh.displayColor[0], rmesh.displayColor[1], rmesh.displayColor[2]);
+        const auto key = std::make_tuple(
+            static_cast<int>(c.r * 255.0f + 0.5f),
+            static_cast<int>(c.g * 255.0f + 0.5f),
+            static_cast<int>(c.b * 255.0f + 0.5f)
+        );
+        auto it = displayColorMats.find(key);
+        if (it != displayColorMats.end()) return it->second;
+        PrefabMaterial pm;
+        pm.name = fmt::format(
+            "displayColor_{:02x}{:02x}{:02x}",
+            std::get<0>(key),
+            std::get<1>(key),
+            std::get<2>(key)
+        );
+        pm.baseColor = c;
+        pm.roughness = 0.8f;// matte, close to usdview's default shading
+        pm.metallic = 0.0f;
+        const int index = static_cast<int>(out.materials.size());
+        out.materials.push_back(std::move(pm));
+        displayColorMats.emplace(key, index);
+        return index;
+    };
+
     std::vector<std::vector<int>> meshChunks(rscene.meshes.size());
     for (size_t i = 0; i < rscene.meshes.size(); ++i) {
         const auto& rmesh = rscene.meshes[i];
@@ -597,8 +635,11 @@ Prefab ImportUSDPrefab(const std::string& path) {
         // carries material_id in recent versions — resolve defensively.
         int matIndex = -1;
         std::string matName;
-        if (rmesh.material_id >= 0 && rmesh.material_id < static_cast<int>(out.materials.size())) {
+        if (rmesh.material_id >= 0 && rmesh.material_id < static_cast<int>(rscene.materials.size())) {
             matIndex = rmesh.material_id;
+            matName = out.materials[matIndex].name;
+        } else {
+            matIndex = displayColorMaterial(rmesh);
             matName = out.materials[matIndex].name;
         }
         ExtractMesh(rmesh, matIndex, matName, out.meshes, meshChunks[i]);
