@@ -1162,19 +1162,21 @@ static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::s
             MaterialBlueprint mb;
             mb.name = name;
             mb.shading = matVal.value("shading", mb.shading);
-            mb.diffuse = ParseVec3(matVal.value("diffuse", nlohmann::json::array()), mb.diffuse);
-            mb.roughnessFactor = matVal.value("roughnessFactor", mb.roughnessFactor);
-            mb.metallicFactor = matVal.value("metallicFactor", mb.metallicFactor);
-            mb.specular = ParseVec3(matVal.value("specular", nlohmann::json::array()), mb.specular);
-            mb.ambient = ParseVec3(matVal.value("ambient", nlohmann::json::array()), mb.ambient);
-            mb.shininess = matVal.value("shininess", mb.shininess);
-            mb.cullFaceEnabled = matVal.value("cullFaceEnabled", mb.cullFaceEnabled);
-            mb.baseMap = matVal.value("baseMap", std::string(""));
-            mb.normalMap = matVal.value("normalMap", std::string(""));
-            mb.aoMap = matVal.value("aoMap", std::string(""));
-            mb.roughnessMap = matVal.value("roughnessMap", std::string(""));
-            mb.metallicMap = matVal.value("metallicMap", std::string(""));
-            mb.heightMap = matVal.value("heightMap", std::string(""));
+            // Scalars → the embedded MaterialProps (single source of truth).
+            mb.props.diffuse = ParseVec3(matVal.value("diffuse", nlohmann::json::array()), mb.props.diffuse);
+            mb.props.roughnessFactor = matVal.value("roughnessFactor", mb.props.roughnessFactor);
+            mb.props.metallicFactor = matVal.value("metallicFactor", mb.props.metallicFactor);
+            mb.props.specular = ParseVec3(matVal.value("specular", nlohmann::json::array()), mb.props.specular);
+            mb.props.ambient = ParseVec3(matVal.value("ambient", nlohmann::json::array()), mb.props.ambient);
+            mb.props.shininess = matVal.value("shininess", mb.props.shininess);
+            mb.props.cullFaceEnabled = matVal.value("cullFaceEnabled", mb.props.cullFaceEnabled);
+            // Texture asset paths — resolved to handles in Phase 2.
+            mb.baseMapPath = matVal.value("baseMap", std::string(""));
+            mb.normalMapPath = matVal.value("normalMap", std::string(""));
+            mb.aoMapPath = matVal.value("aoMap", std::string(""));
+            mb.roughnessMapPath = matVal.value("roughnessMap", std::string(""));
+            mb.metallicMapPath = matVal.value("metallicMap", std::string(""));
+            mb.heightMapPath = matVal.value("heightMap", std::string(""));
             // Transmission / volume / IOR (glTF KHR_materials_* equivalents).
             mb.transmissionFactor = matVal.value("transmissionFactor", mb.transmissionFactor);
             mb.ior = matVal.value("ior", mb.ior);
@@ -1182,8 +1184,8 @@ static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::s
             mb.attenuationDistance = matVal.value("attenuationDistance", mb.attenuationDistance);
             mb.attenuationColor =
                 ParseVec3(matVal.value("attenuationColor", nlohmann::json::array()), mb.attenuationColor);
-            mb.transmissionMap = matVal.value("transmissionMap", std::string(""));
-            mb.thicknessMap = matVal.value("thicknessMap", std::string(""));
+            mb.transmissionMapPath = matVal.value("transmissionMap", std::string(""));
+            mb.thicknessMapPath = matVal.value("thicknessMap", std::string(""));
             bp.materials.push_back(std::move(mb));
         }
     }
@@ -1238,20 +1240,16 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
     // Materials are created after textures so their map paths resolve to
     // already-loaded TextureHandles. CreateMaterial dedups by name.
     for (const auto& mb : bp.materials) {
-        MaterialProps props;
-        props.diffuse = mb.diffuse;
-        props.roughnessFactor = mb.roughnessFactor;
-        props.metallicFactor = mb.metallicFactor;
-        props.specular = mb.specular;
-        props.ambient = mb.ambient;
-        props.shininess = mb.shininess;
-        props.cullFaceEnabled = mb.cullFaceEnabled;
-        if (!mb.baseMap.empty()) props.baseMap = TextureHandle(mb.baseMap);
-        if (!mb.normalMap.empty()) props.normalMap = TextureHandle(mb.normalMap);
-        if (!mb.aoMap.empty()) props.aoMap = TextureHandle(mb.aoMap);
-        if (!mb.roughnessMap.empty()) props.roughnessMap = TextureHandle(mb.roughnessMap);
-        if (!mb.metallicMap.empty()) props.metallicMap = TextureHandle(mb.metallicMap);
-        if (!mb.heightMap.empty()) props.heightMap = TextureHandle(mb.heightMap);
+        // Start from the parsed scalars, then resolve the texture paths to
+        // handles now that the textures are loaded (TextureHandle(path) does a
+        // GPU lookup, so this can only happen here in Phase 2, not at parse).
+        MaterialProps props = mb.props;
+        if (!mb.baseMapPath.empty()) props.baseMap = TextureHandle(mb.baseMapPath);
+        if (!mb.normalMapPath.empty()) props.normalMap = TextureHandle(mb.normalMapPath);
+        if (!mb.aoMapPath.empty()) props.aoMap = TextureHandle(mb.aoMapPath);
+        if (!mb.roughnessMapPath.empty()) props.roughnessMap = TextureHandle(mb.roughnessMapPath);
+        if (!mb.metallicMapPath.empty()) props.metallicMap = TextureHandle(mb.metallicMapPath);
+        if (!mb.heightMapPath.empty()) props.heightMap = TextureHandle(mb.heightMapPath);
         // Default shading is PBR; "shading":"blinnphong" opts into the legacy path.
         if (mb.shading == "blinnphong") {
             AssetManager::Get().CreateBlinnPhongMaterial(mb.name, props);
@@ -1264,8 +1262,8 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
             mat->thicknessFactor = mb.thicknessFactor;
             mat->attenuationDistance = mb.attenuationDistance;
             mat->attenuationColor = mb.attenuationColor;
-            if (!mb.transmissionMap.empty()) mat->transmissionMap = TextureHandle(mb.transmissionMap);
-            if (!mb.thicknessMap.empty()) mat->thicknessMap = TextureHandle(mb.thicknessMap);
+            if (!mb.transmissionMapPath.empty()) mat->transmissionMap = TextureHandle(mb.transmissionMapPath);
+            if (!mb.thicknessMapPath.empty()) mat->thicknessMap = TextureHandle(mb.thicknessMapPath);
         }
     }
     if (!bp.materials.empty()) ENGINE_LOG("JSON Materials created.");
