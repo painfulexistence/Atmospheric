@@ -72,17 +72,25 @@ void ActionTimelineComponent::AddTimeline(const std::string& libraryName) {
 bool ActionTimelineComponent::Play(const std::string& name) {
     auto* lib = Lib();
     if (!lib) return false;
-    TimelineHandle h = lib->FindTimeline(name);
-    if (!h.IsValid() || std::find(_timelines.begin(), _timelines.end(), h) == _timelines.end()) return false;
 
-    _active = h;
-    _activeClip = lib->GetTimeline(h);
-    _activeName = _activeClip ? _activeClip->name : name;
-    _state.time = 0.0f;
-    _prevTime = 0.0f;
-    _state.playing = true;
-    Evaluate(0.0f);
-    return true;
+    // Resolve among THIS component's own timelines. Timeline names collide
+    // across entities (every CSB node's timeline may share a name — the default
+    // GameObject name is even the same " "), so a global by-name lookup would
+    // return another entity's handle and this component would fail to play.
+    for (TimelineHandle h : _timelines) {
+        const ActionTimeline* tl = lib->GetTimeline(h);
+        if (tl && tl->name == name) {
+            _active = h;
+            _activeClip = tl;
+            _activeName = tl->name;
+            _state.time = 0.0f;
+            _prevTime = 0.0f;
+            _state.playing = true;
+            Evaluate(0.0f);
+            return true;
+        }
+    }
+    return false;
 }
 
 int ActionTimelineComponent::PlayOverlay(ActionTimeline tl, std::function<void()> onFinished) {
@@ -194,7 +202,8 @@ void ActionTimelineComponent::Evaluate(float time) {
 }
 
 void ActionTimelineComponent::DrawImGui() {
-    if (!ImGui::CollapsingHeader("ActionTimeline")) return;
+    // The editor already wraps each component in a CollapsingHeader(GetName())
+    // with a PushID — so draw widgets directly, no extra header here.
     ImGui::Text("Timeline: %s", _activeName.empty() ? "(none)" : _activeName.c_str());
     ImGui::Text("Overlays: %zu", _overlays.size());
     AnimatorComponent::DrawImGui();

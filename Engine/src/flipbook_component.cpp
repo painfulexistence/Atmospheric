@@ -132,7 +132,7 @@ void FlipbookComponent::Evaluate(float time) {
 }
 
 void FlipbookComponent::DrawImGui() {
-    if (!ImGui::CollapsingHeader("Flipbook")) return;
+    // Editor wraps each component in its own CollapsingHeader(GetName()) + PushID.
     ImGui::Text("Clip: %s", _currentName.empty() ? "(none)" : _currentName.c_str());
     ImGui::Text("Frame: %d / %zu", _lastFrame, _clip ? _clip->frames.size() : 0);
     bool flip = _flipX;

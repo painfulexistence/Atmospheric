@@ -77,7 +77,7 @@ void VATComponent::Evaluate(float time) {
 }
 
 void VATComponent::DrawImGui() {
-    if (!ImGui::CollapsingHeader("VAT")) return;
+    // Editor wraps each component in its own CollapsingHeader(GetName()) + PushID.
     VATClip* clip = GetClip();
     if (clip) {
         ImGui::Text(
