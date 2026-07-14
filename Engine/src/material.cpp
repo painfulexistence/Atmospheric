@@ -11,10 +11,6 @@ void Material::DrawImGui() {
     if (ImGui::SliderInt("Normal map ID", &normalMapID, -1, textureCount - 1)) normalMap = normalMapID;
     int aoMapID = aoMap;
     if (ImGui::SliderInt("AO map ID", &aoMapID, -1, textureCount - 1)) aoMap = aoMapID;
-    int roughnessMapID = roughnessMap;
-    if (ImGui::SliderInt("Roughness map ID", &roughnessMapID, -1, textureCount - 1)) roughnessMap = roughnessMapID;
-    int metallicMapID = metallicMap;
-    if (ImGui::SliderInt("Metallic map ID", &metallicMapID, -1, textureCount - 1)) metallicMap = metallicMapID;
     ImGui::ColorEdit3("Diffuse", &diffuse.r);
     static const char* cullNames[] = { "None", "Front", "Back" };
     int cullIdx = static_cast<int>(renderState.cull);
@@ -25,6 +21,11 @@ void Material::DrawImGui() {
 
 void PBRMaterial::DrawImGui() {
     Material::DrawImGui();
+    int textureCount = static_cast<int>(AssetManager::Get().GetTextures().size());
+    int roughnessMapID = roughnessMap;
+    if (ImGui::SliderInt("Roughness map ID", &roughnessMapID, -1, textureCount - 1)) roughnessMap = roughnessMapID;
+    int metallicMapID = metallicMap;
+    if (ImGui::SliderInt("Metallic map ID", &metallicMapID, -1, textureCount - 1)) metallicMap = metallicMapID;
     ImGui::DragFloat("Roughness factor", &roughnessFactor, 0.01f, 0.0f, 1.0f);
     ImGui::DragFloat("Metallic factor", &metallicFactor, 0.01f, 0.0f, 1.0f);
 }

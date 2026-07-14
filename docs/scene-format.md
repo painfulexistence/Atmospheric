@@ -28,13 +28,27 @@ A scene is a JSON file under `assets/scenes/<name>.json`, loaded by
 
 ### `materials` keys
 
-Per named material: `diffuse`, `specular`, `ambient` (`[r,g,b]`), `shininess`,
-`cullFaceEnabled`, and texture-path maps `baseMap` / `normalMap` / `aoMap` /
-`roughnessMap` / `metallicMap` / `heightMap`. Transmission/refraction (mirrors
-the glTF `KHR_materials_transmission`/`_volume`/`_ior` import — data only, no
-shader yet): `transmissionFactor` (0), `ior` (1.5), `thicknessFactor` (0),
+`shading` selects the model: `"pbr"` (default, metallic/roughness
+Cook-Torrance) or `"blinnphong"` (legacy specular).
+
+Shared keys (both models): `diffuse` (`[r,g,b]`), `cullFaceEnabled`, and the
+texture-path maps `baseMap` / `normalMap` / `aoMap`.
+
+PBR keys: `roughnessFactor` (default 1) and `metallicFactor` (default 0) plus
+optional `roughnessMap` / `metallicMap` paths. glTF semantics: the shaded value
+is `map × factor`, and an *absent* map counts as white — so with no maps the
+factors stand alone (no 1×1 solid texture needed).
+Transmission/refraction (PBR only; mirrors the glTF
+`KHR_materials_transmission`/`_volume`/`_ior` import — data only, no shader
+yet): `transmissionFactor` (0), `ior` (1.5), `thicknessFactor` (0),
 `attenuationDistance` (+inf), `attenuationColor` (`[1,1,1]`), and the
 `transmissionMap` / `thicknessMap` paths. Omit them for an opaque material.
+
+Blinn-Phong keys (`"shading": "blinnphong"` only): `specular`, `ambient`
+(`[r,g,b]`), `shininess`.
+
+`heightMap` is a terrain-material key (displacement source); PBR/Blinn-Phong
+materials ignore it.
 
 ## Entity
 
@@ -112,8 +126,8 @@ scene, and a **Quake `.map`** level:
 {
   "name": "showcase",
   "materials": {
-    "Concrete": { "diffuse": [0.55, 0.55, 0.58], "shininess": 0.2 },
-    "Brass":    { "diffuse": [0.72, 0.55, 0.22], "specular": [0.9, 0.8, 0.5], "shininess": 0.6 }
+    "Concrete": { "diffuse": [0.55, 0.55, 0.58], "roughnessFactor": 0.9 },
+    "Brass":    { "diffuse": [0.72, 0.55, 0.22], "roughnessFactor": 0.35, "metallicFactor": 0.9 }
   },
   "entities": [
     { "name": "MainCamera", "position": [0, 6, 14], "components": [

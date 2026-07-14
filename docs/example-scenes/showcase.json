@@ -5,16 +5,16 @@
   "materials": {
     "Concrete": {
       "diffuse": [0.55, 0.55, 0.58],
-      "specular": [0.1, 0.1, 0.1],
-      "shininess": 0.2
+      "roughnessFactor": 0.9
     },
     "Brass": {
       "diffuse": [0.72, 0.55, 0.22],
-      "specular": [0.9, 0.8, 0.5],
-      "shininess": 0.6
+      "roughnessFactor": 0.35,
+      "metallicFactor": 0.9
     },
     "Glass": {
       "diffuse": [1.0, 1.0, 1.0],
+      "roughnessFactor": 0.05,
       "transmissionFactor": 0.9,
       "ior": 1.5,
       "thicknessFactor": 1.0,

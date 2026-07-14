@@ -520,12 +520,15 @@ void AssetManager::LoadMaterials(const std::vector<MaterialProps>& materialDefs)
     }
 }
 
-Material* AssetManager::CreateMaterial(const std::string& name, const MaterialProps& props) {
+PBRMaterial* AssetManager::CreateMaterial(const std::string& name, const MaterialProps& props) {
     // Check if already exists
     auto it = _materialCache.find(name);
     if (it != _materialCache.end()) {
         ENGINE_LOG("Material '{}' already exists, returning existing material", name);
-        return GetMaterialByID(it->second);
+        // Names are unique across kinds, so a hit under this name is a
+        // PBRMaterial created by an earlier CreateMaterial call; a non-PBR
+        // material of the same name would be a caller bug — surface it as null.
+        return dynamic_cast<PBRMaterial*>(GetMaterialByID(it->second));
     }
 
     // Default shading model is PBR — importers and JSON scenes get a PBRMaterial.
@@ -536,7 +539,7 @@ Material* AssetManager::CreateMaterial(const std::string& name, const MaterialPr
     return ptr;
 }
 
-Material* AssetManager::CreateMaterial(const MaterialProps& props) {
+PBRMaterial* AssetManager::CreateMaterial(const MaterialProps& props) {
     auto material = std::make_unique<PBRMaterial>(props);
     auto* ptr = material.get();
     materials.push_back(std::move(material));

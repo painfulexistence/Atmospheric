@@ -325,7 +325,9 @@ static Material* ResolveMaterialOrFallback(MaterialHandle handle) {
     if (Material* mat = AssetManager::Get().ResolveMaterial(handle)) {
         return mat;
     }
-    static Material gfallback{ MaterialProps{} };
+    // Neutral PBR default so downstream PBRMaterial casts (factors, maps)
+    // succeed and the draw shades like any other untextured surface.
+    static PBRMaterial gfallback{ MaterialProps{} };
     return &gfallback;
 }
 
@@ -1944,7 +1946,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             meshShader->SetUniform(std::string("u_useBlinnPhong"), blinnMat ? 1 : 0);
             // PBR scalar factors that scale the roughness/metallic maps.
             meshShader->SetUniform(std::string("u_roughnessFactor"), pbrMat ? pbrMat->roughnessFactor : 1.0f);
-            meshShader->SetUniform(std::string("u_metallicFactor"), pbrMat ? pbrMat->metallicFactor : 1.0f);
+            meshShader->SetUniform(std::string("u_metallicFactor"), pbrMat ? pbrMat->metallicFactor : 0.0f);
 
             // Material textures - dynamically bound to Units 2-6
             // Base Map (Unit 2)
@@ -1983,10 +1985,14 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             }
             meshShader->SetUniform(std::string("ao_map_unit"), 4);
 
-            // Roughness Map (Unit 5)
+            // Roughness Map (Unit 5) — PBRMaterial only. glTF semantics: the
+            // shader reads map*factor, and an absent map counts as white, so
+            // the factor stands alone (u_hasRoughnessMap gates the sample; the
+            // default texture is bound purely to keep the sampler complete).
             glActiveTexture(GL_TEXTURE5);
-            TextureHandle roughnessMap = material->roughnessMap;
-            if (roughnessMap.IsValid() && static_cast<uint32_t>(roughnessMap) != 0) {
+            TextureHandle roughnessMap = pbrMat ? pbrMat->roughnessMap : TextureHandle{};
+            const bool hasRoughnessMap = roughnessMap.IsValid() && static_cast<uint32_t>(roughnessMap) != 0;
+            if (hasRoughnessMap) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(roughnessMap));
             } else if (assetManager.GetDefaultTextures().size() > 3) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[3]);
@@ -1994,11 +2000,13 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
             meshShader->SetUniform(std::string("roughness_map_unit"), 5);
+            meshShader->SetUniform(std::string("u_hasRoughnessMap"), hasRoughnessMap ? 1 : 0);
 
-            // Metallic Map (Unit 6)
+            // Metallic Map (Unit 6) — same contract as the roughness map.
             glActiveTexture(GL_TEXTURE6);
-            TextureHandle metallicMap = material->metallicMap;
-            if (metallicMap.IsValid() && static_cast<uint32_t>(metallicMap) != 0) {
+            TextureHandle metallicMap = pbrMat ? pbrMat->metallicMap : TextureHandle{};
+            const bool hasMetallicMap = metallicMap.IsValid() && static_cast<uint32_t>(metallicMap) != 0;
+            if (hasMetallicMap) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(metallicMap));
             } else if (assetManager.GetDefaultTextures().size() > 4) {
                 glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[4]);
@@ -2006,6 +2014,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
             meshShader->SetUniform(std::string("metallic_map_unit"), 6);
+            meshShader->SetUniform(std::string("u_hasMetallicMap"), hasMetallicMap ? 1 : 0);
 
             // Environment map for image-based lighting (Unit 7). Shares the
             // equirect map that SkyboxPass draws; the PBR shader samples its mip
@@ -2214,29 +2223,40 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
             }
             geometryShader->SetUniform("aoMap", 4);
 
-            // Roughness Map (Unit 5)
-            glActiveTexture(GL_TEXTURE5);
-            TextureHandle roughnessMap = material->roughnessMap;
-            if (roughnessMap.IsValid() && static_cast<uint32_t>(roughnessMap) != 0) {
-                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(roughnessMap));
-            } else if (assetManager.GetDefaultTextures().size() > 3) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[3]);
-            } else {
-                glBindTexture(GL_TEXTURE_2D, 0);
-            }
-            geometryShader->SetUniform("roughnessMap", 5);
+            // Roughness / Metallic (Units 5-6) — PBRMaterial only; same glTF
+            // map*factor contract as the forward pass (absent map = white).
+            {
+                auto* pbrMat = dynamic_cast<PBRMaterial*>(material);
 
-            // Metallic Map (Unit 6)
-            glActiveTexture(GL_TEXTURE6);
-            TextureHandle metallicMap = material->metallicMap;
-            if (metallicMap.IsValid() && static_cast<uint32_t>(metallicMap) != 0) {
-                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(metallicMap));
-            } else if (assetManager.GetDefaultTextures().size() > 4) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[4]);
-            } else {
-                glBindTexture(GL_TEXTURE_2D, 0);
+                glActiveTexture(GL_TEXTURE5);
+                TextureHandle roughnessMap = pbrMat ? pbrMat->roughnessMap : TextureHandle{};
+                const bool hasRoughnessMap = roughnessMap.IsValid() && static_cast<uint32_t>(roughnessMap) != 0;
+                if (hasRoughnessMap) {
+                    glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(roughnessMap));
+                } else if (assetManager.GetDefaultTextures().size() > 3) {
+                    glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[3]);
+                } else {
+                    glBindTexture(GL_TEXTURE_2D, 0);
+                }
+                geometryShader->SetUniform("roughnessMap", 5);
+                geometryShader->SetUniform("u_hasRoughnessMap", hasRoughnessMap ? 1 : 0);
+
+                glActiveTexture(GL_TEXTURE6);
+                TextureHandle metallicMap = pbrMat ? pbrMat->metallicMap : TextureHandle{};
+                const bool hasMetallicMap = metallicMap.IsValid() && static_cast<uint32_t>(metallicMap) != 0;
+                if (hasMetallicMap) {
+                    glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(metallicMap));
+                } else if (assetManager.GetDefaultTextures().size() > 4) {
+                    glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[4]);
+                } else {
+                    glBindTexture(GL_TEXTURE_2D, 0);
+                }
+                geometryShader->SetUniform("metallicMap", 6);
+                geometryShader->SetUniform("u_hasMetallicMap", hasMetallicMap ? 1 : 0);
+
+                geometryShader->SetUniform("u_roughnessFactor", pbrMat ? pbrMat->roughnessFactor : 1.0f);
+                geometryShader->SetUniform("u_metallicFactor", pbrMat ? pbrMat->metallicFactor : 0.0f);
             }
-            geometryShader->SetUniform("metallicMap", 6);
 
             glBindVertexArray(mesh->vao);
             glBindBuffer(GL_ARRAY_BUFFER, mesh->ibo);

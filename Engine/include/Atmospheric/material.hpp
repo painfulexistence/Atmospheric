@@ -86,8 +86,12 @@ struct MaterialProps {
     TextureHandle metallicMap;
     TextureHandle heightMap;// TerrainMaterial only
     glm::vec3 diffuse = glm::vec3(.55, .55, .55);
-    float roughnessFactor = 1.0f;// PBR: scales the roughness map (or stands alone)
-    float metallicFactor = 1.0f; // PBR: scales the metallic map
+    // PBR: value = map * factor; with no map bound the factor stands alone
+    // (absent map counts as white, glTF semantics). Engine defaults are a
+    // fully-rough dielectric; importers overwrite both from the source file,
+    // so glTF/USD assets keep their spec defaults.
+    float roughnessFactor = 1.0f;
+    float metallicFactor = 0.0f;
     glm::vec3 specular = glm::vec3(.7, .7, .7);// BlinnPhong only
     glm::vec3 ambient = glm::vec3(0, 0, 0);    // BlinnPhong only
     float shininess = .25;                     // BlinnPhong only
@@ -96,20 +100,18 @@ struct MaterialProps {
     PolygonMode polygonMode = PolygonMode::Fill;
 };
 
-// Base surface material. Holds the inputs shared by every shading model and
-// read generically by all render backends: the albedo tint plus the base /
-// normal / AO / roughness / metallic maps. Shading-model-specific parameters
-// live in the leaf types — roughness/metallic *factors* on PBRMaterial, the
-// specular/shininess Phong terms on BlinnPhongMaterial, heightMap on
-// TerrainMaterial. Instantiate this directly only for a neutral fallback;
-// scenes and importers create PBRMaterial (the default) via CreateMaterial.
+// Base surface material. Deliberately shading-model-agnostic: only the inputs
+// every model shares (albedo tint + base/normal/AO maps) plus render-state and
+// queue placement live here. Everything that encodes a specific shading model
+// belongs to the leaf types — metallic/roughness maps+factors and the
+// transmission set on PBRMaterial, the specular/shininess Phong terms on
+// BlinnPhongMaterial, heightMap on TerrainMaterial. Scenes and importers
+// create PBRMaterial (the engine default) via AssetManager::CreateMaterial.
 class Material {
 public:
     TextureHandle baseMap;
     TextureHandle normalMap;
     TextureHandle aoMap;
-    TextureHandle roughnessMap;
-    TextureHandle metallicMap;
     glm::vec3 diffuse = glm::vec3(.55, .55, .55);
 
     // Consolidated render-state: blend, cull, depth, polygon, topology.
@@ -137,37 +139,23 @@ public:
     float reflectionStrength = 0.6f;// blend weight toward the mirror image at grazing angles
     float reflectionDistortion = 0.02f;// normal-driven UV wobble (waves); 0 for a perfect mirror
 
-    // ── Transmission / volume / IOR (populated from glTF KHR_materials_*) ───────
-    // Data carried through from import for a future refraction/transmission pass;
-    // no current shader reads these. Defaults = opaque thin-walled dielectric, so
-    // existing materials render unchanged. See PrefabMaterial for field meanings.
-    float transmissionFactor = 0.0f;// 0 = opaque; 1 = fully transmissive
-    TextureHandle transmissionMap;// R channel scales transmissionFactor
-    float ior = 1.5f;// index of refraction
-    float thicknessFactor = 0.0f;// 0 = thin-walled; >0 = has a volume
-    TextureHandle thicknessMap;// G channel scales thicknessFactor
-    float attenuationDistance = std::numeric_limits<float>::infinity();// +inf = no absorption
-    glm::vec3 attenuationColor = glm::vec3(1.0f);// Beer-Lambert tint through the volume
-
     int GetFinalRenderQueue() const {
         return static_cast<int>(renderQueue) + renderQueueOffset;
     }
 
     virtual ~Material() = default;
 
-    // Owned material inspector. Base class draws the generic PBR/Phong fields
-    // (maps, colors, shininess, cull mode); subclasses call the base and add
-    // their own controls so per-type tunables (palette, wave strength, etc.)
-    // live with the material instead of leaking into every component's
-    // DrawImGui.
+    // Owned material inspector. Base class draws the shared surface fields
+    // (maps, diffuse, cull mode); subclasses call the base and add their own
+    // controls so per-type tunables (factors, Phong terms, palette, wave
+    // strength, etc.) live with the material instead of leaking into every
+    // component's DrawImGui.
     virtual void DrawImGui();
 
     Material(const MaterialProps& props) {
         baseMap = props.baseMap;
         normalMap = props.normalMap;
         aoMap = props.aoMap;
-        roughnessMap = props.roughnessMap;
-        metallicMap = props.metallicMap;
         diffuse = props.diffuse;
         renderState.cull = props.cullFaceEnabled ? CullMode::Back : CullMode::None;
         renderState.topology = props.primitiveType;
@@ -177,15 +165,32 @@ public:
 
 // The default surface shading model (metallic/roughness, Cook-Torrance in
 // pbr.frag). Base for most materials — every importer and JSON scene produces
-// one via AssetManager::CreateMaterial. The roughness/metallic *maps* live on
-// the base (shared, read generically); PBRMaterial adds the scalar factors that
-// scale them, so a material can set roughness/metalness without a 1x1 texture.
+// one via AssetManager::CreateMaterial. Final roughness/metalness is
+// map-sample * factor (glTF semantics), so with no maps bound the factors
+// stand alone and no 1x1 solid texture is needed.
 class PBRMaterial : public Material {
 public:
+    TextureHandle roughnessMap;
+    TextureHandle metallicMap;
     float roughnessFactor = 1.0f;
-    float metallicFactor = 1.0f;
+    float metallicFactor = 0.0f;
+
+    // ── Transmission / volume / IOR (populated from glTF KHR_materials_*) ───
+    // Data carried through from import for a future refraction/transmission
+    // pass; no current shader reads these. Defaults = opaque thin-walled
+    // dielectric, so existing materials render unchanged. See PrefabMaterial
+    // for field meanings.
+    float transmissionFactor = 0.0f;// 0 = opaque; 1 = fully transmissive
+    TextureHandle transmissionMap;// R channel scales transmissionFactor
+    float ior = 1.5f;// index of refraction
+    float thicknessFactor = 0.0f;// 0 = thin-walled; >0 = has a volume
+    TextureHandle thicknessMap;// G channel scales thicknessFactor
+    float attenuationDistance = std::numeric_limits<float>::infinity();// +inf = no absorption
+    glm::vec3 attenuationColor = glm::vec3(1.0f);// Beer-Lambert tint through the volume
 
     explicit PBRMaterial(const MaterialProps& props = MaterialProps{}) : Material(props) {
+        roughnessMap = props.roughnessMap;
+        metallicMap = props.metallicMap;
         roughnessFactor = props.roughnessFactor;
         metallicFactor = props.metallicFactor;
     }

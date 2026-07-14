@@ -504,12 +504,13 @@ void GraphicsSubsystem::DrawImGui(float dt) {
                     ImGui::Text("Base Map ID: %d", static_cast<int>(m->baseMap));
                     ImGui::Text("Normal Map ID: %d", static_cast<int>(m->normalMap));
                     ImGui::Text("AO Map ID: %d", static_cast<int>(m->aoMap));
-                    ImGui::Text("Roughness Map ID: %d", static_cast<int>(m->roughnessMap));
-                    ImGui::Text("Metallic Map ID: %d", static_cast<int>(m->metallicMap));
                     ImGui::Text("Diffuse: %.3f, %.3f, %.3f", m->diffuse.x, m->diffuse.y, m->diffuse.z);
-                    // Shading-model-specific fields now live on the leaf types.
-                    if (auto* pbr = dynamic_cast<PBRMaterial*>(m.get()))
+                    // Shading-model-specific fields live on the leaf types.
+                    if (auto* pbr = dynamic_cast<PBRMaterial*>(m.get())) {
+                        ImGui::Text("Roughness Map ID: %d", static_cast<int>(pbr->roughnessMap));
+                        ImGui::Text("Metallic Map ID: %d", static_cast<int>(pbr->metallicMap));
                         ImGui::Text("Roughness/Metallic factor: %.3f / %.3f", pbr->roughnessFactor, pbr->metallicFactor);
+                    }
                     if (auto* bp = dynamic_cast<BlinnPhongMaterial*>(m.get())) {
                         ImGui::Text("Specular: %.3f, %.3f, %.3f", bp->specular.x, bp->specular.y, bp->specular.z);
                         ImGui::Text("Shininess: %.3f", bp->shininess);

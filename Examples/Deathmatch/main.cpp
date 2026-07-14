@@ -172,18 +172,10 @@ class DeathmatchGame : public Application {
         GoScene("main", [this] { OnLoad(); });
     }
 
-    Material* MakeMaterial(const std::string& name, glm::vec3 diffuse) {
+    PBRMaterial* MakeMaterial(const std::string& name, glm::vec3 diffuse) {
         MaterialProps props;
         props.diffuse = diffuse;
         return AssetManager::Get().CreateMaterial(name, props);
-    }
-
-    // Solid 1x1 texture — used to pin a floor/prop to a specific roughness or
-    // metalness (pbr.frag reads those from maps, not scalars).
-    TextureHandle MakeSolidTexture(glm::vec3 rgb) {
-        auto b = [](float x) { return static_cast<unsigned char>(std::round(glm::clamp(x, 0.0f, 1.0f) * 255.0f)); };
-        unsigned char px[3] = { b(rgb.r), b(rgb.g), b(rgb.b) };
-        return AssetManager::Get().CreateTextureFromImage(std::make_shared<Image>(1, 1, 3, px));
     }
 
     // Blueprint-style grid baked into a single 0..1-UV texture: gives the floor
@@ -241,13 +233,14 @@ class DeathmatchGame : public Application {
 
         // ── Ground ──────────────────────────────────────────────────────────
         // Play floor gets a blueprint grid so self-motion is legible (a flat
-        // matte plane reads as standing still). Kept matte — solid high
-        // roughness / zero metalness — so IBL tints it instead of mirroring the
-        // sky; diffuse=white lets the grid texture show through unmodulated.
-        Material* floorMat = MakeMaterial("dm_floor_mat", glm::vec3(1.0f));
+        // matte plane reads as standing still). Kept matte — high roughness /
+        // zero metalness via the PBRMaterial factors — so IBL tints it instead
+        // of mirroring the sky; diffuse=white lets the grid texture show
+        // through unmodulated.
+        PBRMaterial* floorMat = MakeMaterial("dm_floor_mat", glm::vec3(1.0f));
         floorMat->baseMap = MakeGridTexture(24, glm::vec3(0.26f, 0.28f, 0.32f), glm::vec3(0.50f, 0.54f, 0.62f));
-        floorMat->roughnessMap = MakeSolidTexture(glm::vec3(0.85f));
-        floorMat->metallicMap = MakeSolidTexture(glm::vec3(0.0f));
+        floorMat->roughnessFactor = 0.85f;
+        floorMat->metallicFactor = 0.0f;
         auto floorMesh = am.CreatePlaneMesh("dm_floor", 2.0f * sim::kArenaHalf, 2.0f * sim::kArenaHalf);
         am.GetMeshPtr(floorMesh)->SetMaterial(am.GetMaterialHandle("dm_floor_mat"));
         CreateGameObject(glm::vec3(0.0f))->AddComponent<MeshRenderer>(floorMesh);
@@ -262,14 +255,15 @@ class DeathmatchGame : public Application {
         // material up by name); its light entities become the arena's point
         // lights. The ground reaches the HDRI horizon so objects sit on ground.
         // PBR palette. roughness/metalness are what give the greybox a "finished"
-        // read: pbr.frag samples both from these solid maps, and with the HDRI
-        // environment loaded above, metallic surfaces pick up real reflections.
-        // So the surfaces are deliberately contrasted — matte concrete vs. brushed
-        // metal trim vs. glossy dark glass — rather than flat same-roughness fills.
+        // read: the PBRMaterial scalar factors drive both directly (no maps
+        // needed), and with the HDRI environment loaded above, metallic surfaces
+        // pick up real reflections. So the surfaces are deliberately contrasted —
+        // matte concrete vs. brushed metal trim vs. glossy dark glass — rather
+        // than flat same-roughness fills.
         auto pbr = [&](const std::string& name, glm::vec3 rgb, float rough, float metal) {
-            Material* m = MakeMaterial(name, rgb);
-            m->roughnessMap = MakeSolidTexture(glm::vec3(rough));
-            m->metallicMap = MakeSolidTexture(glm::vec3(metal));
+            PBRMaterial* m = MakeMaterial(name, rgb);
+            m->roughnessFactor = rough;
+            m->metallicFactor = metal;
             return m;
         };
         pbr("dm_ground_mat", glm::vec3(0.13f, 0.14f, 0.16f), 0.92f, 0.0f);// matte asphalt apron
@@ -326,17 +320,17 @@ class DeathmatchGame : public Application {
             auto* vat = static_cast<VATComponent*>(_enemyGO->AddComponent<VATComponent>(
                 enemyAsset.mesh, std::move(enemyAsset.clip), VATProps{ .speed = 1.0f }
             ));
-            // Preset metallic look: gunmetal-red base, full metalness. Back-face
-            // culling is the material default and the blob is convex, so there's
-            // nothing to override. Without image-based lighting a pure metal is
-            // mostly dark except the directional highlight, so a mid roughness
-            // spreads that highlight enough to read as metal — tune to taste.
+            // Preset metallic look: gunmetal-red base, full metalness (the
+            // base colour tints the reflection — F0 = albedo at metallic 1).
+            // Back-face culling is the material default and the blob is convex,
+            // so there's nothing to override. Without image-based lighting a
+            // pure metal is mostly dark except the directional highlight, so a
+            // mid roughness spreads that highlight enough to read as metal.
+            // VATMaterial is a PBRMaterial, so the scalar factors apply directly.
             if (auto* mat = vat->GetMaterial()) {
-                MetalMaps m = MakePresetMetalMaps(glm::vec3(0.59f, 0.16f, 0.15f), /*roughness*/ 0.4f);
-                mat->baseMap = m.base;
-                mat->metallicMap = m.metallic;
-                mat->roughnessMap = m.roughness;
-                mat->diffuse = glm::vec3(1.0f);// tint comes from baseMap now
+                mat->diffuse = glm::vec3(0.59f, 0.16f, 0.15f);
+                mat->metallicFactor = 1.0f;
+                mat->roughnessFactor = 0.4f;
             }
         } else {
             // Networked opponent (or a bake failure): plain capsule.

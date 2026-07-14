@@ -1253,17 +1253,20 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
         if (!mb.metallicMap.empty()) props.metallicMap = TextureHandle(mb.metallicMap);
         if (!mb.heightMap.empty()) props.heightMap = TextureHandle(mb.heightMap);
         // Default shading is PBR; "shading":"blinnphong" opts into the legacy path.
-        Material* mat = (mb.shading == "blinnphong")
-                            ? static_cast<Material*>(AssetManager::Get().CreateBlinnPhongMaterial(mb.name, props))
-                            : AssetManager::Get().CreateMaterial(mb.name, props);
-        // Transmission/volume/IOR live on Material, not MaterialProps (data only).
-        mat->transmissionFactor = mb.transmissionFactor;
-        mat->ior = mb.ior;
-        mat->thicknessFactor = mb.thicknessFactor;
-        mat->attenuationDistance = mb.attenuationDistance;
-        mat->attenuationColor = mb.attenuationColor;
-        if (!mb.transmissionMap.empty()) mat->transmissionMap = TextureHandle(mb.transmissionMap);
-        if (!mb.thicknessMap.empty()) mat->thicknessMap = TextureHandle(mb.thicknessMap);
+        if (mb.shading == "blinnphong") {
+            AssetManager::Get().CreateBlinnPhongMaterial(mb.name, props);
+        } else {
+            PBRMaterial* mat = AssetManager::Get().CreateMaterial(mb.name, props);
+            // Transmission/volume/IOR live on PBRMaterial, not MaterialProps
+            // (data only — carried for a future refraction pass).
+            mat->transmissionFactor = mb.transmissionFactor;
+            mat->ior = mb.ior;
+            mat->thicknessFactor = mb.thicknessFactor;
+            mat->attenuationDistance = mb.attenuationDistance;
+            mat->attenuationColor = mb.attenuationColor;
+            if (!mb.transmissionMap.empty()) mat->transmissionMap = TextureHandle(mb.transmissionMap);
+            if (!mb.thicknessMap.empty()) mat->thicknessMap = TextureHandle(mb.thicknessMap);
+        }
     }
     if (!bp.materials.empty()) ENGINE_LOG("JSON Materials created.");
 
@@ -1303,13 +1306,6 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
             std::make_shared<Image>(pi.width, pi.height, pi.channels, const_cast<unsigned char*>(pi.pixels.data()));
         imageTex[i] = am.CreateTextureFromImage(cpuImg);
     }
-    // 1x1 solid texture for material scalar factors (same pattern the examples use).
-    auto solidTex = [&](glm::vec3 rgb) {
-        auto b = [](float x) { return static_cast<unsigned char>(std::round(std::clamp(x, 0.0f, 1.0f) * 255.0f)); };
-        unsigned char px[3] = { b(rgb.r), b(rgb.g), b(rgb.b) };
-        return am.CreateTextureFromImage(std::make_shared<Image>(1, 1, 3, px));
-    };
-
     // ── PrefabMaterials → engine materials (dedup by name via CreateMaterial) ─
     std::vector<MaterialHandle> matHandles(prefab.materials.size());
     for (size_t i = 0; i < prefab.materials.size(); ++i) {
@@ -1349,15 +1345,18 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
         props.aoMap = texAt(pm.occlusionImage);
         props.roughnessMap = channelTex(pm.metallicRoughnessImage, 1);// glTF roughness → G
         props.metallicMap = channelTex(pm.metallicRoughnessImage, 2); // glTF metallic  → B
-        if (!props.roughnessMap.IsValid()) props.roughnessMap = solidTex(glm::vec3(pm.roughness));
-        if (!props.metallicMap.IsValid()) props.metallicMap = solidTex(glm::vec3(pm.metallic));
+        // glTF semantics carried natively by PBRMaterial: value = map * factor,
+        // absent map = white — so the scalar factors need no 1x1 solid texture.
+        props.roughnessFactor = pm.roughness;
+        props.metallicFactor = pm.metallic;
         props.diffuse = props.baseMap.IsValid() ? glm::vec3(1.0f) : pm.baseColor;
-        props.ambient = pm.emissive;// closest engine analogue to emissive
+        // NOTE: pm.emissive is not carried over — the engine has no emissive
+        // channel on materials yet.
         props.cullFaceEnabled = !pm.doubleSided;
-        Material* mat = am.CreateMaterial(matName, props);
+        PBRMaterial* mat = am.CreateMaterial(matName, props);
         // Carry transmission/volume/IOR through to the engine material (data
-        // only; no shader reads them yet — see Material's fields). MaterialProps
-        // has no slot for these, so set them on the created material directly.
+        // only; no shader reads them yet — see PBRMaterial's fields).
+        // MaterialProps has no slot for these, so set them directly.
         mat->transmissionFactor = pm.transmissionFactor;
         mat->transmissionMap = texAt(pm.transmissionImage);
         mat->ior = pm.ior;

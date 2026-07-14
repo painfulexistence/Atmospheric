@@ -54,8 +54,13 @@ uniform sampler2D normal_map_unit;
 uniform sampler2D ao_map_unit;
 uniform sampler2D roughness_map_unit;
 uniform sampler2D metallic_map_unit;
-uniform float u_roughnessFactor;// PBRMaterial scalar; scales the roughness map
-uniform float u_metallicFactor; // PBRMaterial scalar; scales the metallic map
+// PBRMaterial params, glTF semantics: value = map * factor, and an absent map
+// counts as white so the factor stands alone (the has-map flags gate the
+// sample rather than relying on whatever default texture is bound).
+uniform float u_roughnessFactor;
+uniform float u_metallicFactor;
+uniform int u_hasRoughnessMap;
+uniform int u_hasMetallicMap;
 uniform int u_useBlinnPhong;// 1 -> BlinnPhongMaterial (legacy specular); 0 -> PBR Cook-Torrance
 uniform sampler2D shadow_map_unit;
 uniform samplerCube omni_shadow_map_unit;
@@ -227,11 +232,13 @@ float SurfaceAO() {
 }
 
 float SurfaceRoughness() {
-    return clamp(texture(roughness_map_unit, tex_uv).r * u_roughnessFactor, 0.0, 1.0);
+    float m = (u_hasRoughnessMap == 1) ? texture(roughness_map_unit, tex_uv).r : 1.0;
+    return clamp(m * u_roughnessFactor, 0.0, 1.0);
 }
 
 float SurfaceMetallic() {
-    return clamp(texture(metallic_map_unit, tex_uv).r * u_metallicFactor, 0.0, 1.0);
+    float m = (u_hasMetallicMap == 1) ? texture(metallic_map_unit, tex_uv).r : 1.0;
+    return clamp(m * u_metallicFactor, 0.0, 1.0);
 }
 
 float ShadowBias(vec3 norm, vec3 lightDir) {

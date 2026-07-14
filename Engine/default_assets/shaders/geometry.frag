@@ -14,6 +14,12 @@ uniform sampler2D normalMap;
 uniform sampler2D roughnessMap;
 uniform sampler2D metallicMap;
 uniform sampler2D aoMap;
+// PBRMaterial params, glTF semantics: value = map * factor; an absent map
+// counts as white so the factor stands alone (has-map flags gate the sample).
+uniform float u_roughnessFactor;
+uniform float u_metallicFactor;
+uniform int u_hasRoughnessMap;
+uniform int u_hasMetallicMap;
 
 void main() {
     g_position = frag_pos;
@@ -24,7 +30,9 @@ void main() {
 
     g_albedo = texture(baseMap, tex_uv);
 
-    g_material.r = texture(roughnessMap, tex_uv).r;
-    g_material.g = texture(metallicMap, tex_uv).r;
+    float roughness = (u_hasRoughnessMap == 1) ? texture(roughnessMap, tex_uv).r : 1.0;
+    float metallic = (u_hasMetallicMap == 1) ? texture(metallicMap, tex_uv).r : 1.0;
+    g_material.r = clamp(roughness * u_roughnessFactor, 0.0, 1.0);
+    g_material.g = clamp(metallic * u_metallicFactor, 0.0, 1.0);
     g_material.b = texture(aoMap, tex_uv).r;
 }

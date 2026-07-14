@@ -58,8 +58,10 @@ public:
     // ========== CPU Resource Management ==========
     std::shared_ptr<Image> LoadImage(const std::string& path);
 
-    Material* CreateMaterial(const std::string& name, const MaterialProps& props);
-    Material* CreateMaterial(const MaterialProps& props);
+    // Default shading model is PBR — CreateMaterial hands back the concrete
+    // PBRMaterial so callers can set factors/maps without a cast.
+    PBRMaterial* CreateMaterial(const std::string& name, const MaterialProps& props);
+    PBRMaterial* CreateMaterial(const MaterialProps& props);
     BlinnPhongMaterial* CreateBlinnPhongMaterial(const std::string& name, const MaterialProps& props);
     WaterMaterial* CreateWaterMaterial();
     PortalMaterial* CreatePortalMaterial();
