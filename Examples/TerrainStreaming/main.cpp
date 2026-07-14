@@ -224,9 +224,10 @@ class TerrainStreamingDemo : public Application {
             .resolution = 0, .seed = 20260705, .frequency = 0.0007f, .octaves = 9
         };
         auto base01 = MakeFbmHeightSource(noiseParams);
-        // Deeper/broader incision than the defaults so the carved valleys read
-        // clearly from altitude (a 3 m channel vanishes against 500 m relief).
-        const CarveParams carveParams{ .bedDepth = 10.0f, .channelWiden = 2.2f, .bankBlend = 3.5f };
+        // Deeper incision than the defaults so the carved valleys read clearly
+        // from altitude (a 3 m channel vanishes against 500 m relief). The U is
+        // cut to the river width, so the water ribbon fills it bank to bank.
+        const CarveParams carveParams{ .bedDepth = 12.0f, .bankBlend = 2.0f };
         _hydro = BuildHydrology(base01, 10240.0f, 500.0f, RiverNetworkParams{}, carveParams);
 
         // Keep grass out of the river channels: suppress where the terrain was
@@ -279,7 +280,7 @@ class TerrainStreamingDemo : public Application {
                 // Bump whenever the carved height changes (the disk cache only
                 // hashes noise params + a custom-fn flag, not the carve itself,
                 // so a stale bake would otherwise replay old/uncarved tiles).
-                .cacheVersion = 4,
+                .cacheVersion = 5,
                 // Detail layers + splat = the full Gaea texturing path, fed by
                 // the procedural generators above. Tiling is repeats per tile
                 // edge (world period = 512m / tiling): grass repeats every 4m,

@@ -328,13 +328,11 @@ TerrainHydrology BuildHydrology(
     // coarse grid can't leave the bed above the water.
     for (const auto& river : hydro.rivers) {
         for (const auto& nd : river.nodes) {
-            // Floor the flat channel to at least one grid cell wide, so a thin
-            // stream (whose real channel is narrower than a cell) still lands on
-            // the grid instead of falling between cells and leaving the water
-            // stranded above uncarved terrain.
-            const float channelHalf = std::max(nd.width * carveParams.channelWiden, cell);
-            const float outer = channelHalf + std::max(nd.width * carveParams.bankBlend, cell);
-            const float floorElev = nd.surfaceY - carveParams.bedDepth;
+            // Waterline half-width = the ribbon's half-width (clamped to at least
+            // a grid cell so a thin stream still lands on cells). The U reaches
+            // the water surface here so the ribbon fills the channel edge-to-edge.
+            const float wl = std::max(nd.width, cell);
+            const float outer = wl + std::max(nd.width * carveParams.bankBlend, cell);
 
             const int cx = static_cast<int>((nd.pos.x + half) / cell);
             const int cz = static_cast<int>((nd.pos.y + half) / cell);
@@ -346,13 +344,17 @@ TerrainHydrology BuildHydrology(
                     const float wx = (gx + 0.5f) * cell - half, wz = (gz + 0.5f) * cell - half;
                     const float dist = std::sqrt((wx - nd.pos.x) * (wx - nd.pos.x) + (wz - nd.pos.y) * (wz - nd.pos.y));
                     if (dist >= outer) continue;
-                    // Flat floor inside the channel; ramp it up out to the banks
-                    // so min(base,floor) stops carving smoothly (raise ~ bank
-                    // relief so the floor clears the terrain past `outer`).
-                    float f = floorElev;
-                    if (dist > channelHalf) {
-                        const float u = (dist - channelHalf) / std::max(outer - channelHalf, 1e-3f);
-                        f += (u * u * (3.0f - 2.0f * u)) * (carveParams.bedDepth + 40.0f);
+                    float f;
+                    if (dist <= wl) {
+                        // U cross-section: bedDepth below the water at the centre,
+                        // rising to exactly the water surface at the waterline.
+                        const float u = dist / wl;// 0 centre .. 1 waterline
+                        f = nd.surfaceY - carveParams.bedDepth * (1.0f - u * u);
+                    } else {
+                        // Past the waterline, ramp the floor up above the terrain
+                        // so min(base,floor) leaves the natural bank uncarved.
+                        const float u = (dist - wl) / std::max(outer - wl, 1e-3f);
+                        f = nd.surfaceY + (u * u * (3.0f - 2.0f * u)) * (carveParams.bedDepth + 60.0f);
                     }
                     float& g = grid[static_cast<size_t>(gz) * cn + gx];
                     if (f < g) g = f;

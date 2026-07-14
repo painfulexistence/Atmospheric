@@ -45,7 +45,8 @@ struct RiverNetworkParams {
     float riverThreshold = 0.0004f;
     int minNodes = 6;// drop stubby polylines shorter than this
     float widthScale = 14.0f;// metres of half-width at full drainage
-    float minWidth = 1.5f;// half-width floor at the river threshold
+    float minWidth = 6.0f;// half-width floor — also the carved channel's half-width, so keep it
+                          // wide enough to read as a valley (and above the carve grid cell)
     int maxRivers = 64;// keep only the N largest (by total drainage) — bounds mesh cost
     int seaLevelPad = 0;// reserved
 };
@@ -71,7 +72,7 @@ std::vector<RiverPolyline> BuildRiverNetwork(
 // one river fits in a uint16 index space; huge networks are already bounded by
 // RiverNetworkParams::maxRivers.
 struct RiverMeshParams {
-    float bankLift = 0.4f;// metres the surface sits above the sampled bed
+    float bankLift = 0.1f;// water surface above the waterline (small — the U meets it here)
     float uvMetresPerV = 8.0f;// world metres per V unit (foam/normal tiling along flow)
     float widthGain = 1.0f;// multiply node widths (art control)
 };
@@ -94,13 +95,15 @@ void BuildRiverMesh(
 // either side. The carve grid is sampled bilinearly and is read-only after
 // build (thread-safe for the worker-thread height source).
 struct CarveParams {
-    int gridResolution = 1024;// carve grid per side (finer than flow for crisp banks)
-    // The channel floor is cut to the water surface minus bedDepth and FLATTENED
-    // (terrain is lowered *to* that floor, not by a constant), so the bed is
-    // level under the water and local humps along the course are sliced through.
-    float bedDepth = 3.0f;// channel floor below the water surface (metres)
-    float channelWiden = 1.6f;// flat-floor half-width = river width * this
-    float bankBlend = 2.6f;// taper distance from the channel back up to terrain (* width)
+    int gridResolution = 2048;// carve grid per side (~5 m/cell at 10 km — crisp banks)
+    // The channel is a U cut to the RIVER WIDTH: deepest (bedDepth below the
+    // water) at the centreline, rising back to exactly the water surface at
+    // ±width — so the water ribbon (same width) fills it bank to bank and its
+    // edges meet the ground instead of hanging over a flat-bottomed pool. Past
+    // ±width the floor ramps above the terrain over bankBlend so nothing else
+    // is carved.
+    float bedDepth = 6.0f;// U-channel centre depth below the water surface (metres)
+    float bankBlend = 1.5f;// taper past the waterline before the carve clears the terrain (* width)
 };
 
 // Bilinearly-sampled channel-FLOOR-elevation field (world metres). Stores the
