@@ -50,11 +50,6 @@ namespace {
         const tinyusdz::AssetResolutionResolver* resolver = nullptr;
     };
 
-    std::string NormalizeRel(std::string p) {
-        if (p.rfind("./", 0) == 0) p = p.substr(2);
-        return p;
-    }
-
     // Resolve an asset against the current working path first (the referencing
     // layer's directory), then any search paths tinyusdz supplies, then the asset
     // root. The cwp branch is what makes deeply-nested Kitchen_set-style
@@ -67,7 +62,6 @@ namespace {
         void* ud
     ) {
         const auto* ctx = static_cast<const FsResolverCtx*>(ud);
-        const std::string a = NormalizeRel(asset);
         std::vector<std::string> dirs;
         if (ctx && ctx->resolver) {
             const std::string& cwp = ctx->resolver->current_working_path();
@@ -75,15 +69,15 @@ namespace {
         }
         dirs.insert(dirs.end(), searchPaths.begin(), searchPaths.end());
         for (const auto& d : dirs) {
-            const std::string base = NormalizeRel(d);
-            const std::string cand = (base.empty() || base == ".") ? a : base + "/" + a;
+            const std::string cand = FileSystem::JoinPath(d, asset);
             if (FileSystem::Get().Exists(cand)) {
                 *resolved = cand;
                 return 0;
             }
         }
-        if (FileSystem::Get().Exists(a)) {// last resort: relative to the asset root
-            *resolved = a;
+        const std::string bare = FileSystem::JoinPath("", asset);// relative to the asset root
+        if (FileSystem::Get().Exists(bare)) {
+            *resolved = bare;
             return 0;
         }
         if (err) *err = fmt::format("asset not found: {}", asset);
@@ -144,13 +138,12 @@ namespace {
             dirs.push_back(s);
         if (!baseDir.empty()) dirs.push_back(baseDir);
         dirs.push_back(".");
-        const std::string a = NormalizeRel(assetPath);
         for (const auto& d : dirs) {
-            const std::string base = NormalizeRel(d);
-            const std::string cand = (base.empty() || base == ".") ? a : base + "/" + a;
+            const std::string cand = FileSystem::JoinPath(d, assetPath);
             if (FileSystem::Get().Exists(cand)) return cand;
         }
-        if (FileSystem::Get().Exists(a)) return a;
+        const std::string bare = FileSystem::JoinPath("", assetPath);
+        if (FileSystem::Get().Exists(bare)) return bare;
         return std::nullopt;
     }
 
@@ -385,11 +378,7 @@ Prefab ImportUSDPrefab(const std::string& path) {
     // Virtual (relative) directory of the root file — the key space the
     // FileSystem resolver works in (NOT the absolute realPath), so referenced
     // sub-files and textures resolve on web (cache) and native (disk) alike.
-    std::string baseDir;
-    {
-        const size_t vslash = path.find_last_of("/\\");
-        if (vslash != std::string::npos) baseDir = path.substr(0, vslash);
-    }
+    const std::string baseDir = FileSystem::DirName(path);
 
     // USDZ is a self-contained zip archive; its internal assets are resolved by
     // the USDZ loader itself, so the memory loader is the right path there.
@@ -418,8 +407,8 @@ Prefab ImportUSDPrefab(const std::string& path) {
     if (isUsdz) {
         // USDZ textures are embedded in the archive and resolved by tinyusdz's
         // own asset map; the absolute base dir is the search root as before.
-        const size_t s = realPath.find_last_of("/\\");
-        if (s != std::string::npos) env.set_search_paths({ realPath.substr(0, s) });
+        const std::string dir = FileSystem::DirName(realPath);
+        if (!dir.empty()) env.set_search_paths({ dir });
     } else {
         // Resolve material textures through the same FileSystem-backed handler.
         // Search the root dir plus every sub-asset directory pulled in during
@@ -430,8 +419,8 @@ Prefab ImportUSDPrefab(const std::string& path) {
         std::vector<std::string> searchPaths;
         if (!baseDir.empty()) searchPaths.push_back(baseDir);
         for (const auto& [key, _] : fsctx.cache) {
-            const size_t s = key.find_last_of("/\\");
-            if (s != std::string::npos) searchPaths.push_back(key.substr(0, s));
+            std::string dir = FileSystem::DirName(key);
+            if (!dir.empty()) searchPaths.push_back(std::move(dir));
         }
         std::sort(searchPaths.begin(), searchPaths.end());
         searchPaths.erase(std::unique(searchPaths.begin(), searchPaths.end()), searchPaths.end());
@@ -535,8 +524,7 @@ Prefab ImportUSDPrefab(const std::string& path) {
         return node;
     };
 
-    const size_t nameSlash = realPath.find_last_of("/\\");
-    out.root.name = (nameSlash == std::string::npos) ? realPath : realPath.substr(nameSlash + 1);
+    out.root.name = FileSystem::BaseName(realPath);
     if (rscene.default_root_node < rscene.nodes.size()) {
         out.root.children.push_back(buildNode(rscene.nodes[rscene.default_root_node]));
     } else {

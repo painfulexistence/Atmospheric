@@ -143,8 +143,7 @@ Prefab ImportGLTFPrefab(const std::string& path) {
     // external .bin/textures; the committed sample embeds its buffer, so it is
     // only relevant to on-disk (native) assets with external dependencies.
     const std::string realPath = FileSystem::Get().ResolvePath(path).value_or(path);
-    const size_t baseSlash = realPath.find_last_of("/\\");
-    const std::string baseDir = (baseSlash == std::string::npos) ? std::string() : realPath.substr(0, baseSlash);
+    const std::string baseDir = FileSystem::DirName(realPath);
     FileSystem::Bytes bytes = FileSystem::Get().ReadSync(path);
     if (bytes.empty()) {
         ConsoleSubsystem::Get()->Warn(
@@ -431,8 +430,7 @@ Prefab ImportGLTFPrefab(const std::string& path) {
         return node;
     };
 
-    const size_t slash = path.find_last_of("/\\");
-    out.root.name = (slash == std::string::npos) ? path : path.substr(slash + 1);
+    out.root.name = FileSystem::BaseName(path);
     const int sceneIdx = (model.defaultScene >= 0) ? model.defaultScene : 0;
     if (sceneIdx < static_cast<int>(model.scenes.size())) {
         for (int rootNode : model.scenes[sceneIdx].nodes)

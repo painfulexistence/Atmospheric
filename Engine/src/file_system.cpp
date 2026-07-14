@@ -111,11 +111,12 @@ static FileSystem::Bytes ReadFromDisk(const std::string& path) {
 #endif
 }
 
+static std::string StripDotSlash(const std::string& p) {
+    return (p.size() >= 2 && p[0] == '.' && p[1] == '/') ? p.substr(2) : p;
+}
+
 static std::string NormalizePath(const std::string& path) {
-    std::string p = path;
-    if (p.size() >= 2 && p[0] == '.' && p[1] == '/') {
-        p = p.substr(2);
-    }
+    std::string p = StripDotSlash(path);
 #ifndef __EMSCRIPTEN__
     // Prepend executable directory so the game can run from any working directory.
     if (!gBasePath.empty() && (p.empty() || p[0] != '/')) {
@@ -123,6 +124,24 @@ static std::string NormalizePath(const std::string& path) {
     }
 #endif
     return p;
+}
+
+std::string FileSystem::JoinPath(const std::string& base, const std::string& rel) {
+    const std::string r = StripDotSlash(rel);
+    const std::string b = StripDotSlash(base);
+    if (b.empty() || b == ".") return r;
+    const char tail = b.back();
+    return (tail == '/' || tail == '\\') ? b + r : b + "/" + r;
+}
+
+std::string FileSystem::DirName(const std::string& path) {
+    const size_t slash = path.find_last_of("/\\");
+    return slash == std::string::npos ? std::string() : path.substr(0, slash);
+}
+
+std::string FileSystem::BaseName(const std::string& path) {
+    const size_t slash = path.find_last_of("/\\");
+    return slash == std::string::npos ? path : path.substr(slash + 1);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

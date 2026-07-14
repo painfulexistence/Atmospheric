@@ -611,11 +611,6 @@ namespace {
         return out;
     }
 
-    std::string BaseName(const std::string& path) {
-        size_t slash = path.find_last_of("/\\");
-        return slash == std::string::npos ? path : path.substr(slash + 1);
-    }
-
     glm::vec3 ParseOrigin(const MapEntity& e, float scale) {
         auto it = e.properties.find("origin");
         if (it == e.properties.end()) return glm::vec3(0.0f);
@@ -634,7 +629,7 @@ Prefab ImportMapPrefab(const std::string& path, float scale) {
     if (bytes.empty()) return Prefab{};// ok = false; caller logs
 
     const std::string text(bytes.begin(), bytes.end());
-    return ImportMapPrefabFromText(text, BaseName(path), scale);
+    return ImportMapPrefabFromText(text, FileSystem::BaseName(path), scale);
 }
 
 Prefab ImportMapPrefabFromText(const std::string& text, const std::string& name, float scale) {
