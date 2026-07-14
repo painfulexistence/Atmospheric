@@ -29,9 +29,11 @@ Prefab ImportUSDPrefab(const std::string& path) {
 #include <cstring>
 #include <map>
 #include <optional>
+#include <cstdlib>
 #include <set>
 #include <tydra/render-data.hh>
 #include <tydra/scene-access.hh>
+#include <usda-writer.hh>
 
 namespace {
 
@@ -471,6 +473,18 @@ Prefab ImportUSDPrefab(const std::string& path) {
         return Prefab{};
     }
     if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab '{}': {}", path, warn));
+
+    // Debug: set AE_USD_DUMP=1 to write the flattened stage next to the source as
+    // `<name>.flat.usda` for inspection (e.g. why a material didn't survive).
+    if (std::getenv("AE_USD_DUMP")) {
+        const std::string dumpPath =
+            (FileSystem::Get().BasePath().empty() ? std::string() : FileSystem::Get().BasePath()) + path + ".flat.usda";
+        std::string dw, de;
+        if (tinyusdz::usda::SaveAsUSDA(dumpPath, stage, &dw, &de))
+            ConsoleSubsystem::Get()->Info(fmt::format("ImportUSDPrefab: dumped flattened stage to '{}'", dumpPath));
+        else
+            ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab: stage dump failed: {}", de));
+    }
 
     tinyusdz::tydra::RenderSceneConverter converter;
     tinyusdz::tydra::RenderSceneConverterEnv env(stage);
