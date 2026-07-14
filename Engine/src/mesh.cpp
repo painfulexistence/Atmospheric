@@ -4,6 +4,35 @@
 #include "gfx_factory.hpp"
 #include "graphics_subsystem.hpp"
 
+// The 8 AABB corners of a vertex set, in the corner order SetBoundingBox uses.
+// Frustum culling (GraphicsSubsystem::Render) transforms these to world space
+// and tests them against the view frustum; without them a mesh reports empty
+// bounds and is never culled. MeshBuilder primitives set their bounds
+// analytically after Initialize, so this only fills them in for imported /
+// hand-built meshes (glTF, USD, .map) that would otherwise have none.
+static std::array<glm::vec3, 8> ComputeAABBCorners(const std::vector<Vertex>& verts) {
+    if (verts.empty()) return {};
+    glm::vec3 lo = verts[0].position, hi = verts[0].position;
+    for (const Vertex& v : verts) {
+        lo = glm::min(lo, v.position);
+        hi = glm::max(hi, v.position);
+    }
+    return { { { hi.x, hi.y, hi.z },
+               { lo.x, hi.y, hi.z },
+               { lo.x, lo.y, hi.z },
+               { hi.x, lo.y, hi.z },
+               { hi.x, hi.y, lo.z },
+               { lo.x, hi.y, lo.z },
+               { lo.x, lo.y, lo.z },
+               { hi.x, lo.y, lo.z } } };
+}
+
+static bool BoundsUnset(const std::array<glm::vec3, 8>& b) {
+    for (const glm::vec3& c : b)
+        if (c != glm::vec3(0.0f)) return false;
+    return true;
+}
+
 void PrintVertex(const Vertex& v) {
     fmt::print(
         "P: ({},{},{}), UV: ({},{})\n, N: ({},{},{}), T: ({},{},{}), B: ({},{},{})\n",
@@ -52,6 +81,7 @@ Mesh::~Mesh() {
 void Mesh::Initialize(const std::vector<Vertex>& verts) {
     vertCount = verts.size();
     triCount = 0;
+    if (BoundsUnset(_bounds)) _bounds = ComputeAABBCorners(verts);
 
     // WebGPU: no GL context — vertex-only geometry goes through the abstract
     // Buffer system, same as the indexed variant below. Terrain meshes take
@@ -93,6 +123,7 @@ void Mesh::Initialize(const std::vector<Vertex>& verts) {
 void Mesh::Initialize(const std::vector<Vertex>& verts, const std::vector<uint16_t>& tris) {
     vertCount = verts.size();
     triCount = tris.size() / 3;
+    if (BoundsUnset(_bounds)) _bounds = ComputeAABBCorners(verts);
 
     // WebGPU: no GL context — geometry goes through the abstract Buffer
     // system only (ForwardOpaquePass/WaterPass draw from the render mesh).
