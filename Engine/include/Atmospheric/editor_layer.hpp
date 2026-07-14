@@ -13,7 +13,7 @@ class GameObject;
 class RigidbodyComponent;
 class LightComponent;
 class CameraComponent;
-class MeshRenderer;
+class MeshRendererComponent;
 class SpriteComponent;
 
 class EditorLayer : public Layer {

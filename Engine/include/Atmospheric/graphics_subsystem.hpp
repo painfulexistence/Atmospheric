@@ -41,7 +41,7 @@ struct CameraData {
 
 class Renderer;
 
-class MeshRenderer;
+class MeshRendererComponent;
 class MeshInstancer;
 class CanvasDrawable;
 class SpriteComponent;
@@ -59,7 +59,7 @@ public:
         return _instance;
     }
     std::vector<GLuint> canvasTextures;
-    std::vector<MeshRenderer*> renderables;
+    std::vector<MeshRendererComponent*> renderables;
     // Instanced clouds — each submits one span command covering all its
     // instances, instead of one command per instance like `renderables`.
     std::vector<MeshInstancer*> instancers;
@@ -115,7 +115,7 @@ public:
     ShaderProgram* GetShaderByID(uint32_t id) const;
     MeshHandle GetMesh(const std::string& name) const;
 
-    MeshRenderer* RegisterMesh(MeshRenderer* mesh);
+    MeshRendererComponent* RegisterMesh(MeshRendererComponent* mesh);
     MeshInstancer* RegisterInstancer(MeshInstancer* instancer);
     CameraComponent* RegisterCamera(CameraComponent* camera);
     LightComponent* RegisterLight(LightComponent* light);
@@ -124,7 +124,7 @@ public:
 
     void UnregisterCamera(CameraComponent* camera);
     void UnregisterLight(LightComponent* light);
-    void UnregisterMesh(MeshRenderer* mesh);
+    void UnregisterMesh(MeshRendererComponent* mesh);
     void UnregisterInstancer(MeshInstancer* instancer);
     void UnregisterCanvasDrawable(CanvasDrawable* drawable);
 

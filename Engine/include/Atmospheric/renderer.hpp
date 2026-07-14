@@ -40,7 +40,7 @@ struct RenderCommand {
     // Effective material for this draw. INVALID means "use the mesh's own
     // material" (mesh->GetMaterial()) — the historical behavior — so submitters
     // that don't override the material can leave it default. A valid handle
-    // (MeshRenderer's per-instance override, or a MeshInstancer's shared
+    // (MeshRendererComponent's per-instance override, or a MeshInstancer's shared
     // material) now wins on the *main* render path, not only the ImGui/fallback
     // path: sort key, batch key, and every draw loop resolve this field.
     MaterialHandle material;

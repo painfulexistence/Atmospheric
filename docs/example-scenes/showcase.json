@@ -49,7 +49,7 @@
       "position": [0.0, 0.0, 0.0],
       "scale": [40.0, 1.0, 40.0],
       "components": [
-        { "type": "MeshRenderer", "primitive": "plane", "width": 1.0, "height": 1.0, "material": "Concrete" }
+        { "type": "MeshRendererComponent", "primitive": "plane", "width": 1.0, "height": 1.0, "material": "Concrete" }
       ]
     },
     {
@@ -57,14 +57,14 @@
       "position": [-4.0, 1.0, 0.0],
       "rotation": [0.0, 30.0, 0.0],
       "components": [
-        { "type": "MeshRenderer", "primitive": "cube", "size": 2.0, "material": "Brass" }
+        { "type": "MeshRendererComponent", "primitive": "cube", "size": 2.0, "material": "Brass" }
       ]
     },
     {
       "name": "MeshBall",
       "position": [-4.0, 3.2, 0.0],
       "components": [
-        { "type": "MeshRenderer", "primitive": "sphere", "radius": 0.8, "division": 32, "material": "Brass" }
+        { "type": "MeshRendererComponent", "primitive": "sphere", "radius": 0.8, "division": 32, "material": "Brass" }
       ]
     },
     {

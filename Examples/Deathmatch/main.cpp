@@ -203,7 +203,7 @@ class DeathmatchGame : public Application {
         auto* go =
             CreateGameObject(glm::vec3((b.minX + b.maxX) * 0.5f, (b.minY + b.maxY) * 0.5f, (b.minZ + b.maxZ) * 0.5f));
         go->SetScale(glm::vec3(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ));
-        go->AddComponent<MeshRenderer>(cube);
+        go->AddComponent<MeshRendererComponent>(cube);
         return go;
     }
 
@@ -243,7 +243,7 @@ class DeathmatchGame : public Application {
         floorMat->metallicFactor = 0.0f;
         auto floorMesh = am.CreatePlaneMesh("dm_floor", 2.0f * sim::kArenaHalf, 2.0f * sim::kArenaHalf);
         am.GetMeshPtr(floorMesh)->SetMaterial(am.GetMaterialHandle("dm_floor_mat"));
-        CreateGameObject(glm::vec3(0.0f))->AddComponent<MeshRenderer>(floorMesh);
+        CreateGameObject(glm::vec3(0.0f))->AddComponent<MeshRendererComponent>(floorMesh);
 
         // The whole static environment shell — a walled "training yard" with a
         // curb ring at the movement clamp, perimeter walls with pilasters and
@@ -336,14 +336,14 @@ class DeathmatchGame : public Application {
             // Networked opponent (or a bake failure): plain capsule.
             auto capsuleMesh = am.CreateCapsuleMesh("dm_capsule", sim::kCapsuleRadius, sim::kCapsuleHeight);
             am.GetMeshPtr(capsuleMesh)->SetMaterial(am.GetMaterialHandle("dm_enemy_mat"));
-            _enemyGO->AddComponent<MeshRenderer>(capsuleMesh);
+            _enemyGO->AddComponent<MeshRendererComponent>(capsuleMesh);
         }
 
         auto rocketMesh = am.CreateSphereMesh("dm_rocket", sim::kRocketRadius, 10);
         am.GetMeshPtr(rocketMesh)->SetMaterial(am.GetMaterialHandle("dm_rocket_mat"));
         for (int i = 0; i < kRocketPoolSize; i++) {
             auto* go = CreateGameObject(kParked);
-            go->AddComponent<MeshRenderer>(rocketMesh);
+            go->AddComponent<MeshRendererComponent>(rocketMesh);
             _rocketPool.push_back(go);
         }
 

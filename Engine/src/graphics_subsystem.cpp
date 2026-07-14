@@ -607,7 +607,7 @@ void GraphicsSubsystem::PushCanvasQuadTiled(
 }
 
 
-MeshRenderer* GraphicsSubsystem::RegisterMesh(MeshRenderer* mesh) {
+MeshRendererComponent* GraphicsSubsystem::RegisterMesh(MeshRendererComponent* mesh) {
     renderables.push_back(mesh);
     return mesh;
 }
@@ -669,7 +669,7 @@ void GraphicsSubsystem::UnregisterInstancer(MeshInstancer* instancer) {
     }
 }
 
-void GraphicsSubsystem::UnregisterMesh(MeshRenderer* mesh) {
+void GraphicsSubsystem::UnregisterMesh(MeshRendererComponent* mesh) {
     auto it = std::find(renderables.begin(), renderables.end(), mesh);
     if (it != renderables.end()) {
         renderables.erase(it);

@@ -22,7 +22,7 @@ A scene is a JSON file under `assets/scenes/<name>.json`, loaded by
 | `name` | string | Scene name (default `"Unnamed"`). |
 | `textures` | string[] | Texture paths to preload. |
 | `shaders` | object | `{ "<name>": { "vert", "frag", "tesc?", "tese?" } }`. |
-| `materials` | object | Named materials, referenced by `MeshRenderer.material` and by `.map` face names. |
+| `materials` | object | Named materials, referenced by `MeshRendererComponent.material` and by `.map` face names. |
 | `meshes` | string[] | Reserved (parsed, not yet wired — mesh files load via `prefab` today). |
 | `entities` | object[] | The scene graph roots (see below). |
 
@@ -79,27 +79,27 @@ skipped with a warning. The types registered today:
 | `CameraComponent` | `orthographic`, `fieldOfView`, `aspectRatio`, `nearClip`, `farClip`, `eyeOffset` |
 | `CameraController3D` | `moveSpeed`, `lookSpeed`, `slowMultiplier`, `fastMultiplier` |
 | `LightComponent` | `lightType` (`Directional`/`Point`/`Spot`/`Area`), `diffuse`, `ambient`, `specular`, `direction`, `attenuation`, `intensity`, `castShadow` |
-| `MeshRenderer` | `mesh` **or** `primitive` (+ params), `material` — see below |
+| `MeshRendererComponent` | `mesh` **or** `primitive` (+ params), `material` — see below |
 | `ShapeRendererComponent` | `color`, `thickness`, `filled`, `radius`, `boxHalfSize`, `layer` |
 | `SpriteComponent` | `size`, `pivot`, `color`, `layer`, `flipX`, `flipY`, `zOrder` |
 | `Text2DComponent` / `Text3DComponent` | `text`, `fontSize`, `fontName`, alignment |
 | `VoxelVolume` / `VoxelWorld` | `seed`, `gridDim`, `voxelSize` |
 | `Animator2D`, `ActionManager` | clip / action arrays |
 
-#### `MeshRenderer` — bare drawables
+#### `MeshRendererComponent` — bare drawables
 
 Supply geometry one of two ways:
 
 ```jsonc
 // A) a primitive, built on demand and deduped by its params:
-{ "type": "MeshRenderer", "primitive": "cube",   "size": 2.0,               "material": "Brass" }
-{ "type": "MeshRenderer", "primitive": "sphere", "radius": 0.8, "division": 32 }
-{ "type": "MeshRenderer", "primitive": "plane",  "width": 1.0,  "height": 1.0 }
-{ "type": "MeshRenderer", "primitive": "capsule","radius": 0.5, "height": 3.0 }
-{ "type": "MeshRenderer", "primitive": "disc",   "radius": 1.0, "segments": 48 }
+{ "type": "MeshRendererComponent", "primitive": "cube",   "size": 2.0,               "material": "Brass" }
+{ "type": "MeshRendererComponent", "primitive": "sphere", "radius": 0.8, "division": 32 }
+{ "type": "MeshRendererComponent", "primitive": "plane",  "width": 1.0,  "height": 1.0 }
+{ "type": "MeshRendererComponent", "primitive": "capsule","radius": 0.5, "height": 3.0 }
+{ "type": "MeshRendererComponent", "primitive": "disc",   "radius": 1.0, "segments": 48 }
 
 // B) a mesh already registered in code (AssetManager::CreateMesh/CreateCubeMesh/…):
-{ "type": "MeshRenderer", "mesh": "myRegisteredMesh", "material": "Steel" }
+{ "type": "MeshRendererComponent", "mesh": "myRegisteredMesh", "material": "Steel" }
 ```
 
 `material` (optional) overrides the mesh's own material, looked up by name from
@@ -141,13 +141,13 @@ scene, and a **Quake `.map`** level:
 
     // — mesh: primitives with named materials —
     { "name": "Floor", "scale": [40, 1, 40], "components": [
-      { "type": "MeshRenderer", "primitive": "plane", "material": "Concrete" }
+      { "type": "MeshRendererComponent", "primitive": "plane", "material": "Concrete" }
     ]},
     { "name": "MeshCube", "position": [-4, 1, 0], "rotation": [0, 30, 0], "components": [
-      { "type": "MeshRenderer", "primitive": "cube", "size": 2.0, "material": "Brass" }
+      { "type": "MeshRendererComponent", "primitive": "cube", "size": 2.0, "material": "Brass" }
     ]},
     { "name": "MeshBall", "position": [-4, 3.2, 0], "components": [
-      { "type": "MeshRenderer", "primitive": "sphere", "radius": 0.8, "division": 32, "material": "Brass" }
+      { "type": "MeshRendererComponent", "primitive": "sphere", "radius": 0.8, "division": 32, "material": "Brass" }
     ]},
 
     // — glTF model prefab —

@@ -17,7 +17,7 @@ struct VATProps {
 // baked VATClip (from VATClip::Bake — offline Houdini export or a runtime bake)
 // and the mesh whose vertex ordering the clip was baked against; this component
 // creates the VATMaterial, binds the clip, assigns the material to the mesh,
-// registers a MeshRenderer, and advances the playhead every tick so the opaque
+// registers a MeshRendererComponent, and advances the playhead every tick so the opaque
 // pass's "vat" shader displaces the vertices.
 class VATComponent : public Component {
 public:

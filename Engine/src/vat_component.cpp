@@ -20,7 +20,7 @@ VATComponent::VATComponent(GameObject* owner, MeshHandle mesh, std::unique_ptr<V
 
     if (Mesh* meshPtr = am.GetMeshPtr(_mesh)) meshPtr->SetMaterial(am.GetMaterialHandle(_material));
 
-    owner->AddComponent<MeshRenderer>(_mesh);
+    owner->AddComponent<MeshRendererComponent>(_mesh);
 }
 
 void VATComponent::OnAttach() {

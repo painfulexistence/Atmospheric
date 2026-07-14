@@ -20,7 +20,7 @@ PortalComponent::PortalComponent(GameObject* owner, const PortalProps& props) : 
     _material->rimColor = props.rimColor;
     if (Mesh* meshPtr = am.GetMeshPtr(_mesh)) meshPtr->SetMaterial(am.GetMaterialHandle(_material));
 
-    owner->AddComponent<MeshRenderer>(_mesh);
+    owner->AddComponent<MeshRendererComponent>(_mesh);
 }
 
 void PortalComponent::Link(PortalComponent* a, PortalComponent* b) {

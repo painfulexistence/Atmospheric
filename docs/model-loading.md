@@ -11,7 +11,7 @@ A **`Prefab`** (`prefab.hpp`) is the engine's imported, read-only prefab: mesh
 batches, decoded images, material definitions, punctual lights, convex
 colliders, and a node tree of transforms — plus, for `.map`, every entity's
 key/values. **`Instantiate`** uploads the GPU resources and spawns the subtree:
-one leaf GameObject per drawable (`MeshRenderer`), one static rigidbody per
+one leaf GameObject per drawable (`MeshRendererComponent`), one static rigidbody per
 collider-carrying node, `LightComponent`s for lights, named empties for point
 entities. Scene JSON references it declaratively:
 

@@ -15,7 +15,7 @@ WaterComponent::WaterComponent(GameObject* owner, const WaterProps& props) : _pr
     _material = am.CreateWaterMaterial();
     if (Mesh* meshPtr = am.GetMeshPtr(_mesh)) meshPtr->SetMaterial(am.GetMaterialHandle(_material));
 
-    owner->AddComponent<MeshRenderer>(_mesh);
+    owner->AddComponent<MeshRendererComponent>(_mesh);
 }
 
 void WaterComponent::OnTick(float /*dt*/) {

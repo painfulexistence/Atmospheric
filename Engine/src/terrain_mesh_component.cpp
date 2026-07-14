@@ -81,7 +81,7 @@ TerrainMeshComponent::TerrainMeshComponent(
 
     _material = terrainMat;
     if (meshPtr) meshPtr->SetMaterial(am.GetMaterialHandle(terrainMat));
-    owner->AddComponent<MeshRenderer>(_mesh);
+    owner->AddComponent<MeshRendererComponent>(_mesh);
 
     if (auto* noise = dynamic_cast<NoiseHeightField*>(_heightField.get())) _appliedParams = noise->Params();
 }

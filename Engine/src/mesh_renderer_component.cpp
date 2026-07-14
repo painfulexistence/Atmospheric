@@ -5,38 +5,38 @@
 #include "material.hpp"
 #include "mesh.hpp"
 
-MeshRenderer::MeshRenderer(GameObject* gameObject, MeshHandle mesh) {
+MeshRendererComponent::MeshRendererComponent(GameObject* gameObject, MeshHandle mesh) {
     this->_mesh = mesh;
 }
 
-MeshRenderer::~MeshRenderer() {
+MeshRendererComponent::~MeshRendererComponent() {
 }
 
-std::string MeshRenderer::GetName() const {
-    return std::string("MeshRenderer");
+std::string MeshRendererComponent::GetName() const {
+    return std::string("MeshRendererComponent");
 }
 
-void MeshRenderer::OnAttach() {
+void MeshRendererComponent::OnAttach() {
     if (GraphicsSubsystem::Get()) {
         GraphicsSubsystem::Get()->RegisterMesh(this);
     }
 }
 
-void MeshRenderer::OnDetach() {
+void MeshRendererComponent::OnDetach() {
     if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
         GraphicsSubsystem::Get()->UnregisterMesh(this);
     }
 }
 
-MeshHandle MeshRenderer::GetMesh() const {
+MeshHandle MeshRendererComponent::GetMesh() const {
     return _mesh;
 }
 
-void MeshRenderer::SetMesh(MeshHandle mesh) {
+void MeshRendererComponent::SetMesh(MeshHandle mesh) {
     _mesh = mesh;
 }
 
-Material* MeshRenderer::GetMaterial() const {
+Material* MeshRendererComponent::GetMaterial() const {
     auto& assets = AssetManager::Get();
     if (Material* mat = assets.ResolveMaterial(_material)) {
         return mat;
@@ -45,10 +45,10 @@ Material* MeshRenderer::GetMaterial() const {
     return meshPtr ? assets.ResolveMaterial(meshPtr->GetMaterial()) : nullptr;
 }
 
-void MeshRenderer::SetMaterial(MaterialHandle material) {
+void MeshRendererComponent::SetMaterial(MaterialHandle material) {
     _material = material;
 }
 
-void MeshRenderer::DrawImGui() {
+void MeshRendererComponent::DrawImGui() {
     if (auto* mat = GetMaterial()) mat->DrawImGui();
 }

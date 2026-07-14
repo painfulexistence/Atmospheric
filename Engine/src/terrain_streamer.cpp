@@ -452,7 +452,7 @@ TerrainStreamer::TileSlot* TerrainStreamer::AcquireSlot(int lod) {
     mat->heightMap = slot->heightTex;
     slot->material = mat;
     mesh->SetMaterial(am.GetMaterialHandle(mat));
-    go->AddComponent<MeshRenderer>(slot->mesh);
+    go->AddComponent<MeshRendererComponent>(slot->mesh);
 
     _stats.gpuHeightmapBytes += static_cast<size_t>(w) * w * 2;
     _allSlots.push_back(std::move(owned));
@@ -880,7 +880,7 @@ TerrainStreamer::GrassCell* TerrainStreamer::AcquireGrassCell() {
     mesh->InitGrassInstanced();
     MeshHandle handle = am.CreateMesh(name, mesh);
     mesh->SetMaterial(am.GetMaterialHandle(_grassMaterial));
-    go->AddComponent<MeshRenderer>(handle);
+    go->AddComponent<MeshRendererComponent>(handle);
     gc->mesh = mesh;
 
     _allGrassCells.push_back(std::move(owned));

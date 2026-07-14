@@ -662,7 +662,7 @@ void Application::RegisterComponents() {
         return new ShapeRendererComponent(o, props);
     });
 
-    // ── MeshRenderer (3D drawable) ────────────────────────────────────────────
+    // ── MeshRendererComponent (3D drawable) ────────────────────────────────────────────
     // Two ways to supply geometry:
     //   "mesh": "<name>"        — reference a mesh already registered in code
     //                             (AssetManager::CreateMesh/CreateCubeMesh/…).
@@ -673,7 +673,7 @@ void Application::RegisterComponents() {
     // by name; created via scene "materials" or in code). Primitive params:
     // size (cube), radius/division (sphere), width/height (plane), radius/height
     // (capsule), radius/segments (disc).
-    ComponentFactory::Register("MeshRenderer", [](GameObject* o, Deserializer& d) -> Component* {
+    ComponentFactory::Register("MeshRendererComponent", [](GameObject* o, Deserializer& d) -> Component* {
         auto& am = AssetManager::Get();
         std::string primitive, meshName, materialName;
         d.Read("primitive", primitive, std::string(""));
@@ -705,7 +705,7 @@ void Application::RegisterComponents() {
                 key = fmt::format("prim:disc:{}:{}", radius, segments);
 
             if (key.empty()) {
-                spdlog::warn("MeshRenderer: unknown primitive '{}' on '{}'", primitive, o->GetName());
+                spdlog::warn("MeshRendererComponent: unknown primitive '{}' on '{}'", primitive, o->GetName());
                 return nullptr;
             }
             if (am.HasMesh(key)) {
@@ -724,21 +724,21 @@ void Application::RegisterComponents() {
             if (am.HasMesh(meshName)) {
                 handle = am.GetMesh(meshName);
             } else {
-                spdlog::warn("MeshRenderer: mesh '{}' not found for '{}'", meshName, o->GetName());
+                spdlog::warn("MeshRendererComponent: mesh '{}' not found for '{}'", meshName, o->GetName());
                 return nullptr;
             }
         } else {
-            spdlog::warn("MeshRenderer on '{}' has neither 'mesh' nor 'primitive'", o->GetName());
+            spdlog::warn("MeshRendererComponent on '{}' has neither 'mesh' nor 'primitive'", o->GetName());
             return nullptr;
         }
 
-        auto* mr = new MeshRenderer(o, handle);
+        auto* mr = new MeshRendererComponent(o, handle);
         if (!materialName.empty()) {
             MaterialHandle mat = am.GetMaterialHandle(materialName);
             if (mat.IsValid())
                 mr->SetMaterial(mat);
             else
-                spdlog::warn("MeshRenderer: material '{}' not found for '{}'", materialName, o->GetName());
+                spdlog::warn("MeshRendererComponent: material '{}' not found for '{}'", materialName, o->GetName());
         }
         return mr;
     });
@@ -1464,7 +1464,7 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
 
     // ── Spawn the node tree ───────────────────────────────────────────────────
     // Internal nodes are pure transforms; every mesh becomes a leaf child with a
-    // single MeshRenderer ("one GameObject = one drawable"). Colliders compound
+    // single MeshRendererComponent ("one GameObject = one drawable"). Colliders compound
     // into one static rigidbody per node; lights become LightComponents; .map
     // point entities spawn as named empties (their key/values live on the
     // Prefab — query with Prefab::FindEntities before instantiating).
@@ -1483,7 +1483,7 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
             const std::string& mat = prefab.meshes[mi].material;
             leaf->SetName(mat.empty() ? fmt::format("{}#{}", nodeName, j) : mat);
             leaf->parent = go;
-            leaf->AddComponent<MeshRenderer>(handles[mi]);
+            leaf->AddComponent<MeshRendererComponent>(handles[mi]);
         }
 
         if (!node.colliders.empty() && _config.enablePhysics3D) {
@@ -1743,7 +1743,7 @@ void Application::UnloadCurrentScene() {
     _graphics->directionalLights.clear();
     _graphics->pointLights.clear();
     _graphics->sunComponents.clear();
-    _graphics->renderables.clear();// MeshRenderer
+    _graphics->renderables.clear();// MeshRendererComponent
     _graphics->canvasDrawables.clear();// SpriteComponent / Text2DComponent / ...
 
     _audio->StopAll();

@@ -8,11 +8,11 @@ class Mesh;
 
 class Material;
 
-class MeshRenderer : public Component {
+class MeshRendererComponent : public Component {
 public:
-    MeshRenderer(GameObject* gameObject, MeshHandle mesh);
+    MeshRendererComponent(GameObject* gameObject, MeshHandle mesh);
 
-    ~MeshRenderer();
+    ~MeshRendererComponent();
 
     std::string GetName() const override;
 

@@ -28,7 +28,7 @@ struct WaterProps {
     float waterLine = -1e30f;// sentinel: use owner->GetPosition().y
 };
 
-// Creates a subdivided water plane as a transparent MeshRenderer, and stores
+// Creates a subdivided water plane as a transparent MeshRendererComponent, and stores
 // per-instance wave parameters in the material so WaterPass can read them.
 class WaterComponent : public Component {
 public:
