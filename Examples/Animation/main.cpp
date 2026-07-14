@@ -331,7 +331,7 @@ class CSBDemo : public Application {
 
 int main(int argc, char* argv[]) {
     CSBDemo game(
-        { .windowTitle = "CSB Layout Test",
+        { .windowTitle = "Animation",
           .windowWidth = 800,
           .windowHeight = 600,
           .useDefaultTextures = true,

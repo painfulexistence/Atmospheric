@@ -196,69 +196,10 @@ struct NPC : Entity {
     float talkR = 48.0f;
 };
 
-// ---------------------------------------------------------------------------
-// Simple sprite animator (UV-offset, no engine component required)
-// ---------------------------------------------------------------------------
-
-struct AnimFrame {
-    int col, row;
-    float duration;
-};
-
-struct AnimClip {
-    std::vector<AnimFrame> frames;
-    bool loop = true;
-};
-
-struct SpriteAnimator {
-    std::unordered_map<std::string, AnimClip> clips;
-    std::string currentClip;
-    int frameIdx = 0;
-    float timer = 0.0f;
-    bool playing = false;
-
-    void addClip(const std::string& name, AnimClip clip) {
-        clips[name] = std::move(clip);
-    }
-
-    void play(const std::string& name) {
-        if (currentClip == name && playing) return;
-        currentClip = name;
-        frameIdx = 0;
-        timer = 0.0f;
-        playing = true;
-    }
-
-    void update(float dt) {
-        if (!playing || clips.empty()) return;
-        auto it = clips.find(currentClip);
-        if (it == clips.end()) return;
-        const auto& clip = it->second;
-        if (clip.frames.empty()) return;
-
-        timer += dt;
-        if (timer >= clip.frames[frameIdx].duration) {
-            timer -= clip.frames[frameIdx].duration;
-            frameIdx++;
-            if (frameIdx >= static_cast<int>(clip.frames.size())) {
-                if (clip.loop)
-                    frameIdx = 0;
-                else {
-                    frameIdx = static_cast<int>(clip.frames.size()) - 1;
-                    playing = false;
-                }
-            }
-        }
-    }
-
-    // Returns {col, row} of the current frame (for UV lookup in DrawSprite2D)
-    std::pair<int, int> currentFrame() const {
-        auto it = clips.find(currentClip);
-        if (it == clips.end() || it->second.frames.empty()) return { 0, 0 };
-        const auto& f = it->second.frames[frameIdx];
-        return { f.col, f.row };
-    }
-};
+// Sprite-sheet animation is now handled by the engine's FlipbookComponent
+// (frame clock + AnimationLibrary), attached to a host GameObject. Clips are
+// built with FlipbookClip::FromGrid and the immediate-mode draw reads the
+// current frame's UVs via FlipbookComponent::GetCurrentUV — see main.cpp.
 
 // ---------------------------------------------------------------------------
 // Top-level game mode (explore world vs. turn-based battle)

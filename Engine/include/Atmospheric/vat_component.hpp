@@ -1,52 +1,58 @@
 #pragma once
-#include "component.hpp"
+#include "animation_clip.hpp"
+#include "animator_component.hpp"
 #include "globals.hpp"
-#include "vat.hpp"
 #include <memory>
 
 class VATMaterial;
+class VATClip;
 
 struct VATProps {
+    WrapMode wrap = WrapMode::Loop;// end behaviour (Loop wraps, ClampHold holds last frame)
     float speed = 1.0f;// playback rate multiplier (1.0 = clip's authored fps)
-    bool loop = true;// wrap the playhead at the end vs. hold the last frame
     bool playing = true;
-    float startTime = 0.0f;// initial normalized playhead in [0, 1]
+    float startTime = 0.0f;// initial playhead in seconds
 };
 
-// Drives Vertex Animation Texture playback for a mesh. The caller supplies a
-// baked VATClip (from VATClip::Bake — offline Houdini export or a runtime bake)
-// and the mesh whose vertex ordering the clip was baked against; this component
-// creates the VATMaterial, binds the clip, assigns the material to the mesh,
-// registers a MeshComponent, and advances the playhead every tick so the opaque
-// pass's "vat" shader displaces the vertices.
-class VATComponent : public Component {
+// Drives Vertex Animation Texture playback for a mesh, on the shared
+// AnimatorComponent base. The clip lives in the AnimationLibrary (shared across
+// instances of the same mesh); this component creates the VATMaterial, binds
+// the clip, assigns the material to the mesh, registers a MeshComponent, and —
+// via the base's centralized tick — advances the playhead so the opaque pass's
+// "vat" shader displaces the vertices. Playhead logic (loop/clamp/speed/pause/
+// seek/events) all comes from AnimatorComponent; Evaluate only pushes the
+// normalized playhead into the material.
+class VATComponent : public AnimatorComponent {
 public:
-    // Takes ownership of the clip (it owns GL textures freed on component
-    // destruction). The mesh must already be registered with AssetManager.
+    // Convenience: take ownership of a freshly baked clip and register it in the
+    // AnimationLibrary under a generated name, so existing call sites that pass a
+    // unique_ptr compile unchanged. The mesh must already be registered.
     VATComponent(GameObject* owner, MeshHandle mesh, std::unique_ptr<VATClip> clip, const VATProps& props = {});
-    ~VATComponent() = default;
+    // Share a clip already registered in the library.
+    VATComponent(GameObject* owner, MeshHandle mesh, VATClipHandle clip, const VATProps& props = {});
 
     std::string GetName() const override {
         return "VAT";
     }
     void OnAttach() override;
-    void OnTick(float dt) override;
     void DrawImGui() override;
 
-    VATClip* GetClip() const {
-        return _clip.get();
-    }
+    VATClip* GetClip() const;
     VATMaterial* GetMaterial() const {
         return _material;
     }
-    float GetNormalizedTime() const {
-        return _time;
-    }
+    float GetDuration() const override;
+
+    // Switch to another library clip (e.g. walk → die), keeping the material.
+    void SetClip(VATClipHandle clip);
+
+protected:
+    void Evaluate(float time) override;
 
 private:
+    void EnsureMaterial();// create the VATMaterial + assign to the mesh once
+
     MeshHandle _mesh;
-    std::unique_ptr<VATClip> _clip;
+    VATClipHandle _clip;
     VATMaterial* _material = nullptr;// owned by AssetManager
-    VATProps _props;
-    float _time = 0.0f;// normalized playhead in [0, 1]
 };

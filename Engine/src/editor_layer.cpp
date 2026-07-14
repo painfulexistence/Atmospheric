@@ -1,4 +1,5 @@
 #include "editor_layer.hpp"
+#include "animation_subsystem.hpp"
 #include "application.hpp"
 #include "component.hpp"
 #include "game_object.hpp"
@@ -199,6 +200,7 @@ void EditorLayer::DrawEngineView() {
         ConsoleSubsystem::Get()->DrawImGui(dt);
         InputSubsystem::Get()->DrawImGui(dt);
         GraphicsSubsystem::Get()->DrawImGui(dt);
+        AnimationSubsystem::Get()->DrawImGui(dt);
         Physics3DSubsystem::Get()->DrawImGui(dt);
 #ifndef __EMSCRIPTEN__
         AudioSubsystem::Get()->DrawImGui(dt);
