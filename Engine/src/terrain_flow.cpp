@@ -46,6 +46,7 @@ std::vector<RiverPolyline> BuildRiverNetwork(
             h[Idx(x, y, n)] = height01(w.x, w.y) * heightScale;
         }
 
+
     // ── Depression filling (priority-flood + epsilon, Barnes 2014) ───────────
     // An un-eroded FBm surface is riddled with local pits that trap water and
     // fragment rivers into stubs. Flood inward from the map edge, raising each
@@ -229,6 +230,66 @@ std::vector<RiverPolyline> BuildRiverNetwork(
             // carve then slices out of the bed.
             nd.surfaceY = height01(nd.pos.x, nd.pos.y) * heightScale;
             poly.nodes.push_back(nd);
+        }
+
+        // ── Thalweg snapping ────────────────────────────────────────────────
+        // The coarse D8 grid can only place a node at a cell centre, so on a
+        // side-slope the traced centreline sits partway up the valley wall
+        // instead of on its floor — the river then reads as running across a
+        // slope. Slide each node perpendicular to the flow to the lowest ground
+        // within thalwegSnapRadius, sampling a mildly-smoothed height so it
+        // seeks the valley floor (a real landform) and not a one-cell noise pit.
+        if (params.thalwegSnapRadius > 0.0f) {
+            auto& nodes = poly.nodes;
+            // Landform height: average a few taps so snapping tracks the valley,
+            // not the FBm speckle on top of it.
+            auto landAt = [&](float x, float z) {
+                float s = height01(x, z);
+                const float rr = 22.0f;
+                s += height01(x + rr, z) + height01(x - rr, z) + height01(x, z + rr) + height01(x, z - rr);
+                return s / 5.0f;
+            };
+            std::vector<glm::vec2> snapped(nodes.size());
+            for (size_t i = 0; i < nodes.size(); ++i) {
+                const glm::vec2& a = nodes[i > 0 ? i - 1 : i].pos;
+                const glm::vec2& b = nodes[i + 1 < nodes.size() ? i + 1 : i].pos;
+                glm::vec2 tan = b - a;
+                const float tl = std::sqrt(tan.x * tan.x + tan.y * tan.y);
+                if (tl < 1e-4f) {
+                    snapped[i] = nodes[i].pos;
+                    continue;
+                }
+                tan /= tl;
+                const glm::vec2 perp{ -tan.y, tan.x };
+                float bestOff = 0.0f, bestH = landAt(nodes[i].pos.x, nodes[i].pos.y);
+                const float step = std::max(cell * 0.5f, 6.0f);
+                for (float d = -params.thalwegSnapRadius; d <= params.thalwegSnapRadius; d += step) {
+                    const float x = nodes[i].pos.x + perp.x * d, z = nodes[i].pos.y + perp.y * d;
+                    const float hh = landAt(x, z);
+                    if (hh < bestH) {
+                        bestH = hh;
+                        bestOff = d;
+                    }
+                }
+                snapped[i] = nodes[i].pos + perp * bestOff;
+            }
+            // Smooth the snapped path so per-node offsets don't produce a
+            // zig-zag ribbon (each node snapped independently, so neighbours can
+            // land on opposite banks). A few 1-2-1 passes pull it back to a
+            // flowing curve that still tracks the valley floor.
+            for (int pass = 0; pass < 4; ++pass) {
+                std::vector<glm::vec2> tmp(snapped.size());
+                for (size_t i = 0; i < snapped.size(); ++i) {
+                    const glm::vec2 p0 = snapped[i > 0 ? i - 1 : i];
+                    const glm::vec2 p2 = snapped[i + 1 < snapped.size() ? i + 1 : i];
+                    tmp[i] = 0.25f * p0 + 0.5f * snapped[i] + 0.25f * p2;
+                }
+                snapped.swap(tmp);
+            }
+            for (size_t i = 0; i < nodes.size(); ++i) {
+                nodes[i].pos = snapped[i];
+                nodes[i].surfaceY = height01(nodes[i].pos.x, nodes[i].pos.y) * heightScale;
+            }
         }
 
         // Smooth the surface profile along the river (a few moving-average

@@ -280,7 +280,7 @@ class TerrainStreamingDemo : public Application {
                 // Bump whenever the carved height changes (the disk cache only
                 // hashes noise params + a custom-fn flag, not the carve itself,
                 // so a stale bake would otherwise replay old/uncarved tiles).
-                .cacheVersion = 5,
+                .cacheVersion = 6,
                 // Detail layers + splat = the full Gaea texturing path, fed by
                 // the procedural generators above. Tiling is repeats per tile
                 // edge (world period = 512m / tiling): grass repeats every 4m,

@@ -48,6 +48,12 @@ struct RiverNetworkParams {
     float minWidth = 6.0f;// half-width floor — also the carved channel's half-width, so keep it
                           // wide enough to read as a valley (and above the carve grid cell)
     int maxRivers = 64;// keep only the N largest (by total drainage) — bounds mesh cost
+    // Thalweg snapping: after tracing, slide each node sideways (perpendicular to
+    // flow) to the lowest ground within this radius (metres), so the river hugs
+    // the valley FLOOR instead of cutting across a slope where the coarse D8 grid
+    // placed it. Sampled on a mildly-smoothed height so it seeks the landform
+    // valley, not a noise pit. 0 disables.
+    float thalwegSnapRadius = 150.0f;
     int seaLevelPad = 0;// reserved
 };
 
