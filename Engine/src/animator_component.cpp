@@ -83,37 +83,15 @@ void AnimatorComponent::Advance(float scaledDt) {
 
     switch (_state.wrap) {
     case WrapMode::Once:
-        if (_state.time >= dur) {
-            _state.time = dur;
-            _state.playing = false;
-            Evaluate(_state.time);
-            if (_onFinished) _onFinished();
-            return;
-        }
-        if (_state.time < 0.0f) {
-            _state.time = 0.0f;
-            _state.playing = false;
-            Evaluate(_state.time);
-            if (_onFinished) _onFinished();
-            return;
-        }
-        break;
-
     case WrapMode::ClampHold:
-        if (_state.time >= dur) {
-            _state.time = dur;
-            const bool was = _state.playing;
+        // Both play once and hold the final frame — the end pose is simply the
+        // last Evaluate before we stop ticking. The two modes are kept distinct
+        // only as caller intent (Once = "done", ClampHold = "rest here").
+        if (_state.time >= dur || _state.time < 0.0f) {
+            _state.time = std::clamp(_state.time, 0.0f, dur);
             _state.playing = false;
             Evaluate(_state.time);
-            if (was && _onFinished) _onFinished();
-            return;
-        }
-        if (_state.time < 0.0f) {
-            _state.time = 0.0f;
-            const bool was = _state.playing;
-            _state.playing = false;
-            Evaluate(_state.time);
-            if (was && _onFinished) _onFinished();
+            if (_onFinished) _onFinished();
             return;
         }
         break;

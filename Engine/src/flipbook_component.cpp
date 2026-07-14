@@ -119,17 +119,15 @@ void FlipbookComponent::Evaluate(float time) {
     if (frame == _lastFrame) return;// no visible change
     _lastFrame = frame;
 
+    const FlipbookFrame& f = _clip->frames[frame];
     // Push UVs to a sprite target if we have one; otherwise we are a pure frame
     // clock and an immediate-mode consumer reads GetCurrentUV()/GetCurrentFrame().
     if (_sprite || _sprite3D) {
-        const FlipbookFrame& f = _clip->frames[frame];
         glm::vec2 mn = f.uvMin, mx = f.uvMax;
         if (_flipX) std::swap(mn.x, mx.x);
         if (_sprite) _sprite->SetUVs(mn, mx);
         if (_sprite3D) _sprite3D->SetUVs(mn, mx);
     }
-
-    const FlipbookFrame& f = _clip->frames[frame];
     if (f.eventId >= 0 && _onFrameEvent) _onFrameEvent(f.eventId);
 }
 

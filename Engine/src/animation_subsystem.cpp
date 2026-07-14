@@ -28,7 +28,6 @@ TimelineHandle AnimationLibrary::AddTimeline(ActionTimeline timeline) {
 
 VATClipHandle AnimationLibrary::AddVATClip(std::string name, std::unique_ptr<VATClip> clip) {
     _vatClips.push_back(std::move(clip));
-    _vatNames.push_back(name);
     const uint32_t id = static_cast<uint32_t>(_vatClips.size());
     if (!name.empty()) _vatByName[name] = id;
     return { id };
@@ -68,7 +67,6 @@ void AnimationLibrary::Clear() {
     _flipbooks.clear();
     _timelines.clear();
     _vatClips.clear();
-    _vatNames.clear();
     _flipbookByName.clear();
     _timelineByName.clear();
     _vatByName.clear();

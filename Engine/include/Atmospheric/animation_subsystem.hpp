@@ -38,7 +38,6 @@ private:
     std::vector<FlipbookClip> _flipbooks;// index = handle.id - 1
     std::vector<ActionTimeline> _timelines;
     std::vector<std::unique_ptr<VATClip>> _vatClips;
-    std::vector<std::string> _vatNames;// parallel to _vatClips
 
     std::unordered_map<std::string, uint32_t> _flipbookByName;
     std::unordered_map<std::string, uint32_t> _timelineByName;
