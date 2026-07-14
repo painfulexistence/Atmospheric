@@ -69,12 +69,11 @@ bool FlipbookComponent::Play(const std::string& clipName) {
     auto* lib = Lib();
     if (!lib) return false;
 
-    // Already playing this exact clip → idempotent no-op (SpriteAnimator
-    // semantics). Note this deliberately only skips while *playing*: replaying a
-    // finished one-shot (e.g. "attack") via Play(sameClip) restarts it, and a
-    // paused component is resumed. Managing *when* to (re)play — including not
-    // fighting a manual pause — is the caller's job, not the engine's.
-    if (_currentName == clipName && _state.playing) return true;
+    // Play is purely imperative: it always (re)starts the clip from the
+    // beginning, even if that same clip is already playing. Deciding *when* to
+    // call Play — deduping per-frame calls, not fighting a manual pause — is the
+    // caller's responsibility, not the engine's (the RPG example guards with
+    // GetCurrentClip() != want).
 
     // Resolve among THIS component's own clips (clip names are commonly reused
     // across entities — e.g. every actor has an "idle" — so a global by-name
