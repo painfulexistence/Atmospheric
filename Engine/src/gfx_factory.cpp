@@ -274,27 +274,61 @@ uint32_t GfxFactory::UploadTextureRGBA16F(const float* rgba, int w, int h) {
     if (_backend == GfxBackend::WebGPU && _wgpuDevice) {
         uint32_t id = _nextTexID++;
 
+        // Full mip chain: the IBL prefilter samples roughness -> LOD, so the env
+        // map needs every level. WebGPU has no glGenerateMipmap, so build the
+        // chain on the CPU with the same box filter as the GL path and write
+        // each level — otherwise rough surfaces mirror the sharp mip 0.
+        uint32_t mipCount = 1;
+        for (int d = std::max(w, h); d > 1; d >>= 1) ++mipCount;
+
         WGPUTextureDescriptor td{};
         td.size = { static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
         td.format = WGPUTextureFormat_RGBA16Float;
         td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
         td.dimension = WGPUTextureDimension_2D;
-        td.mipLevelCount = 1;
+        td.mipLevelCount = mipCount;
         td.sampleCount = 1;
         WGPUTexture tex = wgpuDeviceCreateTexture(_wgpuDevice, &td);
 
-        std::vector<uint16_t> halves(static_cast<size_t>(w) * h * 4);
-        for (size_t i = 0; i < halves.size(); ++i)
-            halves[i] = FloatToHalf(rgba[i]);
+        std::vector<float> src(rgba, rgba + static_cast<size_t>(w) * h * 4);
+        int lw = w, lh = h;
+        for (uint32_t level = 0; level < mipCount; ++level) {
+            std::vector<uint16_t> halves(static_cast<size_t>(lw) * lh * 4);
+            for (size_t i = 0; i < halves.size(); ++i)
+                halves[i] = FloatToHalf(src[i]);
 
-        WGPUTexelCopyTextureInfo dst{};
-        dst.texture = tex;
-        dst.aspect = WGPUTextureAspect_All;
-        WGPUTexelCopyBufferLayout layout{};
-        layout.bytesPerRow = static_cast<uint32_t>(w) * 4 * 2;// 4 channels * 2 bytes (half)
-        layout.rowsPerImage = static_cast<uint32_t>(h);
-        WGPUExtent3D extent{ static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };
-        wgpuQueueWriteTexture(_wgpuQueue, &dst, halves.data(), halves.size() * 2, &layout, &extent);
+            WGPUTexelCopyTextureInfo dst{};
+            dst.texture = tex;
+            dst.mipLevel = level;
+            dst.aspect = WGPUTextureAspect_All;
+            WGPUTexelCopyBufferLayout layout{};
+            layout.bytesPerRow = static_cast<uint32_t>(lw) * 4 * 2;// 4 channels * 2 bytes (half)
+            layout.rowsPerImage = static_cast<uint32_t>(lh);
+            WGPUExtent3D extent{ static_cast<uint32_t>(lw), static_cast<uint32_t>(lh), 1 };
+            wgpuQueueWriteTexture(_wgpuQueue, &dst, halves.data(), halves.size() * 2, &layout, &extent);
+
+            if (level + 1 < mipCount) {
+                const int dw = std::max(1, lw / 2), dh = std::max(1, lh / 2);
+                std::vector<float> down(static_cast<size_t>(dw) * dh * 4);
+                for (int y = 0; y < dh; ++y) {
+                    for (int x = 0; x < dw; ++x) {
+                        const int x0 = std::min(x * 2, lw - 1), x1 = std::min(x * 2 + 1, lw - 1);
+                        const int y0 = std::min(y * 2, lh - 1), y1 = std::min(y * 2 + 1, lh - 1);
+                        for (int c = 0; c < 4; ++c) {
+                            down[(static_cast<size_t>(y) * dw + x) * 4 + c] =
+                                0.25f
+                                * (src[(static_cast<size_t>(y0) * lw + x0) * 4 + c]
+                                   + src[(static_cast<size_t>(y0) * lw + x1) * 4 + c]
+                                   + src[(static_cast<size_t>(y1) * lw + x0) * 4 + c]
+                                   + src[(static_cast<size_t>(y1) * lw + x1) * 4 + c]);
+                        }
+                    }
+                }
+                src = std::move(down);
+                lw = dw;
+                lh = dh;
+            }
+        }
 
         _gpuTextures[id] = { tex, TextureFilter::Linear };// rgba16float is filterable
         return id;
