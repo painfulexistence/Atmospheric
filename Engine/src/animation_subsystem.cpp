@@ -104,6 +104,10 @@ void AnimationSubsystem::Register(AnimatorComponent* player) {
 void AnimationSubsystem::Unregister(AnimatorComponent* player) {
     if (!player) return;
     if (_iterating) {
+        // The component is freed right after this returns, but the in-progress
+        // walk still holds its slot. Null the slot now so the walk skips it
+        // (rather than dereferencing freed memory) and compact after the loop.
+        std::replace(_players.begin(), _players.end(), player, static_cast<AnimatorComponent*>(nullptr));
         _pendingRemove.push_back(player);
     } else {
         _players.erase(std::remove(_players.begin(), _players.end(), player), _players.end());
@@ -121,11 +125,13 @@ void AnimationSubsystem::Process(float dt) {
     }
     _iterating = false;
 
-    // Apply registrations deferred during the walk.
-    for (AnimatorComponent* p : _pendingRemove) {
-        _players.erase(std::remove(_players.begin(), _players.end(), p), _players.end());
+    // Compact out slots nulled by unregister-during-walk, then apply deferred adds.
+    if (!_pendingRemove.empty()) {
+        _players.erase(
+            std::remove(_players.begin(), _players.end(), static_cast<AnimatorComponent*>(nullptr)), _players.end()
+        );
+        _pendingRemove.clear();
     }
-    _pendingRemove.clear();
     for (AnimatorComponent* p : _pendingAdd) _players.push_back(p);
     _pendingAdd.clear();
 }

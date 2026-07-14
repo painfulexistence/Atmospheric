@@ -1,6 +1,7 @@
 #pragma once
 #include "animation_clip.hpp"
 #include "subsystem.hpp"
+#include <deque>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -35,9 +36,15 @@ public:
     void Clear();
 
 private:
-    std::vector<FlipbookClip> _flipbooks;// index = handle.id - 1
-    std::vector<ActionTimeline> _timelines;
-    std::vector<std::unique_ptr<VATClip>> _vatClips;
+    // deque, not vector: GetFlipbook/GetTimeline hand out raw pointers into
+    // these containers that components cache for the clip's lifetime (e.g.
+    // ActionTimelineComponent::_activeClip). A vector reallocation on a later
+    // Add* would dangle every cached pointer — benign-ish on native, an
+    // out-of-bounds trap on WebAssembly. deque keeps element addresses stable
+    // across push_back while preserving index access.
+    std::deque<FlipbookClip> _flipbooks;// index = handle.id - 1
+    std::deque<ActionTimeline> _timelines;
+    std::vector<std::unique_ptr<VATClip>> _vatClips;// .get() is already stable
 
     std::unordered_map<std::string, uint32_t> _flipbookByName;
     std::unordered_map<std::string, uint32_t> _timelineByName;
