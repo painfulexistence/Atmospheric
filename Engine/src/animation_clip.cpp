@@ -5,7 +5,8 @@
 
 float FlipbookClip::GetDuration() const {
     float total = 0.0f;
-    for (const auto& f : frames) total += f.duration;
+    for (const auto& f : frames)
+        total += f.duration;
     return total;
 }
 
@@ -59,9 +60,8 @@ glm::vec4 ActionTrack::Sample(float t) const {
     if (t >= keys.back().time) return keys.back().value;
 
     // First key strictly after t (keys are sorted by time).
-    auto hi = std::upper_bound(keys.begin(), keys.end(), t, [](float time, const ActionKey& k) {
-        return time < k.time;
-    });
+    auto hi =
+        std::upper_bound(keys.begin(), keys.end(), t, [](float time, const ActionKey& k) { return time < k.time; });
     const ActionKey& b = *hi;
     const ActionKey& a = *(hi - 1);
 
@@ -78,6 +78,7 @@ void ActionTimeline::Recompute() {
     for (const auto& tr : tracks) {
         if (!tr.keys.empty()) d = std::max(d, tr.keys.back().time);
     }
-    for (const auto& e : events) d = std::max(d, e.time);
+    for (const auto& e : events)
+        d = std::max(d, e.time);
     duration = d;
 }

@@ -132,7 +132,8 @@ void AnimationSubsystem::Process(float dt) {
         );
         _pendingRemove.clear();
     }
-    for (AnimatorComponent* p : _pendingAdd) _players.push_back(p);
+    for (AnimatorComponent* p : _pendingAdd)
+        _players.push_back(p);
     _pendingAdd.clear();
 }
 

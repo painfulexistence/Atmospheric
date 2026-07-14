@@ -256,7 +256,9 @@ void SceneLoader::ParseAnimations(
                         easing = GetEasingType(frame->pointFrame()->easingData()->type());
                     auto pos = frame->pointFrame()->position();
                     track.keys.push_back(
-                        { keyTime(frame->pointFrame()->frameIndex()), glm::vec4(pos->x(), pos->y(), 0.0f, 0.0f), easing }
+                        { keyTime(frame->pointFrame()->frameIndex()),
+                          glm::vec4(pos->x(), pos->y(), 0.0f, 0.0f),
+                          easing }
                     );
                 }
             }

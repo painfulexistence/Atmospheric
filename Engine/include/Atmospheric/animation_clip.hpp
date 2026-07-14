@@ -1,9 +1,9 @@
 #pragma once
 #include "easing.hpp"
+#include <cstdint>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
-#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -68,9 +68,8 @@ struct FlipbookClip {
     // Build a strip from a tileset laid out left-to-right, top-to-bottom.
     // tilesetSize is the tile grid dimensions (cols, rows); tileIndices are
     // linear indices into that grid. Every frame gets frameDuration seconds.
-    static FlipbookClip FromTileset(
-        std::string name, glm::vec2 tilesetSize, const std::vector<int>& tileIndices, float frameDuration
-    );
+    static FlipbookClip
+        FromTileset(std::string name, glm::vec2 tilesetSize, const std::vector<int>& tileIndices, float frameDuration);
 
     // Build from explicit (col, row) cells of a cols×rows grid. This is the
     // addressing the RPG example's ad-hoc SpriteAnimator used.
