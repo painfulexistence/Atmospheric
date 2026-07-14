@@ -512,7 +512,8 @@ Prefab ImportUSDPrefab(const std::string& path) {
 
     tinyusdz::tydra::RenderScene rscene;
     if (!converter.ConvertToRenderScene(env, &rscene)) {
-        ConsoleSubsystem::Get()->Warn(fmt::format("ImportUSDPrefab '{}' convert error: {}", path, converter.GetError())
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format("ImportUSDPrefab '{}' convert error: {}", path, converter.GetError())
         );
         return Prefab{};
     }
@@ -612,8 +613,8 @@ Prefab ImportUSDPrefab(const std::string& path) {
     }
 
     // ── Node hierarchy (mesh points are local; nodes carry the transforms) ───
-    std::function<PrefabNode(const tinyusdz::tydra::Node&)> buildNode = [&](const tinyusdz::tydra::Node& n
-                                                                        ) -> PrefabNode {
+    std::function<PrefabNode(const tinyusdz::tydra::Node&)> buildNode =
+        [&](const tinyusdz::tydra::Node& n) -> PrefabNode {
         PrefabNode node;
         node.name = n.prim_name.empty() ? n.abs_path : n.prim_name;
         node.transform = ToGlm(n.local_matrix);
@@ -648,13 +649,15 @@ Prefab ImportUSDPrefab(const std::string& path) {
     out.root.transform = rootXf;
 
     out.ok = !out.meshes.empty();
-    ConsoleSubsystem::Get()->Info(fmt::format(
-        "ImportUSDPrefab '{}': {} mesh(es), {} material(s), {} image(s)",
-        path,
-        out.meshes.size(),
-        out.materials.size(),
-        out.images.size()
-    ));
+    ConsoleSubsystem::Get()->Info(
+        fmt::format(
+            "ImportUSDPrefab '{}': {} mesh(es), {} material(s), {} image(s)",
+            path,
+            out.meshes.size(),
+            out.materials.size(),
+            out.images.size()
+        )
+    );
     return out;
 }
 
