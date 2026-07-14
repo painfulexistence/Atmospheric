@@ -1941,7 +1941,9 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             // Surface parameters
             meshShader->SetUniform(std::string("surf_params.diffuse"), material->diffuse);
             // Blinn-Phong terms (only read by the shader when u_useBlinnPhong==1).
-            meshShader->SetUniform(std::string("surf_params.specular"), blinnMat ? blinnMat->specular : glm::vec3(0.7f));
+            meshShader->SetUniform(
+                std::string("surf_params.specular"), blinnMat ? blinnMat->specular : glm::vec3(0.7f)
+            );
             meshShader->SetUniform(std::string("surf_params.ambient"), blinnMat ? blinnMat->ambient : glm::vec3(0.0f));
             meshShader->SetUniform(std::string("surf_params.shininess"), blinnMat ? blinnMat->shininess : 0.25f);
             meshShader->SetUniform(std::string("u_useBlinnPhong"), blinnMat ? 1 : 0);

@@ -486,9 +486,12 @@ static void StartGame() {
 // 2k HDRI is ~24 MB, so it dominates first-load time; it is IndexedDB-cached
 // after the first fetch. Swap in a smaller HDRI if that matters.
 static const std::vector<std::string> kWebAssets = {
-    "assets/textures/default_diff.ktx2",     "assets/textures/default_norm.ktx2",
-    "assets/textures/default_ao.ktx2",       "assets/textures/default_rough.ktx2",
-    "assets/textures/default_metallic.ktx2", "assets/maps/arena.map",
+    "assets/textures/default_diff.ktx2",
+    "assets/textures/default_norm.ktx2",
+    "assets/textures/default_ao.ktx2",
+    "assets/textures/default_rough.ktx2",
+    "assets/textures/default_metallic.ktx2",
+    "assets/maps/arena.map",
     "assets/textures/ushaka_sea_world_aquarium_2k.exr",
 };
 #endif

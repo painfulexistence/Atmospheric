@@ -93,8 +93,8 @@ struct MaterialProps {
     float roughnessFactor = 1.0f;
     float metallicFactor = 0.0f;
     glm::vec3 specular = glm::vec3(.7, .7, .7);// BlinnPhong only
-    glm::vec3 ambient = glm::vec3(0, 0, 0);    // BlinnPhong only
-    float shininess = .25;                     // BlinnPhong only
+    glm::vec3 ambient = glm::vec3(0, 0, 0);// BlinnPhong only
+    float shininess = .25;// BlinnPhong only
     bool cullFaceEnabled = true;
     PrimitiveTopology primitiveType = PrimitiveTopology::Triangles;
     PolygonMode polygonMode = PolygonMode::Fill;

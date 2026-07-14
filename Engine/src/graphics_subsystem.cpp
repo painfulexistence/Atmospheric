@@ -284,8 +284,8 @@ void GraphicsSubsystem::DrawImGui(float dt) {
         // any pass, so it shows in every scene (the env map feeds PBR ComputeIBL
         // directly, no VoxelChunkPass required).
         if (ImGui::TreeNode("IBL Debug")) {
-            const bool hasEnv = renderer->environmentMap.IsValid()
-                                && static_cast<uint32_t>(renderer->environmentMap) != 0;
+            const bool hasEnv =
+                renderer->environmentMap.IsValid() && static_cast<uint32_t>(renderer->environmentMap) != 0;
             ImGui::TextDisabled(hasEnv ? "Environment map loaded." : "No env map — flat-ambient fallback.");
             ImGui::Checkbox("Enable IBL", &renderer->iblEnabled);
             // Diffuse tints albedo by the (blurred) env; drop it when a strongly
@@ -294,7 +294,9 @@ void GraphicsSubsystem::DrawImGui(float dt) {
             ImGui::SliderFloat("Diffuse strength", &renderer->iblDiffuseStrength, 0.0f, 2.0f);
             ImGui::SliderFloat("Specular strength", &renderer->iblSpecularStrength, 0.0f, 2.0f);
             ImGui::SliderFloat("Env max LOD (blur)", &renderer->environmentMaxLod, 0.0f, 12.0f);
-            ImGui::TextDisabled("Lower Diffuse to keep base colours from being\ntinted by a coloured env (e.g. the aquarium HDRI).");
+            ImGui::TextDisabled(
+                "Lower Diffuse to keep base colours from being\ntinted by a coloured env (e.g. the aquarium HDRI)."
+            );
             ImGui::TreePop();
         }
 
@@ -509,7 +511,9 @@ void GraphicsSubsystem::DrawImGui(float dt) {
                         ImGui::Text("AO Map ID: %d", static_cast<int>(pbr->aoMap));
                         ImGui::Text("Roughness Map ID: %d", static_cast<int>(pbr->roughnessMap));
                         ImGui::Text("Metallic Map ID: %d", static_cast<int>(pbr->metallicMap));
-                        ImGui::Text("Roughness/Metallic factor: %.3f / %.3f", pbr->roughnessFactor, pbr->metallicFactor);
+                        ImGui::Text(
+                            "Roughness/Metallic factor: %.3f / %.3f", pbr->roughnessFactor, pbr->metallicFactor
+                        );
                     }
                     if (auto* bp = dynamic_cast<BlinnPhongMaterial*>(m.get())) {
                         ImGui::Text("Specular: %.3f, %.3f, %.3f", bp->specular.x, bp->specular.y, bp->specular.z);

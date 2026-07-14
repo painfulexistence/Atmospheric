@@ -1328,11 +1328,13 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
         auto channelTex = [&](int imgIdx, int channel) -> TextureHandle {
             if (imgIdx < 0 || imgIdx >= static_cast<int>(prefab.images.size())) return TextureHandle{};
             const PrefabImage& src = prefab.images[imgIdx];
-            if (src.pixels.empty() || src.width <= 0 || src.height <= 0 || channel >= src.channels) return TextureHandle{};
+            if (src.pixels.empty() || src.width <= 0 || src.height <= 0 || channel >= src.channels)
+                return TextureHandle{};
             const size_t count = static_cast<size_t>(src.width) * static_cast<size_t>(src.height);
             std::vector<unsigned char> gray(count * 3);
             for (size_t p = 0; p < count; ++p) {
-                const unsigned char v = src.pixels[p * static_cast<size_t>(src.channels) + static_cast<size_t>(channel)];
+                const unsigned char v =
+                    src.pixels[p * static_cast<size_t>(src.channels) + static_cast<size_t>(channel)];
                 gray[p * 3 + 0] = v;
                 gray[p * 3 + 1] = v;
                 gray[p * 3 + 2] = v;
@@ -1344,7 +1346,7 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
         props.normalMap = texAt(pm.normalImage);
         props.aoMap = texAt(pm.occlusionImage);
         props.roughnessMap = channelTex(pm.metallicRoughnessImage, 1);// glTF roughness → G
-        props.metallicMap = channelTex(pm.metallicRoughnessImage, 2); // glTF metallic  → B
+        props.metallicMap = channelTex(pm.metallicRoughnessImage, 2);// glTF metallic  → B
         // glTF semantics carried natively by PBRMaterial: value = map * factor,
         // absent map = white — so the scalar factors need no 1x1 solid texture.
         props.roughnessFactor = pm.roughness;
@@ -1598,9 +1600,11 @@ static std::vector<std::string> CollectPrefetchPaths(const SceneBlueprint& bp, b
             if (!p.empty()) paths.push_back(p);
         }
         if (auto it = ent.find("children"); it != ent.end() && it->is_array())
-            for (const auto& child : *it) collectPrefabs(child);
+            for (const auto& child : *it)
+                collectPrefabs(child);
     };
-    for (const auto& eb : bp.entities) collectPrefabs(eb.resolvedData);
+    for (const auto& eb : bp.entities)
+        collectPrefabs(eb.resolvedData);
 
     return paths;
 }

@@ -16,10 +16,10 @@ struct MaterialBlueprint {
     std::string shading = "pbr";
     glm::vec3 diffuse = glm::vec3(0.55f, 0.55f, 0.55f);
     float roughnessFactor = 1.0f;// PBR: scales the roughness map / stands alone
-    float metallicFactor = 1.0f; // PBR: scales the metallic map
+    float metallicFactor = 1.0f;// PBR: scales the metallic map
     glm::vec3 specular = glm::vec3(0.70f, 0.70f, 0.70f);// BlinnPhong only
-    glm::vec3 ambient = glm::vec3(0.00f, 0.00f, 0.00f); // BlinnPhong only
-    float shininess = 0.25f;                            // BlinnPhong only
+    glm::vec3 ambient = glm::vec3(0.00f, 0.00f, 0.00f);// BlinnPhong only
+    float shininess = 0.25f;// BlinnPhong only
     bool cullFaceEnabled = true;
     std::string baseMap, normalMap, aoMap, roughnessMap, metallicMap, heightMap;
 
