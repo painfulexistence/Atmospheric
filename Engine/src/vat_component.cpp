@@ -4,7 +4,7 @@
 #include "imgui.h"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "mesh_renderer.hpp"
+#include "mesh_renderer_component.hpp"
 #include <algorithm>
 #include <cmath>
 #include <utility>

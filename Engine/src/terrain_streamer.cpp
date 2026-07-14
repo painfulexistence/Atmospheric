@@ -10,7 +10,7 @@
 #include "mesh.hpp"
 #include "mesh_builder.hpp"
 #include "mesh_instancer.hpp"
-#include "mesh_renderer.hpp"
+#include "mesh_renderer_component.hpp"
 #include "rigidbody_component.hpp"
 #include "terrain_tile_cache.hpp"
 

@@ -6,7 +6,7 @@
 #include "imgui.h"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "mesh_renderer.hpp"
+#include "mesh_renderer_component.hpp"
 
 #include <glm/gtc/matrix_transform.hpp>
 

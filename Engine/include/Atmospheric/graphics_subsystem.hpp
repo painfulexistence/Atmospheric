@@ -5,7 +5,7 @@
 #include "font_manager.hpp"
 #include "light_component.hpp"
 #include "mesh.hpp"
-#include "mesh_renderer.hpp"
+#include "mesh_renderer_component.hpp"
 #include "render_target.hpp"
 #include "shader.hpp"
 #include "subsystem.hpp"

@@ -23,7 +23,7 @@
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_instancer.hpp"
-#include "mesh_renderer.hpp"
+#include "mesh_renderer_component.hpp"
 #include "prefab.hpp"
 #include "rigidbody_2d_component.hpp"
 #include "rigidbody_component.hpp"

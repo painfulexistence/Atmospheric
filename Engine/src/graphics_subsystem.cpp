@@ -12,7 +12,7 @@
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_instancer.hpp"
-#include "mesh_renderer.hpp"
+#include "mesh_renderer_component.hpp"
 #include "renderer.hpp"
 #include "sprite_component.hpp"
 #include "stb_image.h"

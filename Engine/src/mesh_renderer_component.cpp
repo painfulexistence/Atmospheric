@@ -1,4 +1,4 @@
-#include "mesh_renderer.hpp"
+#include "mesh_renderer_component.hpp"
 #include "application.hpp"
 #include "asset_manager.hpp"
 #include "game_object.hpp"
