@@ -4,6 +4,7 @@
 #include "gl_render_target.hpp"
 #include "globals.hpp"// glad / GLES3
 #include <vector>
+#include <algorithm>
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "gpu_buffer.hpp"
@@ -310,7 +311,40 @@ uint32_t GfxFactory::UploadTextureRGBA16F(const float* rgba, int w, int h) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);// latitude clamps
     // Source is 32-bit float; the driver converts to the RGBA16F internal format.
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, rgba);
-    glGenerateMipmap(GL_TEXTURE_2D);// build the LOD chain sampled by the IBL specular term
+
+    // Build the mip chain in software instead of glGenerateMipmap. On WebGL2,
+    // glGenerateMipmap on an RGBA16F texture requires EXT_color_buffer_float
+    // (the format is texture-filterable in core but not color-renderable), and
+    // support is spotty even then — so it silently produces no mips, leaving the
+    // env with only level 0. The IBL prefilter samples roughness -> LOD, so a
+    // missing chain makes every surface mirror the sharp, full-brightness
+    // environment (rough floors included). A CPU box-downsample is backend-
+    // independent and matches what the shader's textureLod() expects.
+    std::vector<float> src(rgba, rgba + static_cast<size_t>(w) * h * 4);
+    int lw = w, lh = h, level = 0;
+    while (lw > 1 || lh > 1) {
+        const int dw = std::max(1, lw / 2), dh = std::max(1, lh / 2);
+        std::vector<float> dst(static_cast<size_t>(dw) * dh * 4);
+        for (int y = 0; y < dh; ++y) {
+            for (int x = 0; x < dw; ++x) {
+                const int x0 = std::min(x * 2, lw - 1), x1 = std::min(x * 2 + 1, lw - 1);
+                const int y0 = std::min(y * 2, lh - 1), y1 = std::min(y * 2 + 1, lh - 1);
+                for (int c = 0; c < 4; ++c) {
+                    dst[(static_cast<size_t>(y) * dw + x) * 4 + c] =
+                        0.25f
+                        * (src[(static_cast<size_t>(y0) * lw + x0) * 4 + c]
+                           + src[(static_cast<size_t>(y0) * lw + x1) * 4 + c]
+                           + src[(static_cast<size_t>(y1) * lw + x0) * 4 + c]
+                           + src[(static_cast<size_t>(y1) * lw + x1) * 4 + c]);
+                }
+            }
+        }
+        ++level;
+        glTexImage2D(GL_TEXTURE_2D, level, GL_RGBA16F, dw, dh, 0, GL_RGBA, GL_FLOAT, dst.data());
+        src = std::move(dst);
+        lw = dw;
+        lh = dh;
+    }
     glBindTexture(GL_TEXTURE_2D, 0);
     return static_cast<uint32_t>(texID);
 }
