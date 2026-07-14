@@ -31,6 +31,7 @@ Prefab ImportUSDPrefab(const std::string& path) {
 #include <optional>
 #include <set>
 #include <tydra/render-data.hh>
+#include <tydra/scene-access.hh>
 
 namespace {
 
@@ -616,13 +617,21 @@ Prefab ImportUSDPrefab(const std::string& path) {
     out.root.transform = rootXf;
 
     out.ok = !out.meshes.empty();
+    // Diagnostic: how many Material prims survive in the composed stage vs how
+    // many Tydra actually bound. stageMaterials == 0 means composition/parse
+    // dropped them; stageMaterials > 0 with 0 converted means the bindings did
+    // not resolve. (Helps triage USD material issues without a rebuild.)
+    tinyusdz::tydra::PathPrimMap<tinyusdz::Material> stageMaterials;
+    tinyusdz::tydra::ListPrims(stage, stageMaterials);
     ConsoleSubsystem::Get()->Info(
         fmt::format(
-            "ImportUSDPrefab '{}': {} mesh(es), {} material(s), {} image(s)",
+            "ImportUSDPrefab '{}': {} mesh(es), {} material(s), {} image(s) "
+            "[stage: {} Material prim(s)]",
             path,
             out.meshes.size(),
             out.materials.size(),
-            out.images.size()
+            out.images.size(),
+            stageMaterials.size()
         )
     );
     return out;
