@@ -129,13 +129,14 @@ public:
                 && !_cb.isSolid(_data->x, newY + _data->h - 1)
                 && !_cb.isSolid(_data->x + _data->w - 1, _data->y + _data->h - 1))
                 _data->y = newY;
-
-            _anim->Play("walk");
         } else {
             _data->aggro = false;
-            _anim->Play("idle");
         }
-        // Frame advance is driven centrally by AnimationSubsystem — no manual update.
+
+        // Switch clips only on a state change — the AI decides when, the engine
+        // plays it. Frame advance is driven centrally by AnimationSubsystem.
+        const char* wantClip = _data->aggro ? "walk" : "idle";
+        if (_anim->GetCurrentClip() != wantClip) _anim->Play(wantClip);
 
         if (AABBOverlaps(_cb.getPlayerAABB(), _data->aabb())) {
             _cb.onContact(_idx);

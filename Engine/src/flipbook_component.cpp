@@ -29,9 +29,8 @@ static AnimationLibrary* Lib() {
 void FlipbookComponent::AddClip(FlipbookClipHandle clip) {
     if (!clip.IsValid()) return;
     if (std::find(_clips.begin(), _clips.end(), clip) == _clips.end()) _clips.push_back(clip);
-    // Note: adding a clip does NOT bind/select it — only Play() does. That keeps
-    // "the selected clip" synonymous with "the clip Play() chose", so a repeated
-    // Play(sameClip) can be a true no-op that leaves a manual Pause intact.
+    // Bind (but don't play) the first clip so there is a frame to show before Play().
+    if (!_current.IsValid()) BindClip(clip);
 }
 
 void FlipbookComponent::AddClip(const std::string& libraryName) {
@@ -70,11 +69,12 @@ bool FlipbookComponent::Play(const std::string& clipName) {
     auto* lib = Lib();
     if (!lib) return false;
 
-    // Already on this clip → true no-op: don't touch playing/time. This is what
-    // lets a manual Pause survive game code that calls Play(sameClip) every
-    // frame (e.g. the RPG player's idle/walk). Only a switch to a DIFFERENT clip
-    // (re)starts playback. To replay the same clip deliberately, Stop() first.
-    if (_currentName == clipName && _clip) return true;
+    // Already playing this exact clip → idempotent no-op (SpriteAnimator
+    // semantics). Note this deliberately only skips while *playing*: replaying a
+    // finished one-shot (e.g. "attack") via Play(sameClip) restarts it, and a
+    // paused component is resumed. Managing *when* to (re)play — including not
+    // fighting a manual pause — is the caller's job, not the engine's.
+    if (_currentName == clipName && _state.playing) return true;
 
     // Resolve among THIS component's own clips (clip names are commonly reused
     // across entities — e.g. every actor has an "idle" — so a global by-name

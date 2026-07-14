@@ -367,8 +367,13 @@ private:
     void UpdateExplore(float dt) {
         auto* inp = InputSubsystem::Get();
 
-        _playerFlip->Play(_player.moving ? "walk" : "idle");
-        // Frame advance is driven centrally by AnimationSubsystem.
+        // Gameplay owns the animation state machine: switch clips only when the
+        // desired state actually changes, not every frame. (Re-issuing Play every
+        // frame would restart one-shots and fight a manual pause — that's the
+        // caller's responsibility, not the engine's.) Frame advance itself is
+        // driven centrally by AnimationSubsystem.
+        const char* wantClip = _player.moving ? "walk" : "idle";
+        if (_playerFlip->GetCurrentClip() != wantClip) _playerFlip->Play(wantClip);
 
         // NPC interaction
         if (inp->IsKeyPressed(Key::E)) {
