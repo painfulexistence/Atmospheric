@@ -41,6 +41,13 @@ namespace {
     // sub-asset twice (size_fun then read_fun).
     struct FsResolverCtx {
         std::map<std::string, FileSystem::Bytes> cache;// resolved key -> bytes
+        // The resolver whose handler this ctx backs. tinyusdz sets the resolver's
+        // current_working_path() to the referencing layer's directory before each
+        // resolve() but does NOT pass it to the handler callback — so we read it
+        // off the resolver here. Without it, a reference like
+        // `./assets/Cheerio/Cheerio.usd` (relative to the layer's dir, not to any
+        // search path) fails to resolve and its sub-layer never loads.
+        const tinyusdz::AssetResolutionResolver* resolver = nullptr;
     };
 
     std::string NormalizeRel(std::string p) {
@@ -48,20 +55,27 @@ namespace {
         return p;
     }
 
-    // tinyusdz passes the referencing layer's directory in `searchPaths` when it
-    // descends into nested references, so joining the asset path against each
-    // search dir resolves deeply-nested sub-files (e.g. Kitchen_set → assets/ →
-    // assets/props/).
+    // Resolve an asset against the current working path first (the referencing
+    // layer's directory), then any search paths tinyusdz supplies, then the asset
+    // root. The cwp branch is what makes deeply-nested Kitchen_set-style
+    // references (`./assets/<Prop>/<Prop>.usd`) resolve.
     int FsResolve(
         const char* asset,
         const std::vector<std::string>& searchPaths,
         std::string* resolved,
         std::string* err,
-        void* /*ud*/
+        void* ud
     ) {
+        const auto* ctx = static_cast<const FsResolverCtx*>(ud);
         const std::string a = NormalizeRel(asset);
-        for (const auto& sp : searchPaths) {
-            const std::string base = NormalizeRel(sp);
+        std::vector<std::string> dirs;
+        if (ctx && ctx->resolver) {
+            const std::string& cwp = ctx->resolver->current_working_path();
+            if (!cwp.empty()) dirs.push_back(cwp);
+        }
+        dirs.insert(dirs.end(), searchPaths.begin(), searchPaths.end());
+        for (const auto& d : dirs) {
+            const std::string base = NormalizeRel(d);
             const std::string cand = (base.empty() || base == ".") ? a : base + "/" + a;
             if (FileSystem::Get().Exists(cand)) {
                 *resolved = cand;
@@ -217,6 +231,7 @@ namespace {
 
         tinyusdz::AssetResolutionResolver resolver;
         resolver.register_wildcard_asset_resolution_handler(MakeFsHandler(ctx));
+        ctx->resolver = &resolver;// so FsResolve can read current_working_path()
         const std::string cwd = baseDir.empty() ? "." : baseDir;
         resolver.set_search_paths({ cwd });
         resolver.set_current_working_path(cwd);
@@ -261,6 +276,7 @@ namespace {
             if (!unresolved) break;
         }
 
+        ctx->resolver = nullptr;// `resolver` dies with this scope — don't dangle
         // Preserve stage metas (upAxis / metersPerUnit) — LayerToStage keeps what
         // we seed here, and the importer reads them below for the root transform.
         outStage->metas() = root.metas();
@@ -410,6 +426,7 @@ Prefab ImportUSDPrefab(const std::string& path) {
         // composition (fsctx keys), so textures beside deeply-nested sub-USDs
         // (Kitchen_set scatters them across assets/*/) are found.
         env.asset_resolver.register_wildcard_asset_resolution_handler(MakeFsHandler(&fsctx));
+        fsctx.resolver = &env.asset_resolver;// FsResolve reads its cwp for textures
         std::vector<std::string> searchPaths;
         if (!baseDir.empty()) searchPaths.push_back(baseDir);
         for (const auto& [key, _] : fsctx.cache) {
