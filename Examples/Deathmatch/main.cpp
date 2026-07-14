@@ -462,6 +462,37 @@ class DeathmatchGame : public Application {
     }
 };
 
+// Constructs and runs the game. Factored out so the web build can defer it
+// until after FileSystem::Prefetch has warmed the asset cache (see main).
+static void StartGame() {
+    static DeathmatchGame game(
+        { .windowTitle = "Deathmatch",
+          .windowWidth = 1280,
+          .windowHeight = 720,
+          .enableAudio = false,
+          .useDefaultTextures = true,
+          .useDefaultShaders = true }
+    );
+    game.Run();
+}
+
+#ifdef __EMSCRIPTEN__
+// Web has no synchronous disk: every file the game reads through
+// FileSystem::ReadSync must be fetched first. The default PBR textures are read
+// at graphics init (useDefaultTextures) and the arena.map + HDRI env are read
+// imperatively in OnLoad, so none of them go through the scene's own
+// CollectPrefetchPaths — fetch them here before StartGame. These files are
+// served (staged next to the .html), not baked into the .data bundle. NOTE: the
+// 2k HDRI is ~24 MB, so it dominates first-load time; it is IndexedDB-cached
+// after the first fetch. Swap in a smaller HDRI if that matters.
+static const std::vector<std::string> kWebAssets = {
+    "assets/textures/default_diff.ktx2",     "assets/textures/default_norm.ktx2",
+    "assets/textures/default_ao.ktx2",       "assets/textures/default_rough.ktx2",
+    "assets/textures/default_metallic.ktx2", "assets/maps/arena.map",
+    "assets/textures/ushaka_sea_world_aquarium_2k.exr",
+};
+#endif
+
 int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--connect") == 0 && i + 1 < argc) {
@@ -479,16 +510,12 @@ int main(int argc, char* argv[]) {
     // in-process LoopbackDatagramSocket (see datagram_socket.hpp). Forced here
     // too so a bare launch can never end up in a broken connect state.
     gcli.local = true;
-#endif
-
-    DeathmatchGame game(
-        { .windowTitle = "Deathmatch",
-          .windowWidth = 1280,
-          .windowHeight = 720,
-          .enableAudio = false,
-          .useDefaultTextures = true,
-          .useDefaultShaders = true }
-    );
-    game.Run();
+    // Warm the cache, then start (async: main returns, the event loop keeps the
+    // page alive and fires StartGame once every fetch settles).
+    FileSystem::Get().Prefetch(kWebAssets, StartGame);
     return 0;
+#else
+    StartGame();
+    return 0;
+#endif
 }

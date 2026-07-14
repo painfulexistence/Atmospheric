@@ -67,7 +67,9 @@ if(EMSCRIPTEN)
         # MEMFS. ae_copy_engine_assets skips Emscripten, hence this preload.
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/textures@assets/textures"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/models@assets/models"
+        # models/ is NOT baked: the cube prefab is scene-declared, so
+        # CollectPrefetchPaths fetches it at scene-load (emscripten_fetch →
+        # MEMFS). Still staged above so it is served for that fetch.
     )
 
     # Release builds use the centered custom shell (matches other examples);

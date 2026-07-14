@@ -40,10 +40,12 @@ if(EMSCRIPTEN)
     # Preload engine defaults (shaders/fonts/ui) + Deathmatch's scene, the
     # arena.map level geometry, and the HDRI env. The map is required (the
     # static environment shell is map-driven), and the .exr is the arena's
-    # image-based lighting — both must be in MEMFS since ae_copy_engine_assets
-    # skips Emscripten. NOTE: the 2k HDRI is ~24 MB, which dominates the wasm
-    # .data download; swap in a smaller HDRI (or drop the textures preload to
-    # fall back to the gradient sky) if bundle size matters.
+    # image-based lighting. Both are read through FileSystem::ReadSync, which on
+    # web needs the bytes fetched first — main() Prefetches them (with the
+    # default PBR textures) before StartGame. So they are NOT --preload-file'd
+    # (baked into the .data); they are only *staged* here so the dev server
+    # serves them at ${target}/assets/... for those fetches. The default PBR
+    # textures also go under textures/ (ae_copy_engine_assets skips Emscripten).
     add_custom_target(stage_DeathmatchClient_em_preload
         COMMAND ${CMAKE_COMMAND} -E make_directory ${EM_PRELOAD_STAGING_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -54,17 +56,24 @@ if(EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/ui ${EM_PRELOAD_STAGING_DIR}/ui
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/scenes ${EM_PRELOAD_STAGING_DIR}/scenes
+        # Served-not-baked (fetched at runtime): default PBR textures + the HDRI
+        # env (both land under textures/) and the arena.map level geometry.
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-            ${CMAKE_CURRENT_SOURCE_DIR}/assets/maps ${EM_PRELOAD_STAGING_DIR}/maps
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/textures ${EM_PRELOAD_STAGING_DIR}/textures
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/assets/textures ${EM_PRELOAD_STAGING_DIR}/textures
-        COMMENT "Staging Emscripten preload assets (shaders, fonts, ui, scenes, maps, textures) for DeathmatchClient"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/maps ${EM_PRELOAD_STAGING_DIR}/maps
+        COMMENT "Staging Emscripten assets (preload: shaders/fonts/ui/scenes; served-for-fetch: textures/maps) for DeathmatchClient"
     )
     add_dependencies(DeathmatchClient stage_DeathmatchClient_em_preload)
 
     # INVOKE_RUN=0: main() is not auto-run. The shell.html lobby lets the player
     # pick Solo (working) or PvP (WIP) and then launches via Module.callMain,
     # mirroring MultiplayerSandbox. _main is exported so callMain can reach it.
+    # Only the small, synchronous-at-init assets are --preload-file'd; textures/
+    # maps are fetched at runtime (see main.cpp's Prefetch), so they stay out of
+    # the .data bundle — keeps the 24 MB HDRI from bloating the initial download.
     target_link_options(DeathmatchClient PRIVATE
         -sALLOW_MEMORY_GROWTH=1
         -sASSERTIONS=1
@@ -75,8 +84,6 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/fonts@assets/fonts"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/ui@assets/ui"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/maps@assets/maps"
-        "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/textures@assets/textures"
         # The lobby is the entry point (INVOKE_RUN=0), so the custom shell is
         # applied in all build types, not just Release.
         "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell.html"

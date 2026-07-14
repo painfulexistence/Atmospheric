@@ -1587,6 +1587,21 @@ static std::vector<std::string> CollectPrefetchPaths(const SceneBlueprint& bp, b
         if (props.tese.has_value() && !props.tese->empty()) paths.push_back(*props.tese);
     }
 
+    // Prefab files (.map / .gltf / .usd) referenced by entities — fetch them so
+    // ImportPrefab's ReadSync hits the cache on web instead of failing. Walks
+    // nested children too. Only the prefab file itself is collected; a prefab
+    // with external dependencies (glTF .bin, USD payloads/textures) needs those
+    // served alongside it — the committed viewer samples are self-contained.
+    std::function<void(const nlohmann::json&)> collectPrefabs = [&](const nlohmann::json& ent) {
+        if (auto it = ent.find("prefab"); it != ent.end() && it->is_string()) {
+            const std::string p = it->get<std::string>();
+            if (!p.empty()) paths.push_back(p);
+        }
+        if (auto it = ent.find("children"); it != ent.end() && it->is_array())
+            for (const auto& child : *it) collectPrefabs(child);
+    };
+    for (const auto& eb : bp.entities) collectPrefabs(eb.resolvedData);
+
     return paths;
 }
 
