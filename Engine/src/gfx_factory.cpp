@@ -3,8 +3,8 @@
 #include "gl_buffer.hpp"
 #include "gl_render_target.hpp"
 #include "globals.hpp"// glad / GLES3
-#include <vector>
 #include <algorithm>
+#include <vector>
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 #include "gpu_buffer.hpp"
@@ -279,7 +279,8 @@ uint32_t GfxFactory::UploadTextureRGBA16F(const float* rgba, int w, int h) {
         // chain on the CPU with the same box filter as the GL path and write
         // each level — otherwise rough surfaces mirror the sharp mip 0.
         uint32_t mipCount = 1;
-        for (int d = std::max(w, h); d > 1; d >>= 1) ++mipCount;
+        for (int d = std::max(w, h); d > 1; d >>= 1)
+            ++mipCount;
 
         WGPUTextureDescriptor td{};
         td.size = { static_cast<uint32_t>(w), static_cast<uint32_t>(h), 1 };

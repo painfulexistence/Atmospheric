@@ -5,7 +5,8 @@
 #include "mesh.hpp"
 #include <limits>
 
-MeshInstancerComponent::MeshInstancerComponent(GameObject* gameObject, MeshInstancerProps props) : _props(std::move(props)) {
+MeshInstancerComponent::MeshInstancerComponent(GameObject* gameObject, MeshInstancerProps props)
+  : _props(std::move(props)) {
     this->gameObject = gameObject;
 }
 

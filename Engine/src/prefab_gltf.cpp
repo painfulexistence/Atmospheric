@@ -152,15 +152,18 @@ Prefab ImportGLTFPrefab(const std::string& path) {
         );
         return Prefab{};
     }
-    const bool result =
-        path.ends_with(".glb")
-            ? loader.LoadBinaryFromMemory(
-                  &model, &err, &warn, bytes.data(), static_cast<unsigned int>(bytes.size()), baseDir
-              )
-            : loader.LoadASCIIFromString(
-                  &model, &err, &warn, reinterpret_cast<const char*>(bytes.data()),
-                  static_cast<unsigned int>(bytes.size()), baseDir
-              );
+    const bool result = path.ends_with(".glb")
+                            ? loader.LoadBinaryFromMemory(
+                                  &model, &err, &warn, bytes.data(), static_cast<unsigned int>(bytes.size()), baseDir
+                              )
+                            : loader.LoadASCIIFromString(
+                                  &model,
+                                  &err,
+                                  &warn,
+                                  reinterpret_cast<const char*>(bytes.data()),
+                                  static_cast<unsigned int>(bytes.size()),
+                                  baseDir
+                              );
     if (!warn.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportGLTFPrefab '{}': {}", path, warn));
     if (!err.empty()) ConsoleSubsystem::Get()->Warn(fmt::format("ImportGLTFPrefab '{}' error: {}", path, err));
     if (!result) return Prefab{};
