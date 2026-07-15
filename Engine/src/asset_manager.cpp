@@ -1725,16 +1725,7 @@ MeshHandle AssetManager::LoadTBMap(const std::string& path, float scale) {
         lo = glm::min(lo, v.position);
         hi = glm::max(hi, v.position);
     }
-    mesh->SetBoundingBox(
-        { glm::vec3(lo.x, lo.y, lo.z),
-          glm::vec3(hi.x, lo.y, lo.z),
-          glm::vec3(lo.x, hi.y, lo.z),
-          glm::vec3(hi.x, hi.y, lo.z),
-          glm::vec3(lo.x, lo.y, hi.z),
-          glm::vec3(hi.x, lo.y, hi.z),
-          glm::vec3(lo.x, hi.y, hi.z),
-          glm::vec3(hi.x, hi.y, hi.z) }
-    );
+    mesh->SetBounds(lo, hi);
 
     ENGINE_LOG(
         "LoadTBMap '{}': {} meshes, {} verts, {} indices", path, model.meshes.size(), allVerts.size(), allIndices.size()
@@ -1778,16 +1769,7 @@ MeshHandle AssetManager::LoadUSD(const std::string& path) {
         lo = glm::min(lo, v.position);
         hi = glm::max(hi, v.position);
     }
-    mesh->SetBoundingBox(
-        { glm::vec3(lo.x, lo.y, lo.z),
-          glm::vec3(hi.x, lo.y, lo.z),
-          glm::vec3(lo.x, hi.y, lo.z),
-          glm::vec3(hi.x, hi.y, lo.z),
-          glm::vec3(lo.x, lo.y, hi.z),
-          glm::vec3(hi.x, lo.y, hi.z),
-          glm::vec3(lo.x, hi.y, hi.z),
-          glm::vec3(hi.x, hi.y, hi.z) }
-    );
+    mesh->SetBounds(lo, hi);
     ENGINE_LOG(
         "LoadUSD '{}': {} meshes, {} verts, {} indices", path, model.meshes.size(), allVerts.size(), allIndices.size()
     );

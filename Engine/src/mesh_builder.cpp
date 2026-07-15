@@ -68,16 +68,7 @@ Mesh* MeshBuilder::CreateCube(const float& size) {
 
     auto cube = new Mesh(MeshType::PRIM);
     cube->Initialize(verts, tris);
-    cube->SetBoundingBox(
-        { { glm::vec3(.5f * size, .5f * size, .5f * size),
-            glm::vec3(-.5f * size, .5f * size, .5f * size),
-            glm::vec3(-.5f * size, -.5f * size, .5f * size),
-            glm::vec3(.5f * size, -.5f * size, .5f * size),
-            glm::vec3(.5f * size, .5f * size, .5f * size),
-            glm::vec3(-.5f * size, .5f * size, .5f * size),
-            glm::vec3(-.5f * size, -.5f * size, .5f * size),
-            glm::vec3(.5f * size, -.5f * size, .5f * size) } }
-    );
+    cube->SetBounds(glm::vec3(-.5f * size), glm::vec3(.5f * size));
     return cube;
 }
 
@@ -100,16 +91,7 @@ Mesh* MeshBuilder::CreatePlane(float width, float height) {
 
     auto plane = new Mesh(MeshType::PRIM);
     plane->Initialize(verts, tris);
-    plane->SetBoundingBox(
-        { { glm::vec3(hw, 0.0f, hh),
-            glm::vec3(-hw, 0.0f, hh),
-            glm::vec3(-hw, 0.0f, -hh),
-            glm::vec3(hw, 0.0f, -hh),
-            glm::vec3(hw, 0.0f, hh),
-            glm::vec3(-hw, 0.0f, hh),
-            glm::vec3(-hw, 0.0f, -hh),
-            glm::vec3(hw, 0.0f, -hh) } }
-    );
+    plane->SetBounds(glm::vec3(-hw, 0.0f, -hh), glm::vec3(hw, 0.0f, hh));
     return plane;
 }
 
@@ -144,16 +126,7 @@ Mesh* MeshBuilder::CreateDisc(float radius, int segments) {
 
     auto disc = new Mesh(MeshType::PRIM);
     disc->Initialize(verts, tris);
-    disc->SetBoundingBox(
-        { { glm::vec3(radius, radius, 0.01f),
-            glm::vec3(-radius, radius, 0.01f),
-            glm::vec3(-radius, -radius, 0.01f),
-            glm::vec3(radius, -radius, 0.01f),
-            glm::vec3(radius, radius, -0.01f),
-            glm::vec3(-radius, radius, -0.01f),
-            glm::vec3(-radius, -radius, -0.01f),
-            glm::vec3(radius, -radius, -0.01f) } }
-    );
+    disc->SetBounds(glm::vec3(-radius, -radius, -0.01f), glm::vec3(radius, radius, 0.01f));
     return disc;
 }
 
@@ -212,16 +185,7 @@ Mesh* MeshBuilder::CreateSphere(const float& radius, const int& division) {
 
     auto sphere = new Mesh(MeshType::PRIM);
     sphere->Initialize(verts, tris);
-    sphere->SetBoundingBox(
-        { { glm::vec3(radius, radius, radius),
-            glm::vec3(-radius, radius, radius),
-            glm::vec3(-radius, -radius, radius),
-            glm::vec3(radius, -radius, radius),
-            glm::vec3(radius, radius, radius),
-            glm::vec3(-radius, radius, radius),
-            glm::vec3(-radius, -radius, radius),
-            glm::vec3(radius, -radius, radius) } }
-    );
+    sphere->SetBounds(glm::vec3(-radius), glm::vec3(radius));
     return sphere;
 }
 
@@ -295,16 +259,7 @@ Mesh* MeshBuilder::CreateCapsule(const float& radius, const float& height, const
     const float hy = cylHalf + radius;// half total height
     auto capsule = new Mesh(MeshType::PRIM);
     capsule->Initialize(verts, tris);
-    capsule->SetBoundingBox(
-        { { glm::vec3(radius, hy, radius),
-            glm::vec3(-radius, hy, radius),
-            glm::vec3(-radius, -hy, radius),
-            glm::vec3(radius, -hy, radius),
-            glm::vec3(radius, hy, -radius),
-            glm::vec3(-radius, hy, -radius),
-            glm::vec3(-radius, -hy, -radius),
-            glm::vec3(radius, -hy, -radius) } }
-    );
+    capsule->SetBounds(glm::vec3(-radius, -hy, -radius), glm::vec3(radius, hy, radius));
     return capsule;
 }
 
@@ -388,15 +343,8 @@ Mesh* MeshBuilder::CreateTerrain(const float& worldSize, const int& resolution) 
 
     auto terrain = new Mesh(MeshType::TERRAIN);
     terrain->Initialize(verts);
-    terrain->SetBoundingBox(
-        { { glm::vec3(.5f * worldSize, .5f, .5f * worldSize),
-            glm::vec3(-.5f * worldSize, .5f, .5f * worldSize),
-            glm::vec3(-.5f * worldSize, -.5f, .5f * worldSize),
-            glm::vec3(.5f * worldSize, -.5f, .5f * worldSize),
-            glm::vec3(.5f * worldSize, .5f, .5f * worldSize),
-            glm::vec3(-.5f * worldSize, .5f, .5f * worldSize),
-            glm::vec3(-.5f * worldSize, -.5f, .5f * worldSize),
-            glm::vec3(.5f * worldSize, -.5f, .5f * worldSize) } }
+    terrain->SetBounds(
+        glm::vec3(-.5f * worldSize, -.5f, -.5f * worldSize), glm::vec3(.5f * worldSize, .5f, .5f * worldSize)
     );
     return terrain;
 }
@@ -474,16 +422,7 @@ Mesh* MeshBuilder::CreateTerrainTile(
     // skirt bottom up to the displacement ceiling, not the flat base grid.
     const float yTop = std::max(maxDisplacement, 0.5f);
     const float yBottom = -std::max(skirtDepth, 0.5f);
-    tile->SetBoundingBox(
-        { { glm::vec3(.5f * size, yTop, .5f * size),
-            glm::vec3(-.5f * size, yTop, .5f * size),
-            glm::vec3(-.5f * size, yBottom, .5f * size),
-            glm::vec3(.5f * size, yBottom, .5f * size),
-            glm::vec3(.5f * size, yTop, -.5f * size),
-            glm::vec3(-.5f * size, yTop, -.5f * size),
-            glm::vec3(-.5f * size, yBottom, -.5f * size),
-            glm::vec3(.5f * size, yBottom, -.5f * size) } }
-    );
+    tile->SetBounds(glm::vec3(-.5f * size, yBottom, -.5f * size), glm::vec3(.5f * size, yTop, .5f * size));
     return tile;
 }
 
@@ -559,7 +498,7 @@ void MeshBuilder::PushCube(glm::vec3 position, glm::vec3 size, glm::quat rotatio
     PushQuad(position + glm::vec3(0, -size.y / 2, 0), glm::vec2(size.x, size.z), glm::vec3(0, -1, 0));
 }
 
-void MeshBuilder::PushCSG(const std::vector<CSG::AABB>& boxes) {
+void MeshBuilder::PushCSG(const std::vector<AABB>& boxes) {
     for (const auto& box : boxes) {
         PushCube(box.GetCenter(), box.GetSize());
     }
@@ -580,11 +519,7 @@ std::shared_ptr<Mesh> MeshBuilder::Build() {
             min = glm::min(min, v.position);
             max = glm::max(max, v.position);
         }
-        std::array<glm::vec3, 8> bounds = { glm::vec3(min.x, min.y, min.z), glm::vec3(max.x, min.y, min.z),
-                                            glm::vec3(min.x, max.y, min.z), glm::vec3(max.x, max.y, min.z),
-                                            glm::vec3(min.x, min.y, max.z), glm::vec3(max.x, min.y, max.z),
-                                            glm::vec3(min.x, max.y, max.z), glm::vec3(max.x, max.y, max.z) };
-        mesh->SetBoundingBox(bounds);
+        mesh->SetBounds(min, max);
     }
     return mesh;
 }

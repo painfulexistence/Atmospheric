@@ -1421,16 +1421,7 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
             lo = glm::min(lo, v.position);
             hi = glm::max(hi, v.position);
         }
-        mesh->SetBoundingBox(
-            { glm::vec3(lo.x, lo.y, lo.z),
-              glm::vec3(hi.x, lo.y, lo.z),
-              glm::vec3(lo.x, hi.y, lo.z),
-              glm::vec3(hi.x, hi.y, lo.z),
-              glm::vec3(lo.x, lo.y, hi.z),
-              glm::vec3(hi.x, lo.y, hi.z),
-              glm::vec3(lo.x, hi.y, hi.z),
-              glm::vec3(hi.x, hi.y, hi.z) }
-        );
+        mesh->SetBounds(lo, hi);
         MeshHandle h = am.CreateMesh(fmt::format("{}#{}", baseName, i), mesh);
         if (mat.IsValid())
             if (Mesh* mp = am.GetMeshPtr(h)) mp->SetMaterial(mat);

@@ -96,17 +96,7 @@ void VoxelChunk::RebuildMesh(GraphicsSubsystem* gfx) {
     // Update AABB bounding box for frustum culling
     glm::vec3 wp = GetWorldPos();
     float s = static_cast<float>(SIZE);
-    std::array<glm::vec3, 8> bounds = { {
-        wp + glm::vec3(0, 0, 0),
-        wp + glm::vec3(s, 0, 0),
-        wp + glm::vec3(0, s, 0),
-        wp + glm::vec3(s, s, 0),
-        wp + glm::vec3(0, 0, s),
-        wp + glm::vec3(s, 0, s),
-        wp + glm::vec3(0, s, s),
-        wp + glm::vec3(s, s, s),
-    } };
-    _mesh->SetBoundingBox(bounds);
+    _mesh->SetBounds(wp, wp + glm::vec3(s));
 
     _dirty = false;
 }

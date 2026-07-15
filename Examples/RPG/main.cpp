@@ -277,7 +277,7 @@ public:
                 static_cast<int>(i),
                 EnemyAICallbacks{
                     [this]() { return vec2(_player.cx(), _player.cy()); },
-                    [this]() { return _player.aabb(); },
+                    [this]() { return _player.rect(); },
                     [this](float x, float y) { return _tilemap->IsSolidWorld(x, y); },
                     [this]() { return _mode == GameMode::Explore; },
                     [this](int k) {

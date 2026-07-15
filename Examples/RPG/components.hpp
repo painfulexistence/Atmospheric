@@ -86,7 +86,7 @@ public:
 
 struct EnemyAICallbacks {
     std::function<vec2()> getPlayerCenter;
-    std::function<AABB()> getPlayerAABB;
+    std::function<Rect()> getPlayerRect;
     std::function<bool(float, float)> isSolid;
     std::function<bool()> isExploring;
     std::function<void(int)> onContact;
@@ -138,7 +138,7 @@ public:
         const char* wantClip = _data->aggro ? "walk" : "idle";
         if (_anim->GetCurrentClip() != wantClip) _anim->Play(wantClip);
 
-        if (AABBOverlaps(_cb.getPlayerAABB(), _data->aabb())) {
+        if (RectOverlaps(_cb.getPlayerRect(), _data->rect())) {
             _cb.onContact(_idx);
         }
     }

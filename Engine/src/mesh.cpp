@@ -4,6 +4,22 @@
 #include "gfx_factory.hpp"
 #include "graphics_subsystem.hpp"
 
+// Frustum culling (GraphicsSubsystem::Render) transforms this AABB to world
+// space and p-vertex-tests it against the view frustum; without it a mesh
+// reports empty bounds (min == max) and is never culled. MeshBuilder primitives
+// set their bounds analytically after Initialize, so this only fills them in
+// for imported / hand-built meshes (glTF, USD, .map) that would otherwise have
+// none.
+static AABB ComputeMeshAABB(const std::vector<Vertex>& verts) {
+    if (verts.empty()) return {};
+    glm::vec3 lo = verts[0].position, hi = verts[0].position;
+    for (const Vertex& v : verts) {
+        lo = glm::min(lo, v.position);
+        hi = glm::max(hi, v.position);
+    }
+    return { lo, hi };
+}
+
 void PrintVertex(const Vertex& v) {
     fmt::print(
         "P: ({},{},{}), UV: ({},{})\n, N: ({},{},{}), T: ({},{},{}), B: ({},{},{})\n",
@@ -52,6 +68,7 @@ Mesh::~Mesh() {
 void Mesh::Initialize(const std::vector<Vertex>& verts) {
     vertCount = verts.size();
     triCount = 0;
+    if (_bounds.IsEmpty()) _bounds = ComputeMeshAABB(verts);
 
     // WebGPU: no GL context — vertex-only geometry goes through the abstract
     // Buffer system, same as the indexed variant below. Terrain meshes take
@@ -93,6 +110,7 @@ void Mesh::Initialize(const std::vector<Vertex>& verts) {
 void Mesh::Initialize(const std::vector<Vertex>& verts, const std::vector<uint16_t>& tris) {
     vertCount = verts.size();
     triCount = tris.size() / 3;
+    if (_bounds.IsEmpty()) _bounds = ComputeMeshAABB(verts);
 
     // WebGPU: no GL context — geometry goes through the abstract Buffer
     // system only (ForwardOpaquePass/WaterPass draw from the render mesh).
