@@ -20,7 +20,6 @@ void GameLayer::OnUpdate(float dt) {
     for (size_t i = 0; i < entities.size(); ++i) {
         entities[i]->Tick(dt);
     }
-
 }
 
 void GameLayer::OnRender(float dt) {
