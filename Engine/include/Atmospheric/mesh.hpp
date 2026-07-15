@@ -19,7 +19,8 @@ enum class MeshType {
     SKY = 2,
     DEBUG = 3,// Debug lines, wireframes
     CANVAS = 4,// UI/Canvas elements
-    VOXEL = 5// Voxel chunk meshes
+    VOXEL = 5,// Voxel chunk meshes
+    GRASS = 6// Streamed grass-blade cells (wind-animated in grass.vert)
 };
 
 enum class UpdateFrequency {
@@ -50,6 +51,16 @@ public:
 
     // Update with voxel vertex data (uses internal RenderMesh)
     void Update(const std::vector<VoxelVertex>& vertices);
+
+    // Instanced grass: a shared canonical 9-vertex blade (location 0) plus a
+    // per-blade instance buffer (locations 5-6, step-per-instance), stored in
+    // an RHI VertexFormat::Grass RenderMesh on both backends.
+    // InitGrassInstanced uploads the canonical blade once; UploadGrassInstances
+    // refreshes the per-cell instance data; Buffer::Draw emits the instanced
+    // draw (9 vertices x instanceCount).
+    void InitGrassInstanced();
+    void UploadGrassInstances(const std::vector<GrassInstance>& instances);
+    size_t instanceCount = 0;
 
     // Check if this mesh uses the new RenderMesh system
     bool UsesRenderMesh() const {

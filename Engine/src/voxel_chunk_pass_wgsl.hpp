@@ -138,6 +138,8 @@ struct VSOut {
     @location(1) normal: vec3<f32>,
     @location(2) @interpolate(flat) voxelId: u32,
     @location(3) @interpolate(flat) faceId: u32,
+    // Not flat: baked corner AO interpolates across the (greedy) quad.
+    @location(4) ao: f32,
 };
 
 @vertex
@@ -150,6 +152,8 @@ fn vs(@location(0) aPos: vec4<u32>, @location(1) aFace: vec4<u32>) -> VSOut {
     out.normal = normalMat * FACE_NORMALS[aFace.x];
     out.voxelId = aPos.w;
     out.faceId = aFace.x;
+    // VoxelVertex packs ao in byte 5, i.e. the second component of this Uint8x4.
+    out.ao = f32(aFace.y) / 3.0;
     out.position = frame.viewProj * world;
     return out;
 }
@@ -175,7 +179,7 @@ fn fs(in: VSOut) -> @location(0) vec4<f32> {
     baseColor = baseColor * faceShade;
     let ambient = frame.ambient.rgb * baseColor;
     let diffuse = diff * frame.lightColor.rgb * baseColor;
-    var color = ambient + diffuse;
+    var color = (ambient + diffuse) * in.ao;// baked corner AO
     let dist = length(in.worldPos - frame.cameraPos.xyz);
     let fogFactor = clamp(exp(-frame.fogDensity.x * dist), 0.0, 1.0);
     color = mix(frame.fogColor.rgb, color, fogFactor);

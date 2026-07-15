@@ -5,7 +5,7 @@
 #include "font_manager.hpp"
 #include "light_component.hpp"
 #include "mesh.hpp"
-#include "mesh_component.hpp"
+#include "mesh_renderer_component.hpp"
 #include "render_target.hpp"
 #include "shader.hpp"
 #include "subsystem.hpp"
@@ -36,13 +36,13 @@ struct CameraData {
     glm::mat4 projectionMatrix;
 };
 
-struct InstanceData {
-    glm::mat4 modelMatrix;
-};
+// InstanceData moved to vertex.hpp (included above) so RenderCommand and
+// MeshInstancerComponent can reference it without depending on this subsystem header.
 
 class Renderer;
 
-class MeshComponent;
+class MeshRendererComponent;
+class MeshInstancerComponent;
 class CanvasDrawable;
 class SpriteComponent;
 class CameraComponent;
@@ -59,7 +59,10 @@ public:
         return _instance;
     }
     std::vector<GLuint> canvasTextures;
-    std::vector<MeshComponent*> renderables;
+    std::vector<MeshRendererComponent*> renderables;
+    // Instanced clouds — each submits one span command covering all its
+    // instances, instead of one command per instance like `renderables`.
+    std::vector<MeshInstancerComponent*> instancers;
     std::vector<CanvasDrawable*> canvasDrawables;
     std::vector<LightComponent*> directionalLights;
     std::vector<LightComponent*> pointLights;
@@ -112,7 +115,8 @@ public:
     ShaderProgram* GetShaderByID(uint32_t id) const;
     MeshHandle GetMesh(const std::string& name) const;
 
-    MeshComponent* RegisterMesh(MeshComponent* mesh);
+    MeshRendererComponent* RegisterMesh(MeshRendererComponent* mesh);
+    MeshInstancerComponent* RegisterInstancer(MeshInstancerComponent* instancer);
     CameraComponent* RegisterCamera(CameraComponent* camera);
     LightComponent* RegisterLight(LightComponent* light);
     SunComponent* RegisterSun(SunComponent* sun);
@@ -120,7 +124,8 @@ public:
 
     void UnregisterCamera(CameraComponent* camera);
     void UnregisterLight(LightComponent* light);
-    void UnregisterMesh(MeshComponent* mesh);
+    void UnregisterMesh(MeshRendererComponent* mesh);
+    void UnregisterInstancer(MeshInstancerComponent* instancer);
     void UnregisterCanvasDrawable(CanvasDrawable* drawable);
 
     // ===== Render Target Management =====

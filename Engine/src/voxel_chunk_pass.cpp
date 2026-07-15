@@ -10,6 +10,7 @@
 #include "renderer.hpp"
 #include "sun_component.hpp"
 #include "voxel_chunk_component.hpp"
+#include "voxel_world.hpp"
 #include "window.hpp"
 
 #include <cstring>
@@ -478,6 +479,22 @@ void VoxelChunkPass::_ensureDrawCapacity(uint32_t drawCount) {
 }
 #endif// AE_USE_WEBGPU && __EMSCRIPTEN__
 
+void VoxelChunkPass::RegisterWorld(VoxelWorld* w) {
+    if (!w) return;
+    for (auto* existing : _giWorlds)
+        if (existing == w) return;
+    _giWorlds.push_back(w);
+}
+
+void VoxelChunkPass::UnregisterWorld(VoxelWorld* w) {
+    for (size_t i = 0; i < _giWorlds.size(); i++) {
+        if (_giWorlds[i] == w) {
+            _giWorlds.erase(_giWorlds.begin() + static_cast<long>(i));
+            break;
+        }
+    }
+}
+
 void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
     if (GfxFactory::GetBackend() == GfxBackend::WebGPU) {
@@ -604,6 +621,7 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     auto* skybox = renderer.GetPass<SkyboxPass>();
     shader->SetUniform("u_fogColor", skybox ? skybox->skyColor : glm::vec3(0.686f, 0.933f, 0.933f));
     shader->SetUniform("u_fogDensity", 0.00001f);// VX: scene.py u_fog_density
+    shader->SetUniform("u_aoStrength", aoEnabled ? aoStrength : 0.0f);
 
     // Palette lives on the first voxel command's VoxelMaterial (one palette per
     // world per queue). Fallback keeps the historical default alive if a queue
@@ -618,6 +636,55 @@ void VoxelChunkPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         break;
     }
     shader->SetUniform("u_paletteIndex", palette);
+
+    // ── VoxelGI (VCT) + VXAO ──────────────────────────────────────────────────
+    // Both cone-trace the world's VoxelConeGI grid, so it is driven/bound once
+    // and shared: VoxelGI reads its radiance, VXAO its opacity. The grid builds
+    // whenever GI is VoxelGI OR VXAO is enabled. SSGI is reserved (mode 1, a
+    // shader no-op). u_giRadiance is always bound to a valid 3D texture so strict
+    // drivers never see an unbound sampler.
+    shader->SetUniform("u_giStrength", giStrength);
+    int giModeInt = static_cast<int>(giMode);
+    float vxaoStr = 0.0f;
+    bool gridBound = false;
+    const bool wantGrid = (giMode == GIMode::VoxelGI) || vxaoEnabled;
+    if (wantGrid && !_giWorlds.empty()) {
+        VoxelWorld* w = _giWorlds[0];
+        w->coneGI.slabsPerFrame = std::max(1, giInjectSlabs);
+        // sunStrength 1.0: the rasterizer shades with lightColor directly (no
+        // intensity multiply), so injected direct light stays consistent.
+        const bool ready =
+            w->coneGI.Update(*w, rv.eye, lightDir, lightColor, 1.0f, ambient, palette, w->giDirty, giVoxelDim);
+        w->giDirty = false;
+        if (ready) {
+            w->coneGI.Bind(shader, 0);// u_giRadiance + placement on unit 0
+            gridBound = true;
+            if (giMode == GIMode::VoxelGI) giModeInt = 2;
+            if (vxaoEnabled) vxaoStr = vxaoStrength;
+        } else if (giMode == GIMode::VoxelGI) {
+            giModeInt = 0;// grid not ready yet — fall back to flat ambient
+        }
+    }
+    if (!gridBound) {
+        if (_giFallbackTex == 0) {
+            glGenTextures(1, &_giFallbackTex);
+            glBindTexture(GL_TEXTURE_3D, _giFallbackTex);
+            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            const float zero[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+            glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA16F, 1, 1, 1, 0, GL_RGBA, GL_FLOAT, zero);
+            glBindTexture(GL_TEXTURE_3D, 0);
+        }
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_3D, _giFallbackTex);
+        shader->SetUniform("u_giRadiance", 0);
+        shader->SetUniform("u_giOrigin", glm::vec3(0.0f));
+        shader->SetUniform("u_giCellSize", 1.0f);
+        shader->SetUniform("u_giDim", 1);
+        shader->SetUniform("u_giMaxMip", 0.0f);
+    }
+    shader->SetUniform("u_giMode", giModeInt);
+    shader->SetUniform("u_vxaoStrength", vxaoStr);
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);

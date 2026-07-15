@@ -23,6 +23,7 @@ public:
     void Upload(
         const void* vertexData, size_t vertexCount, size_t vertexSize, const uint16_t* indexData, size_t indexCount
     ) override;
+    void UploadInstances(const void* instanceData, size_t instanceCount, size_t instanceSize) override;
     // enc is unused for GL — pass nullptr.
     void Draw(CommandEncoder* enc = nullptr, PrimitiveTopology topology = PrimitiveTopology::Triangles) const override;
 
@@ -34,6 +35,9 @@ public:
     }
     size_t GetIndexCount() const override {
         return _indexCount;
+    }
+    size_t GetInstanceCount() const override {
+        return _instanceCount;
     }
     VertexFormat GetFormat() const override {
         return _format;
@@ -48,18 +52,24 @@ public:
 
 private:
     void SetupVertexAttributes();
+    // Instance attribute pointers/divisors for the current format; called with
+    // the VAO and _instanceVBO bound. Returns false for formats without an
+    // instance layout.
+    bool SetupInstanceAttributes();
     GLenum GetGLUsage() const;
     void Cleanup();
 
     GLuint _vao = 0;
     GLuint _vbo = 0;
     GLuint _ebo = 0;
+    GLuint _instanceVBO = 0;// lazily created by UploadInstances
 
     VertexFormat _format = VertexFormat::Standard;
     BufferUsage _usage = BufferUsage::Static;
 
     size_t _vertexCount = 0;
     size_t _indexCount = 0;
+    size_t _instanceCount = 0;
     bool _initialized = false;
     bool _hasIndices = false;
 };

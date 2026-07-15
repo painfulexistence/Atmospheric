@@ -2,6 +2,7 @@
 #include "Atmospheric/camera_controller_3d.hpp"
 #include "Atmospheric/light_component.hpp"
 #include "Atmospheric/voxel_volume_component.hpp"
+#include "Atmospheric/window.hpp"
 
 // Micro voxel rendering demo: a raymarched 12.8m diorama of 5cm voxels
 // (procedural terrain + caves + ore + floating crystals), depth-composited
@@ -24,20 +25,23 @@ class MicroVoxelApp : public Application {
         // y=0; MicroVoxelPass draws one bounding box per volume, so they
         // depth-composite with each other. Different seeds give different
         // terrain — proof the renderer handles many independent volumes.
+        // Three volumes sitting edge-to-edge along x; spacing is one grid
+        // width, derived from the component so it stays right whether gridDim
+        // is 256 (native, 12.8m) or 192 (web, 9.6m).
         struct {
-            glm::vec3 pos;
+            float xOffset;// in grid widths
             uint32_t seed;
             const char* name;
         } kVolumes[] = {
-            { glm::vec3(0.0f, 0.0f, 0.0f), 1337u, "Volume.Center" },
-            { glm::vec3(13.5f, 0.0f, -1.0f), 7u, "Volume.Right" },
-            { glm::vec3(-13.5f, 0.0f, 2.0f), 99u, "Volume.Left" },
+            { 0.0f, 1337u, "Volume.Center" },
+            { 1.0f, 7u, "Volume.Right" },
+            { -1.0f, 99u, "Volume.Left" },
         };
         for (const auto& vd : kVolumes) {
             auto* volumeObj = CreateGameObject();
             volumeObj->SetName(vd.name);
-            volumeObj->SetPosition(vd.pos);
             auto* vc = static_cast<VoxelVolumeComponent*>(volumeObj->AddComponent<VoxelVolumeComponent>(vd.seed));
+            volumeObj->SetPosition(glm::vec3(vd.xOffset * vc->WorldExtent(), 0.0f, 0.0f));
             _carveTargets.push_back(vc);
         }
 
@@ -64,7 +68,10 @@ class MicroVoxelApp : public Application {
             }
         ));
 
-        mainCamera->gameObject->SetPosition(glm::vec3(0.0f, 11.0f, 26.0f));
+        // Initial camera at (1, 10, 15), pitched down 16°. From the default -z
+        // forward, yaw left 90° (toward -x) so it looks across the diorama.
+        mainCamera->gameObject->SetPosition(glm::vec3(1.0f, 10.0f, 15.0f));
+        mainCamera->Yaw(glm::radians(-90.0f));
         mainCamera->Pitch(glm::radians(-16.0f));
         mainCamera->gameObject->AddComponent<CameraController3D>(/*moveSpeed=*/6.0f, /*lookSpeed=*/1.5f);
 
@@ -94,8 +101,8 @@ class MicroVoxelApp : public Application {
         ConsoleSubsystem::Get()->Info("MicroVoxel loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
         ConsoleSubsystem::Get()->Info("Three raymarched 5cm-voxel volumes — no triangles. Hold E to dig into them.");
         ConsoleSubsystem::Get()->Info(
-            "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P/X toggle "
-            "GI/AO/shadow/point light/reflections."
+            "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P/X/N/V toggle "
+            "GI/AO/shadow/point light/reflections/denoiser/cross-volume | B = split raw|denoised."
         );
     }
 
@@ -163,6 +170,37 @@ class MicroVoxelApp : public Application {
         if (input->IsKeyPressed(Key::X)) {
             mv->reflectionsEnabled = !mv->reflectionsEnabled;
             console->Info(mv->reflectionsEnabled ? "MicroVoxel reflections: on" : "MicroVoxel reflections: off");
+        }
+        if (input->IsKeyPressed(Key::N)) {
+            mv->giAtrousIterations = (mv->giAtrousIterations > 0) ? 0 : 3;
+            console->Info(
+                mv->giAtrousIterations > 0 ? "MicroVoxel GI denoiser: on (a-trous)"
+                                           : "MicroVoxel GI denoiser: off (raw temporal)"
+            );
+        }
+        if (input->IsKeyPressed(Key::B)) {
+            mv->giSplitCompare = (mv->giSplitCompare >= 0.0f) ? -1.0f : 0.5f;
+            console->Info(
+                mv->giSplitCompare >= 0.0f ? "MicroVoxel GI split: on (left raw | right denoised), drag to move"
+                                           : "MicroVoxel GI split: off"
+            );
+        }
+        if (input->IsKeyPressed(Key::V)) {
+            mv->giCrossVolume = !mv->giCrossVolume;
+            console->Info(
+                mv->giCrossVolume ? "MicroVoxel GI: cross-volume (brute-force all volumes, light bleeds between them)"
+                                  : "MicroVoxel GI: primary volume only"
+            );
+        }
+        // Drag the split divider with the mouse while the compare is on.
+        // GetMousePosition is in physical/framebuffer pixels (see InputSubsystem),
+        // matching the shader's gl_FragCoord-based uv, so divide by the physical
+        // width — dividing by the logical width lands 2x off on Retina.
+        if (mv->giSplitCompare >= 0.0f && input->IsMouseButtonDown() && !input->IsMouseOverUI()) {
+            const glm::vec2 m = input->GetMousePosition();
+            const auto [pw, ph] = Window::Get()->GetPhysicalSize();
+            (void)ph;
+            if (pw > 0) mv->giSplitCompare = glm::clamp(m.x / static_cast<float>(pw), 0.0f, 1.0f);
         }
     }
 };

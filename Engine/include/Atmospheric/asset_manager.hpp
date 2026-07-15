@@ -9,8 +9,11 @@
 
 class Mesh;
 class Material;
+class PBRMaterial;
+class BlinnPhongMaterial;
 class WaterMaterial;
 class TerrainMaterial;
+class GrassMaterial;
 class VATMaterial;
 class PortalMaterial;
 class VoxelMaterial;
@@ -55,11 +58,15 @@ public:
     // ========== CPU Resource Management ==========
     std::shared_ptr<Image> LoadImage(const std::string& path);
 
-    Material* CreateMaterial(const std::string& name, const MaterialProps& props);
-    Material* CreateMaterial(const MaterialProps& props);
+    // Default shading model is PBR — CreateMaterial hands back the concrete
+    // PBRMaterial so callers can set factors/maps without a cast.
+    PBRMaterial* CreateMaterial(const std::string& name, const MaterialProps& props);
+    PBRMaterial* CreateMaterial(const MaterialProps& props);
+    BlinnPhongMaterial* CreateBlinnPhongMaterial(const std::string& name, const MaterialProps& props);
     WaterMaterial* CreateWaterMaterial();
     PortalMaterial* CreatePortalMaterial();
     TerrainMaterial* CreateTerrainMaterial();
+    GrassMaterial* CreateGrassMaterial();
     VATMaterial* CreateVATMaterial();
     VoxelMaterial* CreateVoxelMaterial();
     Material* GetMaterial(const std::string& name) const;
@@ -101,6 +108,7 @@ public:
     MeshHandle CreateCapsuleMesh(const std::string& name, float radius = 0.5f, float height = 3.0f);
     MeshHandle CreateTerrainMesh(const std::string& name, float worldSize = 1024.f, int resolution = 10);
     MeshHandle GetMesh(const std::string& name) const;
+    bool HasMesh(const std::string& name) const;// non-throwing existence check
     Mesh* GetMeshPtr(MeshHandle handle) const;
     // Registers an externally-owned mesh (e.g. a unique_ptr<Mesh> held by a
     // voxel chunk) so it gets a handle usable in RenderCommand/queue sorting.
@@ -118,9 +126,31 @@ public:
     // Create (or re-upload, when a texture with this name already exists) a
     // tightly-packed RGBA8 texture from raw pixels. Used by TerrainStreamer to
     // recycle per-tile splat-map textures without growing the texture cache.
-    TextureHandle CreateOrUpdateTextureRGBA8(const std::string& name, const unsigned char* data, int width, int height);
+    // tiled=true sets REPEAT wrap and builds mipmaps (trilinear min filter) —
+    // required for high-frequency tiled detail layers, which shimmer badly
+    // when sampled without mips. Default (clamp, no mips) suits per-tile maps
+    // like splats that are sampled at ~1:1.
+    TextureHandle CreateOrUpdateTextureRGBA8(
+        const std::string& name, const unsigned char* data, int width, int height, bool tiled = false
+    );
     std::shared_ptr<Mesh> LoadOBJ(const std::string& path);
     MeshHandle LoadGLTF(const std::string& path);
+    // Load a TrenchBroom / Quake-family brush map (idTech2/idTech3 ".map" text
+    // format, including the Valve 220 texture axes TrenchBroom emits). Every
+    // brush across every entity is converted
+    // from its convex half-space intersection into triangles and flattened
+    // into a single Mesh, converting Quake's Z-up space to the engine's Y-up
+    // and applying a uniform `scale` (Quake units are large — 1/32 maps one
+    // 32-unit grid step to one engine unit). Point entities (info_player_start,
+    // lights, …) are ignored. Returns an invalid handle on parse failure or if
+    // the geometry exceeds the engine's 16-bit index limit.
+    MeshHandle LoadTBMap(const std::string& path, float scale = 1.0f / 32.0f);
+    // Load a USD stage (.usd/.usda/.usdc/.usdz) through TinyUSDZ + Tydra and
+    // flatten every mesh in the scene into a single Mesh. Requires the engine
+    // to be built with AE_USE_TINYUSDZ; otherwise logs a warning and returns an
+    // invalid handle. USD is Y-up like glTF, so positions pass through
+    // unchanged. Material/texture binding is not wired up yet.
+    MeshHandle LoadUSD(const std::string& path);
     // Load an equirectangular HDR (.hdr) as a filterable RGBA16F texture for use
     // as a skybox / IBL environment map. Returns an invalid handle on failure.
     // Native path only for now (reads from disk via stb_image's float loader).

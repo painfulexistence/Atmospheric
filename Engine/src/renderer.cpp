@@ -58,32 +58,56 @@ static GLenum GetGLPrimitiveType(PrimitiveTopology topology) {
     return GL_TRIANGLES;
 }
 
+// The material a command actually draws with: its own override when set,
+// otherwise the mesh's material (the historical coupling). Centralized so the
+// sort key, batch key, and every draw loop agree on one answer.
+static MaterialHandle EffectiveMaterial(const RenderCommand& cmd) {
+    if (cmd.material.IsValid()) return cmd.material;
+    Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
+    return mesh ? mesh->GetMaterial() : MaterialHandle{};
+}
+
 struct RenderBatch {
     MeshHandle mesh;
+    MaterialHandle material;// effective material shared by every instance
     std::vector<InstanceData> instances;
 };
 
+// Merges consecutive commands sharing the same (mesh, material) into one
+// instanced batch. The queue is pre-sorted, so equal keys are adjacent. A
+// command carrying an instance span (a MeshInstancerComponent's whole cloud) contributes
+// all of its instances at once; a plain command contributes its lone transform.
+// Scattered MeshRenderers and an instancer of the same mesh+material fold into
+// the same batch for free.
 static std::vector<RenderBatch> BuildBatches(const std::vector<Renderer::SortableCommand>& queue) {
     std::vector<RenderBatch> batches;
     RenderBatch currentBatch;
-    currentBatch.mesh = queue[0].cmd.mesh;
+    bool haveCurrent = false;
 
     for (const auto& sortable : queue) {
         const auto& cmd = sortable.cmd;
+        MaterialHandle effMat = EffectiveMaterial(cmd);
 
-        if (currentBatch.mesh != cmd.mesh) {
-            if (currentBatch.mesh.IsValid()) {
+        if (!haveCurrent || currentBatch.mesh != cmd.mesh || currentBatch.material != effMat) {
+            if (haveCurrent && !currentBatch.instances.empty()) {
                 batches.push_back(std::move(currentBatch));
             }
-            currentBatch.instances.clear();
+            currentBatch = RenderBatch{};
             currentBatch.mesh = cmd.mesh;
+            currentBatch.material = effMat;
+            haveCurrent = true;
         }
-        InstanceData instance;
-        instance.modelMatrix = cmd.transform;
-        currentBatch.instances.push_back(instance);
+
+        if (cmd.instances && cmd.instanceCount > 0) {
+            currentBatch.instances.insert(
+                currentBatch.instances.end(), cmd.instances, cmd.instances + cmd.instanceCount
+            );
+        } else {
+            currentBatch.instances.push_back(InstanceData{ cmd.transform });
+        }
     }
 
-    if (!currentBatch.instances.empty()) {
+    if (haveCurrent && !currentBatch.instances.empty()) {
         batches.push_back(std::move(currentBatch));
     }
 
@@ -206,6 +230,7 @@ void Renderer::Init(int width, int height) {
     );// raymarched micro voxels (renders registered VoxelVolumeComponents)
     _renderGraph->AddPass(std::make_unique<PortalSurfacePass>());// portal windows in the main view
     _renderGraph->AddPass(std::make_unique<MSAAResolvePass>());
+    _renderGraph->AddPass(std::make_unique<ScreenSpaceGIPass>());// screen-space AO/GI on the resolved opaque scene
     _renderGraph->AddPass(std::make_unique<WaterPass>());
     _renderGraph->AddPass(std::make_unique<WorldCanvasPass>());// World sprites with depth testing
     _renderGraph->AddPass(std::make_unique<CanvasPass>());// 2D sprites, world space ortho, with no depth testing
@@ -301,7 +326,9 @@ static Material* ResolveMaterialOrFallback(MaterialHandle handle) {
     if (Material* mat = AssetManager::Get().ResolveMaterial(handle)) {
         return mat;
     }
-    static Material gfallback{ MaterialProps{} };
+    // Neutral PBR default so downstream PBRMaterial casts (factors, maps)
+    // succeed and the draw shades like any other untextured surface.
+    static PBRMaterial gfallback{ MaterialProps{} };
     return &gfallback;
 }
 
@@ -323,8 +350,8 @@ static void BindVATDepthUniforms(ShaderProgram* shader, VATMaterial* vatMat) {
 }
 
 uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& cameraPos) {
-    Mesh* meshPtr = AssetManager::Get().GetMeshPtr(cmd.mesh);
-    Material* mat = meshPtr ? AssetManager::Get().ResolveMaterial(meshPtr->GetMaterial()) : nullptr;
+    MaterialHandle effMat = EffectiveMaterial(cmd);
+    Material* mat = AssetManager::Get().ResolveMaterial(effMat);
     if (!mat) return 0;
 
     // Calculate depth (distance from camera)
@@ -335,8 +362,10 @@ uint64_t Renderer::CalculateSortKey(const RenderCommand& cmd, const glm::vec3& c
     int renderQueue = mat->GetFinalRenderQueue();
 
     // Get material and mesh IDs for batching; handle IDs are stable across
-    // runs, unlike the pointer bits used before.
-    uint32_t materialID = meshPtr->GetMaterial().id & 0xFFFF;
+    // runs, unlike the pointer bits used before. Material is the *effective*
+    // one (override or mesh's), so overridden draws sort next to their true
+    // material and batch together.
+    uint32_t materialID = effMat.id & 0xFFFF;
     uint32_t meshID = cmd.mesh.id & 0xFFFF;
 
     // Generate 64-bit sort key
@@ -371,8 +400,7 @@ void Renderer::SortTransparent() {
 
 void Renderer::BucketCommands(const glm::vec3& cameraPos) {
     for (const auto& cmd : _commandList) {
-        Mesh* meshPtr = AssetManager::Get().GetMeshPtr(cmd.mesh);
-        Material* mat = meshPtr ? AssetManager::Get().ResolveMaterial(meshPtr->GetMaterial()) : nullptr;
+        Material* mat = AssetManager::Get().ResolveMaterial(EffectiveMaterial(cmd));
         if (!mat) continue;
 
         int queue = mat->GetFinalRenderQueue();
@@ -889,8 +917,16 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
                 if (!mesh->UsesRenderMesh()) continue;
                 Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
                 if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
-                VATMaterial* vatMat = dynamic_cast<VATMaterial*>(ResolveMaterialOrFallback(mesh->GetMaterial()));
-                draws.push_back({ buf, cmd.transform, vatMat });
+                VATMaterial* vatMat = dynamic_cast<VATMaterial*>(ResolveMaterialOrFallback(EffectiveMaterial(cmd)));
+                // Instance spans have no HW-instanced WebGPU path yet, so a
+                // cloud casts shadow as one draw per blade/instance (correct,
+                // just not batched). Plain draws keep their single transform.
+                if (cmd.instances && cmd.instanceCount > 0) {
+                    for (uint32_t k = 0; k < cmd.instanceCount; ++k)
+                        draws.push_back({ buf, cmd.instances[k].modelMatrix, vatMat });
+                } else {
+                    draws.push_back({ buf, cmd.transform, vatMat });
+                }
             }
         };
         collect(renderer.GetOpaqueQueue());
@@ -1027,7 +1063,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
 
         if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
-        Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+        Material* material = ResolveMaterialOrFallback(batch.material);
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
@@ -1120,7 +1156,7 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
 
                 if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
-                Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+                Material* material = ResolveMaterialOrFallback(batch.material);
 
                 glEnable(GL_DEPTH_TEST);
                 glDepthFunc(GL_LESS);
@@ -1448,13 +1484,26 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             const auto& cmd = sortable.cmd;
             Mesh* mesh = AssetManager::Get().GetMeshPtr(cmd.mesh);
             // TERRAIN draws with the heightmap-displacement pipeline; VOXEL is
-            // handled by VoxelChunkPass.
+            // handled by VoxelChunkPass. GRASS is skipped pending a WGSL grass
+            // pipeline — its blade + instance data already sit in an RHI
+            // Grass-format RenderMesh (GPUBuffer slots 0/1), and
+            // GpuPipelineBuilder::instance() can express the layout, so the
+            // remaining work is the WGSL port of grass.vert/frag + a pipeline
+            // in _initGPU wired here.
             if (!mesh) continue;
             if (mesh->type != MeshType::PRIM && mesh->type != MeshType::TERRAIN) continue;
             if (!mesh->UsesRenderMesh()) continue;
             Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle());
             if (!buf || !buf->IsInitialized() || buf->GetVertexCount() == 0) continue;
-            draws.push_back({ buf, cmd.transform, ResolveMaterialOrFallback(mesh->GetMaterial()), mesh->type });
+            Material* effMat = ResolveMaterialOrFallback(EffectiveMaterial(cmd));
+            // No HW-instanced WebGPU path yet: expand an instance span into one
+            // draw per instance (each gets its own dynamic-offset uniform slot).
+            if (cmd.instances && cmd.instanceCount > 0) {
+                for (uint32_t k = 0; k < cmd.instanceCount; ++k)
+                    draws.push_back({ buf, cmd.instances[k].modelMatrix, effMat, mesh->type });
+            } else {
+                draws.push_back({ buf, cmd.transform, effMat, mesh->type });
+            }
         }
         if (draws.empty()) return;
 
@@ -1519,8 +1568,12 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             }
 
             glm::vec3 diffuse = mat ? mat->diffuse : glm::vec3(0.55f);
-            glm::vec3 specular = mat ? mat->specular : glm::vec3(0.7f);
-            glm::vec3 matAmbient = mat ? mat->ambient : glm::vec3(0.0f);
+            // The WGSL deferred fs shades PBR (Cook-Torrance from roughness/metallic);
+            // these specular/ambient/shininess slots are packed but unread, so the
+            // legacy defaults are fine now that the Phong terms live on BlinnPhongMaterial.
+            auto* bpMat = dynamic_cast<BlinnPhongMaterial*>(mat);
+            glm::vec3 specular = bpMat ? bpMat->specular : glm::vec3(0.7f);
+            glm::vec3 matAmbient = bpMat ? bpMat->ambient : glm::vec3(0.0f);
 
             glm::vec4 d4(diffuse, 0.0f), s4(specular, 0.0f), a4(matAmbient, 0.0f);
             std::memcpy(slot + 64, &d4, sizeof(glm::vec4));
@@ -1541,7 +1594,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                 );
                 std::memcpy(slot + 112, &vatParams, sizeof(glm::vec4));
             } else {
-                glm::vec4 sh4(mat ? mat->shininess : 0.25f, 0.0f, 0.0f, 0.0f);
+                glm::vec4 sh4(bpMat ? bpMat->shininess : 0.25f, 0.0f, 0.0f, 0.0f);
                 std::memcpy(slot + 112, &sh4, sizeof(glm::vec4));
             }
         }
@@ -1636,6 +1689,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
     AE_GL_PROBE(renderer, "Opaque pass: after clear");
 
     auto terrainShader = ctx->GetShader("terrain");
+    auto grassShader = ctx->GetShader("grass");
     auto colorShader = ctx->GetShader("color");
     // 1. Batching Phase
     std::vector<RenderBatch> batches;
@@ -1651,7 +1705,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
         if (!mesh || !mesh->initialized) throw std::runtime_error(fmt::format("Mesh uninitialized!"));
 
-        Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+        Material* material = ResolveMaterialOrFallback(batch.material);
 
         AE_GL_PROBE(renderer, fmt::format("Opaque pass: batch entry (type={})", static_cast<int>(mesh->type)));
 
@@ -1690,9 +1744,8 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             terrainShader->SetUniform(std::string("main_light.ProjectionView"), mainLight->GetProjectionViewMatrix(0));
 
             terrainShader->SetUniform(std::string("surf_params.diffuse"), material->diffuse);
-            terrainShader->SetUniform(std::string("surf_params.specular"), material->specular);
-            terrainShader->SetUniform(std::string("surf_params.ambient"), material->ambient);
-            terrainShader->SetUniform(std::string("surf_params.shininess"), material->shininess);
+            // specular/ambient/shininess moved off the base Material; terrain.frag
+            // uses a fixed ambient and no specular term, so nothing to bind here.
 
             auto* tm = dynamic_cast<TerrainMaterial*>(material);
             terrainShader->SetUniform(std::string("tessellation_factor"), tm ? tm->tessellationFactor : 16.0f);
@@ -1702,7 +1755,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             terrainShader->SetUniform(std::string("fog_color"), tm ? tm->fogColor : glm::vec3(0.0f));
             terrainShader->SetUniform(std::string("fog_density"), tm ? tm->fogDensity : 0.0f);
             glActiveTexture(GL_TEXTURE7);
-            TextureHandle heightMap = material->heightMap;
+            TextureHandle heightMap = tm ? tm->heightMap : TextureHandle{};
             if (heightMap.IsValid() && static_cast<uint32_t>(heightMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(heightMap));
             } else {
@@ -1736,9 +1789,10 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                 terrainShader->SetUniform(std::string("normal_map_unit"), 3);
                 terrainShader->SetUniform(std::string("has_normal_map"), mat->normalMap.IsValid() ? 1 : 0);
 
-                bindTex2D(4, mat->aoMap, 2);
+                TextureHandle aoMap = tm ? tm->aoMap : TextureHandle{};// aoMap is a PBRMaterial field
+                bindTex2D(4, aoMap, 2);
                 terrainShader->SetUniform(std::string("ao_map_unit"), 4);
-                terrainShader->SetUniform(std::string("has_ao_map"), mat->aoMap.IsValid() ? 1 : 0);
+                terrainShader->SetUniform(std::string("has_ao_map"), aoMap.IsValid() ? 1 : 0);
 
                 TextureHandle splat = tm ? tm->splatMap : TextureHandle{};
                 bindTex2D(5, splat, 0);
@@ -1777,6 +1831,41 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             break;
         }
 
+        case MeshType::GRASS: {
+            // Streamed grass-blade cells (TerrainStreamer's grass ring).
+            // Per-blade variation is baked into the vertex attributes; the
+            // shared GrassMaterial carries the look, the wind field, and the
+            // ring fade. Wind animates off renderer.frameTime.
+            auto* gm = dynamic_cast<GrassMaterial*>(material);
+            grassShader->Activate();
+            grassShader->SetUniform(std::string("ProjectionView"), projectionView);
+            grassShader->SetUniform(std::string("World"), instances[0].modelMatrix);
+            grassShader->SetUniform(std::string("cam_pos"), eyePos);
+            grassShader->SetUniform(std::string("u_time"), renderer.frameTime);
+            grassShader->SetUniform(std::string("u_wind_dir"), gm ? gm->windDir : glm::vec2(1.0f, 0.0f));
+            grassShader->SetUniform(std::string("u_wind_strength"), gm ? gm->windStrength : 0.0f);
+            grassShader->SetUniform(std::string("u_wind_speed"), gm ? gm->windSpeed : 1.0f);
+            grassShader->SetUniform(std::string("u_fade_start"), gm ? gm->fadeStart : 1e9f);
+            grassShader->SetUniform(std::string("u_fade_end"), gm ? gm->fadeEnd : 1e9f);
+            grassShader->SetUniform(std::string("u_root_color"), gm ? gm->rootColor : glm::vec3(0.2f));
+            grassShader->SetUniform(std::string("u_tip_color"), gm ? gm->tipColor : glm::vec3(0.8f));
+            grassShader->SetUniform(std::string("fog_color"), gm ? gm->fogColor : glm::vec3(0.0f));
+            grassShader->SetUniform(std::string("fog_density"), gm ? gm->fogDensity : 0.0f);
+            grassShader->SetUniform(std::string("main_light.direction"), mainLight->direction);
+            grassShader->SetUniform(std::string("main_light.diffuse"), mainLight->diffuse);
+
+            // The blade + instance data live in an RHI Grass-format RenderMesh;
+            // Draw() emits the instanced draw (9 verts x instance count).
+            // Skip cells with no live blades (empty scatter or pool-fresh,
+            // instances never uploaded) — nothing to draw.
+            if (mesh->UsesRenderMesh()) {
+                if (Buffer* buf = ctx->GetRenderMesh(mesh->GetRenderMeshHandle())) {
+                    if (buf->GetInstanceCount() > 0) buf->Draw();
+                }
+            }
+            break;
+        }
+
         case MeshType::SKY:
             // TODO: implement skybox rendering
             break;
@@ -1794,6 +1883,10 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             // The lookup is lazy so scenes without VAT never require the shader.
             VATMaterial* vatMat = dynamic_cast<VATMaterial*>(material);
             ShaderProgram* meshShader = vatMat ? ctx->GetShader("vat") : colorShader;
+            // Shading-model params now live in the leaf material types (base
+            // Material carries only the shared surface inputs).
+            auto* pbrMat = dynamic_cast<PBRMaterial*>(material);
+            auto* blinnMat = dynamic_cast<BlinnPhongMaterial*>(material);
 
             meshShader->Activate();
             meshShader->SetUniform(std::string("u_clipPlane"), rv.clipPlane);
@@ -1806,7 +1899,11 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             meshShader->SetUniform(std::string("main_light.intensity"), mainLight->intensity);
             meshShader->SetUniform(std::string("main_light.cast_shadow"), mainLight->castShadow ? 1 : 0);
             meshShader->SetUniform(std::string("main_light.ProjectionView"), mainLight->GetProjectionViewMatrix(0));
-            for (int i = 0; i < ctx->pointLights.size(); ++i) {
+            // pbr.frag sizes aux_lights[MAX_NUM_AUX_LIGHTS] at 6 — clamp both the
+            // upload loop and the count so extra registered lights are dropped
+            // instead of spamming missing-uniform lookups.
+            const int auxCount = std::min(static_cast<int>(ctx->pointLights.size()), 6);
+            for (int i = 0; i < auxCount; ++i) {
                 LightComponent* l = ctx->pointLights[i];
                 meshShader->SetUniform(
                     std::string("aux_lights[") + std::to_string(i) + std::string("].position"), l->GetPosition()
@@ -1838,15 +1935,22 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                     );
                 }
             }
-            meshShader->SetUniform(std::string("aux_light_count"), static_cast<int>(ctx->pointLights.size()));
+            meshShader->SetUniform(std::string("aux_light_count"), auxCount);
             meshShader->SetUniform(std::string("shadow_map_unit"), 0);
             meshShader->SetUniform(std::string("omni_shadow_map_unit"), static_cast<int>(UNI_SHADOW_MAP_COUNT));
             meshShader->SetUniform(std::string("ProjectionView"), projectionView);
             // Surface parameters
             meshShader->SetUniform(std::string("surf_params.diffuse"), material->diffuse);
-            meshShader->SetUniform(std::string("surf_params.specular"), material->specular);
-            meshShader->SetUniform(std::string("surf_params.ambient"), material->ambient);
-            meshShader->SetUniform(std::string("surf_params.shininess"), material->shininess);
+            // Blinn-Phong terms (only read by the shader when u_useBlinnPhong==1).
+            meshShader->SetUniform(
+                std::string("surf_params.specular"), blinnMat ? blinnMat->specular : glm::vec3(0.7f)
+            );
+            meshShader->SetUniform(std::string("surf_params.ambient"), blinnMat ? blinnMat->ambient : glm::vec3(0.0f));
+            meshShader->SetUniform(std::string("surf_params.shininess"), blinnMat ? blinnMat->shininess : 0.25f);
+            meshShader->SetUniform(std::string("u_useBlinnPhong"), blinnMat ? 1 : 0);
+            // PBR scalar factors that scale the roughness/metallic maps.
+            meshShader->SetUniform(std::string("u_roughnessFactor"), pbrMat ? pbrMat->roughnessFactor : 1.0f);
+            meshShader->SetUniform(std::string("u_metallicFactor"), pbrMat ? pbrMat->metallicFactor : 0.0f);
 
             // Material textures - dynamically bound to Units 2-6
             // Base Map (Unit 2)
@@ -1873,9 +1977,9 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             }
             meshShader->SetUniform(std::string("normal_map_unit"), 3);
 
-            // AO Map (Unit 4)
+            // AO Map (Unit 4) — PBRMaterial only.
             glActiveTexture(GL_TEXTURE4);
-            TextureHandle aoMap = material->aoMap;
+            TextureHandle aoMap = pbrMat ? pbrMat->aoMap : TextureHandle{};
             if (aoMap.IsValid() && static_cast<uint32_t>(aoMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(aoMap));
             } else if (assetManager.GetDefaultTextures().size() > 2) {
@@ -1885,9 +1989,11 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             }
             meshShader->SetUniform(std::string("ao_map_unit"), 4);
 
-            // Roughness Map (Unit 5)
+            // Roughness Map (Unit 5) — PBRMaterial only. glTF semantics: the
+            // shader reads map*factor; a material with no map gets the default
+            // (white = identity) texture so the factor stands alone.
             glActiveTexture(GL_TEXTURE5);
-            TextureHandle roughnessMap = material->roughnessMap;
+            TextureHandle roughnessMap = pbrMat ? pbrMat->roughnessMap : TextureHandle{};
             if (roughnessMap.IsValid() && static_cast<uint32_t>(roughnessMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(roughnessMap));
             } else if (assetManager.GetDefaultTextures().size() > 3) {
@@ -1897,9 +2003,9 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             }
             meshShader->SetUniform(std::string("roughness_map_unit"), 5);
 
-            // Metallic Map (Unit 6)
+            // Metallic Map (Unit 6) — same contract as the roughness map.
             glActiveTexture(GL_TEXTURE6);
-            TextureHandle metallicMap = material->metallicMap;
+            TextureHandle metallicMap = pbrMat ? pbrMat->metallicMap : TextureHandle{};
             if (metallicMap.IsValid() && static_cast<uint32_t>(metallicMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(metallicMap));
             } else if (assetManager.GetDefaultTextures().size() > 4) {
@@ -1911,15 +2017,22 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
 
             // Environment map for image-based lighting (Unit 7). Shares the
             // equirect map that SkyboxPass draws; the PBR shader samples its mip
-            // chain as a cheap IBL prefilter. Invalid handle -> flat ambient.
+            // chain as a cheap IBL prefilter. Invalid handle -> flat ambient,
+            // with a default texture bound so the sampler never points at an
+            // incomplete unit (Apple's GL driver logs "unit 7 ... unloadable,
+            // using zero texture" otherwise; u_useEnv=0 gates the sample).
             {
-                const bool useEnv =
-                    renderer.environmentMap.IsValid() && static_cast<uint32_t>(renderer.environmentMap) != 0;
+                const bool useEnv = renderer.iblEnabled && renderer.environmentMap.IsValid()
+                                    && static_cast<uint32_t>(renderer.environmentMap) != 0;
+                const auto& defaults = assetManager.GetDefaultTextures();
+                const GLuint envFallback = defaults.empty() ? 0 : static_cast<GLuint>(defaults[0]);
                 glActiveTexture(GL_TEXTURE7);
-                glBindTexture(GL_TEXTURE_2D, useEnv ? static_cast<uint32_t>(renderer.environmentMap) : 0);
+                glBindTexture(GL_TEXTURE_2D, useEnv ? static_cast<uint32_t>(renderer.environmentMap) : envFallback);
                 meshShader->SetUniform(std::string("u_envMap"), 7);
                 meshShader->SetUniform(std::string("u_useEnv"), useEnv ? 1 : 0);
                 meshShader->SetUniform(std::string("u_envMaxLod"), renderer.environmentMaxLod);
+                meshShader->SetUniform(std::string("u_iblDiffuse"), renderer.iblDiffuseStrength);
+                meshShader->SetUniform(std::string("u_iblSpecular"), renderer.iblSpecularStrength);
             }
 
             // VAT animation textures (units 8-9) + playback uniforms. vat.vert
@@ -2041,7 +2154,7 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
 
         if (!mesh || !mesh->initialized) throw std::runtime_error("Mesh uninitialized!");
 
-        Material* material = ResolveMaterialOrFallback(mesh->GetMaterial());
+        Material* material = ResolveMaterialOrFallback(batch.material);
 
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
@@ -2061,6 +2174,9 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
         case MeshType::TERRAIN:
             // TODO: implement terrain rendering
             break;
+        case MeshType::GRASS:
+            // Grass draws in the forward opaque pass only.
+            break;
         case MeshType::SKY:
             // TODO: implement skybox rendering
             break;
@@ -2068,7 +2184,9 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
             // Handled by VoxelChunkPass.
             break;
         case MeshType::PRIM:
-        default:
+        default: {
+            // AO / roughness / metallic (units 4-6) are PBRMaterial fields.
+            auto* pbrMat = dynamic_cast<PBRMaterial*>(material);
             // Material textures - dynamically bound to Units 2-6
             // Base Map (Unit 2)
             glActiveTexture(GL_TEXTURE2);
@@ -2094,9 +2212,9 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
             }
             geometryShader->SetUniform("normalMap", 3);
 
-            // AO Map (Unit 4)
+            // AO Map (Unit 4) — PBRMaterial only.
             glActiveTexture(GL_TEXTURE4);
-            TextureHandle aoMap = material->aoMap;
+            TextureHandle aoMap = pbrMat ? pbrMat->aoMap : TextureHandle{};
             if (aoMap.IsValid() && static_cast<uint32_t>(aoMap) != 0) {
                 glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(aoMap));
             } else if (assetManager.GetDefaultTextures().size() > 2) {
@@ -2106,29 +2224,34 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
             }
             geometryShader->SetUniform("aoMap", 4);
 
-            // Roughness Map (Unit 5)
-            glActiveTexture(GL_TEXTURE5);
-            TextureHandle roughnessMap = material->roughnessMap;
-            if (roughnessMap.IsValid() && static_cast<uint32_t>(roughnessMap) != 0) {
-                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(roughnessMap));
-            } else if (assetManager.GetDefaultTextures().size() > 3) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[3]);
-            } else {
-                glBindTexture(GL_TEXTURE_2D, 0);
-            }
-            geometryShader->SetUniform("roughnessMap", 5);
+            // Roughness / Metallic (Units 5-6) — PBRMaterial only; same glTF
+            // map*factor contract as the forward pass (no map = default white).
+            {
+                glActiveTexture(GL_TEXTURE5);
+                TextureHandle roughnessMap = pbrMat ? pbrMat->roughnessMap : TextureHandle{};
+                if (roughnessMap.IsValid() && static_cast<uint32_t>(roughnessMap) != 0) {
+                    glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(roughnessMap));
+                } else if (assetManager.GetDefaultTextures().size() > 3) {
+                    glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[3]);
+                } else {
+                    glBindTexture(GL_TEXTURE_2D, 0);
+                }
+                geometryShader->SetUniform("roughnessMap", 5);
 
-            // Metallic Map (Unit 6)
-            glActiveTexture(GL_TEXTURE6);
-            TextureHandle metallicMap = material->metallicMap;
-            if (metallicMap.IsValid() && static_cast<uint32_t>(metallicMap) != 0) {
-                glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(metallicMap));
-            } else if (assetManager.GetDefaultTextures().size() > 4) {
-                glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[4]);
-            } else {
-                glBindTexture(GL_TEXTURE_2D, 0);
+                glActiveTexture(GL_TEXTURE6);
+                TextureHandle metallicMap = pbrMat ? pbrMat->metallicMap : TextureHandle{};
+                if (metallicMap.IsValid() && static_cast<uint32_t>(metallicMap) != 0) {
+                    glBindTexture(GL_TEXTURE_2D, static_cast<uint32_t>(metallicMap));
+                } else if (assetManager.GetDefaultTextures().size() > 4) {
+                    glBindTexture(GL_TEXTURE_2D, assetManager.GetDefaultTextures()[4]);
+                } else {
+                    glBindTexture(GL_TEXTURE_2D, 0);
+                }
+                geometryShader->SetUniform("metallicMap", 6);
+
+                geometryShader->SetUniform("u_roughnessFactor", pbrMat ? pbrMat->roughnessFactor : 1.0f);
+                geometryShader->SetUniform("u_metallicFactor", pbrMat ? pbrMat->metallicFactor : 0.0f);
             }
-            geometryShader->SetUniform("metallicMap", 6);
 
             glBindVertexArray(mesh->vao);
             glBindBuffer(GL_ARRAY_BUFFER, mesh->ibo);
@@ -2145,6 +2268,7 @@ void DeferredGeometryPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, C
                 );
             }
             glBindVertexArray(0);
+        }
         }
     }
 
@@ -2242,6 +2366,221 @@ void MSAAResolvePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
     glBindFramebuffer(GL_FRAMEBUFFER, renderer.gl.finalFBO);
 
     renderer.CheckErrors("MSAA resolve pass");
+}
+
+void ScreenSpaceGIPass::_ensureScratch(int w, int h) {
+    if (_scratchFBO && _scratchW == w && _scratchH == h) return;
+    if (_scratchTex) glDeleteTextures(1, &_scratchTex);
+    if (_scratchFBO == 0) glGenFramebuffers(1, &_scratchFBO);
+    glGenTextures(1, &_scratchTex);
+    glBindTexture(GL_TEXTURE_2D, _scratchTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindFramebuffer(GL_FRAMEBUFFER, _scratchFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _scratchTex, 0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    _scratchW = w;
+    _scratchH = h;
+}
+
+void ScreenSpaceGIPass::_ensureSSGI(int w, int h) {
+    if (_ssgiHist[0] && _ssgiW == w && _ssgiH == h) return;
+    auto makeRT = [&](GLuint& tex, GLuint& fbo) {
+        if (tex) glDeleteTextures(1, &tex);
+        if (fbo == 0) glGenFramebuffers(1, &fbo);
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+    };
+    for (int i = 0; i < 2; ++i) {
+        makeRT(_ssgiHist[i], _ssgiHistFBO[i]);// temporal history ping-pong
+        makeRT(_atrousTex[i], _atrousFBO[i]);// à-trous ping-pong
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    _ssgiW = w;
+    _ssgiH = h;
+    _ssgiPrevValid = false;// fresh buffers — no usable history yet
+}
+
+// Screen-space AO/GI over the resolved opaque scene: GTAO (multiply) then SSGI
+// (additive). Both reconstruct from the resolved depth; each ping-pongs the
+// scene color through a scratch target and blits the result back, so SSGI sees
+// the AO'd color when both are on.
+void ScreenSpaceGIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
+#if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU) return;// GL path only for now
+#endif
+    ZoneScopedN("ScreenSpaceGIPass");
+    if (!gtaoEnabled && !ssgiEnabled) return;
+    if (!ssgiEnabled) _ssgiPrevValid = false;// invalidate history while SSGI is off
+
+    CameraComponent* cam = ctx->GetMainCamera();
+    if (!cam) return;
+    RenderTarget* src = renderer.msaaResolveRT ? renderer.msaaResolveRT.get() : renderer.sceneRT.get();
+    if (!src) return;
+    const int w = static_cast<int>(src->GetWidth());
+    const int h = static_cast<int>(src->GetHeight());
+    if (w <= 0 || h <= 0) return;
+    _ensureScratch(w, h);
+
+    AssetManager& am = AssetManager::Get();
+    const GLuint srcFBO = static_cast<GLRenderTarget*>(src)->GetNativeFBOID();
+    const glm::mat4 proj = cam->GetProjectionMatrix();
+    const glm::mat4 invProj = glm::inverse(proj);
+    const glm::mat4 viewProj = proj * cam->GetViewMatrix();
+    const glm::mat4 invViewProj = glm::inverse(viewProj);
+    const glm::vec3 eye = cam->GetEyePosition();
+    const glm::vec2 vp(static_cast<float>(w), static_cast<float>(h));
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glViewport(0, 0, w, h);
+
+    // GTAO: color*AO -> scratch -> blit back into the resolved color.
+    if (gtaoEnabled) {
+        if (ShaderProgram* sh = am.GetShader("screen_gtao")) {
+            glBindFramebuffer(GL_FRAMEBUFFER, _scratchFBO);
+            sh->Activate();
+            sh->SetUniform(std::string("u_color"), 0);
+            sh->SetUniform(std::string("u_depth"), 1);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, src->GetTextureID());
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
+            sh->SetUniform(std::string("u_proj"), proj);
+            sh->SetUniform(std::string("u_invProj"), invProj);
+            sh->SetUniform(std::string("u_viewportSize"), vp);
+            sh->SetUniform(std::string("u_aoRadius"), gtaoRadius);
+            sh->SetUniform(std::string("u_aoStrength"), gtaoStrength);
+            glBindVertexArray(renderer.gl.screenQuadVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, _scratchFBO);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, srcFBO);
+            glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        }
+    }
+
+    // SSGI: trace one-bounce indirect (temporally accumulated) into the current
+    // history slot, then blur+add -> scratch -> blit back into the resolved color.
+    if (ssgiEnabled) {
+        ShaderProgram* trace = am.GetShader("screen_ssgi");
+        ShaderProgram* comp = am.GetShader("screen_ssgi_composite");
+        if (trace && comp) {
+            // Trace + temporal + à-trous run at (optionally) half resolution; the
+            // composite upsamples the result back to full res (bilinear, since the
+            // SSGI textures use GL_LINEAR). ~4x cheaper for the heavy trace.
+            const int sw = ssgiHalfRes ? std::max(1, w / 2) : w;
+            const int sh = ssgiHalfRes ? std::max(1, h / 2) : h;
+            const glm::vec2 svp(static_cast<float>(sw), static_cast<float>(sh));
+            _ensureSSGI(sw, sh);
+            const int prev = 1 - _ssgiCur;
+            const float blend = _ssgiPrevValid ? ssgiBlend : 0.0f;
+
+            glBindFramebuffer(GL_FRAMEBUFFER, _ssgiHistFBO[_ssgiCur]);
+            glViewport(0, 0, sw, sh);
+            trace->Activate();
+            trace->SetUniform(std::string("u_color"), 0);
+            trace->SetUniform(std::string("u_depth"), 1);
+            trace->SetUniform(std::string("u_history"), 2);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, src->GetTextureID());
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, _ssgiHist[prev]);
+            trace->SetUniform(std::string("u_proj"), proj);
+            trace->SetUniform(std::string("u_invProj"), invProj);
+            trace->SetUniform(std::string("u_invViewProj"), invViewProj);
+            trace->SetUniform(std::string("u_prevViewProj"), _ssgiPrevVP);
+            trace->SetUniform(std::string("u_cameraPos"), eye);
+            trace->SetUniform(std::string("u_prevCameraPos"), _ssgiPrevEye);
+            trace->SetUniform(std::string("u_viewportSize"), svp);
+            trace->SetUniform(std::string("u_ssgiRadius"), ssgiRadius);
+            trace->SetUniform(std::string("u_ssgiThickness"), ssgiThickness);
+            // Vary the sample rotation each frame so temporal accumulation
+            // integrates different samples (real variance reduction).
+            trace->SetUniform(std::string("u_frameIndex"), _ssgiFrame);
+            trace->SetUniform(std::string("u_blend"), blend);
+            glBindVertexArray(renderer.gl.screenQuadVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+
+            // à-trous spatial denoise (display-only; not fed back into history).
+            // Iterations with a growing step, edge-stopped by tangent-plane
+            // distance + luma. filtered = the last output (or the raw accum).
+            GLuint filtered = _ssgiHist[_ssgiCur];
+            if (ssgiAtrousIters > 0) {
+                if (ShaderProgram* atrous = am.GetShader("screen_ssgi_atrous")) {
+                    atrous->Activate();
+                    atrous->SetUniform(std::string("u_ssgi"), 0);
+                    atrous->SetUniform(std::string("u_depth"), 1);
+                    atrous->SetUniform(std::string("u_invProj"), invProj);
+                    atrous->SetUniform(std::string("u_viewportSize"), svp);
+                    atrous->SetUniform(std::string("u_sigmaDepth"), ssgiSigmaDepth);
+                    atrous->SetUniform(std::string("u_sigmaLuma"), ssgiSigmaLuma);
+                    glActiveTexture(GL_TEXTURE1);
+                    glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
+                    GLuint source = _ssgiHist[_ssgiCur];
+                    int dst = 0;
+                    for (int it = 0; it < ssgiAtrousIters; ++it) {
+                        glBindFramebuffer(GL_FRAMEBUFFER, _atrousFBO[dst]);
+                        atrous->SetUniform(std::string("u_stepSize"), static_cast<float>(1 << it));
+                        glActiveTexture(GL_TEXTURE0);
+                        glBindTexture(GL_TEXTURE_2D, source);
+                        glBindVertexArray(renderer.gl.screenQuadVAO);
+                        glDrawArrays(GL_TRIANGLES, 0, 6);
+                        glBindVertexArray(0);
+                        source = _atrousTex[dst];
+                        dst = 1 - dst;
+                    }
+                    filtered = source;
+                }
+            }
+
+            // Composite back at full resolution (bilinear-upsamples the half-res
+            // SSGI). Reset the viewport — the trace/à-trous ran at half res.
+            glBindFramebuffer(GL_FRAMEBUFFER, _scratchFBO);
+            glViewport(0, 0, w, h);
+            comp->Activate();
+            comp->SetUniform(std::string("u_color"), 0);
+            comp->SetUniform(std::string("u_ssgi"), 1);
+            comp->SetUniform(std::string("u_depth"), 2);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, src->GetTextureID());
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, filtered);
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, src->GetDepthTextureID());
+            comp->SetUniform(std::string("u_ssgiStrength"), ssgiStrength);
+            glBindVertexArray(renderer.gl.screenQuadVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, _scratchFBO);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, srcFBO);
+            glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+            // Roll reprojection sources forward and swap the history slot.
+            _ssgiPrevVP = viewProj;
+            _ssgiPrevEye = eye;
+            _ssgiPrevValid = true;
+            _ssgiCur = prev;
+            _ssgiFrame++;
+        }
+    }
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    renderer.CheckErrors("screen-space GI pass");
 }
 
 // WorldCanvasPass: World sprites with depth testing

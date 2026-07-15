@@ -1,0 +1,147 @@
+#include "flipbook_component.hpp"
+#include "animation_subsystem.hpp"
+#include "game_object.hpp"
+#include "imgui.h"
+#include "sprite_3d_component.hpp"
+#include "sprite_component.hpp"
+#include <algorithm>
+#include <utility>
+
+FlipbookComponent::FlipbookComponent(GameObject* owner) : AnimatorComponent(owner) {
+    _state.wrap = WrapMode::Loop;
+}
+
+void FlipbookComponent::OnAttach() {
+    // Resolve the render target once. Prefer a 2D sprite; fall back to a 3D
+    // (billboard) sprite, which exposes the same SetUVs interface.
+    if (gameObject) {
+        _sprite = gameObject->GetComponent<SpriteComponent>();
+        if (!_sprite) _sprite3D = gameObject->GetComponent<Sprite3DComponent>();
+    }
+    AnimatorComponent::OnAttach();
+}
+
+static AnimationLibrary* Lib() {
+    auto* sub = AnimationSubsystem::Get();
+    return sub ? &sub->Library() : nullptr;
+}
+
+void FlipbookComponent::AddClip(FlipbookClipHandle clip) {
+    if (!clip.IsValid()) return;
+    if (std::find(_clips.begin(), _clips.end(), clip) == _clips.end()) _clips.push_back(clip);
+    // Bind (but don't play) the first clip so there is a frame to show before Play().
+    if (!_current.IsValid()) BindClip(clip);
+}
+
+void FlipbookComponent::AddClip(const std::string& libraryName) {
+    if (auto* lib = Lib()) AddClip(lib->FindFlipbook(libraryName));
+}
+
+FlipbookClipHandle FlipbookComponent::AddLocalClip(FlipbookClip clip) {
+    auto* lib = Lib();
+    if (!lib) return {};
+    FlipbookClipHandle h = lib->AddFlipbook(std::move(clip));
+    AddClip(h);
+    return h;
+}
+
+void FlipbookComponent::BindClip(FlipbookClipHandle handle) {
+    auto* lib = Lib();
+    _current = handle;
+    _clip = lib ? lib->GetFlipbook(handle) : nullptr;
+    _frameEndTimes.clear();
+    _duration = 0.0f;
+    _lastFrame = -1;
+    _currentName.clear();
+    if (!_clip) return;
+
+    _currentName = _clip->name;
+    _frameEndTimes.reserve(_clip->frames.size());
+    float acc = 0.0f;
+    for (const auto& f : _clip->frames) {
+        acc += f.duration;
+        _frameEndTimes.push_back(acc);
+    }
+    _duration = acc;
+}
+
+bool FlipbookComponent::Play(const std::string& clipName) {
+    auto* lib = Lib();
+    if (!lib) return false;
+
+    // Play is purely imperative: it always (re)starts the clip from the
+    // beginning, even if that same clip is already playing. Deciding *when* to
+    // call Play — deduping per-frame calls, not fighting a manual pause — is the
+    // caller's responsibility, not the engine's (the RPG example guards with
+    // GetCurrentClip() != want).
+
+    // Resolve among THIS component's own clips (clip names are commonly reused
+    // across entities — e.g. every actor has an "idle" — so a global by-name
+    // lookup would return the wrong entity's clip).
+    FlipbookClipHandle target;
+    for (FlipbookClipHandle h : _clips) {
+        const FlipbookClip* c = lib->GetFlipbook(h);
+        if (c && c->name == clipName) {
+            target = h;
+            break;
+        }
+    }
+    if (!target.IsValid()) return false;
+
+    BindClip(target);
+    _state.time = 0.0f;
+    _state.playing = true;
+    Evaluate(_state.time);
+    return true;
+}
+
+bool FlipbookComponent::GetCurrentUV(glm::vec2& outMin, glm::vec2& outMax) const {
+    if (!_clip || _lastFrame < 0 || _lastFrame >= static_cast<int>(_clip->frames.size())) return false;
+    const FlipbookFrame& f = _clip->frames[_lastFrame];
+    outMin = f.uvMin;
+    outMax = f.uvMax;
+    if (_flipX) std::swap(outMin.x, outMax.x);
+    return true;
+}
+
+void FlipbookComponent::SetFlipX(bool flip) {
+    if (_flipX == flip) return;
+    _flipX = flip;
+    _lastFrame = -1;// force a UV rewrite on the next evaluate
+    Evaluate(_state.time);
+}
+
+void FlipbookComponent::Evaluate(float time) {
+    if (!_clip || _frameEndTimes.empty()) return;
+
+    // First frame whose accumulated end time is strictly greater than `time`.
+    auto it = std::upper_bound(_frameEndTimes.begin(), _frameEndTimes.end(), time);
+    int frame = static_cast<int>(it - _frameEndTimes.begin());
+    frame = std::clamp(frame, 0, static_cast<int>(_clip->frames.size()) - 1);
+
+    if (frame == _lastFrame) return;// no visible change
+    _lastFrame = frame;
+
+    const FlipbookFrame& f = _clip->frames[frame];
+    // Push UVs to a sprite target if we have one; otherwise we are a pure frame
+    // clock and an immediate-mode consumer reads GetCurrentUV()/GetCurrentFrame().
+    if (_sprite || _sprite3D) {
+        glm::vec2 mn = f.uvMin, mx = f.uvMax;
+        if (_flipX) std::swap(mn.x, mx.x);
+        if (_sprite) _sprite->SetUVs(mn, mx);
+        if (_sprite3D) _sprite3D->SetUVs(mn, mx);
+    }
+    if (f.eventId >= 0 && _onFrameEvent) _onFrameEvent(f.eventId);
+}
+
+void FlipbookComponent::DrawImGui() {
+    // Editor wraps each component in its own CollapsingHeader(GetName()) + PushID.
+    ImGui::Text("Clip: %s", _currentName.empty() ? "(none)" : _currentName.c_str());
+    ImGui::Text("Frame: %d / %zu", _lastFrame, _clip ? _clip->frames.size() : 0);
+    bool flip = _flipX;
+    if (ImGui::Checkbox("Flip X", &flip)) {
+        _flipX = !flip;// undo the checkbox's write so SetFlipX sees a real change
+        SetFlipX(flip);
+    }
+    AnimatorComponent::DrawImGui();
+}

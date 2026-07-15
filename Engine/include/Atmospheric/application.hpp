@@ -23,7 +23,9 @@ class EditorLayer;
 class VideoRecorder;
 class AssetManager;
 class RmlUiManager;
+class AnimationSubsystem;
 struct SceneBlueprint;
+struct Prefab;
 
 struct FrameData {
     FrameData(uint64_t number, float time, float deltaTime) {
@@ -177,9 +179,17 @@ public:
 
     GameObject* CreateGameObject(glm::vec2 position, float rotation = 0.0f);
 
+    // Upload an imported Prefab's meshes and spawn a GameObject subtree
+    // mirroring its node hierarchy, parented under `parent`. Meshes are
+    // registered under "<baseName>#<i>". This is the Phase-2 (main-thread)
+    // instantiation shared by every prefab format. Returns the spawned root.
+    GameObject* Instantiate(const Prefab& prefab, GameObject* parent, const std::string& baseName);
+
     // Queue a factory lambda to run at the start of the next frame, outside any
-    // entity-tick loop. Use this from Component::OnTick to safely create new
-    // GameObjects (CreateGameObject is not safe to call mid-iteration).
+    // entity-tick loop. The GameLayer tick loop itself tolerates CreateGameObject
+    // mid-tick (index-based; appends get their first Tick the same frame), so
+    // this is mainly for spawns that must NOT tick until next frame, or callers
+    // inside other entity iterations (editor, custom layers).
     void DeferSpawn(std::function<void()> cmd);
 
     // Internal: clear all scene containers (children of __root__) without
@@ -241,6 +251,7 @@ private:
     std::unique_ptr<GraphicsSubsystem> _graphics;
     std::unique_ptr<Physics3DSubsystem> _physics;
     std::unique_ptr<Physics2DSubsystem> _physics2D;
+    std::unique_ptr<AnimationSubsystem> _animation;
     std::unique_ptr<AssetManager> _assetManager;
     std::unique_ptr<RmlUiManager> _rmlUi;
     std::vector<std::shared_ptr<Subsystem>> _subsystems;

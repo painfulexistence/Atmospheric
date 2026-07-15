@@ -38,6 +38,12 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/ui
             ${EM_PRELOAD_STAGING_DIR}/ui
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/ui
+            ${EM_PRELOAD_STAGING_DIR}/ui
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/textures
+            ${EM_PRELOAD_STAGING_DIR}/textures
         COMMENT "Staging Emscripten preload assets for ${GAME_NAME}"
     )
     add_dependencies(${GAME_NAME} stage_${GAME_NAME}_em_preload)
@@ -52,6 +58,12 @@ if(EMSCRIPTEN)
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/scenes@assets/scenes"
         "SHELL:--preload-file ${EM_PRELOAD_STAGING_DIR}/ui@assets/ui"
     )
+
+    # Custom centered/touch-control template for Release only; keep the default
+    # Emscripten shell in Debug for easier console/stdout debugging.
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_link_options(${GAME_NAME} PRIVATE "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/shell.html")
+    endif()
 else()
     find_package(spdlog CONFIG REQUIRED)
     find_package(glad CONFIG REQUIRED)
@@ -66,3 +78,12 @@ endif()
 
 ae_copy_engine_assets(${GAME_NAME})
 ae_copy_game_assets(${GAME_NAME} "${GAME_ASSETS_DIR}")
+
+# Web build: transcode any PNG/JPG in assets/textures to KTX2 (no-op unless
+# AE_USE_BASIS_UNIVERSAL and textures exist). The demo's detail layers are
+# procedural today, but this keeps parity with the other examples so dropping
+# in a Gaea colour/splat PNG export "just works" on the web.
+ae_convert_textures(${GAME_NAME}
+    "${GAME_ASSETS_DIR}/textures"
+    "$<TARGET_FILE_DIR:${GAME_NAME}>/assets/textures"
+)

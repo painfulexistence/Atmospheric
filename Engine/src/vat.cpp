@@ -2,6 +2,7 @@
 #include "console_subsystem.hpp"
 #include "gfx_factory.hpp"
 #include "globals.hpp"
+#include "log.hpp"
 
 namespace {
     // Packs positions[f][v] / normals[f][v] into a flat, row-major RGBA float array
@@ -71,6 +72,6 @@ std::unique_ptr<VATClip> VATClip::Bake(const VATFrameData& data) {
         normData.data(), static_cast<int>(clip->_vertCount), static_cast<int>(clip->_frameCount)
     );
 
-    ENGINE_LOG("VATClip::Bake: {} verts x {} frames @ {} fps", vertCount, frameCount, data.frameRate);
+    Log::Info("VATClip::Bake: {} verts x {} frames @ {} fps", vertCount, frameCount, data.frameRate);
     return clip;
 }

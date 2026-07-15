@@ -1,13 +1,16 @@
 #include "scene_loader.hpp"
-#include "action.hpp"
-#include "action_manager.hpp"
+#include "action_timeline_component.hpp"
+#include "animation_subsystem.hpp"
 #include "application.hpp"
 #include "asset_manager.hpp"
+#include "easing.hpp"
 #include "game_object.hpp"
 #include "log.hpp"
 #include "sprite_component.hpp"
 #include "text_2d_component.hpp"
 #include "text_3d_component.hpp"
+#include <utility>
+#include <vector>
 
 #include "Scene_generated.h"
 
@@ -190,6 +193,32 @@ void SceneLoader::ParseAnimations(
         config.loopAnimations
     );
 
+    // CSB frames are already keyframes, so each (node, property) timeline maps
+    // directly onto an ActionTrack: frameIndex/frameRate/speed → absolute key
+    // time, easingData → per-key easing. Tracks are grouped into one
+    // ActionTimeline per node (concurrent properties become concurrent tracks),
+    // registered in the AnimationLibrary and auto-played on an
+    // ActionTimelineComponent — replacing the former keyframe→Action→RunAction
+    // double translation.
+    auto* animSub = AnimationSubsystem::Get();
+    if (!animSub) {
+        spdlog::warn("SceneLoader: AnimationSubsystem unavailable; skipping CSB animations.");
+        return;
+    }
+
+    // Per-node accumulator, insertion-ordered for deterministic instantiation.
+    std::vector<std::pair<GameObject*, ActionTimeline>> perNode;
+    auto timelineFor = [&](GameObject* node) -> ActionTimeline& {
+        for (auto& [go, tl] : perNode)
+            if (go == node) return tl;
+        perNode.push_back({ node, ActionTimeline{} });
+        return perNode.back().second;
+    };
+    const auto keyTime = [&](int frameIndex) {
+        float t = frameIndex / frameRate / speed;
+        return t < 0.0f ? 0.0f : t;
+    };
+
     for (auto timeline : *actions->timeLines()) {
         if (!timeline || !timeline->frames() || timeline->frames()->size() == 0) {
             Log::Warn("SceneLoader: skipping empty timeline.");
@@ -214,139 +243,97 @@ void SceneLoader::ParseAnimations(
         GameObject* target = it->second;
         if (!target) continue;
 
-        // Ensure ActionManager exists
-        auto* actionManager = target->GetComponent<ActionManager>();
-        if (!actionManager) {
-            actionManager = new ActionManager(target);
-            target->AddComponent(actionManager);
-            Log::Debug("SceneLoader: Added ActionManager to node '{}'", target->GetName());
-        }
-
         std::string property = timeline->property()->c_str();
-        std::vector<FiniteTimeAction*> sequenceActions;
+        ActionTrack track;
 
-        int lastFrameIndex = 0;
-
-        // Dispatch based on property type to access correct frame data
         if (property == "Position") {
+            track.property = ActionProperty::Position;
             for (auto frame : *timeline->frames()) {
                 if (frame->pointFrame() && frame->pointFrame()->position()) {
-                    int currentFrameIndex = frame->pointFrame()->frameIndex();
-                    float duration = (currentFrameIndex - lastFrameIndex) / frameRate / speed;
-                    if (duration < 0) duration = 0;
-
-                    // Get easing type from frame
                     EasingType easing = EasingType::Linear;
-                    if (frame->pointFrame()->easingData()) {
+                    if (frame->pointFrame()->easingData())
                         easing = GetEasingType(frame->pointFrame()->easingData()->type());
-                    }
-
-                    lastFrameIndex = currentFrameIndex;
                     auto pos = frame->pointFrame()->position();
-                    auto action = new MoveTo(duration, glm::vec3(pos->x(), pos->y(), 0.0f));
-                    action->SetEasing(easing);
-                    sequenceActions.push_back(action);
+                    track.keys.push_back(
+                        { keyTime(frame->pointFrame()->frameIndex()),
+                          glm::vec4(pos->x(), pos->y(), 0.0f, 0.0f),
+                          easing }
+                    );
                 }
             }
         } else if (property == "Scale") {
+            track.property = ActionProperty::Scale;
             for (auto frame : *timeline->frames()) {
                 if (frame->scaleFrame() && frame->scaleFrame()->scale()) {
-                    int currentFrameIndex = frame->scaleFrame()->frameIndex();
-                    float duration = (currentFrameIndex - lastFrameIndex) / frameRate / speed;
-                    if (duration < 0) duration = 0;
-
-                    // Get easing type from frame
                     EasingType easing = EasingType::Linear;
-                    if (frame->scaleFrame()->easingData()) {
+                    if (frame->scaleFrame()->easingData())
                         easing = GetEasingType(frame->scaleFrame()->easingData()->type());
-                    }
-
-                    lastFrameIndex = currentFrameIndex;
                     auto scale = frame->scaleFrame()->scale();
-                    auto action = new ScaleTo(duration, glm::vec3(scale->scaleX(), scale->scaleY(), 1.0f));
-                    action->SetEasing(easing);
-                    sequenceActions.push_back(action);
+                    track.keys.push_back(
+                        { keyTime(frame->scaleFrame()->frameIndex()),
+                          glm::vec4(scale->scaleX(), scale->scaleY(), 1.0f, 0.0f),
+                          easing }
+                    );
                 }
             }
         } else if (property == "RotationSkew") {
-            bool parsed = false;
+            track.property = ActionProperty::Rotation;
             for (auto frame : *timeline->frames()) {
-                int currentFrameIndex = 0;
-                EasingType easing = EasingType::Linear;
-
                 if (frame->intFrame()) {
-                    currentFrameIndex = frame->intFrame()->frameIndex();
-                    if (frame->intFrame()->easingData()) {
+                    EasingType easing = EasingType::Linear;
+                    if (frame->intFrame()->easingData())
                         easing = GetEasingType(frame->intFrame()->easingData()->type());
-                    }
-                } else if (frame->pointFrame()) {
-                    currentFrameIndex = frame->pointFrame()->frameIndex();
-                } else if (frame->scaleFrame()) {
-                    currentFrameIndex = frame->scaleFrame()->frameIndex();
-                }
-
-                float duration = (currentFrameIndex - lastFrameIndex) / frameRate / speed;
-                if (duration < 0) duration = 0;
-                lastFrameIndex = currentFrameIndex;
-
-                if (frame->intFrame()) {
-                    // CSB stores rotation in degrees, convert to radians for RotateTo
-                    auto rotDeg = static_cast<float>(frame->intFrame()->value());
-                    float rotRad = glm::radians(rotDeg);
-                    auto action = new RotateTo(duration, glm::vec3(0, 0, rotRad));
-                    action->SetEasing(easing);
-                    sequenceActions.push_back(action);
-                    parsed = true;
+                    // CSB stores rotation in degrees; convert to radians (Z axis).
+                    float rotRad = glm::radians(static_cast<float>(frame->intFrame()->value()));
+                    track.keys.push_back(
+                        { keyTime(frame->intFrame()->frameIndex()), glm::vec4(0.0f, 0.0f, rotRad, 0.0f), easing }
+                    );
                 }
             }
-
-            if (!parsed) {
-                Log::Warn(
-                    "SceneLoader: RotationSkew timeline found on '{}' but frames contain no IntFrame data.",
-                    target->GetName()
+            if (track.keys.empty()) {
+                ConsoleSubsystem::Get()->Warn(
+                    fmt::format(
+                        "SceneLoader: RotationSkew timeline found on '{}' but frames contain no IntFrame data.",
+                        target->GetName()
+                    )
                 );
             }
         } else if (property == "CColor") {
+            track.property = ActionProperty::Color;
             for (auto frame : *timeline->frames()) {
                 if (frame->colorFrame() && frame->colorFrame()->color()) {
-                    int currentFrameIndex = frame->colorFrame()->frameIndex();
                     auto* colorData = frame->colorFrame()->color();
-
-                    glm::vec4 targetColor(
-                        colorData->r() / 255.0f,
-                        colorData->g() / 255.0f,
-                        colorData->b() / 255.0f,
-                        colorData->a() / 255.0f
-                    );
-
-                    int deltaFrames = currentFrameIndex - lastFrameIndex;
-                    float duration = deltaFrames / frameRate / speed;
-                    if (duration < 0.001f) duration = 0.001f;
-
                     EasingType easing = EasingType::Linear;
-                    if (frame->colorFrame()->easingData()) {
+                    if (frame->colorFrame()->easingData())
                         easing = GetEasingType(frame->colorFrame()->easingData()->type());
-                    }
-
-                    auto* action = new ColorTo(duration, targetColor);
-                    action->SetEasing(easing);
-                    sequenceActions.push_back(action);
-
-                    lastFrameIndex = currentFrameIndex;
+                    track.keys.push_back(
+                        { keyTime(frame->colorFrame()->frameIndex()),
+                          glm::vec4(
+                              colorData->r() / 255.0f,
+                              colorData->g() / 255.0f,
+                              colorData->b() / 255.0f,
+                              colorData->a() / 255.0f
+                          ),
+                          easing }
+                    );
                 }
             }
         }
 
-        if (!sequenceActions.empty()) {
-            auto* seq = new Sequence(sequenceActions);
-            if (config.loopAnimations) {
-                // Wrap in RepeatForever for looping animations
-                Action* loopedAction = new RepeatForever(seq);
-                actionManager->RunAction(loopedAction);
-            } else {
-                actionManager->RunAction(seq);
-            }
-        }
+        if (!track.keys.empty()) timelineFor(target).tracks.push_back(std::move(track));
+    }
+
+    // Instantiate one auto-playing timeline component per animated node.
+    for (auto& [node, tl] : perNode) {
+        if (tl.tracks.empty()) continue;
+        tl.name = node->GetName() + "_csb";
+        TimelineHandle handle = animSub->Library().AddTimeline(std::move(tl));
+
+        auto* atc = node->GetComponent<ActionTimelineComponent>();
+        if (!atc) atc = static_cast<ActionTimelineComponent*>(node->AddComponent<ActionTimelineComponent>());
+        atc->AddTimeline(handle);
+        atc->SetWrapMode(config.loopAnimations ? WrapMode::Loop : WrapMode::Once);
+        atc->Play(node->GetName() + "_csb");
     }
 }
 

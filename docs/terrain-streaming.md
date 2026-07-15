@@ -16,6 +16,43 @@ is shaped the way it is, and the phased path to the full AAA feature set
 `Engine/include/Atmospheric/terrain_streamer.hpp` /
 `Engine/src/terrain_streamer.cpp`, demo in `Examples/TerrainStreaming`.
 
+### Using it
+
+`StreamingTerrainComponent` wraps the streamer as a scene component (owns it,
+prewarms on attach, streams from OnTick relative to the main camera). Add it in
+C++:
+
+```cpp
+auto* go = CreateGameObject(glm::vec3(0.0f));
+go->AddComponent<StreamingTerrainComponent>(StreamingTerrainProps{
+    .worldSize = 10240.0f, .heightScale = 500.0f,
+    .noise = { .seed = 20260705, .frequency = 0.0007f, .octaves = 9 },
+    .cacheDir = FileSystem::Get().BasePath() + "cache/terrain",
+});
+```
+
+…or declare its **scalar** props in a scene JSON entity (registered as
+`StreamingTerrain` in `Application::RegisterComponents`):
+
+```json
+{ "name": "Terrain", "components": [
+  { "type": "StreamingTerrain",
+    "worldSize": 10240, "tileSize": 512, "heightScale": 500,
+    "lodCount": 4, "lod0RadiusTiles": 2, "paletteIndex": 3,
+    "fogDensity": 0.00018, "fogColor": [0.62, 0.71, 0.85],
+    "noise": { "seed": 20260705, "frequency": 0.0007, "octaves": 9 },
+    "cacheDir": "cache/terrain",
+    "layers": [ { "albedo": "assets/grass.png", "tiling": 64 } ] } ] }
+```
+
+The height / entity-scatter / splat **callbacks** (`heightFn`,
+`placeEntitiesFn`, `spawnEntityFn`, `splatFn`) are `std::function` — not
+expressible in JSON. A JSON-declared terrain uses the built-in OpenSimplex2
+FBm source (from `noise`) and has no entity scatter; for a custom generator or
+vegetation, grab the component after load and set the callbacks in C++. That
+boundary — data-driven scalars, code-driven generators — is deliberate, not a
+gap to close.
+
 ### Core ideas
 
 **Whole world always resident, at *some* LOD.** The world is split into
@@ -82,23 +119,77 @@ height queries anywhere (used by the demo's ground clamp).
 **Entity streaming (props/vegetation).** Tiles inside `entityRadiusTiles`
 of the camera get entities: `placeEntitiesFn` produces deterministic
 per-tile placements (seeded by tile coord, heights sampled from the *exact*
-source via `ctx.HeightAt`, so feet match LOD0 ground), `spawnEntityFn`
-builds the GameObjects. Tiles leaving the ring return their objects to
-per-type pools — the live entity count is bounded by the ring area, and
-revisiting a tile reproduces the identical scatter. Population is budgeted
+source via `ctx.HeightAt`, so feet match LOD0 ground). Placements are
+realized one of two ways, per type:
+
+- **Instanced (default for scatter):** `entityMeshes[type]` names a
+  prototype mesh, and every placement of that type in a tile folds into one
+  `MeshInstancer` cloud — one GameObject, one frustum test, one sort entry
+  per (tile, type), and the renderer's batcher merges every tile's cloud of
+  the same mesh+material into a single instanced draw. Visual-only (no
+  per-entity physics/scripts).
+- **Spawned:** types without an `entityMeshes` entry go through
+  `spawnEntityFn`, which builds a full GameObject per placement — for
+  entities that need colliders, scripts, or animation.
+
+Tiles leaving the ring return their objects (clouds or singles) to per-type
+pools — the live entity count is bounded by the ring area, and revisiting a
+tile reproduces the identical scatter. Population is budgeted
 (`entityTilesPerFrame`) and nearest-first. This is the Phase-3 seed: the
 same per-tile placement lists later drive impostors and HLOD proxies for
 the rings beyond `entityRadiusTiles`.
 
-**Gaea-grade sources, reserved splat space.** The height source is a
+**Procedural grass (GoT-style, wind-animated).** With `grassDensity > 0` a
+tight ring of grass cells streams around the camera exactly like the tiles:
+blade meshes are built on JobSystem workers (roots sampled from the exact
+height source, patchiness from a value-noise mask, slope/height-band rules),
+uploaded one cell per frame into pooled dynamic meshes, and recycled as the
+camera moves. Coverage is tunable: `grassHeightBand` gates the elevation
+range that grows grass (widen it so peaks aren't bald), and `grassCoverage`
+(0 = maximal patchy drifts, 1 = continuous carpet in-band) lifts the thin
+drifts toward full without losing the value-noise variation. Per-blade
+variation (length, facing, static lean, wind phase,
+hue) rides in a per-blade **instance buffer** (32 bytes/blade) — one canonical
+9-vertex blade is drawn once per instance, so every cell is a single instanced
+draw and cell memory is ~15x smaller than baked geometry. Blade + instance
+data live in an RHI `VertexFormat::Grass` RenderMesh on both backends
+(`Buffer::UploadInstances`; GL draws instanced today, WebGPU has the full data
+path and pipeline-layout support via `GpuPipelineBuilder::instance()` but
+still needs the WGSL port of the grass shaders before it draws). Every cell
+shares one `GrassMaterial`;
+`grass.vert` adds the two-band wind sway (slow travelling gust + per-blade
+flutter, t²-weighted so roots stay planted) and collapses blades to the ground
+approaching `grassRadius` so the ring edge is invisible. `grass.frag` does the
+Ghost-of-Tsushima look: dark-root→tip gradient, wrap lighting, backlit
+translucency, gust glint, and the same aerial-perspective fog as the terrain.
+The ring is controllable at runtime: `SetGrassEnabled` toggles it (live cells
+pool, nothing is destroyed), `SetGrassRadius` re-ranges the view distance
+(cells outside release next tick, the edge fade rescales, clamped to O(r²)
+sanity), and `SetGrassColors` retints root/tip — the demo keys those to the
+grass detail layer so blades blend into the textured ground. All three are on
+the ImGui panel.
+
+**Gaea-grade sources, live splat texturing.** The height source is a
 pluggable `heightFn(wx, wz) → [0,1]` called in world metres on worker
 threads — the default is OpenSimplex2 FBm, but a Gaea tiled-export sampler or
 any erosion-simulating generator plugs in without touching the streamer.
-Splat is reserved end-to-end: shared detail layers (`layers`, up to 4 albedo
-+ normal, world-continuous tiling) plus an optional per-tile `splatFn(worldMin,
-worldMax, res) → RGBA8` generated alongside heights and uploaded per tile
-(`AssetManager::CreateOrUpdateTextureRGBA8` recycles slot textures — no cache
-growth).
+Splat runs end-to-end: shared detail layers (`layers`, up to 4 albedo +
+normal, world-continuous tiling, `TerrainLayerDesc` takes disk paths or
+pre-created handles) plus an optional per-tile `splatFn(worldMin, worldMax,
+res, height01) → RGBA8` generated alongside heights on the workers and
+uploaded per tile (`AssetManager::CreateOrUpdateTextureRGBA8` recycles slot
+textures — no cache growth).
+
+Until a real Gaea export is wired, **`TerrainTextureGen`** supplies the
+content procedurally: four seamlessly tiling detail materials (grass, rock,
+dirt/scree, snow — albedo + tangent normals from periodic FBm, uploaded with
+REPEAT + mips) and `DefaultSplat`, a thread-safe weight generator (slope →
+rock, noisy snowline → snow, worn patches + valley sediment → dirt, grass as
+remainder). The TerrainStreaming demo uses both; replacing them with Gaea
+exports is a content swap, not a code change. Detail layers hide the fallback
+palette in terrain.frag, so both LOD-tint debug (`L`) and `SetPaletteOverride`
+(demo: `P` cycles textured → palette 0..5 → textured) suspend the layers while
+active — that's how the palette selector stays meaningful on textured terrain.
 
 ### Answering the design questions
 
@@ -134,7 +225,7 @@ scale:
 ## Phase 2 — streaming robustness & scale
 
 - **Disk-backed tile cache — implemented** (`TerrainTileCache`, enabled via
-  `TerrainStreamerProps::cacheDir`): tiles bake to 16-bit delta+varint
+  `StreamingTerrainProps::cacheDir`): tiles bake to 16-bit delta+varint
   compressed files keyed by a parameter hash; cache hits replace synthesis
   entirely, so the second boot is pure IO — the Ghost-of-Tsushima load path.
   Dependency-free C++ file IO (all desktop platforms; on Emscripten point it
@@ -149,16 +240,17 @@ scale:
   the shader near ring boundaries to eliminate the (already subtle)
   LOD-switch pop entirely — the tese shader already samples the heightmap, so
   it needs only the coarser mip + a morph factor.
-- **Shared tile vertex buffers**: tiles currently own per-slot VBs because
-  draw batching keys material off the mesh; add per-instance material binding
-  to the TERRAIN pass and all tiles of an LOD share one grid mesh
+- **Shared tile vertex buffers**: tiles currently own per-slot VBs. The
+  batcher now keys on (mesh, material) with material decoupled into
+  RenderCommand, so the remaining work is per-instance heightmap binding in
+  the TERRAIN pass; then all tiles of an LOD share one grid mesh
   (~25MB → ~1MB, and instanced draws).
 
 ## Phase 3 — the world on top (HLOD)
 
-- Deterministic per-tile scatter is **implemented** (`placeEntitiesFn` /
-  `spawnEntityFn`, pooled ring streaming); next: drive it from splat weights
-  instead of raw slope/height rules.
+- Deterministic per-tile scatter is **implemented** (`placeEntitiesFn` +
+  `entityMeshes` instance clouds / `spawnEntityFn`, pooled ring streaming);
+  next: drive it from splat weights instead of raw slope/height rules.
 - Near ring: real instanced meshes (today); mid ring: impostor billboards;
   far ring: baked **HLOD proxy** per tile (one merged mesh + one baked atlas
   texture), generated offline or on first visit — the per-tile placement

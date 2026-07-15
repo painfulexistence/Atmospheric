@@ -1,58 +1,88 @@
 #include "vat_component.hpp"
+#include "animation_subsystem.hpp"
 #include "asset_manager.hpp"
 #include "game_object.hpp"
 #include "imgui.h"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "mesh_component.hpp"
-#include <algorithm>
-#include <cmath>
+#include "mesh_renderer_component.hpp"
+#include "vat.hpp"
 #include <utility>
 
+static AnimationLibrary* VATLib() {
+    auto* sub = AnimationSubsystem::Get();
+    return sub ? &sub->Library() : nullptr;
+}
+
 VATComponent::VATComponent(GameObject* owner, MeshHandle mesh, std::unique_ptr<VATClip> clip, const VATProps& props)
-  : _mesh(mesh), _clip(std::move(clip)), _props(props), _time(props.startTime) {
-    gameObject = owner;
+  : AnimatorComponent(owner), _mesh(mesh) {
+    if (auto* lib = VATLib()) _clip = lib->AddVATClip("", std::move(clip));
 
+    _state.wrap = props.wrap;
+    _state.speed = props.speed;
+    _state.playing = props.playing;
+    _state.time = props.startTime;
+
+    EnsureMaterial();
+    owner->AddComponent<MeshRendererComponent>(_mesh);
+}
+
+VATComponent::VATComponent(GameObject* owner, MeshHandle mesh, VATClipHandle clip, const VATProps& props)
+  : AnimatorComponent(owner), _mesh(mesh), _clip(clip) {
+    _state.wrap = props.wrap;
+    _state.speed = props.speed;
+    _state.playing = props.playing;
+    _state.time = props.startTime;
+
+    EnsureMaterial();
+    owner->AddComponent<MeshRendererComponent>(_mesh);
+}
+
+void VATComponent::EnsureMaterial() {
     auto& am = AssetManager::Get();
-    _material = am.CreateVATMaterial();
-    _material->clip = _clip.get();
-    _material->normalizedTime = _time;
-
-    if (Mesh* meshPtr = am.GetMeshPtr(_mesh)) meshPtr->SetMaterial(am.GetMaterialHandle(_material));
-
-    owner->AddComponent<MeshComponent>(_mesh);
+    if (!_material) {
+        _material = am.CreateVATMaterial();
+        if (Mesh* meshPtr = am.GetMeshPtr(_mesh)) meshPtr->SetMaterial(am.GetMaterialHandle(_material));
+    }
+    _material->clip = GetClip();
+    _material->normalizedTime = GetNormalizedTime();
 }
 
 void VATComponent::OnAttach() {
-    if (_material) _material->normalizedTime = _time;
+    AnimatorComponent::OnAttach();// register with the subsystem
+    Evaluate(_state.time);// show the start frame immediately
 }
 
-void VATComponent::OnTick(float dt) {
-    if (!_material || !_clip) return;
+VATClip* VATComponent::GetClip() const {
+    auto* lib = VATLib();
+    return lib ? lib->GetVATClip(_clip) : nullptr;
+}
 
-    const float duration = _clip->GetDuration();
-    if (_props.playing && duration > 0.0f) {
-        _time += (dt * _props.speed) / duration;
-        if (_props.loop) {
-            // fmod keeps the playhead in [0, 1); negative speeds wrap too.
-            _time -= std::floor(_time);
-        } else {
-            _time = std::clamp(_time, 0.0f, 1.0f);
-        }
-    }
-    _material->normalizedTime = _time;
+float VATComponent::GetDuration() const {
+    VATClip* clip = GetClip();
+    return clip ? clip->GetDuration() : 0.0f;
+}
+
+void VATComponent::SetClip(VATClipHandle clip) {
+    _clip = clip;
+    _state.time = 0.0f;
+    if (_material) _material->clip = GetClip();
+    Evaluate(_state.time);
+}
+
+void VATComponent::Evaluate(float time) {
+    if (!_material) return;
+    const float dur = GetDuration();
+    _material->normalizedTime = dur > 0.0f ? time / dur : 0.0f;
 }
 
 void VATComponent::DrawImGui() {
-    if (!_clip) return;
-    ImGui::Text(
-        "Clip: %u verts x %u frames @ %.1f fps", _clip->GetVertCount(), _clip->GetFrameCount(), _clip->GetFrameRate()
-    );
-    ImGui::Checkbox("Playing", &_props.playing);
-    ImGui::SameLine();
-    ImGui::Checkbox("Loop", &_props.loop);
-    ImGui::DragFloat("Speed", &_props.speed, 0.01f, -4.0f, 4.0f);
-    if (ImGui::SliderFloat("Playhead", &_time, 0.0f, 1.0f) && _material) {
-        _material->normalizedTime = _time;
+    // Editor wraps each component in its own CollapsingHeader(GetName()) + PushID.
+    VATClip* clip = GetClip();
+    if (clip) {
+        ImGui::Text(
+            "Clip: %u verts x %u frames @ %.1f fps", clip->GetVertCount(), clip->GetFrameCount(), clip->GetFrameRate()
+        );
     }
+    AnimatorComponent::DrawImGui();
 }

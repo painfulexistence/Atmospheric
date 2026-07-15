@@ -37,28 +37,18 @@ void BindWorldAPI(sol::state& lua, LuaApplication* app) {
         sol::no_constructor,// Users can't construct directly, use atmos.world.spawn()
 
         // Transform properties
+        // Bind accessors as member pointers so the property auto-tracks the C++
+        // signatures; no hand-written lambda body to keep in sync (see bindings/README.md).
         "position",
-        sol::property(
-            [](GameObject* go) { return go->GetPosition(); },
-            [](GameObject* go, const glm::vec3& pos) { go->SetPosition(pos); }
-        ),
+        sol::property(&GameObject::GetPosition, &GameObject::SetPosition),
         "rotation",
-        sol::property(
-            [](GameObject* go) { return go->GetRotation(); },
-            [](GameObject* go, const glm::vec3& rot) { go->SetRotation(rot); }
-        ),
+        sol::property(&GameObject::GetRotation, &GameObject::SetRotation),
         "scale",
-        sol::property(
-            [](GameObject* go) { return go->GetScale(); },
-            [](GameObject* go, const glm::vec3& scale) { go->SetScale(scale); }
-        ),
+        sol::property(&GameObject::GetScale, &GameObject::SetScale),
 
         // Basic properties
         "name",
-        sol::property(
-            [](GameObject* go) { return go->GetName(); },
-            [](GameObject* go, const std::string& name) { go->SetName(name); }
-        ),
+        sol::property(&GameObject::GetName, &GameObject::SetName),
         "isActive",
         &GameObject::isActive,
 

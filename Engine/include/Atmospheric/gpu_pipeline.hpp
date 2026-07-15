@@ -239,6 +239,20 @@ public:
         return *this;
     }
 
+    // Per-instance vertex buffer (slot 1, step-per-instance). Combine with
+    // vertex() for the canonical geometry in slot 0; GPUBuffer binds its
+    // instance buffer at slot 1 during Draw. Attribute locations must not
+    // collide with the slot-0 attributes.
+    //
+    //   .vertex(8,  { {WGPUVertexFormat_Float32x2, 0, 0} })           // blade corner
+    //   .instance(32, { {WGPUVertexFormat_Float32x4, 0, 5},          // root+facing
+    //                   {WGPUVertexFormat_Float32x4, 16, 6} })       // shape
+    GpuPipelineBuilder& instance(uint64_t stride, std::vector<GpuVertexAttr> attrs) {
+        _instanceStride = stride;
+        _instanceAttrs = std::move(attrs);
+        return *this;
+    }
+
     GpuPipelineBuilder& colorFormat(WGPUTextureFormat fmt) {
         _colorFmt = fmt;
         return *this;
@@ -317,6 +331,8 @@ private:
     std::vector<BGLGroup> _bglGroups;
     uint64_t _stride = 0;
     std::vector<GpuVertexAttr> _vertexAttrs;
+    uint64_t _instanceStride = 0;
+    std::vector<GpuVertexAttr> _instanceAttrs;
     WGPUTextureFormat _colorFmt = WGPUTextureFormat_RGBA16Float;
     Blend _blend = Blend::None;
     bool _depthEnabled = false;

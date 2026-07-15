@@ -129,22 +129,38 @@ GpuPipeline GpuPipelineBuilder::build() {
     frag.targetCount = 1;
     frag.targets = &colorTarget;
 
-    // Vertex buffer layout (optional — fullscreen-triangle passes skip this)
-    std::vector<WGPUVertexAttribute> wgpuAttrs;
-    WGPUVertexBufferLayout vbl{};
-    if (!_vertexAttrs.empty()) {
-        wgpuAttrs.reserve(_vertexAttrs.size());
-        for (const auto& a : _vertexAttrs) {
+    // Vertex buffer layouts (optional — fullscreen-triangle passes skip this):
+    // slot 0 steps per vertex; slot 1 (when instance() was called) steps per
+    // instance and is fed by GPUBuffer's instance buffer at draw time.
+    auto toWGPUAttrs = [](const std::vector<GpuVertexAttr>& attrs) {
+        std::vector<WGPUVertexAttribute> out;
+        out.reserve(attrs.size());
+        for (const auto& a : attrs) {
             WGPUVertexAttribute wa{};
             wa.format = a.format;
             wa.offset = a.offset;
             wa.shaderLocation = a.shaderLocation;
-            wgpuAttrs.push_back(wa);
+            out.push_back(wa);
         }
-        vbl.arrayStride = _stride;
-        vbl.stepMode = WGPUVertexStepMode_Vertex;
-        vbl.attributeCount = static_cast<uint32_t>(wgpuAttrs.size());
-        vbl.attributes = wgpuAttrs.data();
+        return out;
+    };
+    std::vector<WGPUVertexAttribute> wgpuAttrs = toWGPUAttrs(_vertexAttrs);
+    std::vector<WGPUVertexAttribute> wgpuInstanceAttrs = toWGPUAttrs(_instanceAttrs);
+    WGPUVertexBufferLayout vbls[2] = {};
+    uint32_t vblCount = 0;
+    if (!wgpuAttrs.empty()) {
+        vbls[vblCount].arrayStride = _stride;
+        vbls[vblCount].stepMode = WGPUVertexStepMode_Vertex;
+        vbls[vblCount].attributeCount = static_cast<uint32_t>(wgpuAttrs.size());
+        vbls[vblCount].attributes = wgpuAttrs.data();
+        ++vblCount;
+    }
+    if (!wgpuInstanceAttrs.empty()) {
+        vbls[vblCount].arrayStride = _instanceStride;
+        vbls[vblCount].stepMode = WGPUVertexStepMode_Instance;
+        vbls[vblCount].attributeCount = static_cast<uint32_t>(wgpuInstanceAttrs.size());
+        vbls[vblCount].attributes = wgpuInstanceAttrs.data();
+        ++vblCount;
     }
 
     // Depth stencil (optional)
@@ -163,8 +179,8 @@ GpuPipeline GpuPipelineBuilder::build() {
     pd.layout = pipelineLayout;
     pd.vertex.module = shader;
     pd.vertex.entryPoint = { "vs", WGPU_STRLEN };
-    pd.vertex.bufferCount = _vertexAttrs.empty() ? 0u : 1u;
-    pd.vertex.buffers = _vertexAttrs.empty() ? nullptr : &vbl;
+    pd.vertex.bufferCount = vblCount;
+    pd.vertex.buffers = vblCount ? vbls : nullptr;
     pd.fragment = _depthOnlyPipeline ? nullptr : &frag;
     pd.depthStencil = _depthEnabled ? &depthStencil : nullptr;
     pd.primitive.topology = WGPUPrimitiveTopology_TriangleList;

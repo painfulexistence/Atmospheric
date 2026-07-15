@@ -61,6 +61,12 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/ui
             ${EM_PRELOAD_STAGING_DIR}/ui
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/Engine/default_assets/textures
+            ${EM_PRELOAD_STAGING_DIR}/textures
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets/scripts
+            ${EM_PRELOAD_STAGING_DIR}/scripts
         COMMENT "Staging Emscripten preload assets (shaders, scenes, ui) for ${TARGET_NAME}"
     )
     add_dependencies(${TARGET_NAME} stage_${TARGET_NAME}_em_preload)

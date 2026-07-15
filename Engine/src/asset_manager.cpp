@@ -7,12 +7,17 @@
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_builder.hpp"
+#include "prefab.hpp"
 #include "shader.hpp"
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <glm/gtc/matrix_transform.hpp>
 #include <nlohmann/json.hpp>
 #include <unordered_set>
 
@@ -417,7 +422,16 @@ void AssetManager::LoadDefaultShaders() {
           { "microvoxel", { .vert = "assets/shaders/microvoxel_box.vert", .frag = "assets/shaders/microvoxel.frag" } },
           { "microvoxel_gi",
             { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/microvoxel_gi.frag" } },
+          { "microvoxel_atrous",
+            { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/microvoxel_atrous.frag" } },
+          { "screen_gtao", { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/screen_gtao.frag" } },
+          { "screen_ssgi", { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/screen_ssgi.frag" } },
+          { "screen_ssgi_atrous",
+            { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/screen_ssgi_atrous.frag" } },
+          { "screen_ssgi_composite",
+            { .vert = "assets/shaders/microvoxel.vert", .frag = "assets/shaders/screen_ssgi_composite.frag" } },
           { "water", { .vert = "assets/shaders/water.vert", .frag = "assets/shaders/water.frag" } },
+          { "grass", { .vert = "assets/shaders/grass.vert", .frag = "assets/shaders/grass.frag" } },
           { "portal", { .vert = "assets/shaders/portal.vert", .frag = "assets/shaders/portal.frag" } },
           // Vertex Animation Texture playback: vat.vert displaces vertices from
           // the animation texture, then reuses pbr.frag for identical shading.
@@ -498,30 +512,48 @@ void AssetManager::ReloadShaders() {
 
 void AssetManager::LoadMaterials(const std::vector<MaterialProps>& materialDefs) {
     for (const auto& props : materialDefs) {
-        materials.push_back(std::make_unique<Material>(props));
+        // Default shading model is PBR (metallic/roughness).
+        materials.push_back(std::make_unique<PBRMaterial>(props));
     }
 }
 
-Material* AssetManager::CreateMaterial(const std::string& name, const MaterialProps& props) {
+PBRMaterial* AssetManager::CreateMaterial(const std::string& name, const MaterialProps& props) {
     // Check if already exists
     auto it = _materialCache.find(name);
     if (it != _materialCache.end()) {
         Log::Info("Material '{}' already exists, returning existing material", name);
-        return GetMaterialByID(it->second);
+        // Names are unique across kinds, so a hit under this name is a
+        // PBRMaterial created by an earlier CreateMaterial call; a non-PBR
+        // material of the same name would be a caller bug — surface it as null.
+        return dynamic_cast<PBRMaterial*>(GetMaterialByID(it->second));
     }
 
-    auto material = std::make_unique<Material>(props);
+    // Default shading model is PBR — importers and JSON scenes get a PBRMaterial.
+    auto material = std::make_unique<PBRMaterial>(props);
     auto* ptr = material.get();
     materials.push_back(std::move(material));
     _materialCache[name] = _nextMaterialID++;
     return ptr;
 }
 
-Material* AssetManager::CreateMaterial(const MaterialProps& props) {
-    auto material = std::make_unique<Material>(props);
+PBRMaterial* AssetManager::CreateMaterial(const MaterialProps& props) {
+    auto material = std::make_unique<PBRMaterial>(props);
     auto* ptr = material.get();
     materials.push_back(std::move(material));
     _materialCache["unnamed_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return ptr;
+}
+
+BlinnPhongMaterial* AssetManager::CreateBlinnPhongMaterial(const std::string& name, const MaterialProps& props) {
+    auto it = _materialCache.find(name);
+    if (it != _materialCache.end()) {
+        Log::Info("Material '{}' already exists, returning existing material", name);
+        return dynamic_cast<BlinnPhongMaterial*>(GetMaterialByID(it->second));
+    }
+    auto material = std::make_unique<BlinnPhongMaterial>(props);
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
+    _materialCache[name] = _nextMaterialID++;
     return ptr;
 }
 
@@ -546,6 +578,14 @@ TerrainMaterial* AssetManager::CreateTerrainMaterial() {
     auto* ptr = material.get();
     materials.push_back(std::move(material));
     _materialCache["terrain_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return ptr;
+}
+
+GrassMaterial* AssetManager::CreateGrassMaterial() {
+    auto material = std::make_unique<GrassMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
+    _materialCache["grass_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
     return ptr;
 }
 
@@ -991,7 +1031,7 @@ TextureHandle AssetManager::LoadHDR(const std::string& path) {
         id, static_cast<uint32_t>(w), static_cast<uint32_t>(h), static_cast<size_t>(w) * h * 8
     };
     textures.push_back(id);
-    ENGINE_LOG("LoadHDR '{}': {}x{} ({})", path, w, h, fromEXR ? "exr" : "hdr");
+    Log::Info("LoadHDR '{}': {}x{} ({})", path, w, h, fromEXR ? "exr" : "hdr");
     return TextureHandle(id);
 }
 
@@ -1362,6 +1402,10 @@ MeshHandle AssetManager::GetMesh(const std::string& name) const {
     throw std::runtime_error(fmt::format("Mesh '{}' not found", name));
 }
 
+bool AssetManager::HasMesh(const std::string& name) const {
+    return _meshCache.find(name) != _meshCache.end();
+}
+
 Mesh* AssetManager::GetMeshPtr(MeshHandle handle) const {
     if (!handle.IsValid()) return nullptr;
     auto it = _meshByID.find(handle.id);
@@ -1627,6 +1671,118 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     return CreateMesh(path, mesh);
 }
 
+// TrenchBroom / Quake ".map" brush loader — a thin wrapper over the pure-CPU
+// ImportMapPrefab (prefab.cpp). It flattens every imported brush entity's
+// mesh into one 16-bit-indexed Mesh for the single-handle API. Declaring a
+// "prefab" entity in a scene instead preserves the per-entity node tree (see
+// Application::Instantiate).
+MeshHandle AssetManager::LoadTBMap(const std::string& path, float scale) {
+    Prefab model = ImportMapPrefab(path, scale);
+    if (!model.ok) {
+        ConsoleSubsystem::Get()->Warn(fmt::format("LoadTBMap: no brush geometry found in '{}'", path));
+        return MeshHandle{};
+    }
+
+    std::vector<Vertex> allVerts;
+    std::vector<uint16_t> allIndices;
+    bool truncated = false;
+    for (const auto& md : model.meshes) {
+        if (allVerts.size() + md.vertices.size() > 65535) {
+            truncated = true;
+            break;
+        }
+        const auto base = static_cast<uint16_t>(allVerts.size());
+        allVerts.insert(allVerts.end(), md.vertices.begin(), md.vertices.end());
+        for (uint16_t idx : md.indices)
+            allIndices.push_back(static_cast<uint16_t>(base + idx));
+    }
+
+    if (truncated)
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format("LoadTBMap '{}': geometry exceeds the 16-bit index limit; remaining brushes skipped.", path)
+        );
+    if (allVerts.empty()) {
+        ConsoleSubsystem::Get()->Warn(fmt::format("LoadTBMap: no brush geometry found in '{}'", path));
+        return MeshHandle{};
+    }
+
+    auto* mesh = new Mesh(MeshType::PRIM);
+    mesh->Initialize(allVerts, allIndices);
+
+    glm::vec3 lo = allVerts[0].position, hi = allVerts[0].position;
+    for (const auto& v : allVerts) {
+        lo = glm::min(lo, v.position);
+        hi = glm::max(hi, v.position);
+    }
+    mesh->SetBoundingBox(
+        { glm::vec3(lo.x, lo.y, lo.z),
+          glm::vec3(hi.x, lo.y, lo.z),
+          glm::vec3(lo.x, hi.y, lo.z),
+          glm::vec3(hi.x, hi.y, lo.z),
+          glm::vec3(lo.x, lo.y, hi.z),
+          glm::vec3(hi.x, lo.y, hi.z),
+          glm::vec3(lo.x, hi.y, hi.z),
+          glm::vec3(hi.x, hi.y, hi.z) }
+    );
+
+    Log::Info(
+        "LoadTBMap '{}': {} meshes, {} verts, {} indices", path, model.meshes.size(), allVerts.size(), allIndices.size()
+    );
+    return CreateMesh(path, mesh);
+}
+
+// USD loader — thin wrapper over ImportUSDPrefab (prefab_usd.cpp): flattens
+// every imported mesh into one 16-bit Mesh for the single-handle API. Declaring
+// a "prefab" entity in a scene instead preserves the node tree and materials.
+MeshHandle AssetManager::LoadUSD(const std::string& path) {
+    Prefab model = ImportUSDPrefab(path);
+    if (!model.ok) {
+        ConsoleSubsystem::Get()->Warn(fmt::format("LoadUSD: no mesh geometry found in '{}'", path));
+        return MeshHandle{};
+    }
+
+    std::vector<Vertex> allVerts;
+    std::vector<uint16_t> allIndices;
+    bool truncated = false;
+    for (const auto& md : model.meshes) {
+        if (allVerts.size() + md.vertices.size() > 65535) {
+            truncated = true;
+            break;
+        }
+        const auto base = static_cast<uint16_t>(allVerts.size());
+        allVerts.insert(allVerts.end(), md.vertices.begin(), md.vertices.end());
+        for (uint16_t idx : md.indices)
+            allIndices.push_back(static_cast<uint16_t>(base + idx));
+    }
+    if (truncated)
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format("LoadUSD '{}': geometry exceeds the 16-bit index limit; remaining meshes skipped.", path)
+        );
+    if (allVerts.empty()) return MeshHandle{};
+
+    auto* mesh = new Mesh(MeshType::PRIM);
+    mesh->Initialize(allVerts, allIndices);
+    glm::vec3 lo = allVerts[0].position, hi = allVerts[0].position;
+    for (const auto& v : allVerts) {
+        lo = glm::min(lo, v.position);
+        hi = glm::max(hi, v.position);
+    }
+    mesh->SetBoundingBox(
+        { glm::vec3(lo.x, lo.y, lo.z),
+          glm::vec3(hi.x, lo.y, lo.z),
+          glm::vec3(lo.x, hi.y, lo.z),
+          glm::vec3(hi.x, hi.y, lo.z),
+          glm::vec3(lo.x, lo.y, hi.z),
+          glm::vec3(hi.x, lo.y, hi.z),
+          glm::vec3(lo.x, hi.y, hi.z),
+          glm::vec3(hi.x, hi.y, hi.z) }
+    );
+    Log::Info(
+        "LoadUSD '{}': {} meshes, {} verts, {} indices", path, model.meshes.size(), allVerts.size(), allIndices.size()
+    );
+    return CreateMesh(path, mesh);
+}
+
 // Uploads the [0,1] float grid at 16-bit precision — 8-bit quantization shows
 // visible terracing on high-fidelity heightmaps (WorldCreator/Gaea exports).
 // Desktop GL uses normalized GL_R16; GLES/WebGL2 has no normalized R16, so it
@@ -1703,7 +1859,7 @@ void AssetManager::UpdateHeightmapTexture(TextureHandle handle, const std::vecto
 }
 
 TextureHandle AssetManager::CreateOrUpdateTextureRGBA8(
-    const std::string& name, const unsigned char* data, int width, int height
+    const std::string& name, const unsigned char* data, int width, int height, bool tiled
 ) {
     const size_t bytes = static_cast<size_t>(width) * height * 4;
     auto it = _textureCache.find(name);
@@ -1735,10 +1891,20 @@ TextureHandle AssetManager::CreateOrUpdateTextureRGBA8(
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     // Full re-specification: handles resolution changes as well as data updates.
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if (tiled) {
+        // Tiled detail layer: repeat wrap + mip chain, or high-frequency
+        // tiling shimmers at any distance.
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    } else {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
     glBindTexture(GL_TEXTURE_2D, 0);
 
     _textureCache[name] = { texID, static_cast<uint32_t>(width), static_cast<uint32_t>(height), bytes };

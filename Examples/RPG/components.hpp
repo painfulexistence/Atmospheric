@@ -95,12 +95,12 @@ struct EnemyAICallbacks {
 // Aggro detection, movement, animation, and battle trigger for a single enemy.
 class EnemyAIComponent : public Component {
     Enemy* _data;
-    SpriteAnimator* _anim;
+    FlipbookComponent* _anim;
     int _idx;
     EnemyAICallbacks _cb;
 
 public:
-    EnemyAIComponent(GameObject* go, Enemy* data, SpriteAnimator* anim, int idx, EnemyAICallbacks cbs)
+    EnemyAIComponent(GameObject* go, Enemy* data, FlipbookComponent* anim, int idx, EnemyAICallbacks cbs)
       : _data(data), _anim(anim), _idx(idx), _cb(std::move(cbs)) {
     }
 
@@ -129,13 +129,14 @@ public:
                 && !_cb.isSolid(_data->x, newY + _data->h - 1)
                 && !_cb.isSolid(_data->x + _data->w - 1, _data->y + _data->h - 1))
                 _data->y = newY;
-
-            _anim->play("walk");
         } else {
             _data->aggro = false;
-            _anim->play("idle");
         }
-        _anim->update(dt);
+
+        // Switch clips only on a state change — the AI decides when, the engine
+        // plays it. Frame advance is driven centrally by AnimationSubsystem.
+        const char* wantClip = _data->aggro ? "walk" : "idle";
+        if (_anim->GetCurrentClip() != wantClip) _anim->Play(wantClip);
 
         if (AABBOverlaps(_cb.getPlayerAABB(), _data->aabb())) {
             _cb.onContact(_idx);
@@ -153,7 +154,7 @@ public:
 // StartBattle transitions the game mode; EndBattle (private) returns to explore.
 class BattleSystemComponent : public Component {
     Player* _player;
-    SpriteAnimator* _playerAnim;
+    FlipbookComponent* _playerAnim;
     std::vector<Enemy>* _enemies;
     GameMode* _mode;
     float* _transition;
@@ -170,7 +171,7 @@ public:
     BattleSystemComponent(
         GameObject* go,
         Player* player,
-        SpriteAnimator* playerAnim,
+        FlipbookComponent* playerAnim,
         std::vector<Enemy>* enemies,
         GameMode* mode,
         float* transition,
@@ -484,10 +485,9 @@ private:
             DrawHPBar(gfx, ex - 50, ey - sz * 0.5f - 14, 100, 8, es.hp, es.maxHp, glm::vec4(0.9f, 0.2f, 0.2f, 1));
         }
         {
-            auto [fc, fr] = _playerAnim->currentFrame();
+            glm::vec2 uv0{ 0, 0 }, uv1{ 1.0f / CCOLS, 1.0f / CROWS };
+            _playerAnim->GetCurrentUV(uv0, uv1);
             float px = W * 0.25f, py = H * 0.42f, sz = 72;
-            glm::vec2 uv0{ static_cast<float>(fc) / CCOLS, static_cast<float>(fr) / CROWS };
-            glm::vec2 uv1{ static_cast<float>(fc + 1) / CCOLS, static_cast<float>(fr + 1) / CROWS };
             gfx->DrawSprite2D(px - sz * 0.5f, py - sz * 0.5f, sz, sz, _playerTex, uv0, uv1);
         }
         DrawBattleStats(gfx, W, H);

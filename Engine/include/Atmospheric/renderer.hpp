@@ -33,11 +33,27 @@ class ShaderProgram;
 class Renderer;
 class CameraComponent;
 class VoxelVolumeComponent;
+class VoxelWorld;
 
 struct RenderCommand {
     MeshHandle mesh;
-    // Material* material; // TODO: currently material is coupled with mesh
+    // Effective material for this draw. INVALID means "use the mesh's own
+    // material" (mesh->GetMaterial()) — the historical behavior — so submitters
+    // that don't override the material can leave it default. A valid handle
+    // (MeshRendererComponent's per-instance override, or a MeshInstancerComponent's shared
+    // material) now wins on the *main* render path, not only the ImGui/fallback
+    // path: sort key, batch key, and every draw loop resolve this field.
+    MaterialHandle material;
+    // Single-instance draws: the model matrix (used for depth sort and, when no
+    // instance span is attached, as the one instance). Instanced draws: the
+    // cloud anchor, used only for the depth sort key.
     glm::mat4 transform;
+    // Optional instance span (a MeshInstancerComponent's whole cloud). Non-null →
+    // BuildBatches appends all `instanceCount` matrices to the batch instead of
+    // the lone `transform`. The pointed-to memory is owned by the submitter and
+    // must outlive the frame (same contract as the per-frame command queue).
+    const InstanceData* instances = nullptr;
+    uint32_t instanceCount = 0;
 };
 
 // Camera/target override consumed by the scene passes (Skybox, Sun,
@@ -212,6 +228,56 @@ public:
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 };
 
+// Screen-space GI/AO over the resolved opaque scene. Reconstructs view-space
+// position and normal from the resolved depth buffer (no G-buffer needed — the
+// world's voxel faces are planar, so depth-derived normals are clean), so it
+// works for any geometry. Runs right after MSAAResolvePass, before transparents.
+// Increment 1 is GTAO (horizon AO composited as color*AO); SSGI follows. Inert
+// unless a mode is enabled. GL path only; exposed in GraphicsSubsystem panel.
+class ScreenSpaceGIPass : public RenderPass {
+public:
+    void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
+
+    bool gtaoEnabled = false;
+    float gtaoStrength = 1.0f;
+    float gtaoRadius = 0.5f;// view-space metres
+
+    // SSGI: one-bounce screen-space GI (hemisphere rays marched against depth,
+    // gathering bounce light from the resolved color), depth-aware blurred and
+    // added to the scene. Noisy vs VoxelGI but full-resolution and needs no grid.
+    bool ssgiEnabled = false;
+    float ssgiStrength = 1.0f;
+    float ssgiRadius = 4.0f;// view-space march distance (metres)
+    float ssgiThickness = 0.5f;// depth gap counted as a hit (metres)
+    float ssgiBlend = 0.9f;// temporal history weight (0 = no accumulation)
+    // à-trous spatial denoise (SVGF-lite): edge-stopped by tangent-plane
+    // distance + luma. 0 iterations = temporal only.
+    int ssgiAtrousIters = 3;
+    float ssgiSigmaDepth = 0.1f;// tangent-plane distance sigma (metres)
+    float ssgiSigmaLuma = 4.0f;
+    bool ssgiHalfRes = true;// trace/denoise at half res, bilinear-upsample (≈4x cheaper)
+
+private:
+    void _ensureScratch(int w, int h);
+    void _ensureSSGI(int w, int h);
+    GLuint _scratchFBO = 0;
+    GLuint _scratchTex = 0;
+    int _scratchW = 0, _scratchH = 0;
+    // SSGI temporal ping-pong (rgb = accumulated indirect, a = camera distance
+    // for history validation) + previous-frame reprojection state.
+    GLuint _ssgiHist[2] = { 0, 0 };
+    GLuint _ssgiHistFBO[2] = { 0, 0 };
+    // à-trous ping-pong (display-only; never fed back into history).
+    GLuint _atrousTex[2] = { 0, 0 };
+    GLuint _atrousFBO[2] = { 0, 0 };
+    int _ssgiW = 0, _ssgiH = 0;
+    int _ssgiCur = 0;
+    int _ssgiFrame = 0;// varies the per-frame sample rotation for temporal integration
+    glm::mat4 _ssgiPrevVP = glm::mat4(1.0f);
+    glm::vec3 _ssgiPrevEye = glm::vec3(0.0f);
+    bool _ssgiPrevValid = false;
+};
+
 class WorldCanvasPass : public RenderPass {
 public:
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
@@ -323,6 +389,33 @@ public:
 #endif
     void Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc = nullptr) override;
 
+    // Ambient occlusion for the voxel world (both default off, GL path only,
+    // stackable). Corner AO is the per-vertex value baked by the greedy mesher
+    // (crisp block-contact darkening); VXAO cone-traces the VoxelConeGI grid's
+    // opacity for broad concavity (caves, pits) the corner term can't see — it
+    // reuses the same grid VoxelGI builds (built on demand when vxaoEnabled even
+    // if GI is off). Exposed in the GI panel (GraphicsSubsystem::DrawImGui).
+    bool aoEnabled = false;// corner AO (baked)
+    float aoStrength = 1.0f;
+    bool vxaoEnabled = false;// voxel cone-traced AO
+    float vxaoStrength = 1.0f;
+
+    // Global illumination mode for the voxel world. VoxelGI cone-traces the
+    // world's VoxelConeGI radiance grid (world-space, forward-friendly); SSGI is
+    // screen-space (reserved — next increment). Off leaves flat ambient. Exposed
+    // in the GI panel (GraphicsSubsystem::DrawImGui). GL path only.
+    enum class GIMode { Off = 0, SSGI = 1, VoxelGI = 2 };
+    GIMode giMode = GIMode::Off;
+    float giStrength = 1.0f;// scales the indirect contribution
+    int giVoxelDim = 64;// VCT cascade resolution (== world extent in metres)
+    int giInjectSlabs = 4;// VCT z-slabs injected per frame (lower = smoother, no hitch)
+
+    // Worlds whose VoxelConeGI grid this pass drives/binds for VoxelGI. Worlds
+    // register themselves (VoxelWorldComponent) so the pass can reach the raw
+    // voxels for CPU injection without owning the scene graph.
+    void RegisterWorld(VoxelWorld* w);
+    void UnregisterWorld(VoxelWorld* w);
+
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
 private:
     void _initGPU(
@@ -344,6 +437,12 @@ private:
     WGPUBuffer _drawUniformBuf = nullptr;
     uint32_t _drawSlotCapacity = 0;
 #endif
+
+private:
+    std::vector<VoxelWorld*> _giWorlds;
+    // 1x1x1 3D texture bound to u_giRadiance whenever VoxelGI is off or no grid
+    // is ready, so strict drivers (macOS) always see a valid sampler3D binding.
+    GLuint _giFallbackTex = 0;
 };
 
 // Micro voxel raymarch (experimental): a fullscreen two-level DDA over a
@@ -384,6 +483,27 @@ public:
     // after the bilinear-filtered composite; temporal accumulation hides the
     // rest. 1.0 = full res.
     float giResolutionScale = 0.5f;
+    // Spatial GI denoiser (SVGF-lite): à-trous edge-stopping passes over the
+    // temporally-accumulated GI, so 1 spp looks clean and disocclusion / post-
+    // edit noise clears in one frame instead of over the temporal window. 0
+    // iterations disables it (raw temporal accumulation). Sigmas tune the
+    // normal / depth / luminance edge-stopping.
+    int giAtrousIterations = 3;
+    float giSigmaDepth = 0.5f;
+    float giSigmaNormal = 64.0f;
+    float giSigmaLuma = 8.0f;
+    // Split-screen GI compare (observation aid): <0 disables; else the screen-x
+    // split in [0,1] where the left half shows the raw temporal GI and the right
+    // half the à-trous-denoised GI, so the denoiser's effect is visible in one
+    // frame. The example toggles it (0.5) with B.
+    float giSplitCompare = -1.0f;
+
+    // Cross-volume GI: the GI bounce ray brute-force tests every registered
+    // volume (up to kMaxGiVolumes) and keeps the nearest hit, so light bleeds
+    // between volumes (A's glowstone lights B) and every volume's pixels get GI.
+    // When off, GI traces only the pixel's own volume. Brute-force replaced the
+    // coarse merged-global-grid approach, which lost too much detail.
+    bool giCrossVolume = true;
     int debugMode = 0;// 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
     bool shadowEnabled = true;
 
@@ -428,6 +548,12 @@ private:
     // distance for history validation)
     GLuint _giTexGL[2] = { 0, 0 };
     GLuint _giFBOGL[2] = { 0, 0 };
+    // Primary-hit normal from the GI trace (MRT attachment 1, shared by both GI
+    // FBOs) and the à-trous denoiser ping-pong targets — all at GI resolution.
+    GLuint _giNormalTexGL = 0;
+    GLuint _atrousTexGL[2] = { 0, 0 };
+    GLuint _atrousFBOGL[2] = { 0, 0 };
+
     int _giW = 0, _giH = 0;
     int _giCur = 0;
     int _giFrame = 0;
@@ -900,6 +1026,17 @@ public:
     // blurred (diffuse / roughest specular) sample. GL clamps textureLod beyond
     // the real mip count, so a generous default is safe for any map size.
     float environmentMaxLod = 10.0f;
+
+    // ── IBL debug/tuning knobs (PBR ComputeIBL) ──────────────────────────────
+    // The image-based lighting term has no strength control by default, so a
+    // strongly-tinted environment map (e.g. an aquarium HDRI) washes every
+    // surface toward its colour. These scale the diffuse (albedo-tinted
+    // irradiance) and specular (reflection) IBL contributions independently;
+    // iblEnabled forces the term off without unloading the env map (the skybox
+    // still renders). All live-editable from the "IBL Debug" ImGui panel.
+    bool iblEnabled = true;
+    float iblDiffuseStrength = 1.0f;// scales the albedo-tinted diffuse irradiance
+    float iblSpecularStrength = 1.0f;// scales the mirror/reflection term
 
     // Non-null only while PlanarReflectionPass drives the scene passes with a
     // mirrored camera; passes fall back to the main camera + sceneRT when null.

@@ -31,6 +31,8 @@
 #include "client_net.hpp"
 #include "sim_common.hpp"
 #include "vat_enemy.hpp"
+#include <Atmospheric/net_debug_controls.hpp>
+#include <Atmospheric/net_hud.hpp>
 
 #include <chrono>
 #include <cmath>
@@ -96,6 +98,11 @@ public:
         if (inp->IsKeyPressed(Key::F)) _pendingRocket = true;
         if (inp->IsKeyPressed(Key::Q)) _pendingDash = true;
 
+        // Dial the inbound link emulator live (1/2 latency, 3/4 jitter, 5/6
+        // loss, 0 reset) so the netgraph's prediction/reconciliation/RTT lines
+        // respond on screen — works even in --local loopback play.
+        DialConditioner(inp, _net->Conditioner());
+
         const glm::vec3 vd = _cam->GetEyeDirection();
         const float yaw = std::atan2(vd.x, -vd.z);
         const float pitch = std::asin(sim::Clamp(vd.y, -1.0f, 1.0f));
@@ -113,7 +120,7 @@ public:
             const bool dash = _pendingDash;
             const bool fr = _pendingRail, fk = _pendingRocket;
             _pendingRail = _pendingRocket = _pendingDash = false;
-            _net->SubmitInput(_tick++, forward, strafe, yaw, pitch, jump, dash, shield, fr, fk);
+            _net->SubmitInput(nowMs, _tick++, forward, strafe, yaw, pitch, jump, dash, shield, fr, fk);
 
             // Railgun is hitscan (instant) — give it a visible beam so it reads
             // differently from the rocket's slow projectile.
@@ -165,18 +172,10 @@ class DeathmatchGame : public Application {
         GoScene("main", [this] { OnLoad(); });
     }
 
-    Material* MakeMaterial(const std::string& name, glm::vec3 diffuse) {
+    PBRMaterial* MakeMaterial(const std::string& name, glm::vec3 diffuse) {
         MaterialProps props;
         props.diffuse = diffuse;
         return AssetManager::Get().CreateMaterial(name, props);
-    }
-
-    // Solid 1x1 texture — used to pin a floor/prop to a specific roughness or
-    // metalness (pbr.frag reads those from maps, not scalars).
-    TextureHandle MakeSolidTexture(glm::vec3 rgb) {
-        auto b = [](float x) { return static_cast<unsigned char>(std::round(glm::clamp(x, 0.0f, 1.0f) * 255.0f)); };
-        unsigned char px[3] = { b(rgb.r), b(rgb.g), b(rgb.b) };
-        return AssetManager::Get().CreateTextureFromImage(std::make_shared<Image>(1, 1, 3, px));
     }
 
     // Blueprint-style grid baked into a single 0..1-UV texture: gives the floor
@@ -200,20 +199,11 @@ class DeathmatchGame : public Application {
         return AssetManager::Get().CreateTextureFromImage(std::make_shared<Image>(S, S, 3, px.data()));
     }
 
-    // Decorative box instance (material comes from the shared mesh). Scale per
-    // instance like MakeBox, so one cube mesh spawns pillars and landmarks.
-    GameObject* MakeProp(glm::vec3 center, glm::vec3 size, MeshHandle mesh) {
-        auto* go = CreateGameObject(center);
-        go->SetScale(size);
-        go->AddComponent<MeshComponent>(mesh);
-        return go;
-    }
-
     GameObject* MakeBox(const sim::Box& b, MeshHandle cube) {
         auto* go =
             CreateGameObject(glm::vec3((b.minX + b.maxX) * 0.5f, (b.minY + b.maxY) * 0.5f, (b.minZ + b.maxZ) * 0.5f));
         go->SetScale(glm::vec3(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ));
-        go->AddComponent<MeshComponent>(cube);
+        go->AddComponent<MeshRendererComponent>(cube);
         return go;
     }
 
@@ -228,6 +218,12 @@ class DeathmatchGame : public Application {
             if (env.IsValid()) GraphicsSubsystem::Get()->renderer->environmentMap = env;
         }
 
+        // Default post-process look for this example: bloom + chromatic
+        // aberration on (both toggleable live in the Graphics ImGui panel).
+        auto* renderer = GraphicsSubsystem::Get()->renderer.get();
+        if (auto* bloom = renderer->GetPass<BloomPass>()) bloom->enabled = true;
+        if (auto* pp = renderer->GetPass<PostProcessPass>()) pp->caEnabled = true;
+
         // Low-poly greybox palette (concrete grey + red accents).
         MakeMaterial("dm_box_mat", glm::vec3(0.48f, 0.48f, 0.52f));
         MakeMaterial("dm_enemy_mat", glm::vec3(0.80f, 0.18f, 0.16f));
@@ -237,27 +233,46 @@ class DeathmatchGame : public Application {
 
         // ── Ground ──────────────────────────────────────────────────────────
         // Play floor gets a blueprint grid so self-motion is legible (a flat
-        // matte plane reads as standing still). Kept matte — solid high
-        // roughness / zero metalness — so IBL tints it instead of mirroring the
-        // sky; diffuse=white lets the grid texture show through unmodulated.
-        Material* floorMat = MakeMaterial("dm_floor_mat", glm::vec3(1.0f));
+        // matte plane reads as standing still). Kept matte — high roughness /
+        // zero metalness via the PBRMaterial factors — so IBL tints it instead
+        // of mirroring the sky; diffuse=white lets the grid texture show
+        // through unmodulated.
+        PBRMaterial* floorMat = MakeMaterial("dm_floor_mat", glm::vec3(1.0f));
         floorMat->baseMap = MakeGridTexture(24, glm::vec3(0.26f, 0.28f, 0.32f), glm::vec3(0.50f, 0.54f, 0.62f));
-        floorMat->roughnessMap = MakeSolidTexture(glm::vec3(0.85f));
-        floorMat->metallicMap = MakeSolidTexture(glm::vec3(0.0f));
+        floorMat->roughnessFactor = 0.85f;
+        floorMat->metallicFactor = 0.0f;
         auto floorMesh = am.CreatePlaneMesh("dm_floor", 2.0f * sim::kArenaHalf, 2.0f * sim::kArenaHalf);
         am.GetMeshPtr(floorMesh)->SetMaterial(am.GetMaterialHandle("dm_floor_mat"));
-        CreateGameObject(glm::vec3(0.0f))->AddComponent<MeshComponent>(floorMesh);
+        CreateGameObject(glm::vec3(0.0f))->AddComponent<MeshRendererComponent>(floorMesh);
 
-        // Surrounding plaza: a large, darker plane just below the play floor,
-        // reaching out toward the HDRI horizon so objects sit on ground rather
-        // than floating over a 24x24 platform.
-        Material* groundMat = MakeMaterial("dm_ground_mat", glm::vec3(0.14f, 0.15f, 0.17f));
-        groundMat->roughnessMap = MakeSolidTexture(glm::vec3(0.9f));
-        groundMat->metallicMap = MakeSolidTexture(glm::vec3(0.0f));
-        const float groundSize = 16.0f * sim::kArenaHalf;// ~192 units
-        auto groundMesh = am.CreatePlaneMesh("dm_ground", groundSize, groundSize);
-        am.GetMeshPtr(groundMesh)->SetMaterial(am.GetMaterialHandle("dm_ground_mat"));
-        CreateGameObject(glm::vec3(0.0f, -0.02f, 0.0f))->AddComponent<MeshComponent>(groundMesh);
+        // The whole static environment shell — a walled "training yard" with a
+        // curb ring at the movement clamp, perimeter walls with pilasters and
+        // signal stripes, corner watchtowers, a gated south wall, a control-room
+        // deck, a quarter-pipe (Bezier patch), road barriers, crates, a shooting
+        // range, and distant skyline towers — is authored in
+        // assets/maps/arena.map and imported below. Its per-face texture names
+        // resolve to the palette materials created here (Instantiate looks each
+        // material up by name); its light entities become the arena's point
+        // lights. The ground reaches the HDRI horizon so objects sit on ground.
+        // PBR palette. roughness/metalness are what give the greybox a "finished"
+        // read: the PBRMaterial scalar factors drive both directly (no maps
+        // needed), and with the HDRI environment loaded above, metallic surfaces
+        // pick up real reflections. So the surfaces are deliberately contrasted —
+        // matte concrete vs. brushed metal trim vs. glossy dark glass — rather
+        // than flat same-roughness fills.
+        auto pbr = [&](const std::string& name, glm::vec3 rgb, float rough, float metal) {
+            PBRMaterial* m = MakeMaterial(name, rgb);
+            m->roughnessFactor = rough;
+            m->metallicFactor = metal;
+            return m;
+        };
+        pbr("dm_ground_mat", glm::vec3(0.13f, 0.14f, 0.16f), 0.92f, 0.0f);// matte asphalt apron
+        pbr("dm_wall_mat", glm::vec3(0.44f, 0.42f, 0.38f), 0.82f, 0.0f);// matte warm concrete
+        pbr("dm_pillar_mat", glm::vec3(0.42f, 0.44f, 0.49f), 0.75f, 0.08f);// props / quarter-pipe, faint sheen
+        pbr("dm_far_mat", glm::vec3(0.20f, 0.21f, 0.24f), 0.95f, 0.0f);// matte skyline silhouettes
+        pbr("dm_trim_mat", glm::vec3(0.26f, 0.27f, 0.30f), 0.40f, 0.75f);// brushed-metal caps/curbs/barriers (IBL)
+        pbr("dm_accent_mat", glm::vec3(0.72f, 0.15f, 0.12f), 0.50f, 0.10f);// painted signal-red
+        pbr("dm_window_mat", glm::vec3(0.04f, 0.06f, 0.09f), 0.05f, 0.60f);// dark glossy glass, sharp reflections
 
         auto cubeMesh = am.CreateCubeMesh("dm_cube", 1.0f);
         am.GetMeshPtr(cubeMesh)->SetMaterial(am.GetMaterialHandle("dm_box_mat"));
@@ -265,38 +280,28 @@ class DeathmatchGame : public Application {
         for (int i = 0; i < sim::kNumBoxes; i++)
             MakeBox(boxes[i], cubeMesh);
 
-        // ── Parallax structure ──────────────────────────────────────────────
-        // Perimeter pillars just outside the movement clamp (±kArenaHalf): they
-        // sweep across the view as the player strafes — the parallax/scale cue a
-        // flat arena lacks. Decorative only (beyond the play area, no collision).
-        MakeMaterial("dm_pillar_mat", glm::vec3(0.40f, 0.42f, 0.47f));
-        auto pillarMesh = am.CreateCubeMesh("dm_pillar", 1.0f);
-        am.GetMeshPtr(pillarMesh)->SetMaterial(am.GetMaterialHandle("dm_pillar_mat"));
-        const float ringR = sim::kArenaHalf + 1.5f;
-        const float pillarH = 4.5f;
-        for (int i = 0; i <= 4; i++) {
-            const float t = -sim::kArenaHalf + i * (sim::kArenaHalf * 0.5f);// -12..12 step 6
-            const glm::vec3 s(0.7f, pillarH, 0.7f);
-            MakeProp(glm::vec3(t, pillarH * 0.5f, ringR), s, pillarMesh);
-            MakeProp(glm::vec3(t, pillarH * 0.5f, -ringR), s, pillarMesh);
-            MakeProp(glm::vec3(ringR, pillarH * 0.5f, t), s, pillarMesh);
-            MakeProp(glm::vec3(-ringR, pillarH * 0.5f, t), s, pillarMesh);
+        // ── Static environment shell (imported from a TrenchBroom .map) ──────
+        // The whole training-yard set dressing (everything outside the
+        // ±kArenaHalf movement clamp) lives in arena.map. It is authored in
+        // engine units (loaded at scale 1.0) and instantiated as a node subtree;
+        // per-texture batches resolve to the materials created above, each brush
+        // contributes a static convex collider, and the map's light entities
+        // spawn LightComponents (the warm tower floods + cool deck wash). The
+        // grid play floor and gameplay boxes stay procedural — the authoritative
+        // sim owns box collision (see sim::Boxes()), and the floor needs its
+        // blueprint-grid UVs that a brush texture projection can't reproduce.
+        Prefab arena = ImportMapPrefab("assets/maps/arena.map", 1.0f);
+        if (arena.ok) {
+            Instantiate(arena, nullptr, "arena");
+            // Entity data survives import: the map's info_player_start entities
+            // are queryable for gameplay (the netcode sim dictates actual spawns
+            // here, so this just demonstrates the API).
+            const auto spawns = arena.FindEntities("info_player_start");
+            ConsoleSubsystem::Get()->Info(
+                "arena.map: " + std::to_string(spawns.size()) + " spawn point(s), "
+                + std::to_string(arena.colliders.size()) + " brush collider(s)"
+            );
         }
-
-        // Distant landmarks: a mid-to-far parallax layer between the pillars and
-        // the infinitely-far HDRI, so moving reads as covering distance.
-        MakeMaterial("dm_far_mat", glm::vec3(0.20f, 0.21f, 0.24f));
-        auto farMesh = am.CreateCubeMesh("dm_far", 1.0f);
-        am.GetMeshPtr(farMesh)->SetMaterial(am.GetMaterialHandle("dm_far_mat"));
-        struct Landmark {
-            float x, z, w, h;
-        };
-        const Landmark marks[] = {
-            { -38.0f, -30.0f, 8.0f, 14.0f }, { 34.0f, -42.0f, 10.0f, 18.0f }, { 44.0f, 26.0f, 7.0f, 11.0f },
-            { -30.0f, 46.0f, 9.0f, 16.0f },  { 2.0f, -58.0f, 14.0f, 22.0f },  { -54.0f, 10.0f, 6.0f, 10.0f },
-        };
-        for (const auto& m : marks)
-            MakeProp(glm::vec3(m.x, m.h * 0.5f, m.z), glm::vec3(m.w, m.h, m.w), farMesh);
 
         // Enemy avatar. In --local solo mode the "enemy" is the embedded
         // server's training bot (a practice dummy), so render it as an animated
@@ -315,30 +320,30 @@ class DeathmatchGame : public Application {
             auto* vat = static_cast<VATComponent*>(_enemyGO->AddComponent<VATComponent>(
                 enemyAsset.mesh, std::move(enemyAsset.clip), VATProps{ .speed = 1.0f }
             ));
-            // Preset metallic look: gunmetal-red base, full metalness. Back-face
-            // culling is the material default and the blob is convex, so there's
-            // nothing to override. Without image-based lighting a pure metal is
-            // mostly dark except the directional highlight, so a mid roughness
-            // spreads that highlight enough to read as metal — tune to taste.
+            // Preset metallic look: gunmetal-red base, full metalness (the
+            // base colour tints the reflection — F0 = albedo at metallic 1).
+            // Back-face culling is the material default and the blob is convex,
+            // so there's nothing to override. Without image-based lighting a
+            // pure metal is mostly dark except the directional highlight, so a
+            // mid roughness spreads that highlight enough to read as metal.
+            // VATMaterial is a PBRMaterial, so the scalar factors apply directly.
             if (auto* mat = vat->GetMaterial()) {
-                MetalMaps m = MakePresetMetalMaps(glm::vec3(0.59f, 0.16f, 0.15f), /*roughness*/ 0.4f);
-                mat->baseMap = m.base;
-                mat->metallicMap = m.metallic;
-                mat->roughnessMap = m.roughness;
-                mat->diffuse = glm::vec3(1.0f);// tint comes from baseMap now
+                mat->diffuse = glm::vec3(0.59f, 0.16f, 0.15f);
+                mat->metallicFactor = 1.0f;
+                mat->roughnessFactor = 0.4f;
             }
         } else {
             // Networked opponent (or a bake failure): plain capsule.
             auto capsuleMesh = am.CreateCapsuleMesh("dm_capsule", sim::kCapsuleRadius, sim::kCapsuleHeight);
             am.GetMeshPtr(capsuleMesh)->SetMaterial(am.GetMaterialHandle("dm_enemy_mat"));
-            _enemyGO->AddComponent<MeshComponent>(capsuleMesh);
+            _enemyGO->AddComponent<MeshRendererComponent>(capsuleMesh);
         }
 
         auto rocketMesh = am.CreateSphereMesh("dm_rocket", sim::kRocketRadius, 10);
         am.GetMeshPtr(rocketMesh)->SetMaterial(am.GetMaterialHandle("dm_rocket_mat"));
         for (int i = 0; i < kRocketPoolSize; i++) {
             auto* go = CreateGameObject(kParked);
-            go->AddComponent<MeshComponent>(rocketMesh);
+            go->AddComponent<MeshRendererComponent>(rocketMesh);
             _rocketPool.push_back(go);
         }
 
@@ -448,8 +453,48 @@ class DeathmatchGame : public Application {
             ws.height * 0.5f + 8,
             glm::vec4(0.9f, 0.9f, 0.9f, 0.8f)
         );
+        // Netgraph (top-right): RTT / loss / bandwidth / prediction error /
+        // pending inputs + the live conditioner knobs (keys 1-6, 0 to reset).
+        // Debug-only — it's a netcode diagnostic, not part of the shipped HUD.
+#ifndef NDEBUG
+        DrawNetHud(gfx, _fontID, _net.Metrics(), _net.Conditioner(), ws.width - 258.0f, 20.0f);
+#endif
     }
 };
+
+// Constructs and runs the game. Factored out so the web build can defer it
+// until after FileSystem::Prefetch has warmed the asset cache (see main).
+static void StartGame() {
+    static DeathmatchGame game(
+        { .windowTitle = "Deathmatch",
+          .windowWidth = 1280,
+          .windowHeight = 720,
+          .enableAudio = false,
+          .useDefaultTextures = true,
+          .useDefaultShaders = true }
+    );
+    game.Run();
+}
+
+#ifdef __EMSCRIPTEN__
+// Web has no synchronous disk: every file the game reads through
+// FileSystem::ReadSync must be fetched first. The default PBR textures are read
+// at graphics init (useDefaultTextures) and the arena.map + HDRI env are read
+// imperatively in OnLoad, so none of them go through the scene's own
+// CollectPrefetchPaths — fetch them here before StartGame. These files are
+// served (staged next to the .html), not baked into the .data bundle. NOTE: the
+// 2k HDRI is ~24 MB, so it dominates first-load time; it is IndexedDB-cached
+// after the first fetch. Swap in a smaller HDRI if that matters.
+static const std::vector<std::string> kWebAssets = {
+    "assets/textures/default_diff.ktx2",
+    "assets/textures/default_norm.ktx2",
+    "assets/textures/default_ao.ktx2",
+    "assets/textures/default_rough.ktx2",
+    "assets/textures/default_metallic.ktx2",
+    "assets/maps/arena.map",
+    "assets/textures/ushaka_sea_world_aquarium_2k.exr",
+};
+#endif
 
 int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; i++) {
@@ -461,14 +506,19 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    DeathmatchGame game(
-        { .windowTitle = "Deathmatch",
-          .windowWidth = 1280,
-          .windowHeight = 720,
-          .enableAudio = false,
-          .useDefaultTextures = true,
-          .useDefaultShaders = true }
-    );
-    game.Run();
+#ifdef __EMSCRIPTEN__
+    // The shell.html lobby launches Solo via callMain(["--local"]); its PvP mode
+    // is WIP (needs a WebTransport transport + server). Until that lands the web
+    // build is always single-player: an embedded authority reached over an
+    // in-process LoopbackDatagramSocket (see datagram_socket.hpp). Forced here
+    // too so a bare launch can never end up in a broken connect state.
+    gcli.local = true;
+    // Warm the cache, then start (async: main returns, the event loop keeps the
+    // page alive and fires StartGame once every fetch settles).
+    FileSystem::Get().Prefetch(kWebAssets, StartGame);
     return 0;
+#else
+    StartGame();
+    return 0;
+#endif
 }

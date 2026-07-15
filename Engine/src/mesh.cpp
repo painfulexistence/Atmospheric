@@ -261,3 +261,38 @@ template void Mesh::UpdateDynamic<Vertex>(const std::vector<Vertex>&, GLenum);
 template void Mesh::InitializeDynamic<DebugVertex>(GLenum);
 template void Mesh::InitializeDynamic<CanvasVertex>(GLenum);
 template void Mesh::InitializeDynamic<Vertex>(GLenum);
+// ── Instanced grass ──────────────────────────────────────────────────────────
+
+void Mesh::InitGrassInstanced() {
+    initialized = true;
+    vertCount = 9;// canonical blade: 2 quads + tip triangle
+
+    // Canonical blade in blade-local space: x = side in [-1,1], y = t in [0,1].
+    // The vertex shader turns (side, t) + the per-instance transform into the
+    // curved, wind-swayed world-space blade.
+    const glm::vec2 blade[9] = {
+        { -1.0f, 0.0f },  { 1.0f, 0.0f },  { -1.0f, 0.55f },// quad 1
+        { 1.0f, 0.0f },   { 1.0f, 0.55f }, { -1.0f, 0.55f },// quad 2
+        { -1.0f, 0.55f }, { 1.0f, 0.55f }, { 0.0f, 1.0f }// tip
+    };
+
+    // Both backends store the blade + instances in an RHI Grass-format
+    // RenderMesh (slot 0 = blade, per-instance data via UploadInstances), and
+    // Buffer::Draw emits the instanced draw. On WebGPU the data path is
+    // complete but drawing still needs a GRASS WGSL pipeline in the forward
+    // pass, so the WebGPU renderer skips GRASS meshes for now.
+    if (!_renderMeshHandle.IsValid()) {
+        _renderMeshHandle = GraphicsSubsystem::Get()->AllocateRenderMesh(VertexFormat::Grass, BufferUsage::Dynamic);
+    }
+    if (Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle)) {
+        renderMesh->Upload(blade, 9, sizeof(glm::vec2));
+    }
+}
+
+void Mesh::UploadGrassInstances(const std::vector<GrassInstance>& instances) {
+    instanceCount = instances.size();
+    if (!_renderMeshHandle.IsValid()) return;
+    if (Buffer* renderMesh = GraphicsSubsystem::Get()->GetRenderMesh(_renderMeshHandle)) {
+        renderMesh->UploadInstances(instances.data(), instances.size(), sizeof(GrassInstance));
+    }
+}

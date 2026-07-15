@@ -6,7 +6,7 @@
 #include "imgui.h"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "mesh_component.hpp"
+#include "mesh_renderer_component.hpp"
 #include <algorithm>
 
 TerrainMeshComponent::TerrainMeshComponent(
@@ -44,15 +44,15 @@ TerrainMeshComponent::TerrainMeshComponent(
     terrainMat->tessellationFactor = props.tessellationFactor;
     terrainMat->worldSize = props.worldSize;
 
-    // Copy base material props if caller provided a material.
+    // Copy base material props if caller provided a material. specular/ambient/
+    // shininess are Blinn-Phong-only and unused by terrain.frag, so only the
+    // shared surface inputs are copied; aoMap comes across when the source is a
+    // PBRMaterial (TerrainMaterial is itself a PBRMaterial).
     if (props.material) {
         terrainMat->diffuse = props.material->diffuse;
-        terrainMat->specular = props.material->specular;
-        terrainMat->ambient = props.material->ambient;
-        terrainMat->shininess = props.material->shininess;
         terrainMat->baseMap = props.material->baseMap;
         terrainMat->normalMap = props.material->normalMap;
-        terrainMat->aoMap = props.material->aoMap;
+        if (auto* pbr = dynamic_cast<PBRMaterial*>(props.material)) terrainMat->aoMap = pbr->aoMap;
     }
 
     // Load the optional high-fidelity surface maps (path fields win over any
@@ -81,7 +81,7 @@ TerrainMeshComponent::TerrainMeshComponent(
 
     _material = terrainMat;
     if (meshPtr) meshPtr->SetMaterial(am.GetMaterialHandle(terrainMat));
-    owner->AddComponent<MeshComponent>(_mesh);
+    owner->AddComponent<MeshRendererComponent>(_mesh);
 
     if (auto* noise = dynamic_cast<NoiseHeightField*>(_heightField.get())) _appliedParams = noise->Params();
 }

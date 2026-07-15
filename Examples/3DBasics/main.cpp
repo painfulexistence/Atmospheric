@@ -58,7 +58,7 @@ class HelloWorld : public Application {
         AssetManager::Get().GetMeshPtr(cubeMesh)->SetMaterial(AssetManager::Get().GetMaterialHandle("cubeMat"));
 
         auto* cube = CreateGameObject(glm::vec3(0.0f, 5.0f, 0.0f));
-        cube->AddComponent<MeshComponent>(cubeMesh);
+        cube->AddComponent<MeshRendererComponent>(cubeMesh);
         cube->AddComponent<RotatorComponent>(glm::vec3(0.0f, 0.5f, 1.0f));
         // Bob along Z; phase pi/2 makes the sine read as cosine (matches the
         // original cos(time) motion).

@@ -121,6 +121,24 @@ public:
     // writable tile cache) so they don't depend on the current working dir.
     [[nodiscard]] const std::string& BasePath() const;
 
+    // ── Virtual path helpers ────────────────────────────────────────────────────
+    // Pure string operations on the engine's virtual path space (forward-slash,
+    // relative to the asset root). Platform-agnostic — they do NOT prepend the
+    // native base path; use Exists / ReadSync / ResolvePath for actual I/O.
+    // Shared by the asset importers so relative-path handling (base dirs,
+    // referenced sub-assets) is identical across formats.
+    //
+    //   JoinPath("models/kitchen", "./assets/x.usd") -> "models/kitchen/assets/x.usd"
+    //   DirName ("models/kitchen/x.usd")             -> "models/kitchen"
+    //   BaseName("models/kitchen/x.usd")             -> "x.usd"
+    //
+    // JoinPath drops a leading "./" from either side and returns `rel` unchanged
+    // when `base` is empty or ".". DirName / BaseName split on the last '/' or
+    // '\\' and return "" / the whole string respectively when there is none.
+    [[nodiscard]] static std::string JoinPath(const std::string& base, const std::string& rel);
+    [[nodiscard]] static std::string DirName(const std::string& path);
+    [[nodiscard]] static std::string BaseName(const std::string& path);
+
     // Release a cached entry to reclaim memory (after ConsumeSync is preferred).
     void EvictCache(const std::string& path);
 
