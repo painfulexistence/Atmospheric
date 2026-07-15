@@ -22,8 +22,10 @@
 #include "json_deserializer.hpp"
 #include "light_component.hpp"
 #include "material.hpp"
-#include "mesh_component.hpp"
-#include "mesh_instancer.hpp"
+#include "mesh.hpp"
+#include "mesh_instancer_component.hpp"
+#include "mesh_renderer_component.hpp"
+#include "prefab.hpp"
 #include "rigidbody_2d_component.hpp"
 #include "rigidbody_component.hpp"
 #include "rmlui_manager.hpp"
@@ -589,7 +591,7 @@ void Application::RegisterComponents() {
         return new VoxelWorldComponent(o, seed);
     });
 
-    // ── MeshInstancer (one prototype mesh drawn N times) ──────────────────────
+    // ── MeshInstancerComponent (one prototype mesh drawn N times) ──────────────────────
     // Declares a cloud of instances of one mesh — the CPU-cheap way to place
     // thousands of props (trees, rocks, debris) without a GameObject each.
     // Prototype: "mesh": "<name>" references a mesh loaded elsewhere; otherwise
@@ -597,7 +599,7 @@ void Application::RegisterComponents() {
     // primitive. "material" is an optional shared override (falls back to the
     // prototype's own material). "instances" is a list of TRS entries in the
     // entity convention — position (world units), rotation (degrees), scale.
-    ComponentFactory::Register("MeshInstancer", [](GameObject* o, Deserializer& d) -> Component* {
+    ComponentFactory::Register("MeshInstancerComponent", [](GameObject* o, Deserializer& d) -> Component* {
         MeshInstancerProps p;
         auto& assets = AssetManager::Get();
 
@@ -645,7 +647,7 @@ void Application::RegisterComponents() {
             p.localTransforms.push_back(local);
         }
 
-        return new MeshInstancer(o, std::move(p));
+        return new MeshInstancerComponent(o, std::move(p));
     });
 
     // ── ShapeRendererComponent ────────────────────────────────────────────────
@@ -660,6 +662,87 @@ void Application::RegisterComponents() {
         d.Read("layer", layerStr, std::string("LAYER_WORLD_2D"));
         props.layer = ParseCanvasLayer(layerStr, CanvasLayer::LAYER_WORLD_2D);
         return new ShapeRendererComponent(o, props);
+    });
+
+    // ── MeshRendererComponent (3D drawable) ────────────────────────────────────────────
+    // Two ways to supply geometry:
+    //   "mesh": "<name>"        — reference a mesh already registered in code
+    //                             (AssetManager::CreateMesh/CreateCubeMesh/…).
+    //   "primitive": "cube"|"sphere"|"plane"|"capsule"|"disc" (+ params) —
+    //                             build one declaratively, deduped by its params
+    //                             so N identical entities share one Mesh.
+    // Optional "material": "<name>" overrides the mesh's own material (looked up
+    // by name; created via scene "materials" or in code). Primitive params:
+    // size (cube), radius/division (sphere), width/height (plane), radius/height
+    // (capsule), radius/segments (disc).
+    ComponentFactory::Register("MeshRendererComponent", [](GameObject* o, Deserializer& d) -> Component* {
+        auto& am = AssetManager::Get();
+        std::string primitive, meshName, materialName;
+        d.Read("primitive", primitive, std::string(""));
+        d.Read("mesh", meshName, std::string(""));
+        d.Read("material", materialName, std::string(""));
+
+        MeshHandle handle;
+        if (!primitive.empty()) {
+            float size, radius, width, height;
+            int division, segments;
+            d.Read("size", size, 1.0f);
+            d.Read("radius", radius, 0.5f);
+            d.Read("division", division, 18);
+            d.Read("segments", segments, 48);
+            d.Read("width", width, 1.0f);
+            d.Read("height", height, 1.0f);
+            // Cache key folds in every param so distinct sizes stay distinct and
+            // identical requests reuse one Mesh (CreateMesh does not dedup).
+            std::string key;
+            if (primitive == "cube")
+                key = fmt::format("prim:cube:{}", size);
+            else if (primitive == "sphere")
+                key = fmt::format("prim:sphere:{}:{}", radius, division);
+            else if (primitive == "plane")
+                key = fmt::format("prim:plane:{}:{}", width, height);
+            else if (primitive == "capsule")
+                key = fmt::format("prim:capsule:{}:{}", radius, height);
+            else if (primitive == "disc")
+                key = fmt::format("prim:disc:{}:{}", radius, segments);
+
+            if (key.empty()) {
+                spdlog::warn("MeshRendererComponent: unknown primitive '{}' on '{}'", primitive, o->GetName());
+                return nullptr;
+            }
+            if (am.HasMesh(key)) {
+                handle = am.GetMesh(key);
+            } else if (primitive == "cube")
+                handle = am.CreateCubeMesh(key, size);
+            else if (primitive == "sphere")
+                handle = am.CreateSphereMesh(key, radius, division);
+            else if (primitive == "plane")
+                handle = am.CreatePlaneMesh(key, width, height);
+            else if (primitive == "capsule")
+                handle = am.CreateCapsuleMesh(key, radius, height);
+            else if (primitive == "disc")
+                handle = am.CreateDiscMesh(key, radius, segments);
+        } else if (!meshName.empty()) {
+            if (am.HasMesh(meshName)) {
+                handle = am.GetMesh(meshName);
+            } else {
+                spdlog::warn("MeshRendererComponent: mesh '{}' not found for '{}'", meshName, o->GetName());
+                return nullptr;
+            }
+        } else {
+            spdlog::warn("MeshRendererComponent on '{}' has neither 'mesh' nor 'primitive'", o->GetName());
+            return nullptr;
+        }
+
+        auto* mr = new MeshRendererComponent(o, handle);
+        if (!materialName.empty()) {
+            MaterialHandle mat = am.GetMaterialHandle(materialName);
+            if (mat.IsValid())
+                mr->SetMaterial(mat);
+            else
+                spdlog::warn("MeshRendererComponent: material '{}' not found for '{}'", materialName, o->GetName());
+        }
+        return mr;
     });
 
     // ── Flipbook (frame-based sprite animation; replaces Animator2D) ────────────
@@ -992,6 +1075,23 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
         }
     }
 
+    // Declarative prefab reference: `"prefab": "assets/x.map"` imports the file
+    // as a Prefab (an entity subtree) and instantiates it under this entity,
+    // positioned by the entity's own transform. One field handles every format
+    // ImportPrefab dispatches (.map / .gltf / .usd). `prefabScale` only affects
+    // .map (Quake units); default matches AssetManager::LoadTBMap.
+    const std::string prefabSrc = entityVal.value("prefab", "");
+    if (!prefabSrc.empty()) {
+        const float prefabScale = entityVal.value("prefabScale", 1.0f / 32.0f);
+        Prefab prefab = ImportPrefab(prefabSrc, prefabScale);
+        if (prefab.ok)
+            app->Instantiate(prefab, go, name.empty() ? prefabSrc : name);
+        else
+            ConsoleSubsystem::Get()->Warn(
+                fmt::format("ParseEntity '{}': failed to import prefab '{}'", name, prefabSrc)
+            );
+    }
+
     if (entityVal.contains("children") && entityVal["children"].is_array()) {
         for (const auto& childVal : entityVal["children"])
             ParseEntity(app, childVal, go);
@@ -1036,17 +1136,31 @@ static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::s
         for (const auto& [name, matVal] : j["materials"].items()) {
             MaterialBlueprint mb;
             mb.name = name;
-            mb.diffuse = ParseVec3(matVal.value("diffuse", nlohmann::json::array()), mb.diffuse);
-            mb.specular = ParseVec3(matVal.value("specular", nlohmann::json::array()), mb.specular);
-            mb.ambient = ParseVec3(matVal.value("ambient", nlohmann::json::array()), mb.ambient);
-            mb.shininess = matVal.value("shininess", mb.shininess);
-            mb.cullFaceEnabled = matVal.value("cullFaceEnabled", mb.cullFaceEnabled);
-            mb.baseMap = matVal.value("baseMap", std::string(""));
-            mb.normalMap = matVal.value("normalMap", std::string(""));
-            mb.aoMap = matVal.value("aoMap", std::string(""));
-            mb.roughnessMap = matVal.value("roughnessMap", std::string(""));
-            mb.metallicMap = matVal.value("metallicMap", std::string(""));
-            mb.heightMap = matVal.value("heightMap", std::string(""));
+            mb.shading = matVal.value("shading", mb.shading);
+            // Scalars → the embedded MaterialProps (single source of truth).
+            mb.props.diffuse = ParseVec3(matVal.value("diffuse", nlohmann::json::array()), mb.props.diffuse);
+            mb.props.roughnessFactor = matVal.value("roughnessFactor", mb.props.roughnessFactor);
+            mb.props.metallicFactor = matVal.value("metallicFactor", mb.props.metallicFactor);
+            mb.props.specular = ParseVec3(matVal.value("specular", nlohmann::json::array()), mb.props.specular);
+            mb.props.ambient = ParseVec3(matVal.value("ambient", nlohmann::json::array()), mb.props.ambient);
+            mb.props.shininess = matVal.value("shininess", mb.props.shininess);
+            mb.props.cullFaceEnabled = matVal.value("cullFaceEnabled", mb.props.cullFaceEnabled);
+            // Texture asset paths — resolved to handles in Phase 2.
+            mb.baseMapPath = matVal.value("baseMap", std::string(""));
+            mb.normalMapPath = matVal.value("normalMap", std::string(""));
+            mb.aoMapPath = matVal.value("aoMap", std::string(""));
+            mb.roughnessMapPath = matVal.value("roughnessMap", std::string(""));
+            mb.metallicMapPath = matVal.value("metallicMap", std::string(""));
+            mb.heightMapPath = matVal.value("heightMap", std::string(""));
+            // Transmission / volume / IOR (glTF KHR_materials_* equivalents).
+            mb.transmissionFactor = matVal.value("transmissionFactor", mb.transmissionFactor);
+            mb.ior = matVal.value("ior", mb.ior);
+            mb.thicknessFactor = matVal.value("thicknessFactor", mb.thicknessFactor);
+            mb.attenuationDistance = matVal.value("attenuationDistance", mb.attenuationDistance);
+            mb.attenuationColor =
+                ParseVec3(matVal.value("attenuationColor", nlohmann::json::array()), mb.attenuationColor);
+            mb.transmissionMapPath = matVal.value("transmissionMap", std::string(""));
+            mb.thicknessMapPath = matVal.value("thicknessMap", std::string(""));
             bp.materials.push_back(std::move(mb));
         }
     }
@@ -1101,19 +1215,31 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
     // Materials are created after textures so their map paths resolve to
     // already-loaded TextureHandles. CreateMaterial dedups by name.
     for (const auto& mb : bp.materials) {
-        MaterialProps props;
-        props.diffuse = mb.diffuse;
-        props.specular = mb.specular;
-        props.ambient = mb.ambient;
-        props.shininess = mb.shininess;
-        props.cullFaceEnabled = mb.cullFaceEnabled;
-        if (!mb.baseMap.empty()) props.baseMap = TextureHandle(mb.baseMap);
-        if (!mb.normalMap.empty()) props.normalMap = TextureHandle(mb.normalMap);
-        if (!mb.aoMap.empty()) props.aoMap = TextureHandle(mb.aoMap);
-        if (!mb.roughnessMap.empty()) props.roughnessMap = TextureHandle(mb.roughnessMap);
-        if (!mb.metallicMap.empty()) props.metallicMap = TextureHandle(mb.metallicMap);
-        if (!mb.heightMap.empty()) props.heightMap = TextureHandle(mb.heightMap);
-        AssetManager::Get().CreateMaterial(mb.name, props);
+        // Start from the parsed scalars, then resolve the texture paths to
+        // handles now that the textures are loaded (TextureHandle(path) does a
+        // GPU lookup, so this can only happen here in Phase 2, not at parse).
+        MaterialProps props = mb.props;
+        if (!mb.baseMapPath.empty()) props.baseMap = TextureHandle(mb.baseMapPath);
+        if (!mb.normalMapPath.empty()) props.normalMap = TextureHandle(mb.normalMapPath);
+        if (!mb.aoMapPath.empty()) props.aoMap = TextureHandle(mb.aoMapPath);
+        if (!mb.roughnessMapPath.empty()) props.roughnessMap = TextureHandle(mb.roughnessMapPath);
+        if (!mb.metallicMapPath.empty()) props.metallicMap = TextureHandle(mb.metallicMapPath);
+        if (!mb.heightMapPath.empty()) props.heightMap = TextureHandle(mb.heightMapPath);
+        // Default shading is PBR; "shading":"blinnphong" opts into the legacy path.
+        if (mb.shading == "blinnphong") {
+            AssetManager::Get().CreateBlinnPhongMaterial(mb.name, props);
+        } else {
+            PBRMaterial* mat = AssetManager::Get().CreateMaterial(mb.name, props);
+            // Transmission/volume/IOR live on PBRMaterial, not MaterialProps
+            // (data only — carried for a future refraction pass).
+            mat->transmissionFactor = mb.transmissionFactor;
+            mat->ior = mb.ior;
+            mat->thicknessFactor = mb.thicknessFactor;
+            mat->attenuationDistance = mb.attenuationDistance;
+            mat->attenuationColor = mb.attenuationColor;
+            if (!mb.transmissionMapPath.empty()) mat->transmissionMap = TextureHandle(mb.transmissionMapPath);
+            if (!mb.thicknessMapPath.empty()) mat->thicknessMap = TextureHandle(mb.thicknessMapPath);
+        }
     }
     if (!bp.materials.empty()) ENGINE_LOG("JSON Materials created.");
 
@@ -1135,6 +1261,247 @@ void Application::InstantiateScene(const SceneBlueprint& bp) {
 
     mainCamera = _graphics->GetMainCamera();
     mainLight = _graphics->GetMainLight();
+}
+
+// Phase 2 instantiation shared by every prefab format: upload images/materials/
+// meshes, then spawn a GameObject subtree mirroring the prefab node hierarchy —
+// meshes as leaf MeshRenderers, brush colliders as a static rigidbody, lights as
+// LightComponents, .map point entities as named empties.
+GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, const std::string& baseName) {
+    auto& am = AssetManager::Get();
+
+    // ── Images → engine textures ─────────────────────────────────────────────
+    std::vector<TextureHandle> imageTex(prefab.images.size());
+    for (size_t i = 0; i < prefab.images.size(); ++i) {
+        const PrefabImage& pi = prefab.images[i];
+        if (pi.pixels.empty() || pi.width <= 0 || pi.height <= 0) continue;
+        auto cpuImg =
+            std::make_shared<Image>(pi.width, pi.height, pi.channels, const_cast<unsigned char*>(pi.pixels.data()));
+        imageTex[i] = am.CreateTextureFromImage(cpuImg);
+    }
+    // ── PrefabMaterials → engine materials (dedup by name via CreateMaterial) ─
+    std::vector<MaterialHandle> matHandles(prefab.materials.size());
+    for (size_t i = 0; i < prefab.materials.size(); ++i) {
+        const PrefabMaterial& pm = prefab.materials[i];
+        const std::string matName = fmt::format("{}:{}", baseName, pm.name.empty() ? std::to_string(i) : pm.name);
+        // Reuse an already-registered material of this name. Use the non-throwing
+        // handle lookup — GetMaterial() throws when absent, which is the common
+        // case here (first instantiation), so it must not gate creation.
+        if (MaterialHandle existing = am.GetMaterialHandle(matName); existing.IsValid()) {
+            matHandles[i] = existing;
+            continue;
+        }
+        auto texAt = [&](int idx) {
+            return (idx >= 0 && idx < static_cast<int>(imageTex.size())) ? imageTex[idx] : TextureHandle{};
+        };
+        // glTF packs occlusion(R)/roughness(G)/metallic(B) into one ORM texture,
+        // but the PBR shader samples .r for both roughness and metallic. Extract
+        // a single channel into a grayscale texture so each slot reads the right
+        // value under the shader's .r convention.
+        auto channelTex = [&](int imgIdx, int channel) -> TextureHandle {
+            if (imgIdx < 0 || imgIdx >= static_cast<int>(prefab.images.size())) return TextureHandle{};
+            const PrefabImage& src = prefab.images[imgIdx];
+            if (src.pixels.empty() || src.width <= 0 || src.height <= 0 || channel >= src.channels)
+                return TextureHandle{};
+            const size_t count = static_cast<size_t>(src.width) * static_cast<size_t>(src.height);
+            std::vector<unsigned char> gray(count * 3);
+            for (size_t p = 0; p < count; ++p) {
+                const unsigned char v =
+                    src.pixels[p * static_cast<size_t>(src.channels) + static_cast<size_t>(channel)];
+                gray[p * 3 + 0] = v;
+                gray[p * 3 + 1] = v;
+                gray[p * 3 + 2] = v;
+            }
+            return am.CreateTextureFromImage(std::make_shared<Image>(src.width, src.height, 3, gray.data()));
+        };
+        MaterialProps props;
+        props.baseMap = texAt(pm.baseColorImage);
+        props.normalMap = texAt(pm.normalImage);
+        props.aoMap = texAt(pm.occlusionImage);
+        props.roughnessMap = channelTex(pm.metallicRoughnessImage, 1);// glTF roughness → G
+        props.metallicMap = channelTex(pm.metallicRoughnessImage, 2);// glTF metallic  → B
+        // glTF semantics carried natively by PBRMaterial: value = map * factor,
+        // absent map = white — so the scalar factors need no 1x1 solid texture.
+        props.roughnessFactor = pm.roughness;
+        props.metallicFactor = pm.metallic;
+        props.diffuse = props.baseMap.IsValid() ? glm::vec3(1.0f) : pm.baseColor;
+        // NOTE: pm.emissive is not carried over — the engine has no emissive
+        // channel on materials yet.
+        props.cullFaceEnabled = !pm.doubleSided;
+        PBRMaterial* mat = am.CreateMaterial(matName, props);
+        // Carry transmission/volume/IOR through to the engine material (data
+        // only; no shader reads them yet — see PBRMaterial's fields).
+        // MaterialProps has no slot for these, so set them directly.
+        mat->transmissionFactor = pm.transmissionFactor;
+        mat->transmissionMap = texAt(pm.transmissionImage);
+        mat->ior = pm.ior;
+        mat->thicknessFactor = pm.thicknessFactor;
+        mat->thicknessMap = texAt(pm.thicknessImage);
+        mat->attenuationDistance = pm.attenuationDistance;
+        mat->attenuationColor = pm.attenuationColor;
+        matHandles[i] = am.GetMaterialHandle(mat);
+    }
+
+    // ── .map texture-name pipeline ────────────────────────────────────────────
+    // Resolve a texture-name material: an already-registered engine material of
+    // that name wins (UVs assume the classic 64px tile); otherwise look for
+    // textures/<name>.(png|jpg|jpeg|tga) — TrenchBroom's textures/ convention —
+    // build a material from it, and rescale texel UVs by the real image size.
+    struct NamedMat {
+        MaterialHandle handle;
+        glm::vec2 texSize{ 64.0f, 64.0f };
+    };
+    std::unordered_map<std::string, NamedMat> namedMats;
+    auto resolveNamed = [&](const std::string& name) -> NamedMat {
+        auto it = namedMats.find(name);
+        if (it != namedMats.end()) return it->second;
+        NamedMat nm;
+        // A pre-registered engine material of this name wins; else fall through to
+        // the textures/<name>.* convention. Non-throwing lookup — GetMaterial()
+        // throws when absent, which would kill the texture-file fallback below.
+        if (MaterialHandle existing = am.GetMaterialHandle(name); existing.IsValid()) {
+            nm.handle = existing;
+        } else {
+            for (const char* ext : { ".png", ".jpg", ".jpeg", ".tga" }) {
+                const std::string path = "textures/" + name + ext;
+                if (!FileSystem::Get().Exists(path)) continue;
+                if (auto img = am.LoadImage(path)) {
+                    MaterialProps props;
+                    props.baseMap = am.CreateTextureFromImage(img);
+                    props.diffuse = glm::vec3(1.0f);
+                    nm.handle = am.GetMaterialHandle(am.CreateMaterial(name, props));
+                    nm.texSize = { static_cast<float>(img->width), static_cast<float>(img->height) };
+                    break;
+                }
+            }
+        }
+        namedMats[name] = nm;
+        return nm;
+    };
+
+    // ── MeshData → engine meshes ("<baseName>#<i>") ──────────────────────────
+    std::vector<MeshHandle> handles(prefab.meshes.size());
+    for (size_t i = 0; i < prefab.meshes.size(); ++i) {
+        const MeshData& md = prefab.meshes[i];
+        if (md.vertices.empty() || !md.visible) continue;
+
+        MaterialHandle mat;
+        glm::vec2 uvDiv(64.0f);
+        if (md.materialIndex >= 0 && md.materialIndex < static_cast<int>(matHandles.size())) {
+            mat = matHandles[md.materialIndex];
+        } else if (!md.material.empty()) {
+            NamedMat nm = resolveNamed(md.material);
+            mat = nm.handle;
+            uvDiv = nm.texSize;
+        }
+        // A mesh with no bound material (e.g. a bare USD mesh with no
+        // UsdPreviewSurface) would otherwise draw with unregistered default
+        // state. Bind a real, registered engine material so it renders like
+        // every other imported mesh instead of silently disappearing.
+        if (!mat.IsValid()) {
+            const std::string defName = fmt::format("{}:__default", baseName);
+            mat = am.GetMaterialHandle(defName);
+            if (!mat.IsValid()) {
+                am.CreateMaterial(defName, MaterialProps{});
+                mat = am.GetMaterialHandle(defName);
+            }
+        }
+
+        auto* mesh = new Mesh(MeshType::PRIM);
+        if (md.uvInTexels) {
+            std::vector<Vertex> scaled = md.vertices;
+            for (auto& v : scaled)
+                v.uv /= uvDiv;
+            mesh->Initialize(scaled, md.indices);
+        } else {
+            mesh->Initialize(md.vertices, md.indices);
+        }
+        glm::vec3 lo = md.vertices[0].position, hi = lo;
+        for (const auto& v : md.vertices) {
+            lo = glm::min(lo, v.position);
+            hi = glm::max(hi, v.position);
+        }
+        mesh->SetBoundingBox(
+            { glm::vec3(lo.x, lo.y, lo.z),
+              glm::vec3(hi.x, lo.y, lo.z),
+              glm::vec3(lo.x, hi.y, lo.z),
+              glm::vec3(hi.x, hi.y, lo.z),
+              glm::vec3(lo.x, lo.y, hi.z),
+              glm::vec3(hi.x, lo.y, hi.z),
+              glm::vec3(lo.x, hi.y, hi.z),
+              glm::vec3(hi.x, hi.y, hi.z) }
+        );
+        MeshHandle h = am.CreateMesh(fmt::format("{}#{}", baseName, i), mesh);
+        if (mat.IsValid())
+            if (Mesh* mp = am.GetMeshPtr(h)) mp->SetMaterial(mat);
+        handles[i] = h;
+    }
+
+    // ── Spawn the node tree ───────────────────────────────────────────────────
+    // Internal nodes are pure transforms; every mesh becomes a leaf child with a
+    // single MeshRendererComponent ("one GameObject = one drawable"). Colliders compound
+    // into one static rigidbody per node; lights become LightComponents; .map
+    // point entities spawn as named empties (their key/values live on the
+    // Prefab — query with Prefab::FindEntities before instantiating).
+    std::function<GameObject*(const PrefabNode&, GameObject*)> spawn = [&](const PrefabNode& node,
+                                                                           GameObject* p) -> GameObject* {
+        const std::string nodeName = node.name.empty() ? baseName : node.name;
+        GameObject* go = CreateGameObject();
+        go->SetName(nodeName);
+        if (p) go->parent = p;
+        go->SetLocalTransform(node.transform);
+
+        for (size_t j = 0; j < node.meshes.size(); ++j) {
+            const int mi = node.meshes[j];
+            if (mi < 0 || mi >= static_cast<int>(handles.size()) || !handles[mi].IsValid()) continue;
+            GameObject* leaf = CreateGameObject();
+            const std::string& mat = prefab.meshes[mi].material;
+            leaf->SetName(mat.empty() ? fmt::format("{}#{}", nodeName, j) : mat);
+            leaf->parent = go;
+            leaf->AddComponent<MeshRendererComponent>(handles[mi]);
+        }
+
+        if (!node.colliders.empty() && _config.enablePhysics3D) {
+            auto* compound = new btCompoundShape();
+            for (int ci : node.colliders) {
+                if (ci < 0 || ci >= static_cast<int>(prefab.colliders.size())) continue;
+                const PrefabCollider& pc = prefab.colliders[ci];
+                if (pc.points.size() < 4) continue;
+                auto* hull = new btConvexHullShape();
+                for (const glm::vec3& pt : pc.points)
+                    hull->addPoint(btVector3(pt.x, pt.y, pt.z), false);
+                hull->recalcLocalAabb();
+                compound->addChildShape(btTransform::getIdentity(), hull);
+            }
+            if (compound->getNumChildShapes() > 0)
+                go->AddComponent<RigidbodyComponent>(compound, 0.0f);// static level geometry
+            else
+                delete compound;
+        }
+
+        for (int li : node.lights) {
+            if (li < 0 || li >= static_cast<int>(prefab.lights.size())) continue;
+            const PrefabLight& pl = prefab.lights[li];
+            LightProps props;
+            props.type = pl.type == PrefabLight::Type::Directional ? LightType::Directional
+                         : pl.type == PrefabLight::Type::Spot      ? LightType::Spot
+                                                                   : LightType::Point;
+            props.diffuse = pl.color;
+            props.specular = pl.color;
+            props.ambient = glm::vec3(0.0f);
+            props.intensity = pl.intensity;
+            // Direction from the node's -Z (only meaningful for dir/spot lights).
+            props.direction = -glm::normalize(glm::vec3(node.transform[2]));
+            props.attenuation = pl.range > 0.0f ? glm::vec3(1.0f, 4.5f / pl.range, 75.0f / (pl.range * pl.range))
+                                                : glm::vec3(1.0f, 0.09f, 0.032f);
+            go->AddComponent<LightComponent>(props);
+        }
+
+        for (const auto& child : node.children)
+            spawn(child, go);
+        return go;
+    };
+    return spawn(prefab.root, parent);
 }
 
 void Application::ShowLoadingScreen() {
@@ -1194,6 +1561,23 @@ static std::vector<std::string> CollectPrefetchPaths(const SceneBlueprint& bp, b
         if (props.tesc.has_value() && !props.tesc->empty()) paths.push_back(*props.tesc);
         if (props.tese.has_value() && !props.tese->empty()) paths.push_back(*props.tese);
     }
+
+    // Prefab files (.map / .gltf / .usd) referenced by entities — fetch them so
+    // ImportPrefab's ReadSync hits the cache on web instead of failing. Walks
+    // nested children too. Only the prefab file itself is collected; a prefab
+    // with external dependencies (glTF .bin, USD payloads/textures) needs those
+    // served alongside it — the committed viewer samples are self-contained.
+    std::function<void(const nlohmann::json&)> collectPrefabs = [&](const nlohmann::json& ent) {
+        if (auto it = ent.find("prefab"); it != ent.end() && it->is_string()) {
+            const std::string p = it->get<std::string>();
+            if (!p.empty()) paths.push_back(p);
+        }
+        if (auto it = ent.find("children"); it != ent.end() && it->is_array())
+            for (const auto& child : *it)
+                collectPrefabs(child);
+    };
+    for (const auto& eb : bp.entities)
+        collectPrefabs(eb.resolvedData);
 
     return paths;
 }
@@ -1351,7 +1735,7 @@ void Application::UnloadCurrentScene() {
     _graphics->directionalLights.clear();
     _graphics->pointLights.clear();
     _graphics->sunComponents.clear();
-    _graphics->renderables.clear();// MeshComponent
+    _graphics->renderables.clear();// MeshRendererComponent
     _graphics->canvasDrawables.clear();// SpriteComponent / Text2DComponent / ...
 
     _audio->StopAll();

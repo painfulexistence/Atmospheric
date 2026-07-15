@@ -151,7 +151,7 @@ struct StreamingTerrainProps {
     std::function<std::vector<TerrainEntityPlacement>(const TerrainTileContext&)> placeEntitiesFn;
     // Instanced types: entityMeshes[type] is the prototype mesh for that
     // placement type. Placements whose type has a valid entry here are folded
-    // into ONE MeshInstancer cloud per (tile, type) — one GameObject, one
+    // into ONE MeshInstancerComponent cloud per (tile, type) — one GameObject, one
     // frustum test, one batch entry for the whole tile's worth — instead of a
     // GameObject each. Instanced entities are visual-only (no per-entity
     // physics/scripts); leave a type's slot invalid (or the vector short) to
@@ -363,7 +363,7 @@ private:
 
     // Entity streaming: live per-tile spawn lists plus per-type recycle pools.
     // For instanced types (entityMeshes[type] valid) the GameObject is a
-    // MeshInstancer cloud covering every placement of that type in the tile;
+    // MeshInstancerComponent cloud covering every placement of that type in the tile;
     // otherwise it's one spawned entity. A type is consistently one or the
     // other (entityMeshes is fixed at Init), so the shared pools never mix.
     struct SpawnedEntity {

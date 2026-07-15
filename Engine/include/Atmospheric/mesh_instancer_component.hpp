@@ -25,10 +25,10 @@ struct MeshInstancerProps {
     std::vector<glm::mat4> localTransforms;// per-instance TRS, relative to the GameObject
 };
 
-class MeshInstancer : public Component {
+class MeshInstancerComponent : public Component {
 public:
-    MeshInstancer(GameObject* gameObject, MeshInstancerProps props);
-    ~MeshInstancer() override;
+    MeshInstancerComponent(GameObject* gameObject, MeshInstancerProps props);
+    ~MeshInstancerComponent() override;
 
     std::string GetName() const override {
         return "MeshInstancer";

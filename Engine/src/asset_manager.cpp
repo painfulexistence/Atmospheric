@@ -6,12 +6,17 @@
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_builder.hpp"
+#include "prefab.hpp"
 #include "shader.hpp"
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <glm/gtc/matrix_transform.hpp>
 #include <nlohmann/json.hpp>
 #include <unordered_set>
 
@@ -510,30 +515,48 @@ void AssetManager::ReloadShaders() {
 
 void AssetManager::LoadMaterials(const std::vector<MaterialProps>& materialDefs) {
     for (const auto& props : materialDefs) {
-        materials.push_back(std::make_unique<Material>(props));
+        // Default shading model is PBR (metallic/roughness).
+        materials.push_back(std::make_unique<PBRMaterial>(props));
     }
 }
 
-Material* AssetManager::CreateMaterial(const std::string& name, const MaterialProps& props) {
+PBRMaterial* AssetManager::CreateMaterial(const std::string& name, const MaterialProps& props) {
     // Check if already exists
     auto it = _materialCache.find(name);
     if (it != _materialCache.end()) {
         ENGINE_LOG("Material '{}' already exists, returning existing material", name);
-        return GetMaterialByID(it->second);
+        // Names are unique across kinds, so a hit under this name is a
+        // PBRMaterial created by an earlier CreateMaterial call; a non-PBR
+        // material of the same name would be a caller bug — surface it as null.
+        return dynamic_cast<PBRMaterial*>(GetMaterialByID(it->second));
     }
 
-    auto material = std::make_unique<Material>(props);
+    // Default shading model is PBR — importers and JSON scenes get a PBRMaterial.
+    auto material = std::make_unique<PBRMaterial>(props);
     auto* ptr = material.get();
     materials.push_back(std::move(material));
     _materialCache[name] = _nextMaterialID++;
     return ptr;
 }
 
-Material* AssetManager::CreateMaterial(const MaterialProps& props) {
-    auto material = std::make_unique<Material>(props);
+PBRMaterial* AssetManager::CreateMaterial(const MaterialProps& props) {
+    auto material = std::make_unique<PBRMaterial>(props);
     auto* ptr = material.get();
     materials.push_back(std::move(material));
     _materialCache["unnamed_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return ptr;
+}
+
+BlinnPhongMaterial* AssetManager::CreateBlinnPhongMaterial(const std::string& name, const MaterialProps& props) {
+    auto it = _materialCache.find(name);
+    if (it != _materialCache.end()) {
+        ENGINE_LOG("Material '{}' already exists, returning existing material", name);
+        return dynamic_cast<BlinnPhongMaterial*>(GetMaterialByID(it->second));
+    }
+    auto material = std::make_unique<BlinnPhongMaterial>(props);
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
+    _materialCache[name] = _nextMaterialID++;
     return ptr;
 }
 
@@ -1384,6 +1407,10 @@ MeshHandle AssetManager::GetMesh(const std::string& name) const {
     throw std::runtime_error(fmt::format("Mesh '{}' not found", name));
 }
 
+bool AssetManager::HasMesh(const std::string& name) const {
+    return _meshCache.find(name) != _meshCache.end();
+}
+
 Mesh* AssetManager::GetMeshPtr(MeshHandle handle) const {
     if (!handle.IsValid()) return nullptr;
     auto it = _meshByID.find(handle.id);
@@ -1652,6 +1679,118 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     if (material) mesh->SetMaterial(GetMaterialHandle(material));
 
     ENGINE_LOG("LoadGLTF '{}': {} verts, {} indices", path, allVerts.size(), allIndices.size());
+    return CreateMesh(path, mesh);
+}
+
+// TrenchBroom / Quake ".map" brush loader — a thin wrapper over the pure-CPU
+// ImportMapPrefab (prefab.cpp). It flattens every imported brush entity's
+// mesh into one 16-bit-indexed Mesh for the single-handle API. Declaring a
+// "prefab" entity in a scene instead preserves the per-entity node tree (see
+// Application::Instantiate).
+MeshHandle AssetManager::LoadTBMap(const std::string& path, float scale) {
+    Prefab model = ImportMapPrefab(path, scale);
+    if (!model.ok) {
+        ConsoleSubsystem::Get()->Warn(fmt::format("LoadTBMap: no brush geometry found in '{}'", path));
+        return MeshHandle{};
+    }
+
+    std::vector<Vertex> allVerts;
+    std::vector<uint16_t> allIndices;
+    bool truncated = false;
+    for (const auto& md : model.meshes) {
+        if (allVerts.size() + md.vertices.size() > 65535) {
+            truncated = true;
+            break;
+        }
+        const auto base = static_cast<uint16_t>(allVerts.size());
+        allVerts.insert(allVerts.end(), md.vertices.begin(), md.vertices.end());
+        for (uint16_t idx : md.indices)
+            allIndices.push_back(static_cast<uint16_t>(base + idx));
+    }
+
+    if (truncated)
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format("LoadTBMap '{}': geometry exceeds the 16-bit index limit; remaining brushes skipped.", path)
+        );
+    if (allVerts.empty()) {
+        ConsoleSubsystem::Get()->Warn(fmt::format("LoadTBMap: no brush geometry found in '{}'", path));
+        return MeshHandle{};
+    }
+
+    auto* mesh = new Mesh(MeshType::PRIM);
+    mesh->Initialize(allVerts, allIndices);
+
+    glm::vec3 lo = allVerts[0].position, hi = allVerts[0].position;
+    for (const auto& v : allVerts) {
+        lo = glm::min(lo, v.position);
+        hi = glm::max(hi, v.position);
+    }
+    mesh->SetBoundingBox(
+        { glm::vec3(lo.x, lo.y, lo.z),
+          glm::vec3(hi.x, lo.y, lo.z),
+          glm::vec3(lo.x, hi.y, lo.z),
+          glm::vec3(hi.x, hi.y, lo.z),
+          glm::vec3(lo.x, lo.y, hi.z),
+          glm::vec3(hi.x, lo.y, hi.z),
+          glm::vec3(lo.x, hi.y, hi.z),
+          glm::vec3(hi.x, hi.y, hi.z) }
+    );
+
+    ENGINE_LOG(
+        "LoadTBMap '{}': {} meshes, {} verts, {} indices", path, model.meshes.size(), allVerts.size(), allIndices.size()
+    );
+    return CreateMesh(path, mesh);
+}
+
+// USD loader — thin wrapper over ImportUSDPrefab (prefab_usd.cpp): flattens
+// every imported mesh into one 16-bit Mesh for the single-handle API. Declaring
+// a "prefab" entity in a scene instead preserves the node tree and materials.
+MeshHandle AssetManager::LoadUSD(const std::string& path) {
+    Prefab model = ImportUSDPrefab(path);
+    if (!model.ok) {
+        ConsoleSubsystem::Get()->Warn(fmt::format("LoadUSD: no mesh geometry found in '{}'", path));
+        return MeshHandle{};
+    }
+
+    std::vector<Vertex> allVerts;
+    std::vector<uint16_t> allIndices;
+    bool truncated = false;
+    for (const auto& md : model.meshes) {
+        if (allVerts.size() + md.vertices.size() > 65535) {
+            truncated = true;
+            break;
+        }
+        const auto base = static_cast<uint16_t>(allVerts.size());
+        allVerts.insert(allVerts.end(), md.vertices.begin(), md.vertices.end());
+        for (uint16_t idx : md.indices)
+            allIndices.push_back(static_cast<uint16_t>(base + idx));
+    }
+    if (truncated)
+        ConsoleSubsystem::Get()->Warn(
+            fmt::format("LoadUSD '{}': geometry exceeds the 16-bit index limit; remaining meshes skipped.", path)
+        );
+    if (allVerts.empty()) return MeshHandle{};
+
+    auto* mesh = new Mesh(MeshType::PRIM);
+    mesh->Initialize(allVerts, allIndices);
+    glm::vec3 lo = allVerts[0].position, hi = allVerts[0].position;
+    for (const auto& v : allVerts) {
+        lo = glm::min(lo, v.position);
+        hi = glm::max(hi, v.position);
+    }
+    mesh->SetBoundingBox(
+        { glm::vec3(lo.x, lo.y, lo.z),
+          glm::vec3(hi.x, lo.y, lo.z),
+          glm::vec3(lo.x, hi.y, lo.z),
+          glm::vec3(hi.x, hi.y, lo.z),
+          glm::vec3(lo.x, lo.y, hi.z),
+          glm::vec3(hi.x, lo.y, hi.z),
+          glm::vec3(lo.x, hi.y, hi.z),
+          glm::vec3(hi.x, hi.y, hi.z) }
+    );
+    ENGINE_LOG(
+        "LoadUSD '{}': {} meshes, {} verts, {} indices", path, model.meshes.size(), allVerts.size(), allIndices.size()
+    );
     return CreateMesh(path, mesh);
 }
 

@@ -5,6 +5,7 @@ samples/
 imgui.ini
 .vscode/settings.json
 .cache/
+cache/
 
 # Claude Code internal
 .claude/
@@ -30,3 +31,7 @@ cmake_uninstall.cmake
 local.properties
 .cxx/
 **/build/
+
+# Fetched sample models
+Examples/USDViewer/assets/models/
+Examples/GLTFViewer/assets/models

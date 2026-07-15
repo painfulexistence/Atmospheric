@@ -4,6 +4,7 @@ option(AE_USE_BASIS_UNIVERSAL "Enable Basis Universal transcoder for KTX2 GPU-co
 option(AE_USE_FFMPEG "Enable FFmpeg for VideoPlayer and VideoRecorder (uses the system FFmpeg found via pkg-config)" ON)
 option(AE_BUILD_EXAMPLES "Build the bundled example projects" ON)
 option(AE_USE_NETWORKING "Enable HTTP and WebSocket networking" OFF)
+option(AE_USE_TINYUSDZ "Enable TinyUSDZ so USD (USDA/USDC/USDZ) is a first-class import format alongside glTF and .map. On by default on every platform — TinyUSDZ also compiles to WebAssembly (upstream: no threads/SharedArrayBuffer/SIMD needed). Turn OFF to skip fetching/compiling it (e.g. -DAE_USE_TINYUSDZ=OFF on the web configure to trim the WASM payload)." ON)
 
 # curl + libwebsockets live behind the "networking" vcpkg manifest feature so
 # that default builds don't compile OpenSSL and friends. Must be requested

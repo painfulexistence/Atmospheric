@@ -14,6 +14,11 @@ uniform sampler2D normalMap;
 uniform sampler2D roughnessMap;
 uniform sampler2D metallicMap;
 uniform sampler2D aoMap;
+// PBRMaterial params, glTF semantics: value = map * factor. A material with no
+// map bound gets the engine's default (white = identity) map, so the factor
+// stands alone.
+uniform float u_roughnessFactor;
+uniform float u_metallicFactor;
 
 void main() {
     g_position = frag_pos;
@@ -24,7 +29,7 @@ void main() {
 
     g_albedo = texture(baseMap, tex_uv);
 
-    g_material.r = texture(roughnessMap, tex_uv).r;
-    g_material.g = texture(metallicMap, tex_uv).r;
+    g_material.r = clamp(texture(roughnessMap, tex_uv).r * u_roughnessFactor, 0.0, 1.0);
+    g_material.g = clamp(texture(metallicMap, tex_uv).r * u_metallicFactor, 0.0, 1.0);
     g_material.b = texture(aoMap, tex_uv).r;
 }

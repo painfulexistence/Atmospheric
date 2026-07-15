@@ -11,8 +11,8 @@
 #include "light_component.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "mesh_component.hpp"
-#include "mesh_instancer.hpp"
+#include "mesh_instancer_component.hpp"
+#include "mesh_renderer_component.hpp"
 #include "renderer.hpp"
 #include "sprite_component.hpp"
 #include "stb_image.h"
@@ -280,6 +280,26 @@ void GraphicsSubsystem::DrawImGui(float dt) {
         );
         ImGui::ColorEdit3("Clear color", reinterpret_cast<float*>(&renderer->clearColor));
 
+        // Image-based lighting knobs — placed above the AO/GI trees. Not gated on
+        // any pass, so it shows in every scene (the env map feeds PBR ComputeIBL
+        // directly, no VoxelChunkPass required).
+        if (ImGui::TreeNode("IBL Debug")) {
+            const bool hasEnv =
+                renderer->environmentMap.IsValid() && static_cast<uint32_t>(renderer->environmentMap) != 0;
+            ImGui::TextDisabled(hasEnv ? "Environment map loaded." : "No env map — flat-ambient fallback.");
+            ImGui::Checkbox("Enable IBL", &renderer->iblEnabled);
+            // Diffuse tints albedo by the (blurred) env; drop it when a strongly
+            // coloured HDRI washes surfaces toward its colour. Specular is the
+            // reflection term. envMaxLod is the diffuse/roughest-spec blur level.
+            ImGui::SliderFloat("Diffuse strength", &renderer->iblDiffuseStrength, 0.0f, 2.0f);
+            ImGui::SliderFloat("Specular strength", &renderer->iblSpecularStrength, 0.0f, 2.0f);
+            ImGui::SliderFloat("Env max LOD (blur)", &renderer->environmentMaxLod, 0.0f, 12.0f);
+            ImGui::TextDisabled(
+                "Lower Diffuse to keep base colours from being\ntinted by a coloured env (e.g. the aquarium HDRI)."
+            );
+            ImGui::TreePop();
+        }
+
         // Voxel-world lighting (VoxelChunkPass): corner AO + GI, both default
         // off. Kept above bloom and the post-process effect toggles below.
         if (auto* vp = renderer->GetPass<VoxelChunkPass>()) {
@@ -485,14 +505,22 @@ void GraphicsSubsystem::DrawImGui(float dt) {
                 if (ImGui::TreeNode("Mat")) {
                     ImGui::Text("Base Map ID: %d", static_cast<int>(m->baseMap));
                     ImGui::Text("Normal Map ID: %d", static_cast<int>(m->normalMap));
-                    ImGui::Text("AO Map ID: %d", static_cast<int>(m->aoMap));
-                    ImGui::Text("Roughness Map ID: %d", static_cast<int>(m->roughnessMap));
-                    ImGui::Text("Metallic Map ID: %d", static_cast<int>(m->metallicMap));
-                    ImGui::Text("Height Map ID: %d", static_cast<int>(m->heightMap));
-                    ImGui::Text("Ambient: %.3f, %.3f, %.3f", m->ambient.x, m->ambient.y, m->ambient.z);
                     ImGui::Text("Diffuse: %.3f, %.3f, %.3f", m->diffuse.x, m->diffuse.y, m->diffuse.z);
-                    ImGui::Text("Specular: %.3f, %.3f, %.3f", m->specular.x, m->specular.y, m->specular.z);
-                    ImGui::Text("Shininess: %.3f", m->shininess);
+                    // Shading-model-specific fields live on the leaf types.
+                    if (auto* pbr = dynamic_cast<PBRMaterial*>(m.get())) {
+                        ImGui::Text("AO Map ID: %d", static_cast<int>(pbr->aoMap));
+                        ImGui::Text("Roughness Map ID: %d", static_cast<int>(pbr->roughnessMap));
+                        ImGui::Text("Metallic Map ID: %d", static_cast<int>(pbr->metallicMap));
+                        ImGui::Text(
+                            "Roughness/Metallic factor: %.3f / %.3f", pbr->roughnessFactor, pbr->metallicFactor
+                        );
+                    }
+                    if (auto* bp = dynamic_cast<BlinnPhongMaterial*>(m.get())) {
+                        ImGui::Text("Specular: %.3f, %.3f, %.3f", bp->specular.x, bp->specular.y, bp->specular.z);
+                        ImGui::Text("Shininess: %.3f", bp->shininess);
+                    }
+                    if (auto* tm = dynamic_cast<TerrainMaterial*>(m.get()))
+                        ImGui::Text("Height Map ID: %d", static_cast<int>(tm->heightMap));
                     ImGui::TreePop();
                 }
             }
@@ -583,12 +611,12 @@ void GraphicsSubsystem::PushCanvasQuadTiled(
 }
 
 
-MeshComponent* GraphicsSubsystem::RegisterMesh(MeshComponent* mesh) {
+MeshRendererComponent* GraphicsSubsystem::RegisterMesh(MeshRendererComponent* mesh) {
     renderables.push_back(mesh);
     return mesh;
 }
 
-MeshInstancer* GraphicsSubsystem::RegisterInstancer(MeshInstancer* instancer) {
+MeshInstancerComponent* GraphicsSubsystem::RegisterInstancer(MeshInstancerComponent* instancer) {
     instancers.push_back(instancer);
     return instancer;
 }
@@ -638,14 +666,14 @@ void GraphicsSubsystem::UnregisterLight(LightComponent* light) {
     }
 }
 
-void GraphicsSubsystem::UnregisterInstancer(MeshInstancer* instancer) {
+void GraphicsSubsystem::UnregisterInstancer(MeshInstancerComponent* instancer) {
     auto it = std::find(instancers.begin(), instancers.end(), instancer);
     if (it != instancers.end()) {
         instancers.erase(it);
     }
 }
 
-void GraphicsSubsystem::UnregisterMesh(MeshComponent* mesh) {
+void GraphicsSubsystem::UnregisterMesh(MeshRendererComponent* mesh) {
     auto it = std::find(renderables.begin(), renderables.end(), mesh);
     if (it != renderables.end()) {
         renderables.erase(it);

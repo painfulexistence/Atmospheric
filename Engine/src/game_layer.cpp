@@ -1,7 +1,7 @@
 #include "game_layer.hpp"
 #include "application.hpp"
 #include "game_object.hpp"
-#include "mesh_component.hpp"
+#include "mesh_renderer_component.hpp"
 #include "rigidbody_component.hpp"
 #include "rmlui_manager.hpp"
 #include "ui_page_manager.hpp"

@@ -108,29 +108,6 @@ inline VATDemoAsset
     return { handle, VATClip::Bake(data) };
 }
 
-// The engine ships no metal texture (default_metallic is a 1x1 black =
-// non-metallic placeholder), so synthesize a "preset metallic" PBR set from
-// solid 1x1 textures: full metalness + low roughness = a shiny conductor. The
-// base colour tints the reflection (F0 = albedo when metallic = 1). pbr.frag
-// samples these maps, so the VAT enemy reads as brushed gunmetal.
-struct MetalMaps {
-    TextureHandle base;
-    TextureHandle metallic;
-    TextureHandle roughness;
-};
-
-// baseColor and roughness are in [0, 1]; converted to the 8-bit solid textures
-// pbr.frag samples.
-inline MetalMaps MakePresetMetalMaps(glm::vec3 baseColor, float roughness) {
-    auto toByte = [](float x) { return static_cast<unsigned char>(std::round(glm::clamp(x, 0.0f, 1.0f) * 255.0f)); };
-    auto solid = [](unsigned char r, unsigned char g, unsigned char b) {
-        unsigned char px[3] = { r, g, b };
-        return AssetManager::Get().CreateTextureFromImage(std::make_shared<Image>(1, 1, 3, px));
-    };
-    unsigned char rr = toByte(roughness);
-    return {
-        solid(toByte(baseColor.r), toByte(baseColor.g), toByte(baseColor.b)),
-        solid(255, 255, 255),// metalness = 1
-        solid(rr, rr, rr),
-    };
-}
+// Metallic preset synthesis (MetalMaps / MakePresetMetalMaps) was removed:
+// PBRMaterial's roughnessFactor/metallicFactor scalars replaced the 1x1 solid
+// textures — set the factors and diffuse tint directly on the VAT material.

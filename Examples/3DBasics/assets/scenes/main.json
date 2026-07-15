@@ -4,6 +4,7 @@
   "shaders": [],
   "materials": {
     "cubeMat": {
+      "shading": "blinnphong",
       "diffuse": [1.0, 1.0, 1.0],
       "specular": [0.296648, 0.296648, 0.296648],
       "ambient": [0.25, 0.20725, 0.20725],

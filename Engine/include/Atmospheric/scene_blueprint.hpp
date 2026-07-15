@@ -1,22 +1,41 @@
 #pragma once
+#include "material.hpp"
 #include "shader.hpp"
 #include <glm/vec3.hpp>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-// Raw material definition parsed from the scene "materials" object. Texture maps
-// are kept as asset paths here (Phase 1 is pure — no GPU) and resolved to
-// TextureHandles in LoadSceneResources (Phase 2). An empty path means "no map".
+// Raw material definition parsed from the scene "materials" object. This is
+// just MaterialProps (the shared construction input, and the single source of
+// truth for the scalar params) plus the bits that can't live there: the shading
+// model, and the texture *paths*. Paths stay as strings because Phase 1 is pure
+// (off-thread, no GPU) and TextureHandle resolves to a loaded GPU texture on
+// construction — LoadSceneResources (Phase 2) turns each *Path into the matching
+// props.<map> handle. An empty path means "no map".
 struct MaterialBlueprint {
     std::string name;
-    glm::vec3 diffuse = glm::vec3(0.55f, 0.55f, 0.55f);
-    glm::vec3 specular = glm::vec3(0.70f, 0.70f, 0.70f);
-    glm::vec3 ambient = glm::vec3(0.00f, 0.00f, 0.00f);
-    float shininess = 0.25f;
-    bool cullFaceEnabled = true;
-    std::string baseMap, normalMap, aoMap, roughnessMap, metallicMap, heightMap;
+    // "pbr" (default, metallic/roughness) or "blinnphong" (legacy specular).
+    std::string shading = "pbr";
+    // Scalar surface params (diffuse, roughness/metallic factors, specular/
+    // ambient/shininess, cull, …). The texture-handle members stay empty here;
+    // Phase 2 fills them from the *Path strings below.
+    MaterialProps props;
+    std::string baseMapPath, normalMapPath, aoMapPath, roughnessMapPath, metallicMapPath, heightMapPath;
+
+    // Transmission / volume / IOR — mirrors the glTF-imported fields on
+    // PBRMaterial (KHR_materials_transmission/_volume/_ior). Data only; no shader
+    // reads them yet. Defaults = opaque thin-walled dielectric, so materials
+    // omitting these keys are unaffected. *Path are asset paths resolved in
+    // LoadSceneResources.
+    float transmissionFactor = 0.0f;
+    float ior = 1.5f;
+    float thicknessFactor = 0.0f;
+    float attenuationDistance = std::numeric_limits<float>::infinity();
+    glm::vec3 attenuationColor = glm::vec3(1.0f);
+    std::string transmissionMapPath, thicknessMapPath;
 };
 
 // Resolved, instantiation-ready description of one entity (and its children).

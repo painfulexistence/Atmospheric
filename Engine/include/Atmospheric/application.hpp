@@ -25,6 +25,7 @@ class RmlUiManager;
 class UIPageManager;
 class AnimationSubsystem;
 struct SceneBlueprint;
+struct Prefab;
 
 struct FrameData {
     FrameData(uint64_t number, float time, float deltaTime) {
@@ -177,6 +178,12 @@ public:
     );
 
     GameObject* CreateGameObject(glm::vec2 position, float rotation = 0.0f);
+
+    // Upload an imported Prefab's meshes and spawn a GameObject subtree
+    // mirroring its node hierarchy, parented under `parent`. Meshes are
+    // registered under "<baseName>#<i>". This is the Phase-2 (main-thread)
+    // instantiation shared by every prefab format. Returns the spawned root.
+    GameObject* Instantiate(const Prefab& prefab, GameObject* parent, const std::string& baseName);
 
     // Queue a factory lambda to run at the start of the next frame, outside any
     // entity-tick loop. The GameLayer tick loop itself tolerates CreateGameObject
