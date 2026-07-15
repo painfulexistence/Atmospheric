@@ -1,4 +1,5 @@
 #pragma once
+#include "frustum.hpp"// AABB
 #include <glm/glm.hpp>
 #include <memory>
 #include <string>
@@ -19,50 +20,8 @@
 
 namespace CSG {
 
-    // ============================================================================
-    // AABB - Axis-Aligned Bounding Box
-    // ============================================================================
-
-    struct AABB {
-        glm::vec3 min = glm::vec3(0);
-        glm::vec3 max = glm::vec3(0);
-
-        AABB() = default;
-        AABB(glm::vec3 min, glm::vec3 max) : min(min), max(max) {
-        }
-
-        // Create from center and size
-        static AABB FromCenterSize(glm::vec3 center, glm::vec3 size) {
-            glm::vec3 halfSize = size * 0.5f;
-            return AABB(center - halfSize, center + halfSize);
-        }
-
-        bool IsValid() const {
-            return min.x < max.x && min.y < max.y && min.z < max.z;
-        }
-
-        glm::vec3 GetCenter() const {
-            return (min + max) * 0.5f;
-        }
-
-        glm::vec3 GetSize() const {
-            return max - min;
-        }
-
-        // Calculate intersection of two AABBs
-        static AABB Intersect(const AABB& a, const AABB& b) {
-            return AABB(glm::max(a.min, b.min), glm::min(a.max, b.max));
-        }
-
-        bool Intersects(const AABB& other) const {
-            return Intersect(*this, other).IsValid();
-        }
-
-        bool Contains(const AABB& other) const {
-            return other.min.x >= min.x && other.max.x <= max.x && other.min.y >= min.y && other.max.y <= max.y
-                   && other.min.z >= min.z && other.max.z <= max.z;
-        }
-    };
+    // AABB, Intersect, Contains, FromCenterSize etc. live on the engine-wide
+    // ::AABB (see frustum.hpp). CSG references it unqualified below.
 
     // ============================================================================
     // CSG Primitive Types

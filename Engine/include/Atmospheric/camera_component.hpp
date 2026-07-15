@@ -1,6 +1,8 @@
 #pragma once
 #include "component.hpp"
+#include "frustum.hpp"
 #include "globals.hpp"
+#include <optional>
 
 struct CameraProps {
     bool isOrthographic = false;
@@ -57,6 +59,11 @@ public:
 
     glm::mat4 GetProjectionMatrix();
 
+    // Cached view frustum. Rebuilt lazily when the projection or the derived
+    // view-projection matrix changes (bit-compared, so a stationary camera
+    // pays only the compare). Callers hold the reference for the frame.
+    const Frustum& GetViewFrustum();
+
     glm::vec3 GetMoveVector(Axis);
 
     void Yaw(float);
@@ -81,4 +88,10 @@ private:
     glm::vec2 _vhAngle = glm::vec2(0.0f, 0.0f);
     glm::mat4 _projectionMatrix;
     glm::mat4 _viewMatrix;
+
+    // Frustum cache. _cachedFrustumVP is the VP the current _cachedFrustum was
+    // built from; a bit mismatch (camera moved or projection changed) forces
+    // a rebuild. Optional so the first access always builds.
+    std::optional<Frustum> _cachedFrustum;
+    glm::mat4 _cachedFrustumVP{ 0.0f };
 };

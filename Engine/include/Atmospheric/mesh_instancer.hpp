@@ -1,8 +1,8 @@
 #pragma once
 #include "component.hpp"
+#include "frustum.hpp"// AABB
 #include "globals.hpp"
 #include "vertex.hpp"// InstanceData
-#include <array>
 #include <glm/mat4x4.hpp>
 #include <vector>
 
@@ -60,7 +60,7 @@ public:
     // so a static cloud recomputes at most once. The returned span stays valid
     // until the next rebuild (i.e. for the whole frame).
     const std::vector<InstanceData>& WorldInstances();
-    const std::array<glm::vec3, 8>& CloudBounds();
+    const AABB& CloudBounds();
 
 private:
     // Rebuilds _worldInstances (goTransform * local) and the cloud AABB. The
@@ -71,7 +71,7 @@ private:
 
     MeshInstancerProps _props;
     std::vector<InstanceData> _worldInstances;
-    std::array<glm::vec3, 8> _cloudBounds{};
+    AABB _cloudBounds{};
     // Cached GameObject world transform the cache was built against; a mismatch
     // (or _dirty) triggers a rebuild. The all-zero sentinel forces the first.
     glm::mat4 _cachedGoTransform{ 0.0f };

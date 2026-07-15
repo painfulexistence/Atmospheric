@@ -1,11 +1,11 @@
 #pragma once
 #include "buffer.hpp"
 #include "bullet_collision.hpp"
+#include "frustum.hpp"
 #include "globals.hpp"
 #include "material.hpp"
 #include "shader.hpp"
 #include "vertex.hpp"
-#include <array>
 #include <cstdint>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
@@ -76,12 +76,19 @@ public:
         return _primitiveType;
     }
 
-    std::array<glm::vec3, 8> GetBoundingBox() const {
+    // Local-space AABB (min/max). Frustum culling transforms this to world
+    // space via AABB::Transform each frame. Empty (min == max) means "no
+    // bounds set" — callers skip culling in that case.
+    const AABB& GetBounds() const {
         return _bounds;
     }
 
-    void SetBoundingBox(const std::array<glm::vec3, 8> bounds) {
+    void SetBounds(const AABB& bounds) {
         _bounds = bounds;
+    }
+
+    void SetBounds(glm::vec3 min, glm::vec3 max) {
+        _bounds = { min, max };
     }
 
     MaterialHandle GetMaterial() const {
@@ -109,7 +116,7 @@ public:
 private:
     GLuint vbo, ebo;
     GLenum _primitiveType = GL_TRIANGLES;
-    std::array<glm::vec3, 8> _bounds;
+    AABB _bounds;
 
     // Stable reference into AssetManager's material table; never dangles
     // (resolves to nullptr after the material is unloaded).

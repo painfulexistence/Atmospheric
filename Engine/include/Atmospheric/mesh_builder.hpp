@@ -70,7 +70,7 @@ public:
     void PushCube(glm::vec3 position, glm::vec3 size, glm::quat rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f));
 
     // Push CSG compiled boxes
-    void PushCSG(const std::vector<CSG::AABB>& boxes);
+    void PushCSG(const std::vector<AABB>& boxes);
 
     std::shared_ptr<Mesh> Build();
 
