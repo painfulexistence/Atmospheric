@@ -4,7 +4,6 @@
 #include "mesh_renderer_component.hpp"
 #include "rigidbody_component.hpp"
 #include "rmlui_manager.hpp"
-#include "ui_page_manager.hpp"
 #include "window.hpp"
 
 GameLayer::GameLayer(Application* app) : Layer("GameLayer"), _app(app) {
@@ -21,8 +20,6 @@ void GameLayer::OnUpdate(float dt) {
     for (size_t i = 0; i < entities.size(); ++i) {
         entities[i]->Tick(dt);
     }
-
-    UIPageManager::Get()->Update(dt);
 }
 
 void GameLayer::OnRender(float dt) {
