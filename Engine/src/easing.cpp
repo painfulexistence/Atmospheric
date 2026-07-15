@@ -1,22 +1,21 @@
 #include "easing.hpp"
 #include <cmath>
+#include <numbers>
 
 // Easing curve implementations, shared by the whole animation stack. Extracted
 // verbatim from the former action.cpp so the Action hierarchy could be removed
 // without losing the curves (ActionTrack / tween sampling still needs them).
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+inline constexpr float PI = std::numbers::pi_v<float>;
 
 static float EaseInSine(float t) {
-    return 1.0f - std::cos((t * M_PI) / 2.0f);
+    return 1.0f - std::cos((t * PI) / 2.0f);
 }
 static float EaseOutSine(float t) {
-    return std::sin((t * M_PI) / 2.0f);
+    return std::sin((t * PI) / 2.0f);
 }
 static float EaseInOutSine(float t) {
-    return -(std::cos(M_PI * t) - 1.0f) / 2.0f;
+    return -(std::cos(PI * t) - 1.0f) / 2.0f;
 }
 
 static float EaseInQuad(float t) {
@@ -112,17 +111,17 @@ static float EaseInOutBounce(float t) {
 
 static float EaseInElastic(float t) {
     if (t == 0.0f || t == 1.0f) return t;
-    const float c4 = (2.0f * M_PI) / 3.0f;
+    const float c4 = (2.0f * PI) / 3.0f;
     return -std::pow(2.0f, 10.0f * t - 10.0f) * std::sin((t * 10.0f - 10.75f) * c4);
 }
 static float EaseOutElastic(float t) {
     if (t == 0.0f || t == 1.0f) return t;
-    const float c4 = (2.0f * M_PI) / 3.0f;
+    const float c4 = (2.0f * PI) / 3.0f;
     return std::pow(2.0f, -10.0f * t) * std::sin((t * 10.0f - 0.75f) * c4) + 1.0f;
 }
 static float EaseInOutElastic(float t) {
     if (t == 0.0f || t == 1.0f) return t;
-    const float c5 = (2.0f * M_PI) / 4.5f;
+    const float c5 = (2.0f * PI) / 4.5f;
     return t < 0.5f ? -(std::pow(2.0f, 20.0f * t - 10.0f) * std::sin((20.0f * t - 11.125f) * c5)) / 2.0f
                     : (std::pow(2.0f, -20.0f * t + 10.0f) * std::sin((20.0f * t - 11.125f) * c5)) / 2.0f + 1.0f;
 }
