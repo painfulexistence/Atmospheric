@@ -25,22 +25,23 @@ class MicroVoxelApp : public Application {
         // y=0; MicroVoxelPass draws one bounding box per volume, so they
         // depth-composite with each other. Different seeds give different
         // terrain — proof the renderer handles many independent volumes.
+        // Three volumes sitting edge-to-edge along x; spacing is one grid
+        // width, derived from the component so it stays right whether gridDim
+        // is 256 (native, 12.8m) or 192 (web, 9.6m).
         struct {
-            glm::vec3 pos;
+            float xOffset;// in grid widths
             uint32_t seed;
             const char* name;
         } kVolumes[] = {
-            // Spaced by one grid width (12.8 m = 256 * 5 cm) at the same z, so
-            // the three volumes sit edge-to-edge in a straight, aligned row.
-            { glm::vec3(0.0f, 0.0f, 0.0f), 1337u, "Volume.Center" },
-            { glm::vec3(12.8f, 0.0f, 0.0f), 7u, "Volume.Right" },
-            { glm::vec3(-12.8f, 0.0f, 0.0f), 99u, "Volume.Left" },
+            { 0.0f, 1337u, "Volume.Center" },
+            { 1.0f, 7u, "Volume.Right" },
+            { -1.0f, 99u, "Volume.Left" },
         };
         for (const auto& vd : kVolumes) {
             auto* volumeObj = CreateGameObject();
             volumeObj->SetName(vd.name);
-            volumeObj->SetPosition(vd.pos);
             auto* vc = static_cast<VoxelVolumeComponent*>(volumeObj->AddComponent<VoxelVolumeComponent>(vd.seed));
+            volumeObj->SetPosition(glm::vec3(vd.xOffset * vc->WorldExtent(), 0.0f, 0.0f));
             _carveTargets.push_back(vc);
         }
 

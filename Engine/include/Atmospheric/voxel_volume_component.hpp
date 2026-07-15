@@ -47,7 +47,7 @@ public:
 
     // Grid config (gridDim must be a multiple of brickDim; Generate enforces it).
 #ifdef __EMSCRIPTEN__
-    int gridDim = 128;// 6.4 m at 5 cm voxels (WebGL2 fragment raymarch is pricier per pixel)
+    int gridDim = 192;// 9.6 m at 5 cm voxels (WebGL2 fragment raymarch is pricier per pixel)
 #else
     int gridDim = 256;// 12.8 m at 5 cm voxels
 #endif

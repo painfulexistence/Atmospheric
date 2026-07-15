@@ -326,8 +326,9 @@ class TerrainStreamingDemo : public Application {
         // Spawn high enough for an establishing vista over the valley — at
         // ground+40 you only see the local mountainside.
         const float groundY = _terrain->GetHeight(0.0f, 0.0f);
-        _camGO->SetPosition(glm::vec3(0.0f, groundY + 200.0f, 0.0f));
-
+        _camGO->SetPosition(glm::vec3(-382.1f, groundY + 40.0f, -2279.9f));
+        // Default forward is +x; negative yaw rotates the view right (toward -z).
+        _cam->Yaw(glm::radians(40.0f));
         // Unified fly camera. 12 m/s base ~ a sprinting character (crossing
         // the world takes ~14 min, BotW-like), X sprint = 600 m/s for
         // streaming stress tests. Added before the ground clamp so the clamp
