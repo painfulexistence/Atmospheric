@@ -68,13 +68,31 @@ RmlUi context today, so selection stays in C++ (`BattleState`) and is reflected
 into the document by toggling a `.sel` class — the same pattern MultiplayerSandbox
 uses for spell slots.
 
-### What is intentionally still immediate
+### Explore world — also componentized (no immediate mode left)
 
-The explore **tilemap** (`Tilemap2D::Draw`), **2D lighting**
-(`LightingSystem2D::Apply`) and the full-screen **fade** are still immediate:
-they are engine systems with no component form yet, and they sit *below* the
-RmlUi HUD so there is no ordering conflict. Converting them cleanly needs an
-engine-level `TilemapComponent` / 2D-camera story (see §3).
+The explore world was moved onto Canvas components too, so the example now
+issues **no immediate `gfx->Draw*` calls at all**:
+
+- `TilemapComponent` (`world_components.hpp`) — a `CanvasDrawable` that mirrors
+  `Tilemap2D::Draw`'s cull + UV math but emits batched textured quads.
+- entity **SpriteComponents** for player / enemies / NPCs, driven by their
+  `FlipbookComponent`s and repositioned each frame from the camera.
+- `Lighting2DComponent` — a `CanvasDrawable` replicating `LightingSystem2D::Apply`
+  (ambient overlay + soft light rings) through the batch renderer, on
+  `LAYER_EFFECTS` (above the sprites, below the RmlUi HUD).
+- the transition/fade is a Canvas quad whose alpha is driven each frame.
+
+These still use the example's hand-rolled scrolling camera (screen-space ortho):
+`TilemapComponent` takes a camera-offset getter and the sprites are repositioned
+to `world − camera`. The cleaner end state is an engine **2D orthographic
+follow-camera** so these draw in world space and scroll for free — but note the
+CanvasPass uses one camera for *all* canvas layers, so adding a follow-camera
+means resetting it (or keeping battle UI on RmlUi, as here) so the fixed-position
+battle visuals still line up. Left as a follow-up.
+
+Known cosmetic notes: the battle portrait's idle animation may freeze while the
+player's world view GameObject is inactive during battle; and the startup
+fade-in now sits under the RmlUi HUD rather than over it.
 
 ## 3. What's missing for a text-heavy / narrative game
 
@@ -99,17 +117,18 @@ The `DialogueBox` here is the seed; a real narrative game still needs:
 - `DialogueBoxComponent` (done, minimal), `ChoiceMenuComponent`,
   `PortraitComponent`, a generic `MenuListComponent` (to remove the duplicated
   battle/skill/item selection logic), and a `Backlog/History` view.
-- Engine-side, to finish removing immediate mode from the world: a
-  `TilemapComponent` and a 2D lighting component, plus a 2D camera the CanvasPass
-  already supports, so explore rendering can leave immediate mode too.
+- `TilemapComponent` / `Lighting2DComponent` now exist (in the example, as
+  `CanvasDrawable`s); promoting them into the engine + adding a 2D follow-camera
+  would let any game leave immediate mode without the hand-rolled camera.
 
 ## 4. Files
 
 - `ui_kit.hpp` — Canvas `Quad` / `Sprite` handles.
+- `world_components.hpp` — `TilemapComponent` / `Lighting2DComponent` (`CanvasDrawable`s).
 - `hud_ui_page.hpp`, `battle_ui_page.hpp`, `dialogue_ui_page.hpp` — `UIPageComponent` subclasses.
 - `assets/ui/{hud,battle,dialogue}.{rml,rcss}` — the documents.
 - `components.hpp` — `BattleSystemComponent` now drives a Canvas `BattleScene` + the RmlUi `BattleUIPage`; all `DrawBattle*` removed.
-- `main.cpp` — HUD/dialogue via `UIPageComponent`; explore world/fade still immediate.
+- `main.cpp` — HUD/dialogue via `UIPageComponent`; explore world via Canvas components; no immediate draws remain.
 - `CMakeLists.txt` — stages the game's `assets/ui` into the Emscripten preload.
 
 ## 5. Build/verification status

@@ -2,6 +2,7 @@
 #include "components.hpp"
 #include "dialogue_ui_page.hpp"
 #include "hud_ui_page.hpp"
+#include "world_components.hpp"
 #include <Atmospheric/gfx_factory.hpp>
 #include <Atmospheric/lighting_2d.hpp>
 #include <Atmospheric/tilemap_2d.hpp>
@@ -27,8 +28,15 @@ class RPGGame : public Application {
     GameObject* _playerAnimGO = nullptr;// host for the player's FlipbookComponent
     FlipbookComponent* _playerFlip = nullptr;
     std::vector<Enemy> _enemies;
-    std::vector<FlipbookComponent*> _enemyFlips;// one per enemy, hosted on its AI GameObject
+    std::vector<FlipbookComponent*> _enemyFlips;// one per enemy, drives its view sprite
     std::vector<NPC> _npcs;
+
+    // ── explore world view (Canvas components) ─────────────────────────
+    GameObject* _tilemapGO = nullptr;
+    GameObject* _lightingGO = nullptr;
+    std::vector<GameObject*> _enemyViewGOs;// screen-space sprite per enemy
+    std::vector<GameObject*> _npcViewGOs;// screen-space sprite per NPC
+    rpgui::Quad _fade;// full-screen fade/transition overlay
 
     // ── camera ─────────────────────────────────────────────────────────
     float _camX = 0, _camY = 0;
@@ -170,8 +178,17 @@ public:
         _player.w = _player.h = cs;
         _player.initSkills();
         _player.initItems();
+        // Player view GameObject: a SpriteComponent (added first) driven by the
+        // FlipbookComponent, positioned in screen space each frame from the camera.
         _playerAnimGO = CreateGameObject();
-        _playerAnimGO->SetName("PlayerAnim");
+        _playerAnimGO->SetName("PlayerView");
+        _playerAnimGO->AddComponent<SpriteComponent>(SpriteProps{
+            .size = glm::vec2(static_cast<float>(cs)),
+            .pivot = glm::vec2(0.5f, 0.5f),
+            .color = glm::vec4(1.0f),
+            .texture = _playerTex,
+            .layer = CanvasLayer::LAYER_WORLD,
+        });
         _playerFlip = static_cast<FlipbookComponent*>(_playerAnimGO->AddComponent<FlipbookComponent>());
         _playerFlip->SetWrapMode(WrapMode::Loop);
         _playerFlip->AddLocalClip(MakeClip("idle", 0, { 0, 1 }, 0.4f));
@@ -287,17 +304,29 @@ public:
         // Enemy AI components — update _enemies[i].x/y/aggro each tick and
         // trigger battles on player contact.
         _enemyFlips.clear();
+        _enemyViewGOs.clear();
         for (size_t i = 0; i < _enemies.size(); i++) {
-            auto* eObj = CreateGameObject();
-            eObj->SetName("Enemy_" + std::to_string(i));
-
-            auto* flip = static_cast<FlipbookComponent*>(eObj->AddComponent<FlipbookComponent>());
+            // Enemy view GameObject: sprite (added first) driven by its flipbook.
+            auto* eView = CreateGameObject();
+            eView->SetName("EnemyView_" + std::to_string(i));
+            eView->AddComponent<SpriteComponent>(SpriteProps{
+                .size = glm::vec2(_enemies[i].w, _enemies[i].h),
+                .pivot = glm::vec2(0.5f, 0.5f),
+                .color = glm::vec4(1.0f),
+                .texture = _enemyTex,
+                .layer = CanvasLayer::LAYER_WORLD,
+            });
+            auto* flip = static_cast<FlipbookComponent*>(eView->AddComponent<FlipbookComponent>());
             flip->SetWrapMode(WrapMode::Loop);
             flip->AddLocalClip(MakeClip("idle", 0, { 0, 1 }, 0.6f));
             flip->AddLocalClip(MakeClip("walk", 0, { 0, 1, 2, 3 }, 0.15f));
             flip->Play("idle");
             _enemyFlips.push_back(flip);
+            _enemyViewGOs.push_back(eView);
 
+            // Enemy AI GameObject: logic only (moves _enemies[i], drives the flip).
+            auto* eObj = CreateGameObject();
+            eObj->SetName("EnemyAI_" + std::to_string(i));
             eObj->AddComponent<EnemyAIComponent>(
                 &_enemies[i],
                 flip,
@@ -313,6 +342,45 @@ public:
                 }
             );
         }
+
+        // NPC view GameObjects (static sprite, positioned in screen space each frame).
+        _npcViewGOs.clear();
+        for (const auto& npc : _npcs) {
+            auto* nView = CreateGameObject();
+            nView->SetName("NPCView_" + npc.name);
+            nView->AddComponent<SpriteComponent>(SpriteProps{
+                .size = glm::vec2(npc.w, npc.h),
+                .pivot = glm::vec2(0.5f, 0.5f),
+                .color = glm::vec4(1.0f),
+                .texture = _npcTex,
+                .layer = CanvasLayer::LAYER_WORLD,
+            });
+            _npcViewGOs.push_back(nView);
+        }
+
+        // Tilemap + 2D lighting as Canvas components (replace the old immediate
+        // Tilemap2D::Draw / LightingSystem2D::Apply). The tilemap reads the
+        // hand-rolled camera each frame; lights are already in screen space.
+        _tilemapGO = CreateGameObject();
+        _tilemapGO->SetName("Tilemap");
+        _tilemapGO->AddComponent<TilemapComponent>(
+            _tilemap.get(), _tilesetTex, [this]() { return glm::vec2(_camX, _camY); }, _screenW, _screenH
+        );
+        _lightingGO = CreateGameObject();
+        _lightingGO->SetName("Lighting");
+        _lightingGO->AddComponent<Lighting2DComponent>(&_lighting, _screenW, _screenH);
+
+        // Full-screen fade / transition overlay (Canvas quad, above the world but
+        // below the RmlUi HUD). Alpha is driven each frame; replaces the immediate
+        // fade DrawQuad calls.
+        _fade.Build(
+            this,
+            _whiteTex,
+            { 0, 0 },
+            { static_cast<float>(_screenW), static_cast<float>(_screenH) },
+            glm::vec4(0, 0, 0, 0),
+            /*z=*/900
+        );
     }
 
     void OnUpdate(float dt, float /*time*/) override {
@@ -338,7 +406,6 @@ public:
         switch (_mode) {
         case GameMode::Explore:
             UpdateExplore(dt);
-            DrawExplore();
             break;
 
         case GameMode::BattleTransitionIn:
@@ -347,10 +414,6 @@ public:
                 _transition = 1.0f;
                 _mode = GameMode::Battle;
             }
-            DrawExplore();
-            GraphicsSubsystem::Get()->DrawQuad(
-                0, 0, static_cast<float>(_screenW), static_cast<float>(_screenH), 0, vec4(0, 0, 0, _transition)
-            );
             break;
 
         case GameMode::Battle:
@@ -364,17 +427,22 @@ public:
                 _transition = 0.0f;
                 _mode = GameMode::Explore;
             }
-            DrawExplore();
-            GraphicsSubsystem::Get()->DrawQuad(
-                0, 0, static_cast<float>(_screenW), static_cast<float>(_screenH), 0, vec4(0, 0, 0, _transition)
-            );
             break;
         }
 
-        if (_fadeIn > 0.01f)
-            GraphicsSubsystem::Get()->DrawQuad(
-                0, 0, static_cast<float>(_screenW), static_cast<float>(_screenH), 0, vec4(0, 0, 0, _fadeIn)
-            );
+        // The explore world (tilemap / entity sprites / lighting) is now a set of
+        // Canvas components. Show them in every mode except the battle screen, and
+        // refresh their screen positions from the hand-rolled camera.
+        SyncWorldView(_mode != GameMode::Battle);
+
+        // Fade overlay (Canvas quad): black during battle transitions, plus the
+        // initial fade-in. Replaces the old immediate full-screen DrawQuad.
+        float fadeAlpha = 0.0f;
+        if (_mode == GameMode::BattleTransitionIn || _mode == GameMode::BattleTransitionOut)
+            fadeAlpha = _transition;
+        fadeAlpha = std::max(fadeAlpha, _fadeIn > 0.01f ? _fadeIn : 0.0f);
+        _fade.SetColor(glm::vec4(0, 0, 0, fadeAlpha));
+        _fade.SetActive(fadeAlpha > 0.001f);
     }
 
 private:
@@ -444,44 +512,35 @@ private:
         }
     }
 
-    void DrawExplore() {
-        auto* gfx = GraphicsSubsystem::Get();
-        float camX = _camX, camY = _camY;
+    // Show/hide the explore-world Canvas components and refresh their screen
+    // positions (= world position minus the hand-rolled camera). Called every
+    // frame; `visible` is false only on the battle screen. The tilemap and
+    // lighting components read the world/camera themselves via their getters.
+    void SyncWorldView(bool visible) {
+        if (_tilemapGO) _tilemapGO->SetActive(visible);
+        if (_lightingGO) _lightingGO->SetActive(visible);
 
-        _tilemap->Draw(gfx, camX, camY, _screenW, _screenH);
-
-        for (const auto& npc : _npcs) {
-            float sx = npc.x - camX, sy = npc.y - camY;
-            gfx->DrawTexturedQuad(sx + npc.w * 0.5f, sy + npc.h * 0.5f, npc.w, npc.h, 0, _npcTex, vec4(1));
+        if (_playerAnimGO) {
+            _playerAnimGO->SetActive(visible);
+            if (visible) _playerAnimGO->SetPosition(glm::vec3(_player.cx() - _camX, _player.cy() - _camY, 0.0f));
         }
-
-        constexpr int ccols = 4, crows = 2;
-        for (size_t i = 0; i < _enemies.size(); i++) {
-            if (!_enemies[i].alive) continue;
-            const Enemy& e = _enemies[i];
-            float sx = e.x - camX, sy = e.y - camY;
-            vec2 uv0{ 0, 0 }, uv1{ 1.0f / ccols, 1.0f / crows };
-            _enemyFlips[i]->GetCurrentUV(uv0, uv1);
-            gfx->DrawSprite2D(sx, sy, e.w, e.h, _enemyTex, uv0, uv1);
+        for (size_t i = 0; i < _enemyViewGOs.size(); i++) {
+            bool alive = visible && _enemies[i].alive;
+            _enemyViewGOs[i]->SetActive(alive);
+            if (alive)
+                _enemyViewGOs[i]->SetPosition(glm::vec3(_enemies[i].cx() - _camX, _enemies[i].cy() - _camY, 0.0f));
         }
-
-        {
-            float sx = _player.x - camX, sy = _player.y - camY;
-            vec2 uv0{ 0, 0 }, uv1{ 1.0f / ccols, 1.0f / crows };
-            _playerFlip->GetCurrentUV(uv0, uv1);
-            gfx->DrawSprite2D(sx, sy, _player.w, _player.h, _playerTex, uv0, uv1);
+        for (size_t i = 0; i < _npcViewGOs.size(); i++) {
+            _npcViewGOs[i]->SetActive(visible);
+            if (visible) _npcViewGOs[i]->SetPosition(glm::vec3(_npcs[i].cx() - _camX, _npcs[i].cy() - _camY, 0.0f));
         }
-
-        _lighting.Apply(gfx, _screenW, _screenH);
     }
 
-    // Explore HUD and the dialogue box are no longer drawn by hand here — they
-    // are RmlUi documents (HudUIPage / DialogueUIPage) driven from OnUpdate /
-    // UpdateExplore. The battle screen is likewise split between the Canvas
-    // BattleScene and the RmlUi BattleUIPage inside BattleSystemComponent. The
-    // only immediate-mode drawing left in this example is the tilemap, 2D
-    // lighting and the full-screen fade below (engine systems with no component
-    // form yet — see docs/RPG_UI_REFACTOR.md).
+    // This example no longer issues any immediate-mode draw calls. The explore
+    // world is Canvas components (TilemapComponent / SpriteComponent /
+    // Lighting2DComponent + the fade quad); the HUD, dialogue and battle UI are
+    // RmlUi documents (UIPageComponent); the battle sprites are Canvas
+    // components. See docs/RPG_UI_REFACTOR.md.
 };
 
 int main() {
