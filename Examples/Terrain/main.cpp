@@ -1,26 +1,11 @@
 #include "Atmospheric.hpp"
 #include "Atmospheric/camera_controller_3d.hpp"
 #include "Atmospheric/portal_component.hpp"
-#include "Atmospheric/rmlui_manager.hpp"
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Elements/ElementFormControlSelect.h>
 #include <array>
 #include <functional>
 #include <memory>
-
-// Minimal RmlUi event listener that forwards to a std::function. Instances are
-// owned by the app (must outlive the elements they're attached to).
-class RmlEventCallback : public Rml::EventListener {
-public:
-    explicit RmlEventCallback(std::function<void()> cb) : _cb(std::move(cb)) {
-    }
-    void ProcessEvent(Rml::Event& /*event*/) override {
-        if (_cb) _cb();
-    }
-
-private:
-    std::function<void()> _cb;
-};
 
 class TerrainDemo : public Application {
     using Application::Application;
@@ -40,14 +25,13 @@ class TerrainDemo : public Application {
         "4 - Forest",         "5 - Soft Cool",        "6 - Vivid Mint/Coral"
     };
 
-    // HUD (RmlUi native <select> controls)
-    Rml::ElementDocument* _hud = nullptr;
+    // HUD (RmlUi native <select> controls), driven by an engine UIPageComponent.
+    UIPageComponent* _hudPage = nullptr;
     Rml::ElementFormControlSelect* _selMode = nullptr;
     Rml::ElementFormControlSelect* _selPalette = nullptr;
     // Guards SetSelection() so syncing the UI from code doesn't re-enter the
     // change handler (which would call Apply* again).
     bool _syncing = false;
-    std::vector<std::unique_ptr<RmlEventCallback>> _listeners;
 
     void OnInit() override {
         GoScene("main", [this] { OnLoad(); });
@@ -141,37 +125,32 @@ class TerrainDemo : public Application {
         orangeGO->SetActive(false);
     }
 
-    // Attach an event listener to an element; the listener is owned by _listeners.
-    void AddListener(Rml::Element* el, const char* event, std::function<void()> cb) {
-        if (!el) return;
-        auto listener = std::make_unique<RmlEventCallback>(std::move(cb));
-        el->AddEventListener(event, listener.get());
-        _listeners.push_back(std::move(listener));
-    }
-
     void SetupHUD() {
-        _hud = RmlUiManager::Get()->LoadDocument("assets/ui/terrain_hud.rml");
-        if (!_hud) {
+        // The engine's UIPageComponent loads the document, shows it, and owns
+        // the event-listener adapters — no hand-rolled RmlUi glue here.
+        _hudPage = static_cast<UIPageComponent*>(
+            CreateGameObject()->AddComponent<UIPageComponent>("assets/ui/terrain_hud.rml")
+        );
+        if (!_hudPage->GetDocument()) {
             ConsoleSubsystem::Get()->Warn("Terrain HUD failed to load; keyboard controls still work.");
             return;
         }
-        _hud->Show();
 
 #if defined(__EMSCRIPTEN__)
         // Wireframe (glPolygonMode) is unavailable on WebGL — hide its hint.
         // The I-key handler stays active but is a harmless no-op on the web.
-        if (auto* hint = _hud->GetElementById("hint_wireframe")) hint->SetProperty("display", "none");
+        if (auto* hint = _hudPage->GetElement("hint_wireframe")) hint->SetProperty("display", "none");
 #endif
 
-        _selMode = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("mode_select"));
-        _selPalette = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("palette_select"));
+        _selMode = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hudPage->GetElement("mode_select"));
+        _selPalette = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hudPage->GetElement("palette_select"));
 
         // Native <select> fires "change" on user selection; apply it to the
         // terrain. The _syncing guard skips changes we triggered from code.
-        AddListener(_selMode, "change", [this] {
+        _hudPage->AddListener(_selMode, "change", [this] {
             if (!_syncing && _selMode) ApplyProcedural(_selMode->GetSelection() == 0);
         });
-        AddListener(_selPalette, "change", [this] {
+        _hudPage->AddListener(_selPalette, "change", [this] {
             if (!_syncing && _selPalette) ApplyPalette(_selPalette->GetSelection());
         });
     }

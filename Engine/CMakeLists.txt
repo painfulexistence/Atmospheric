@@ -219,7 +219,7 @@ set(SOURCES
     src/rmlui_renderer.cpp
     src/rmlui_system.cpp
     src/rmlui_manager.cpp
-    src/ui_page_manager.cpp
+    src/ui_page_component.cpp
     src/batch_renderer_2d.cpp
     src/physics_subsystem_2d.cpp
     src/rigidbody_2d_component.cpp
