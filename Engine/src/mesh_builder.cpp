@@ -343,7 +343,9 @@ Mesh* MeshBuilder::CreateTerrain(const float& worldSize, const int& resolution) 
 
     auto terrain = new Mesh(MeshType::TERRAIN);
     terrain->Initialize(verts);
-    terrain->SetBounds(glm::vec3(-.5f * worldSize, -.5f, -.5f * worldSize), glm::vec3(.5f * worldSize, .5f, .5f * worldSize));
+    terrain->SetBounds(
+        glm::vec3(-.5f * worldSize, -.5f, -.5f * worldSize), glm::vec3(.5f * worldSize, .5f, .5f * worldSize)
+    );
     return terrain;
 }
 

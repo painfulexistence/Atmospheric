@@ -49,8 +49,7 @@ struct AABB {
     }
 
     bool Contains(const AABB& other) const {
-        return other.min.x >= min.x && other.max.x <= max.x
-               && other.min.y >= min.y && other.max.y <= max.y
+        return other.min.x >= min.x && other.max.x <= max.x && other.min.y >= min.y && other.max.y <= max.y
                && other.min.z >= min.z && other.max.z <= max.z;
     }
 
