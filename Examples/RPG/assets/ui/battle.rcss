@@ -1,0 +1,136 @@
+/* Battle UI — replaces the immediate-mode DrawBattleStats / DrawBattleMenu /
+   DrawBattleLog and the hand-rolled panels. The combatant sprites + backdrop are
+   drawn on the Canvas layer (ui_kit.hpp); everything textual lives here and is
+   composited on top by the RmlUi pass. Positions mirror the old 800x600 layout. */
+body {
+    font-family: Noto Sans;
+    color: #e6e6f0;
+    width: 100%;
+    height: 100%;
+}
+
+div {
+    display: block;
+}
+
+/* shared panel look */
+#bt_stats, #bt_log, #bt_cmd, #bt_sub, #bt_banner {
+    position: absolute;
+    background-color: #0d0d1eeb;
+    border-width: 1dp;
+    border-color: #59597f;
+    border-radius: 4dp;
+    padding: 6dp 8dp;
+}
+
+/* ── enemy read-outs ─────────────────────────────────────────────────────── */
+.enemy {
+    position: absolute;
+    top: 140dp;
+    width: 120dp;
+    display: none;/* shown per enemy count from code */
+}
+#bt_enemy0 { left: 460dp; }  /* sprite center x = 520 */
+#bt_enemy1 { left: 560dp; }  /* 620 */
+#bt_enemy2 { left: 660dp; }  /* 720 */
+.enemy_name {
+    font-size: 12dp;
+    color: #ffcccc;
+    text-align: center;
+    margin-bottom: 3dp;
+}
+.enemy_bar {
+    width: 100dp;
+    height: 8dp;
+    margin-left: 10dp;
+    background-color: #1a1a1ad9;
+    border-radius: 2dp;
+}
+.enemy_hp {
+    height: 100%;
+    width: 100%;
+    background-color: #e63333;
+    border-radius: 2dp;
+}
+
+/* ── player stats (bottom-left) ──────────────────────────────────────────── */
+#bt_stats {
+    left: 8dp;
+    top: 490dp;
+    width: 200dp;
+    height: 100dp;
+}
+#bt_lv { font-size: 11dp; color: #ffe680; margin-bottom: 2dp; }
+#bt_hp_text { font-size: 11dp; color: #b3ffb3; }
+#bt_mp_text { font-size: 11dp; color: #80b3ff; }
+#bt_atkdef { font-size: 10dp; color: #cccccce6; margin-top: 2dp; }
+.bar {
+    width: 180dp;
+    height: 10dp;
+    margin: 2dp 0dp;
+    background-color: #1a1a1ad9;
+    border-radius: 2dp;
+}
+.fill { height: 100%; width: 100%; border-radius: 2dp; }
+.fill.hp { background-color: #33d933; }
+.fill.mp { background-color: #3366ff; }
+
+/* ── battle log (bottom-center) ──────────────────────────────────────────── */
+#bt_log {
+    left: 220dp;
+    top: 470dp;
+    width: 360dp;
+    height: 120dp;
+}
+.log_line { font-size: 11dp; color: #e6e6ff; margin-bottom: 3dp; }
+
+/* ── command menu (bottom-right) ─────────────────────────────────────────── */
+#bt_cmd {
+    left: 620dp;
+    top: 470dp;
+    width: 170dp;
+    height: 120dp;
+}
+/* ── skill / item sub-menu (bottom-right, larger) ────────────────────────── */
+#bt_sub {
+    left: 580dp;
+    top: 400dp;
+    width: 210dp;
+    display: none;
+}
+#bt_sub_title { font-size: 11dp; color: #b3b3ff; margin-bottom: 4dp; }
+
+.menu_item {
+    font-size: 13dp;
+    color: #d9d9e6;
+    margin-bottom: 6dp;
+}
+.menu_item.sel {
+    color: #ffff4d;/* highlighted cursor row */
+}
+.menu_item.dim {
+    color: #666666;/* unavailable (e.g. 0 items left) */
+}
+.menu_hint {
+    font-size: 9dp;
+    color: #808099;
+    margin-top: 4dp;
+}
+
+/* ── victory / defeat banner (center) ────────────────────────────────────── */
+#bt_banner {
+    left: 280dp;
+    top: 270dp;
+    width: 240dp;
+    height: 60dp;
+    display: none;
+}
+#bt_banner_text {
+    font-size: 20dp;
+    text-align: center;
+    margin-top: 8dp;
+}
+#bt_banner.victory { background-color: #0d330deb; }
+#bt_banner.defeat { background-color: #330808eb; }
+#bt_banner.victory #bt_banner_text { color: #4dff66; }
+#bt_banner.defeat #bt_banner_text { color: #ff4d4d; }

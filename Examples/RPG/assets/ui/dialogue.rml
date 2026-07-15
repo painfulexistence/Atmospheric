@@ -1,0 +1,13 @@
+<rml>
+<head>
+    <title>dialogue</title>
+    <link type="text/rcss" href="dialogue.rcss"/>
+</head>
+<body id="dialogue">
+    <div id="dialogue_box">
+        <div id="dialogue_speaker"></div>
+        <div id="dialogue_text"></div>
+        <div id="dialogue_more">▼</div>
+    </div>
+</body>
+</rml>

@@ -1,11 +1,14 @@
 #include "Atmospheric.hpp"
 #include "components.hpp"
+#include "dialogue_ui_page.hpp"
+#include "hud_ui_page.hpp"
 #include <Atmospheric/gfx_factory.hpp>
 #include <Atmospheric/lighting_2d.hpp>
 #include <Atmospheric/tilemap_2d.hpp>
 #include <algorithm>
 #include <cmath>
 #include <fmt/format.h>
+#include <string>
 
 using glm::vec2;
 using glm::vec4;
@@ -13,6 +16,7 @@ using glm::vec4;
 class RPGGame : public Application {
     // ── resources ──────────────────────────────────────────────────────
     uint32_t _tilesetTex = 0, _playerTex = 0, _enemyTex = 0, _npcTex = 0;
+    TextureHandle _whiteTex = 0;// 1×1 white, tinted for UI/backdrop quads
     FontHandle _fontID = 0;
 
     std::unique_ptr<Tilemap2D> _tilemap;
@@ -34,12 +38,15 @@ class RPGGame : public Application {
     GameMode _mode = GameMode::Explore;
     float _fadeIn = 1.0f;
     float _transition = 0.0f;
-    std::string _dialogText;
     float _dialogTimer = 0.0f;
     float _time = 0.0f;
 
     // ── battle (owned by BattleSystemComponent) ────────────────────────
     BattleSystemComponent* _battleComp = nullptr;
+
+    // ── UI pages (RmlUi documents, driven via UIPageComponent) ─────────
+    HudUIPage* _hud = nullptr;
+    DialogueUIPage* _dialogue = nullptr;
 
 public:
     RPGGame()
@@ -154,6 +161,8 @@ public:
         );
         const uint8_t npcPx[4] = { 180, 200, 80, 255 };
         _npcTex = GfxFactory::UploadTexture2D(npcPx, 1, 1);
+        const uint8_t whitePx[4] = { 255, 255, 255, 255 };
+        _whiteTex = GfxFactory::UploadTexture2D(whitePx, 1, 1);// tinted by SpriteComponent for UI/backdrop
 
         // Player data
         _player.x = 3 * ts;
@@ -244,9 +253,27 @@ public:
         auto* battleObj = CreateGameObject();
         battleObj->SetName("BattleSystem");
         battleObj->AddComponent<BattleSystemComponent>(
-            &_player, _playerFlip, &_enemies, &_mode, &_transition, _fontID, _playerTex, _enemyTex, _screenW, _screenH
+            &_player,
+            _playerFlip,
+            &_enemies,
+            &_mode,
+            &_transition,
+            _fontID,
+            _whiteTex,
+            _playerTex,
+            _enemyTex,
+            _screenW,
+            _screenH
         );
         _battleComp = battleObj->GetComponent<BattleSystemComponent>();
+
+        // ── UI pages ───────────────────────────────────────────────────────
+        // Explore HUD and the dialogue box are RmlUi documents, each attached to
+        // a GameObject via the engine's UIPageComponent (loads + shows + owns the
+        // document). The battle UI is created inside BattleSystemComponent.
+        _hud = static_cast<HudUIPage*>(CreateGameObject()->AddComponent<HudUIPage>("assets/ui/hud.rml"));
+        _dialogue =
+            static_cast<DialogueUIPage*>(CreateGameObject()->AddComponent<DialogueUIPage>("assets/ui/dialogue.rml"));
 
         // Player movement component — updates _player.x/y each tick.
         auto* playerObj = CreateGameObject();
@@ -294,15 +321,24 @@ public:
 
         if (_dialogTimer > 0) {
             _dialogTimer -= dt;
-            if (_dialogTimer <= 0) _dialogText.clear();
+            if (_dialogTimer <= 0 && _dialogue) _dialogue->HideBox();
+        }
+
+        // The explore HUD (RmlUi) is only visible while exploring; the RmlUi pass
+        // composites it over the immediate-mode world below.
+        if (_hud) {
+            if (_mode == GameMode::Explore) {
+                _hud->Show();
+                _hud->Sync(_player, _battleComp->GetBattle());
+            } else {
+                _hud->Hide();
+            }
         }
 
         switch (_mode) {
         case GameMode::Explore:
             UpdateExplore(dt);
             DrawExplore();
-            DrawExploreHUD();
-            if (!_dialogText.empty()) DrawDialog();
             break;
 
         case GameMode::BattleTransitionIn:
@@ -318,7 +354,8 @@ public:
             break;
 
         case GameMode::Battle:
-            // UpdateBattle and DrawBattle are handled by BattleSystemComponent::OnTick.
+            // Battle update + view (Canvas BattleScene + RmlUi BattleUIPage) are
+            // driven by BattleSystemComponent::OnTick.
             break;
 
         case GameMode::BattleTransitionOut:
@@ -380,8 +417,14 @@ private:
             for (auto& npc : _npcs) {
                 float dx = npc.cx() - _player.cx(), dy = npc.cy() - _player.cy();
                 if (std::sqrt(dx * dx + dy * dy) < npc.talkR) {
-                    _dialogText = npc.dialogue[npc.dialogIdx % static_cast<int>(npc.dialogue.size())];
+                    std::string line = npc.dialogue[npc.dialogIdx % static_cast<int>(npc.dialogue.size())];
                     npc.dialogIdx++;
+                    // Split a leading "Name: " so the speaker shows in its own field.
+                    std::string body = line;
+                    auto colon = line.find(": ");
+                    if (colon != std::string::npos && line.compare(0, colon, npc.name) == 0)
+                        body = line.substr(colon + 2);
+                    if (_dialogue) _dialogue->ShowLine(npc.name, body);
                     _dialogTimer = 3.5f;
                     break;
                 }
@@ -432,71 +475,13 @@ private:
         _lighting.Apply(gfx, _screenW, _screenH);
     }
 
-    void DrawExploreHUD() {
-        auto* gfx = GraphicsSubsystem::Get();
-        const Stats& s = _player.stats;
-        const auto& b = _battleComp->GetBattle();
-
-        DrawPanel(8, 8, 160, 50);
-        gfx->DrawText(
-            _fontID,
-            fmt::format("LV{} EXP:{}/{}", b.level, b.exp, b.expToNext),
-            14,
-            12,
-            0.5f,
-            vec4(0.9f, 0.85f, 0.6f, 1)
-        );
-        DrawHPBar(14, 28, 140, 10, s.hp, s.maxHp);
-        DrawMPBar(14, 42, 140, 8, s.mp, s.maxMp);
-
-        gfx->DrawText(
-            _fontID,
-            fmt::format("Gold:{}", b.gold),
-            14,
-            static_cast<float>(_screenH) - 36,
-            0.55f,
-            vec4(1, 0.9f, 0.3f, 1)
-        );
-        gfx->DrawText(
-            _fontID,
-            "WASD:move  E:talk  walk into enemy to battle",
-            14,
-            static_cast<float>(_screenH) - 20,
-            0.45f,
-            vec4(0.7f, 0.7f, 0.7f, 0.8f)
-        );
-    }
-
-    void DrawDialog() {
-        auto* gfx = GraphicsSubsystem::Get();
-        const auto w = static_cast<float>(_screenW), h = static_cast<float>(_screenH);
-        const float bx = 40, bh = 70, by = h - bh - 20, bw = w - 80;
-        DrawPanel(bx, by, bw, bh);
-        gfx->DrawQuad(bx + bw * 0.5f, by + 1.5f, bw, 3, 0, vec4(0.5f, 0.8f, 1, 1));
-        if (_fontID) gfx->DrawText(_fontID, _dialogText, bx + 12, by + 14, 0.7f, vec4(0.9f, 0.9f, 1, 1));
-    }
-
-    void DrawPanel(float x, float y, float w, float h, vec4 bg = vec4(0.05f, 0.05f, 0.12f, 0.92f)) {
-        auto* gfx = GraphicsSubsystem::Get();
-        gfx->DrawQuad(x + w * 0.5f, y + h * 0.5f, w, h, 0, bg);
-        gfx->DrawRect(x, y, w, h, vec4(0.35f, 0.35f, 0.55f, 0.8f));
-    }
-
-    void DrawHPBar(float x, float y, float w, float h, int hp, int maxHp, vec4 color = vec4(0.2f, 0.85f, 0.2f, 1)) {
-        auto* gfx = GraphicsSubsystem::Get();
-        gfx->DrawQuad(x + w * 0.5f, y + h * 0.5f, w, h, 0, vec4(0.1f, 0.1f, 0.1f, 0.85f));
-        float ratio = maxHp > 0 ? static_cast<float>(hp) / maxHp : 0;
-        float fw = (w - 2) * ratio;
-        if (fw > 0) gfx->DrawQuad(x + 1 + fw * 0.5f, y + 1 + (h - 2) * 0.5f, fw, h - 2, 0, color);
-    }
-
-    void DrawMPBar(float x, float y, float w, float h, int mp, int maxMp) {
-        auto* gfx = GraphicsSubsystem::Get();
-        gfx->DrawQuad(x + w * 0.5f, y + h * 0.5f, w, h, 0, vec4(0.1f, 0.1f, 0.1f, 0.85f));
-        float ratio = maxMp > 0 ? static_cast<float>(mp) / maxMp : 0;
-        float fw = (w - 2) * ratio;
-        if (fw > 0) gfx->DrawQuad(x + 1 + fw * 0.5f, y + 1 + (h - 2) * 0.5f, fw, h - 2, 0, vec4(0.2f, 0.4f, 1, 1));
-    }
+    // Explore HUD and the dialogue box are no longer drawn by hand here — they
+    // are RmlUi documents (HudUIPage / DialogueUIPage) driven from OnUpdate /
+    // UpdateExplore. The battle screen is likewise split between the Canvas
+    // BattleScene and the RmlUi BattleUIPage inside BattleSystemComponent. The
+    // only immediate-mode drawing left in this example is the tilemap, 2D
+    // lighting and the full-screen fade below (engine systems with no component
+    // form yet — see docs/RPG_UI_REFACTOR.md).
 };
 
 int main() {

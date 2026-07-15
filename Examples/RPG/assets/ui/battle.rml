@@ -1,0 +1,68 @@
+<rml>
+<head>
+    <title>battle</title>
+    <link type="text/rcss" href="battle.rcss"/>
+</head>
+<body id="battle">
+    <!-- Enemy read-outs, positioned above each combatant sprite (drawn on the
+         Canvas layer). Shown/hidden per enemy count from code. -->
+    <div class="enemy" id="bt_enemy0">
+        <div class="enemy_name" id="bt_enemy0_name"></div>
+        <div class="enemy_bar"><div class="enemy_hp" id="bt_enemy0_hp"></div></div>
+    </div>
+    <div class="enemy" id="bt_enemy1">
+        <div class="enemy_name" id="bt_enemy1_name"></div>
+        <div class="enemy_bar"><div class="enemy_hp" id="bt_enemy1_hp"></div></div>
+    </div>
+    <div class="enemy" id="bt_enemy2">
+        <div class="enemy_name" id="bt_enemy2_name"></div>
+        <div class="enemy_bar"><div class="enemy_hp" id="bt_enemy2_hp"></div></div>
+    </div>
+
+    <!-- Player stats panel (bottom-left) -->
+    <div id="bt_stats">
+        <div id="bt_lv">LV1</div>
+        <div id="bt_hp_text">HP 0/0</div>
+        <div class="bar"><div id="bt_hp_fill" class="fill hp"></div></div>
+        <div id="bt_mp_text">MP 0/0</div>
+        <div class="bar"><div id="bt_mp_fill" class="fill mp"></div></div>
+        <div id="bt_atkdef">ATK:0 DEF:0</div>
+    </div>
+
+    <!-- Battle log (bottom-center) -->
+    <div id="bt_log">
+        <div class="log_line" id="bt_log0"></div>
+        <div class="log_line" id="bt_log1"></div>
+        <div class="log_line" id="bt_log2"></div>
+        <div class="log_line" id="bt_log3"></div>
+    </div>
+
+    <!-- Command menu (bottom-right) -->
+    <div id="bt_cmd">
+        <div class="menu_item" id="bt_cmd0">Attack</div>
+        <div class="menu_item" id="bt_cmd1">Skills</div>
+        <div class="menu_item" id="bt_cmd2">Items</div>
+        <div class="menu_item" id="bt_cmd3">Run</div>
+        <div class="menu_hint">Z:confirm</div>
+    </div>
+
+    <!-- Skill / item sub-menu (bottom-right, larger) -->
+    <div id="bt_sub">
+        <div id="bt_sub_title">─ Skills ─</div>
+        <div class="menu_item" id="bt_sub0"></div>
+        <div class="menu_item" id="bt_sub1"></div>
+        <div class="menu_item" id="bt_sub2"></div>
+        <div class="menu_item" id="bt_sub3"></div>
+        <div class="menu_item" id="bt_sub4"></div>
+        <div class="menu_item" id="bt_sub5"></div>
+        <div class="menu_item" id="bt_sub6"></div>
+        <div class="menu_item" id="bt_sub7"></div>
+        <div class="menu_hint">X:back</div>
+    </div>
+
+    <!-- Victory / defeat banner (center) -->
+    <div id="bt_banner">
+        <div id="bt_banner_text"></div>
+    </div>
+</body>
+</rml>

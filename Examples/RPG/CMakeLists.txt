@@ -47,6 +47,12 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/ui
             ${EM_PRELOAD_STAGING_DIR}/ui
+        # Merge this game's own UI documents (hud/battle/dialogue .rml + .rcss)
+        # into the staged ui dir so they are preloaded alongside the engine's.
+        COMMAND ${CMAKE_COMMAND}
+            -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/ui
+            -Ddst=${EM_PRELOAD_STAGING_DIR}/ui
+            -P ${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake
         COMMENT "Staging Emscripten preload assets for ${GAME_NAME}"
     )
     add_dependencies(${GAME_NAME} stage_${GAME_NAME}_em_preload)

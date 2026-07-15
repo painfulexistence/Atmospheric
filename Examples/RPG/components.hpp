@@ -1,10 +1,13 @@
 #pragma once
 #include "Atmospheric.hpp"
+#include "battle_ui_page.hpp"
 #include "imgui.h"
 #include "rpg_entity.hpp"
+#include "ui_kit.hpp"
 #include <cmath>
 #include <fmt/format.h>
 #include <functional>
+#include <vector>
 
 using glm::vec2;
 
@@ -42,7 +45,7 @@ public:
         if (!_isSolid(newX, p.y) && !_isSolid(newX + p.w - 1, p.y) && !_isSolid(newX, p.y + p.h - 1)
             && !_isSolid(newX + p.w - 1, p.y + p.h - 1))
             p.x = newX;
-        if (!_isSolid(p.x, newY) && !_isSolid(p.x + p.w - 1, newY) && !_isSolid(p.x, newY + p.h - 1)
+        if (!_isSolid(p.x, newY) && !_isSolid(p.x + p.w - 1, newY) && !_isSolid(p.x, p.y + p.h - 1)
             && !_isSolid(p.x + p.w - 1, p.y + p.h - 1))
             p.y = newY;
 
@@ -126,7 +129,7 @@ public:
                 && !_cb.isSolid(newX + _data->w - 1, _data->y + _data->h - 1))
                 _data->x = newX;
             if (!_cb.isSolid(_data->x, newY) && !_cb.isSolid(_data->x + _data->w - 1, newY)
-                && !_cb.isSolid(_data->x, newY + _data->h - 1)
+                && !_cb.isSolid(_data->x, _data->y + _data->h - 1)
                 && !_cb.isSolid(_data->x + _data->w - 1, _data->y + _data->h - 1))
                 _data->y = newY;
         } else {
@@ -150,8 +153,77 @@ public:
     }
 };
 
-// Owns all turn-based battle state and drives the battle loop via OnTick.
-// StartBattle transitions the game mode; EndBattle (private) returns to explore.
+// ─────────────────────────────────────────────────────────────────────────────
+// BattleScene — the *world-coupled* half of the battle screen, on the Canvas
+// layer: an opaque backdrop, scanlines, and the combatant sprites. Sprites need
+// per-frame UVs (from the shared flipbook), tint and shake, so they belong here
+// rather than in the RmlUi document (which owns the text/menus/bars instead).
+// ─────────────────────────────────────────────────────────────────────────────
+struct BattleScene {
+    static constexpr int MAX_ENEMIES = BattleUIPage::MAX_ENEMIES;
+    static constexpr int CCOLS = 4, CROWS = 2;
+
+    rpgui::Quad _backdrop;
+    std::vector<rpgui::Quad> _scanlines;
+    rpgui::Sprite _playerActor;
+    rpgui::Sprite _enemyActors[MAX_ENEMIES];
+    float _W = 800, _H = 600;
+
+    void Build(Application* app, TextureHandle white, TextureHandle playerTex, TextureHandle enemyTex, int screenW, int screenH) {
+        _W = static_cast<float>(screenW);
+        _H = static_cast<float>(screenH);
+        const float W = _W, H = _H;
+
+        _backdrop.Build(app, white, { 0, 0 }, { W, H }, glm::vec4(0.08f, 0.06f, 0.14f, 1), rpgui::Z_BACKDROP);
+        _scanlines.resize(8);
+        for (int i = 0; i < 8; i++)
+            _scanlines[i].Build(
+                app, white, { 0, i * H / 8.0f }, { W, 1 }, glm::vec4(0.15f, 0.12f, 0.22f, 0.5f), rpgui::Z_SCANLINE
+            );
+
+        _playerActor.Build(app, playerTex, { W * 0.25f, H * 0.42f }, { 72, 72 });
+        for (int i = 0; i < MAX_ENEMIES; i++) {
+            _enemyActors[i].Build(app, enemyTex, { W * 0.65f + i * 100, H * 0.35f }, { 72, 72 });
+            _enemyActors[i].SetUVs({ 0, 0 }, { 1.0f / CCOLS, 1.0f / CROWS });
+        }
+        Hide();
+    }
+
+    void Hide() {
+        _backdrop.SetActive(false);
+        for (auto& s : _scanlines) s.SetActive(false);
+        _playerActor.SetActive(false);
+        for (auto& e : _enemyActors) e.SetActive(false);
+    }
+
+    void Sync(const BattleState& b, FlipbookComponent* playerAnim, float shakeX, float shakeY) {
+        const float W = _W, H = _H;
+        _backdrop.SetActive(true);
+        for (auto& s : _scanlines) s.SetActive(true);
+
+        _playerActor.SetActive(true);
+        _playerActor.SetCenter({ W * 0.25f, H * 0.42f });
+        glm::vec2 uv0{ 0, 0 }, uv1{ 1.0f / CCOLS, 1.0f / CROWS };
+        if (playerAnim) playerAnim->GetCurrentUV(uv0, uv1);
+        _playerActor.SetUVs(uv0, uv1);
+
+        int count = static_cast<int>(b.enemyStats.size());
+        for (int i = 0; i < MAX_ENEMIES; i++) {
+            bool shown = i < count && !b.enemyStats[i].isDead();
+            _enemyActors[i].SetActive(shown);
+            if (!shown) continue;
+            _enemyActors[i].SetCenter({ W * 0.65f + i * 100 + shakeX, H * 0.35f + shakeY });
+            _enemyActors[i].SetColor((b.targetIdx == i) ? glm::vec4(1, 0.7f, 0.7f, 1) : glm::vec4(1));
+        }
+    }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BattleSystemComponent — owns all turn-based battle state and logic, and drives
+// the two halves of the battle view: the Canvas BattleScene (sprites/backdrop)
+// and the RmlUi BattleUIPage (menus/log/stats/enemy read-outs). No rendering is
+// done by hand any more: OnTick advances state and reconciles it onto both.
+// ─────────────────────────────────────────────────────────────────────────────
 class BattleSystemComponent : public Component {
     Player* _player;
     FlipbookComponent* _playerAnim;
@@ -159,12 +231,15 @@ class BattleSystemComponent : public Component {
     GameMode* _mode;
     float* _transition;
     FontHandle _fontID;
-    GLuint _playerTex, _enemyTex;
+    TextureHandle _whiteTex, _playerTex, _enemyTex;
     int _screenW, _screenH;
 
     BattleState _battle;
+    BattleScene _scene;
+    BattleUIPage* _ui = nullptr;
     float _shakeMag = 0;
     float _shakeTimer = 0;
+    float _shakeX = 0, _shakeY = 0;
     std::mt19937 _rng{ std::random_device{}() };
 
 public:
@@ -176,19 +251,30 @@ public:
         GameMode* mode,
         float* transition,
         FontHandle fontID,
-        GLuint playerTex,
-        GLuint enemyTex,
+        TextureHandle whiteTex,
+        TextureHandle playerTex,
+        TextureHandle enemyTex,
         int screenW,
         int screenH
     )
       : _player(player), _playerAnim(playerAnim), _enemies(enemies), _mode(mode), _transition(transition),
-        _fontID(fontID), _playerTex(playerTex), _enemyTex(enemyTex), _screenW(screenW), _screenH(screenH) {
+        _fontID(fontID), _whiteTex(whiteTex), _playerTex(playerTex), _enemyTex(enemyTex), _screenW(screenW),
+        _screenH(screenH) {
         gameObject = go;
         _battle.playerStats = &_player->stats;
     }
 
     std::string GetName() const override {
         return "BattleSystemComponent";
+    }
+
+    void OnAttach() override {
+        // Canvas half: backdrop + combatant sprites (starts hidden).
+        _scene.Build(gameObject->GetApp(), _whiteTex, _playerTex, _enemyTex, _screenW, _screenH);
+        // RmlUi half: menus / log / stats, on its own GameObject via UIPageComponent.
+        _ui = static_cast<BattleUIPage*>(
+            gameObject->GetApp()->CreateGameObject()->AddComponent<BattleUIPage>("assets/ui/battle.rml")
+        );
     }
 
     BattleState& GetBattle() {
@@ -231,9 +317,14 @@ public:
     }
 
     void OnTick(float dt) override {
+        // Battle view (Canvas scene + RmlUi UI) is live only during the Battle
+        // mode itself, not during the fade transitions — mirroring how the old
+        // DrawBattle only ran in GameMode::Battle.
         if (*_mode != GameMode::Battle) return;
+        if (_ui && !_ui->IsVisible()) _ui->Show();
         UpdateBattle(dt);
-        DrawBattle();
+        _scene.Sync(_battle, _playerAnim, _shakeX, _shakeY);
+        if (_ui) _ui->Sync(_battle, *_player);
     }
 
     void DrawImGui() override {
@@ -263,6 +354,8 @@ private:
             for (int idx : _battle.enemyIndices)
                 if (idx >= 0 && idx < static_cast<int>(_enemies->size())) (*_enemies)[idx].alive = false;
         }
+        _scene.Hide();
+        if (_ui) _ui->Hide();
         *_mode = GameMode::BattleTransitionOut;
         *_transition = 1.0f;
     }
@@ -356,10 +449,15 @@ private:
     void UpdateBattle(float dt) {
         auto* inp = InputSubsystem::Get();
         BattleState& b = _battle;
-        if (_shakeTimer > 0)
+        if (_shakeTimer > 0) {
             _shakeTimer -= dt;
-        else
+            std::uniform_real_distribution<float> d(-_shakeMag, _shakeMag);
+            _shakeX = d(_rng);
+            _shakeY = d(_rng);
+        } else {
             _shakeMag = 0;
+            _shakeX = _shakeY = 0;
+        }
         b.tickLog(dt);
         switch (b.phase) {
         case BattlePhase::PlayerMenu: {
@@ -447,162 +545,5 @@ private:
         default:
             break;
         }
-    }
-
-    void DrawBattle() {
-        auto* gfx = GraphicsSubsystem::Get();
-        const float W = static_cast<float>(_screenW), H = static_cast<float>(_screenH);
-        gfx->DrawQuad(W * 0.5f, H * 0.5f, W, H, 0, glm::vec4(0.08f, 0.06f, 0.14f, 1));
-        for (int i = 0; i < 8; i++)
-            gfx->DrawRect(0, i * H / 8.0f, W, 1, glm::vec4(0.15f, 0.12f, 0.22f, 0.5f));
-
-        float shakeX = 0, shakeY = 0;
-        if (_shakeTimer > 0) {
-            std::uniform_real_distribution<float> d(-_shakeMag, _shakeMag);
-            shakeX = d(_rng);
-            shakeY = d(_rng);
-        }
-
-        constexpr int CCOLS = 4, CROWS = 2;
-        for (int i = 0; i < static_cast<int>(_battle.enemyStats.size()); i++) {
-            const Stats& es = _battle.enemyStats[i];
-            if (es.isDead()) continue;
-            float ex = W * 0.65f + i * 100 + shakeX, ey = H * 0.35f + shakeY, sz = 72;
-            glm::vec2 uv0{ 0, 0 }, uv1{ 1.0f / CCOLS, 1.0f / CROWS };
-            gfx->DrawSprite2D(
-                ex - sz * 0.5f,
-                ey - sz * 0.5f,
-                sz,
-                sz,
-                _enemyTex,
-                uv0,
-                uv1,
-                (_battle.targetIdx == i) ? glm::vec4(1, 0.7f, 0.7f, 1) : glm::vec4(1)
-            );
-            gfx->DrawText(
-                _fontID, _battle.enemyNames[i], ex - 30, ey - sz * 0.5f - 28, 0.6f, glm::vec4(1, 0.8f, 0.8f, 1)
-            );
-            DrawHPBar(gfx, ex - 50, ey - sz * 0.5f - 14, 100, 8, es.hp, es.maxHp, glm::vec4(0.9f, 0.2f, 0.2f, 1));
-        }
-        {
-            glm::vec2 uv0{ 0, 0 }, uv1{ 1.0f / CCOLS, 1.0f / CROWS };
-            _playerAnim->GetCurrentUV(uv0, uv1);
-            float px = W * 0.25f, py = H * 0.42f, sz = 72;
-            gfx->DrawSprite2D(px - sz * 0.5f, py - sz * 0.5f, sz, sz, _playerTex, uv0, uv1);
-        }
-        DrawBattleStats(gfx, W, H);
-        DrawBattleMenu(gfx, W, H);
-        DrawBattleLog(gfx, W, H);
-        if (_battle.phase == BattlePhase::Victory) {
-            DrawPanel(gfx, W * 0.5f - 120, H * 0.5f - 30, 240, 60, glm::vec4(0.05f, 0.2f, 0.05f, 0.95f));
-            gfx->DrawText(_fontID, "VICTORY!", W * 0.5f - 55, H * 0.5f - 14, 1.0f, glm::vec4(0.3f, 1, 0.4f, 1));
-        } else if (_battle.phase == BattlePhase::Defeat) {
-            DrawPanel(gfx, W * 0.5f - 120, H * 0.5f - 30, 240, 60, glm::vec4(0.2f, 0.03f, 0.03f, 0.95f));
-            gfx->DrawText(_fontID, "DEFEATED", W * 0.5f - 55, H * 0.5f - 14, 1.0f, glm::vec4(1, 0.3f, 0.3f, 1));
-        }
-    }
-
-    void DrawBattleStats(GraphicsSubsystem* gfx, float W, float H) {
-        const Stats& s = _player->stats;
-        DrawPanel(gfx, 8, H - 110, 200, 100);
-        gfx->DrawText(_fontID, fmt::format("LV{}", _battle.level), 16, H - 106, 0.55f, glm::vec4(1, 0.9f, 0.5f, 1));
-        gfx->DrawText(_fontID, fmt::format("HP {}/{}", s.hp, s.maxHp), 16, H - 90, 0.55f, glm::vec4(0.7f, 1, 0.7f, 1));
-        DrawHPBar(gfx, 16, H - 78, 180, 10, s.hp, s.maxHp);
-        gfx->DrawText(_fontID, fmt::format("MP {}/{}", s.mp, s.maxMp), 16, H - 64, 0.55f, glm::vec4(0.5f, 0.7f, 1, 1));
-        DrawMPBar(gfx, 16, H - 52, 180, 10, s.mp, s.maxMp);
-        gfx->DrawText(
-            _fontID, fmt::format("ATK:{} DEF:{}", s.atk, s.def), 16, H - 36, 0.5f, glm::vec4(0.8f, 0.8f, 0.8f, 0.9f)
-        );
-    }
-
-    void DrawBattleMenu(GraphicsSubsystem* gfx, float W, float H) {
-        const BattleState& b = _battle;
-        if (b.phase == BattlePhase::PlayerMenu) {
-            DrawPanel(gfx, W - 180, H - 130, 170, 120);
-            const char* labels[] = { "Attack", "Skills", "Items", "Run" };
-            for (int i = 0; i < 4; i++) {
-                bool sel = (b.menuSel == i);
-                gfx->DrawText(
-                    _fontID,
-                    fmt::format("{} {}", sel ? "▶" : " ", labels[i]),
-                    W - 170,
-                    H - 124 + i * 26,
-                    0.65f,
-                    sel ? glm::vec4(1, 1, 0.3f, 1) : glm::vec4(0.85f, 0.85f, 0.9f, 1)
-                );
-            }
-            gfx->DrawText(_fontID, "Z:confirm", W - 170, H - 18, 0.45f, glm::vec4(0.5f, 0.5f, 0.6f, 1));
-        } else if (b.phase == BattlePhase::PlayerSkillMenu) {
-            DrawPanel(gfx, W - 220, H - 200, 210, static_cast<int>(_player->skills.size()) * 30 + 40);
-            gfx->DrawText(_fontID, "─ Skills ─", W - 210, H - 194, 0.55f, glm::vec4(0.7f, 0.7f, 1, 1));
-            for (int i = 0; i < static_cast<int>(_player->skills.size()); i++) {
-                bool sel = (b.skillSel == i);
-                const Skill& sk = _player->skills[i];
-                gfx->DrawText(
-                    _fontID,
-                    fmt::format("{}{} ({}MP)", sel ? "▶" : " ", sk.name, sk.mpCost),
-                    W - 210,
-                    H - 178 + i * 28,
-                    0.6f,
-                    sel ? glm::vec4(1, 1, 0.3f, 1) : glm::vec4(0.85f, 0.85f, 0.9f, 1)
-                );
-            }
-            gfx->DrawText(_fontID, "X:back", W - 210, H - 16, 0.45f, glm::vec4(0.5f, 0.5f, 0.6f, 1));
-        } else if (b.phase == BattlePhase::PlayerItemMenu) {
-            DrawPanel(gfx, W - 220, H - 200, 210, static_cast<int>(_player->items.size()) * 30 + 40);
-            gfx->DrawText(_fontID, "─ Items ─", W - 210, H - 194, 0.55f, glm::vec4(0.7f, 1, 0.7f, 1));
-            for (int i = 0; i < static_cast<int>(_player->items.size()); i++) {
-                bool sel = (b.itemSel == i);
-                const Item& it = _player->items[i];
-                gfx->DrawText(
-                    _fontID,
-                    fmt::format("{}{} x{}", sel ? "▶" : " ", it.name, it.count),
-                    W - 210,
-                    H - 178 + i * 28,
-                    0.6f,
-                    sel ? glm::vec4(1, 1, 0.3f, 1)
-                        : (it.count > 0 ? glm::vec4(0.85f, 0.85f, 0.9f, 1) : glm::vec4(0.4f, 0.4f, 0.4f, 1))
-                );
-            }
-            gfx->DrawText(_fontID, "X:back", W - 210, H - 16, 0.45f, glm::vec4(0.5f, 0.5f, 0.6f, 1));
-        }
-    }
-
-    void DrawBattleLog(GraphicsSubsystem* gfx, float W, float H) {
-        DrawPanel(gfx, 220, H - 130, W - 440, 120);
-        int shown = std::min(static_cast<int>(_battle.log.size()), 4);
-        for (int i = 0; i < shown; i++) {
-            const auto& entry = _battle.log[_battle.log.size() - shown + i];
-            float alpha = std::min(1.0f, entry.ttl);
-            gfx->DrawText(_fontID, entry.text, 232, H - 124 + i * 26, 0.58f, glm::vec4(0.9f, 0.9f, 1, alpha));
-        }
-    }
-
-    void DrawPanel(
-        GraphicsSubsystem* gfx, float x, float y, float w, float h, glm::vec4 bg = glm::vec4(0.05f, 0.05f, 0.12f, 0.92f)
-    ) {
-        gfx->DrawQuad(x + w * 0.5f, y + h * 0.5f, w, h, 0, bg);
-        gfx->DrawRect(x, y, w, h, glm::vec4(0.35f, 0.35f, 0.55f, 0.8f));
-    }
-    void DrawHPBar(
-        GraphicsSubsystem* gfx,
-        float x,
-        float y,
-        float w,
-        float h,
-        int hp,
-        int maxHp,
-        glm::vec4 color = glm::vec4(0.2f, 0.85f, 0.2f, 1)
-    ) {
-        gfx->DrawQuad(x + w * 0.5f, y + h * 0.5f, w, h, 0, glm::vec4(0.1f, 0.1f, 0.1f, 0.85f));
-        float ratio = maxHp > 0 ? static_cast<float>(hp) / maxHp : 0;
-        float fw = (w - 2) * ratio;
-        if (fw > 0) gfx->DrawQuad(x + 1 + fw * 0.5f, y + 1 + (h - 2) * 0.5f, fw, h - 2, 0, color);
-    }
-    void DrawMPBar(GraphicsSubsystem* gfx, float x, float y, float w, float h, int mp, int maxMp) {
-        gfx->DrawQuad(x + w * 0.5f, y + h * 0.5f, w, h, 0, glm::vec4(0.1f, 0.1f, 0.1f, 0.85f));
-        float ratio = maxMp > 0 ? static_cast<float>(mp) / maxMp : 0;
-        float fw = (w - 2) * ratio;
-        if (fw > 0) gfx->DrawQuad(x + 1 + fw * 0.5f, y + 1 + (h - 2) * 0.5f, fw, h - 2, 0, glm::vec4(0.2f, 0.4f, 1, 1));
     }
 };

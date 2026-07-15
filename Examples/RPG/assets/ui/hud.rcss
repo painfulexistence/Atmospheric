@@ -1,0 +1,66 @@
+/* Explore HUD — replaces the old immediate DrawExploreHUD (panel + HP/MP bars +
+   gold + hint). Bars are a track div with a fill div whose width is set from
+   code (SetProperty("width", "<pct>%")). */
+body {
+    font-family: Noto Sans;
+    color: #f0f0f0;
+    width: 100%;
+    height: 100%;
+}
+
+div {
+    display: block;
+}
+
+#hud_panel {
+    position: absolute;
+    top: 8dp;
+    left: 8dp;
+    width: 160dp;
+    padding: 6dp 7dp;
+    background-color: #0d0d1eeb;
+    border-width: 1dp;
+    border-color: #59597f;
+    border-radius: 4dp;
+}
+
+#hud_level {
+    font-size: 12dp;
+    color: #e6d999;
+    margin-bottom: 5dp;
+}
+
+.bar {
+    width: 100%;
+    height: 10dp;
+    margin-bottom: 4dp;
+    background-color: #1a1a1ad9;
+    border-radius: 2dp;
+}
+.fill {
+    height: 100%;
+    width: 100%;
+    border-radius: 2dp;
+}
+.fill.hp {
+    background-color: #33d933;
+}
+.fill.mp {
+    background-color: #3366ff;
+}
+
+#hud_gold {
+    position: absolute;
+    left: 14dp;
+    bottom: 34dp;
+    font-size: 12dp;
+    color: #ffe64d;
+}
+
+#hud_hint {
+    position: absolute;
+    left: 14dp;
+    bottom: 16dp;
+    font-size: 10dp;
+    color: #b3b3b3cc;
+}

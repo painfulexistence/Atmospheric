@@ -1,0 +1,53 @@
+/* Dialogue box — bottom-anchored, word-wrapping text panel. This is the kind of
+   layout that immediate-mode text can't do without a hand-rolled wrapper: RmlUi
+   flows and wraps the body text within the box for free. */
+body {
+    font-family: Noto Sans;
+    color: #e6e6f0;
+    width: 100%;
+    height: 100%;
+}
+
+div {
+    display: block;
+}
+
+#dialogue_box {
+    position: absolute;
+    left: 40dp;
+    right: 40dp;
+    bottom: 20dp;
+    height: 70dp;
+    padding: 10dp 14dp;
+    background-color: #0d0d1eeb;
+    border-top-width: 3dp;
+    border-top-color: #7fccff;
+    border-left-width: 1dp;
+    border-right-width: 1dp;
+    border-bottom-width: 1dp;
+    border-left-color: #59597f;
+    border-right-color: #59597f;
+    border-bottom-color: #59597f;
+    border-radius: 4dp;
+}
+
+#dialogue_speaker {
+    font-size: 13dp;
+    color: #7fccff;
+    margin-bottom: 4dp;
+}
+
+#dialogue_text {
+    font-size: 15dp;
+    color: #e6e6ff;
+    /* RmlUi word-wraps block text automatically within the box width. */
+}
+
+#dialogue_more {
+    position: absolute;
+    right: 12dp;
+    bottom: 6dp;
+    font-size: 14dp;
+    color: #7fccff;
+    visibility: hidden;
+}

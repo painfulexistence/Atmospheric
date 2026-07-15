@@ -1,0 +1,15 @@
+<rml>
+<head>
+    <title>hud</title>
+    <link type="text/rcss" href="hud.rcss"/>
+</head>
+<body id="hud">
+    <div id="hud_panel">
+        <div id="hud_level">LV1 EXP:0/20</div>
+        <div class="bar"><div id="hud_hp_fill" class="fill hp"></div></div>
+        <div class="bar"><div id="hud_mp_fill" class="fill mp"></div></div>
+    </div>
+    <div id="hud_gold">Gold:0</div>
+    <div id="hud_hint">WASD:move&nbsp;&nbsp;E:talk&nbsp;&nbsp;walk into enemy to battle</div>
+</body>
+</rml>
