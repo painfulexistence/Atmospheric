@@ -179,8 +179,8 @@ set(SOURCES
     src/gl_pipeline.cpp
     src/csg.cpp
     src/frustum.cpp
-    src/mesh_component.cpp
-    src/mesh_instancer.cpp
+    src/mesh_renderer_component.cpp
+    src/mesh_instancer_component.cpp
     src/sprite_component.cpp
     src/sprite_3d_component.cpp
     src/text_2d_component.cpp
@@ -224,6 +224,9 @@ set(SOURCES
     src/physics_subsystem_2d.cpp
     src/rigidbody_2d_component.cpp
     src/mesh_builder.cpp
+    src/prefab.cpp
+    src/prefab_gltf.cpp
+    src/prefab_usd.cpp
     src/shape_renderer_component.cpp
     src/voxel_chunk_component.cpp
     src/voxel_world.cpp
@@ -485,6 +488,47 @@ if(AE_USE_FFMPEG AND NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
     endif()
 elseif(NOT AE_USE_FFMPEG)
     message(STATUS "FFmpeg disabled (AE_USE_FFMPEG=OFF). VideoPlayer and VideoRecorder will be unavailable.")
+endif()
+if(AE_USE_TINYUSDZ)
+    # TinyUSDZ: dependency-free USD (USDA/USDC/USDZ) reader plus its Tydra
+    # render-data converter. USD is a first-class import format, so this is on
+    # by default on every platform (like AE_USE_FFMPEG) — it is fetched at
+    # configure time (like SDL3/lua/sol2) so there is no submodule to init.
+    # TinyUSDZ compiles to WASM without threads/SIMD, so this runs on Emscripten
+    # too; pass -DAE_USE_TINYUSDZ=OFF on the web configure to trim the payload.
+    # The static target's include dir is only exposed PRIVATE, so we add
+    # ${tinyusdz_SOURCE_DIR}/src ourselves for <tinyusdz.hh> / <tydra/render-data.hh>.
+    set(TINYUSDZ_WITH_TYDRA ON CACHE BOOL "" FORCE)
+    set(TINYUSDZ_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(TINYUSDZ_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(TINYUSDZ_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+    # TinyUSDZ vendors its own tinyexr (src/external/tinyexr.cc) for EXR *texture*
+    # decoding inside USD. The engine already links vcpkg's tinyexr (HDR/EXR env
+    # maps), so building both yields duplicate-symbol link errors
+    # (multiple definition of FreeEXRErrorMessage, …). Disable TinyUSDZ's copy —
+    # .exr textures referenced *from USD* are rare, and this is the only overlap.
+    set(TINYUSDZ_WITH_EXR OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        tinyusdz
+        GIT_REPOSITORY https://github.com/lighttransport/tinyusdz.git
+        GIT_TAG 11a2d361a9b6a0c4bf8918027233858d80ed17c5
+    )
+    FetchContent_MakeAvailable(tinyusdz)
+    # On Emscripten the engine builds with -pthread (shared memory). Every object
+    # linked into the module must then carry the WASM 'atomics'/'bulk-memory'
+    # features, or wasm-ld rejects it ("--shared-memory is disallowed by
+    # image-loader.cc.o …"). TinyUSDZ's FetchContent targets don't inherit our
+    # -pthread, so force it onto them — exactly as lua_static does above. (Tydra
+    # is compiled into tinyusdz_static, so this one target covers image-loader.cc.)
+    if(EMSCRIPTEN)
+        target_compile_options(tinyusdz_static PRIVATE -pthread)
+    endif()
+    target_link_libraries(AtmosphericEngine PUBLIC tinyusdz::tinyusdz_static)
+    target_include_directories(AtmosphericEngine PRIVATE ${tinyusdz_SOURCE_DIR}/src)
+    target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_TINYUSDZ)
+    message(STATUS "TinyUSDZ enabled (fetched). USD import (LoadUSD/ImportUSDPrefab) available.")
+else()
+    message(STATUS "TinyUSDZ disabled (AE_USE_TINYUSDZ=OFF) — USD import falls back to the warn-stub.")
 endif()
 if(EMSCRIPTEN OR ANDROID OR IOS)
     # IMGUI_IMPL_OPENGL_ES3 : tell Dear ImGui's OpenGL3 backend to use GLES3

@@ -5,7 +5,7 @@
 #include "imgui.h"
 #include "material.hpp"
 #include "mesh.hpp"
-#include "mesh_component.hpp"
+#include "mesh_renderer_component.hpp"
 #include "vat.hpp"
 #include <utility>
 
@@ -24,7 +24,7 @@ VATComponent::VATComponent(GameObject* owner, MeshHandle mesh, std::unique_ptr<V
     _state.time = props.startTime;
 
     EnsureMaterial();
-    owner->AddComponent<MeshComponent>(_mesh);
+    owner->AddComponent<MeshRendererComponent>(_mesh);
 }
 
 VATComponent::VATComponent(GameObject* owner, MeshHandle mesh, VATClipHandle clip, const VATProps& props)
@@ -35,7 +35,7 @@ VATComponent::VATComponent(GameObject* owner, MeshHandle mesh, VATClipHandle cli
     _state.time = props.startTime;
 
     EnsureMaterial();
-    owner->AddComponent<MeshComponent>(_mesh);
+    owner->AddComponent<MeshRendererComponent>(_mesh);
 }
 
 void VATComponent::EnsureMaterial() {

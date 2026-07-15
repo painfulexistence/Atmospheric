@@ -9,8 +9,8 @@
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_builder.hpp"
-#include "mesh_component.hpp"
-#include "mesh_instancer.hpp"
+#include "mesh_instancer_component.hpp"
+#include "mesh_renderer_component.hpp"
 #include "rigidbody_component.hpp"
 #include "terrain_tile_cache.hpp"
 
@@ -452,7 +452,7 @@ TerrainStreamer::TileSlot* TerrainStreamer::AcquireSlot(int lod) {
     mat->heightMap = slot->heightTex;
     slot->material = mat;
     mesh->SetMaterial(am.GetMaterialHandle(mat));
-    go->AddComponent<MeshComponent>(slot->mesh);
+    go->AddComponent<MeshRendererComponent>(slot->mesh);
 
     _stats.gpuHeightmapBytes += static_cast<size_t>(w) * w * 2;
     _allSlots.push_back(std::move(owned));
@@ -591,7 +591,7 @@ void TerrainStreamer::UpdateEntities(glm::ivec2 camTile) {
         for (const auto& placement : _props.placeEntitiesFn(ctx)) {
             if (isInstanced(placement.type)) {
                 // World-space TRS; the cloud GameObject sits at the origin so
-                // these pass through MeshInstancer's goTransform * local as-is.
+                // these pass through MeshInstancerComponent's goTransform * local as-is.
                 clouds[placement.type].push_back(
                     glm::translate(glm::mat4(1.0f), placement.position)
                     * glm::rotate(glm::mat4(1.0f), placement.yaw, glm::vec3(0.0f, 1.0f, 0.0f))
@@ -629,9 +629,9 @@ void TerrainStreamer::UpdateEntities(glm::ivec2 camTile) {
                 go = _app->CreateGameObject(glm::vec3(0.0f));
                 go->SetName(fmt::format("entity_cloud_{}", type));
                 go->parent = _root;
-                go->AddComponent<MeshInstancer>(MeshInstancerProps{ .prototype = _props.entityMeshes[type] });
+                go->AddComponent<MeshInstancerComponent>(MeshInstancerProps{ .prototype = _props.entityMeshes[type] });
             }
-            if (auto* instancer = go->GetComponent<MeshInstancer>()) {
+            if (auto* instancer = go->GetComponent<MeshInstancerComponent>()) {
                 instancer->SetTransforms(std::move(transforms));
             }
             go->SetActive(true);
@@ -871,7 +871,7 @@ TerrainStreamer::GrassCell* TerrainStreamer::AcquireGrassCell() {
     mesh->InitGrassInstanced();
     MeshHandle handle = am.CreateMesh(name, mesh);
     mesh->SetMaterial(am.GetMaterialHandle(_grassMaterial));
-    go->AddComponent<MeshComponent>(handle);
+    go->AddComponent<MeshRendererComponent>(handle);
     gc->mesh = mesh;
 
     _allGrassCells.push_back(std::move(owned));

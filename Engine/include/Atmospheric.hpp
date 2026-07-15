@@ -18,6 +18,7 @@
 #include "Atmospheric/particle_subsystem.hpp"
 #include "Atmospheric/physics_subsystem_2d.hpp"
 #include "Atmospheric/physics_subsystem_3d.hpp"
+#include "Atmospheric/prefab.hpp"
 #include "Atmospheric/rigidbody_2d_component.hpp"
 #include "Atmospheric/rigidbody_component.hpp"
 #include "Atmospheric/rmlui_manager.hpp"

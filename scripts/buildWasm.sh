@@ -20,6 +20,7 @@ WEBGPU_SUPPORT="OFF"
 NO_SERVER="OFF"
 NO_EXAMPLES="OFF"
 CLEAN_BUILD="OFF"
+USD_SUPPORT="ON"
 
 # 解析參數
 for arg in "$@"; do
@@ -32,6 +33,10 @@ for arg in "$@"; do
             ;;
         --webgpu)
             WEBGPU_SUPPORT="ON"
+            ;;
+        --no-usd)
+            # 不把 TinyUSDZ 編進 WASM（縮小產物），略過 USDViewer 網頁版
+            USD_SUPPORT="OFF"
             ;;
         --no-server)
             NO_SERVER="ON"
@@ -47,6 +52,7 @@ done
 
 echo -e "建置類型: ${GREEN}${BUILD_TYPE}${NC}"
 echo -e "WebGPU 支援: ${GREEN}${WEBGPU_SUPPORT}${NC}"
+echo -e "USD (TinyUSDZ) 支援: ${GREEN}${USD_SUPPORT}${NC}"
 if [ "$NO_EXAMPLES" = "ON" ]; then
     echo -e "Examples: ${YELLOW}略過${NC}"
 fi
@@ -138,6 +144,7 @@ emcmake cmake -G Ninja \
   -DVCPKG_TARGET_TRIPLET=wasm32-emscripten \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
   -DAE_USE_WEBGPU="$WEBGPU_SUPPORT" \
+  -DAE_USE_TINYUSDZ="$USD_SUPPORT" \
   -DAE_BUILD_EXAMPLES="$BUILD_EXAMPLES_FLAG"
 
 # 5. 進行建置 (自動偵測記憶體以避免 OOM)

@@ -17,10 +17,10 @@ struct VATProps {
 // Drives Vertex Animation Texture playback for a mesh, on the shared
 // AnimatorComponent base. The clip lives in the AnimationLibrary (shared across
 // instances of the same mesh); this component creates the VATMaterial, binds
-// the clip, assigns the material to the mesh, registers a MeshComponent, and —
-// via the base's centralized tick — advances the playhead so the opaque pass's
-// "vat" shader displaces the vertices. Playhead logic (loop/clamp/speed/pause/
-// seek/events) all comes from AnimatorComponent; Evaluate only pushes the
+// the clip, assigns the material to the mesh, registers a MeshRendererComponent,
+// and — via the base's centralized tick — advances the playhead so the opaque
+// pass's "vat" shader displaces the vertices. Playhead logic (loop/clamp/speed/
+// pause/seek/events) all comes from AnimatorComponent; Evaluate only pushes the
 // normalized playhead into the material.
 class VATComponent : public AnimatorComponent {
 public:

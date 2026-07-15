@@ -93,7 +93,7 @@ GameObject* GameObject::AddMesh(const std::string& meshName) {
 
 // Shortcut 2 for adding renderable component
 GameObject* GameObject::AddMesh(MeshHandle mesh) {
-    AddComponent<MeshComponent>(mesh);
+    AddComponent<MeshRendererComponent>(mesh);
     return this;
 }
 

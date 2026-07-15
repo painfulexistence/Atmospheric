@@ -1,42 +1,44 @@
-#include "mesh_component.hpp"
+#include "mesh_renderer_component.hpp"
 #include "application.hpp"
 #include "asset_manager.hpp"
 #include "game_object.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
 
-MeshComponent::MeshComponent(GameObject* gameObject, MeshHandle mesh) {
+MeshRendererComponent::MeshRendererComponent(GameObject* gameObject, MeshHandle mesh) {
     this->_mesh = mesh;
 }
 
-MeshComponent::~MeshComponent() {
+MeshRendererComponent::~MeshRendererComponent() {
 }
 
-std::string MeshComponent::GetName() const {
-    return std::string("Drawable");
+std::string MeshRendererComponent::GetName() const {
+    // Display name for the ImGui inspector — drops the "Component" suffix, matching
+    // ShapeRendererComponent etc. (the class/scene-type keeps it).
+    return std::string("MeshRenderer");
 }
 
-void MeshComponent::OnAttach() {
+void MeshRendererComponent::OnAttach() {
     if (GraphicsSubsystem::Get()) {
         GraphicsSubsystem::Get()->RegisterMesh(this);
     }
 }
 
-void MeshComponent::OnDetach() {
+void MeshRendererComponent::OnDetach() {
     if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
         GraphicsSubsystem::Get()->UnregisterMesh(this);
     }
 }
 
-MeshHandle MeshComponent::GetMesh() const {
+MeshHandle MeshRendererComponent::GetMesh() const {
     return _mesh;
 }
 
-void MeshComponent::SetMesh(MeshHandle mesh) {
+void MeshRendererComponent::SetMesh(MeshHandle mesh) {
     _mesh = mesh;
 }
 
-Material* MeshComponent::GetMaterial() const {
+Material* MeshRendererComponent::GetMaterial() const {
     auto& assets = AssetManager::Get();
     if (Material* mat = assets.ResolveMaterial(_material)) {
         return mat;
@@ -45,10 +47,10 @@ Material* MeshComponent::GetMaterial() const {
     return meshPtr ? assets.ResolveMaterial(meshPtr->GetMaterial()) : nullptr;
 }
 
-void MeshComponent::SetMaterial(MaterialHandle material) {
+void MeshRendererComponent::SetMaterial(MaterialHandle material) {
     _material = material;
 }
 
-void MeshComponent::DrawImGui() {
+void MeshRendererComponent::DrawImGui() {
     if (auto* mat = GetMaterial()) mat->DrawImGui();
 }

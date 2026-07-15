@@ -17,6 +17,11 @@ add_subdirectory(VoxelWorld)         # voxel streaming, fly camera, bloom
 add_subdirectory(MicroVoxel)         # raymarched micro voxels (DDA over 3D texture)
 add_subdirectory(Terrain)            # procedural / heightmap terrain, RmlUi HUD
 add_subdirectory(TerrainStreaming)   # 10km x 10km streamed open-world terrain (TerrainStreamer)
+add_subdirectory(GLTFViewer)         # glTF/GLB model viewer via the prefab import line
+if(AE_USE_TINYUSDZ)
+    # On by default on every platform, web included (TinyUSDZ builds to WASM).
+    add_subdirectory(USDViewer)      # USD scene viewer via the prefab import line
+endif()
 
 # ── Networking ───────────────────────────────────────────────────────────────
 add_subdirectory(MultiplayerSandbox) # deterministic lockstep netplay

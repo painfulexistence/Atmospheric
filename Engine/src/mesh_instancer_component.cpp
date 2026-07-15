@@ -1,35 +1,36 @@
-#include "mesh_instancer.hpp"
+#include "mesh_instancer_component.hpp"
 #include "asset_manager.hpp"
 #include "game_object.hpp"
 #include "graphics_subsystem.hpp"
 #include "mesh.hpp"
 #include <limits>
 
-MeshInstancer::MeshInstancer(GameObject* gameObject, MeshInstancerProps props) : _props(std::move(props)) {
+MeshInstancerComponent::MeshInstancerComponent(GameObject* gameObject, MeshInstancerProps props)
+  : _props(std::move(props)) {
     this->gameObject = gameObject;
 }
 
-MeshInstancer::~MeshInstancer() {
+MeshInstancerComponent::~MeshInstancerComponent() {
 }
 
-void MeshInstancer::OnAttach() {
+void MeshInstancerComponent::OnAttach() {
     if (GraphicsSubsystem::Get()) {
         GraphicsSubsystem::Get()->RegisterInstancer(this);
     }
 }
 
-void MeshInstancer::OnDetach() {
+void MeshInstancerComponent::OnDetach() {
     if (gameObject && gameObject->GetApp() && GraphicsSubsystem::Get()) {
         GraphicsSubsystem::Get()->UnregisterInstancer(this);
     }
 }
 
-void MeshInstancer::SetTransforms(std::vector<glm::mat4> localTransforms) {
+void MeshInstancerComponent::SetTransforms(std::vector<glm::mat4> localTransforms) {
     _props.localTransforms = std::move(localTransforms);
     _dirty = true;
 }
 
-void MeshInstancer::UpdateTransform(size_t index, const glm::mat4& localTransform) {
+void MeshInstancerComponent::UpdateTransform(size_t index, const glm::mat4& localTransform) {
     if (index >= _props.localTransforms.size()) return;
     _props.localTransforms[index] = localTransform;
     _dirty = true;
@@ -44,13 +45,13 @@ static bool MatEqual(const glm::mat4& a, const glm::mat4& b) {
     return true;
 }
 
-bool MeshInstancer::_needsRebuild() const {
+bool MeshInstancerComponent::_needsRebuild() const {
     if (_dirty) return true;
     glm::mat4 cur = gameObject ? gameObject->GetTransform() : glm::mat4(1.0f);
     return !MatEqual(cur, _cachedGoTransform);
 }
 
-void MeshInstancer::_rebuild() {
+void MeshInstancerComponent::_rebuild() {
     const glm::mat4 goTransform = gameObject ? gameObject->GetTransform() : glm::mat4(1.0f);
     _worldInstances.resize(_props.localTransforms.size());
 
@@ -90,12 +91,12 @@ void MeshInstancer::_rebuild() {
     _dirty = false;
 }
 
-const std::vector<InstanceData>& MeshInstancer::WorldInstances() {
+const std::vector<InstanceData>& MeshInstancerComponent::WorldInstances() {
     if (_needsRebuild()) _rebuild();
     return _worldInstances;
 }
 
-const AABB& MeshInstancer::CloudBounds() {
+const AABB& MeshInstancerComponent::CloudBounds() {
     if (_needsRebuild()) _rebuild();
     return _cloudBounds;
 }

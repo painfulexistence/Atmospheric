@@ -40,7 +40,7 @@ struct RenderCommand {
     // Effective material for this draw. INVALID means "use the mesh's own
     // material" (mesh->GetMaterial()) — the historical behavior — so submitters
     // that don't override the material can leave it default. A valid handle
-    // (MeshComponent's per-instance override, or a MeshInstancer's shared
+    // (MeshRendererComponent's per-instance override, or a MeshInstancerComponent's shared
     // material) now wins on the *main* render path, not only the ImGui/fallback
     // path: sort key, batch key, and every draw loop resolve this field.
     MaterialHandle material;
@@ -48,7 +48,7 @@ struct RenderCommand {
     // instance span is attached, as the one instance). Instanced draws: the
     // cloud anchor, used only for the depth sort key.
     glm::mat4 transform;
-    // Optional instance span (a MeshInstancer's whole cloud). Non-null →
+    // Optional instance span (a MeshInstancerComponent's whole cloud). Non-null →
     // BuildBatches appends all `instanceCount` matrices to the batch instead of
     // the lone `transform`. The pointed-to memory is owned by the submitter and
     // must outlive the frame (same contract as the per-frame command queue).
@@ -1036,6 +1036,17 @@ public:
     // blurred (diffuse / roughest specular) sample. GL clamps textureLod beyond
     // the real mip count, so a generous default is safe for any map size.
     float environmentMaxLod = 10.0f;
+
+    // ── IBL debug/tuning knobs (PBR ComputeIBL) ──────────────────────────────
+    // The image-based lighting term has no strength control by default, so a
+    // strongly-tinted environment map (e.g. an aquarium HDRI) washes every
+    // surface toward its colour. These scale the diffuse (albedo-tinted
+    // irradiance) and specular (reflection) IBL contributions independently;
+    // iblEnabled forces the term off without unloading the env map (the skybox
+    // still renders). All live-editable from the "IBL Debug" ImGui panel.
+    bool iblEnabled = true;
+    float iblDiffuseStrength = 1.0f;// scales the albedo-tinted diffuse irradiance
+    float iblSpecularStrength = 1.0f;// scales the mirror/reflection term
 
     // Non-null only while PlanarReflectionPass drives the scene passes with a
     // mirrored camera; passes fall back to the main camera + sceneRT when null.
