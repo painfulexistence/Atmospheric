@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <functional>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #ifndef AE_USE_TINYUSDZ
 
@@ -366,6 +367,116 @@ static glm::mat4 ToGlm(const tinyusdz::value::matrix4d& m) {
     return g;
 }
 
+// Same conversion for float matrices (node xform-animation Transform samples).
+static glm::mat4 ToGlm(const tinyusdz::tydra::mat4& m) {
+    glm::mat4 g(1.0f);
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            g[i][j] = static_cast<float>(m.m[i][j]);
+    return g;
+}
+
+// Tydra quaternions are float4 laid out (x, y, z, w); glm::quat is (w, x, y, z).
+static glm::quat ToGlmQuat(const tinyusdz::tydra::quat& q) {
+    return glm::quat(q[3], q[0], q[1], q[2]);
+}
+
+// Split an affine matrix into translation / rotation / scale. USD joint rest
+// poses (and any full-matrix xform-animation sample) arrive as matrices, while
+// skinning and the tween timeline both want TRS. Shear is dropped — USD skel
+// rest/bind transforms are rigid+scale in practice.
+static void DecomposeTRS(const glm::mat4& m, glm::vec3& t, glm::quat& r, glm::vec3& s) {
+    t = glm::vec3(m[3]);
+    const glm::vec3 c0(m[0]), c1(m[1]), c2(m[2]);
+    s = glm::vec3(glm::length(c0), glm::length(c1), glm::length(c2));
+    const glm::mat3 rot(
+        s.x > 1e-8f ? c0 / s.x : glm::vec3(1, 0, 0),
+        s.y > 1e-8f ? c1 / s.y : glm::vec3(0, 1, 0),
+        s.z > 1e-8f ? c2 / s.z : glm::vec3(0, 0, 1)
+    );
+    r = glm::normalize(glm::quat_cast(rot));
+}
+
+// Flatten a Tydra SkelHierarchy (a SkelNode tree; each node's `joint_id` is
+// exactly the index a mesh's skel:jointIndices reference) into the engine's
+// flat, topologically-ordered Skeleton. `bind_transform` is the joint's
+// world-space bind pose (→ inverseBind); `rest_transform` is its parent-local
+// rest pose (→ bind-TRS fallback for channels a clip doesn't animate). Also
+// records joint_name/joint_path → joint_id so a SkelAnimation's channels (keyed
+// by joint name) can be resolved. NOTE: assumes joint_id ordering is
+// parent-before-child, matching SkeletalComponent's single-pass accumulation
+// (the UsdSkel convention, and the same assumption the glTF path makes).
+static void FlattenSkelNode(
+    const tinyusdz::tydra::SkelNode& sn,
+    int parentJointId,
+    Skeleton& skel,
+    std::map<std::string, int>& nameToId
+) {
+    if (sn.joint_id >= 0) {
+        if (sn.joint_id >= static_cast<int>(skel.joints.size())) skel.joints.resize(sn.joint_id + 1);
+        Joint& j = skel.joints[sn.joint_id];
+        j.name = sn.joint_name.empty() ? sn.joint_path : sn.joint_name;
+        j.parent = parentJointId;
+        j.inverseBind = glm::inverse(ToGlm(sn.bind_transform));
+        glm::vec3 t, s;
+        glm::quat r;
+        DecomposeTRS(ToGlm(sn.rest_transform), t, r, s);
+        j.bindTranslation = t;
+        j.bindRotation = r;
+        j.bindScale = s;
+        if (!sn.joint_name.empty()) nameToId[sn.joint_name] = sn.joint_id;
+        if (!sn.joint_path.empty()) nameToId[sn.joint_path] = sn.joint_id;
+    }
+    for (const auto& c : sn.children)
+        FlattenSkelNode(c, sn.joint_id, skel, nameToId);
+}
+
+// Build a SkeletonClip from a Tydra SkelAnimation. channels_map is keyed by
+// joint name; resolve each to a joint index via `nameToId` and fold the T/R/S
+// samplers into the joint's channel. A sampler with no time samples but a
+// static value contributes a single key (a posed-but-not-animated joint).
+static SkeletonClip BuildSkeletonClip(
+    const tinyusdz::tydra::Animation& anim, const std::map<std::string, int>& nameToId
+) {
+    using Ch = tinyusdz::tydra::AnimationChannel;
+    SkeletonClip clip;
+    clip.name = anim.prim_name.empty() ? anim.abs_path : anim.prim_name;
+    for (const auto& [jointName, chans] : anim.channels_map) {
+        auto idIt = nameToId.find(jointName);
+        if (idIt == nameToId.end()) continue;
+        JointChannel jc;
+        jc.joint = idIt->second;
+        for (const auto& [ctype, ch] : chans) {
+            if (ctype == Ch::ChannelType::Translation) {
+                for (const auto& smp : ch.translations.samples)
+                    jc.translation.push_back({ smp.t, glm::vec3(smp.value[0], smp.value[1], smp.value[2]) });
+                if (ch.translations.samples.empty() && ch.translations.static_value)
+                    jc.translation.push_back({ 0.0f,
+                        glm::vec3(ch.translations.static_value.value()[0],
+                            ch.translations.static_value.value()[1],
+                            ch.translations.static_value.value()[2]) });
+            } else if (ctype == Ch::ChannelType::Rotation) {
+                for (const auto& smp : ch.rotations.samples)
+                    jc.rotation.push_back({ smp.t, ToGlmQuat(smp.value) });
+                if (ch.rotations.samples.empty() && ch.rotations.static_value)
+                    jc.rotation.push_back({ 0.0f, ToGlmQuat(ch.rotations.static_value.value()) });
+            } else if (ctype == Ch::ChannelType::Scale) {
+                for (const auto& smp : ch.scales.samples)
+                    jc.scale.push_back({ smp.t, glm::vec3(smp.value[0], smp.value[1], smp.value[2]) });
+                if (ch.scales.samples.empty() && ch.scales.static_value)
+                    jc.scale.push_back({ 0.0f,
+                        glm::vec3(ch.scales.static_value.value()[0],
+                            ch.scales.static_value.value()[1],
+                            ch.scales.static_value.value()[2]) });
+            }
+        }
+        if (!jc.translation.empty() || !jc.rotation.empty() || !jc.scale.empty())
+            clip.channels.push_back(std::move(jc));
+    }
+    clip.Recompute();
+    return clip;
+}
+
 // Extract a Tydra RenderMesh into <=65535-vertex chunks, expanding to a
 // non-indexed triangle list (one vertex per face-vertex — copes with both
 // 'vertex' and 'facevarying' attribute variability).
@@ -379,6 +490,36 @@ static void ExtractMesh(
     const std::vector<uint32_t>& idx = rmesh.faceVertexIndices();// triangulated
     const size_t pointCount = rmesh.points.size();
     if (idx.empty() || pointCount == 0) return;
+
+    // Per-point skinning (variability 'vertex'): joint/weight tuples are laid out
+    // elementSize-per-point. We keep the 4 largest weights (the engine's fixed
+    // SkinVertex width) and renormalize. skel_id indexes RenderScene::skeletons,
+    // which we mirror 1:1 into Prefab::skeletons.
+    const auto& jw = rmesh.joint_and_weights;
+    const bool skinned = rmesh.skel_id >= 0 && !jw.jointIndices.empty() && jw.elementSize > 0;
+    auto skinAt = [&](uint32_t pointIndex) -> SkinVertex {
+        SkinVertex sv;
+        const int es = jw.elementSize;
+        const size_t base = static_cast<size_t>(pointIndex) * es;
+        std::vector<std::pair<float, int>> pairs;
+        for (int e = 0; e < es; ++e) {
+            const size_t at = base + e;
+            if (at >= jw.jointWeights.size() || at >= jw.jointIndices.size()) break;
+            pairs.push_back({ jw.jointWeights[at], jw.jointIndices[at] });
+        }
+        const size_t keep = std::min<size_t>(4, pairs.size());
+        std::partial_sort(pairs.begin(), pairs.begin() + keep, pairs.end(), [](const auto& a, const auto& b) {
+            return a.first > b.first;
+        });
+        float sum = 0.0f;
+        for (size_t e = 0; e < keep; ++e) {
+            sv.joints[static_cast<int>(e)] = pairs[e].second;
+            sv.weights[static_cast<int>(e)] = pairs[e].first;
+            sum += pairs[e].first;
+        }
+        if (sum > 1e-6f) sv.weights /= sum;
+        return sv;
+    };
 
     auto normalAt = [&](size_t k, uint32_t pointIndex) -> glm::vec3 {
         const auto& a = rmesh.normals;
@@ -408,7 +549,9 @@ static void ExtractMesh(
         MeshData md;
         md.materialIndex = materialIndex;
         md.material = materialName;
+        if (skinned) md.skinIndex = rmesh.skel_id;
         md.vertices.reserve(take);
+        if (skinned) md.skinVertices.reserve(take);
         for (size_t k = 0; k < take; ++k) {
             const uint32_t pointIndex = idx[start + k];
             glm::vec3 pos(0.0f);
@@ -424,6 +567,7 @@ static void ExtractMesh(
             vert.tangent = glm::vec3(1, 0, 0);
             vert.bitangent = glm::cross(vert.normal, vert.tangent);
             md.vertices.push_back(vert);
+            if (skinned) md.skinVertices.push_back(skinAt(pointIndex));
         }
         for (uint16_t k = 0; k + 2 < static_cast<uint32_t>(md.vertices.size()); k += 3) {
             md.indices.push_back(k);
@@ -612,15 +756,86 @@ Prefab ImportUSDPrefab(const std::string& path) {
         ExtractMesh(rmesh, matIndex, matName, out.meshes, meshChunks[i]);
     }
 
+    // ── Skeletons + skeletal clips (UsdSkel → asset-side data) ────────────────
+    // rscene.skeletons and Prefab::skeletons stay index-parallel so a mesh's
+    // skel_id (recorded on MeshData::skinIndex above) resolves without a remap.
+    // A SkelHierarchy names its default SkelAnimation via anim_id; convert it
+    // once, resolving joint-name-keyed channels against the flattened skeleton.
+    for (size_t si = 0; si < rscene.skeletons.size(); ++si) {
+        const auto& skelH = rscene.skeletons[si];
+        Skeleton skel;
+        skel.name = skelH.prim_name.empty() ? skelH.abs_path : skelH.prim_name;
+        std::map<std::string, int> nameToId;
+        FlattenSkelNode(skelH.root_node, -1, skel, nameToId);
+        out.skeletons.push_back(std::move(skel));
+
+        if (skelH.anim_id >= 0 && skelH.anim_id < static_cast<int>(rscene.animations.size())) {
+            SkeletonClip clip = BuildSkeletonClip(rscene.animations[skelH.anim_id], nameToId);
+            if (!clip.channels.empty()) out.skeletonClips.push_back({ static_cast<int>(si), std::move(clip) });
+        }
+    }
+
     // ── Node hierarchy (mesh points are local; nodes carry the transforms) ───
     std::function<PrefabNode(const tinyusdz::tydra::Node&)> buildNode =
         [&](const tinyusdz::tydra::Node& n) -> PrefabNode {
+        using Ch = tinyusdz::tydra::AnimationChannel;
         PrefabNode node;
         node.name = n.prim_name.empty() ? n.abs_path : n.prim_name;
         node.transform = ToGlm(n.local_matrix);
         if (n.nodeType == tinyusdz::tydra::NodeType::Mesh && n.id >= 0
             && n.id < static_cast<int32_t>(meshChunks.size()))
             node.meshes = meshChunks[n.id];
+        // Non-skeletal node xform animation (line B): Tydra hands back per-channel
+        // T/R/S samplers (or, occasionally, a full Transform matrix sampler which
+        // we decompose). Fold them into one ActionTimeline clip on this node.
+        if (!n.node_animations.empty()) {
+            PrefabNodeClip pc;
+            pc.name = "node";
+            for (const auto& ch : n.node_animations) {
+                if (ch.type == Ch::ChannelType::Translation && !ch.translations.samples.empty()) {
+                    ActionTrack tr;
+                    tr.property = ActionProperty::Position;
+                    for (const auto& s : ch.translations.samples)
+                        tr.keys.push_back(
+                            { s.t, glm::vec4(s.value[0], s.value[1], s.value[2], 0.0f), EasingType::Linear }
+                        );
+                    pc.tracks.push_back(std::move(tr));
+                } else if (ch.type == Ch::ChannelType::Rotation && !ch.rotations.samples.empty()) {
+                    ActionTrack tr;
+                    tr.property = ActionProperty::RotationQuat;
+                    for (const auto& s : ch.rotations.samples) {
+                        const glm::quat q = ToGlmQuat(s.value);
+                        tr.keys.push_back({ s.t, glm::vec4(q.x, q.y, q.z, q.w), EasingType::Linear });
+                    }
+                    pc.tracks.push_back(std::move(tr));
+                } else if (ch.type == Ch::ChannelType::Scale && !ch.scales.samples.empty()) {
+                    ActionTrack tr;
+                    tr.property = ActionProperty::Scale;
+                    for (const auto& s : ch.scales.samples)
+                        tr.keys.push_back(
+                            { s.t, glm::vec4(s.value[0], s.value[1], s.value[2], 0.0f), EasingType::Linear }
+                        );
+                    pc.tracks.push_back(std::move(tr));
+                } else if (ch.type == Ch::ChannelType::Transform && !ch.transforms.samples.empty()) {
+                    ActionTrack tp, trk, ts;
+                    tp.property = ActionProperty::Position;
+                    trk.property = ActionProperty::RotationQuat;
+                    ts.property = ActionProperty::Scale;
+                    for (const auto& s : ch.transforms.samples) {
+                        glm::vec3 t, sc;
+                        glm::quat r;
+                        DecomposeTRS(ToGlm(s.value), t, r, sc);
+                        tp.keys.push_back({ s.t, glm::vec4(t, 0.0f), EasingType::Linear });
+                        trk.keys.push_back({ s.t, glm::vec4(r.x, r.y, r.z, r.w), EasingType::Linear });
+                        ts.keys.push_back({ s.t, glm::vec4(sc, 0.0f), EasingType::Linear });
+                    }
+                    pc.tracks.push_back(std::move(tp));
+                    pc.tracks.push_back(std::move(trk));
+                    pc.tracks.push_back(std::move(ts));
+                }
+            }
+            if (!pc.tracks.empty()) node.animations.push_back(std::move(pc));
+        }
         for (const auto& c : n.children)
             node.children.push_back(buildNode(c));
         return node;
@@ -651,11 +866,13 @@ Prefab ImportUSDPrefab(const std::string& path) {
     out.ok = !out.meshes.empty();
     ConsoleSubsystem::Get()->Info(
         fmt::format(
-            "ImportUSDPrefab '{}': {} mesh(es), {} material(s), {} image(s)",
+            "ImportUSDPrefab '{}': {} mesh(es), {} material(s), {} image(s), {} skeleton(s), {} clip(s)",
             path,
             out.meshes.size(),
             out.materials.size(),
-            out.images.size()
+            out.images.size(),
+            out.skeletons.size(),
+            out.skeletonClips.size()
         )
     );
     return out;
