@@ -27,6 +27,14 @@ public:
     }
 };
 
+// Per-vertex skinning attributes, kept in a PARALLEL buffer (not in Vertex) so
+// static meshes pay nothing. joints index into the bound Skeleton::joints;
+// weights are the blend weights (should sum to 1). From glTF JOINTS_0/WEIGHTS_0.
+struct SkinVertex {
+    glm::ivec4 joints{ 0, 0, 0, 0 };
+    glm::vec4 weights{ 0.0f, 0.0f, 0.0f, 0.0f };
+};
+
 struct DebugVertex {
     glm::vec3 position;
     glm::vec3 color;
