@@ -21,6 +21,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <algorithm>
 #include <functional>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -416,6 +417,74 @@ Prefab ImportGLTFPrefab(const std::string& path) {
         }
     }
 
+    // ── Node animations (glTF animations[] → per-node local-TRS clips) ──────────
+    // Skinned meshes are unsupported (see file header), so these are treated as
+    // plain node-transform animations: each channel drives one node's TRS.
+    auto readFloat1 = [&](const tinygltf::Accessor& acc) {
+        const auto& bv = model.bufferViews[acc.bufferView];
+        const auto& buf = model.buffers[bv.buffer];
+        const size_t stride = bv.byteStride ? bv.byteStride : sizeof(float);
+        const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
+        std::vector<float> o(acc.count);
+        for (size_t i = 0; i < acc.count; ++i) o[i] = *reinterpret_cast<const float*>(base + i * stride);
+        return o;
+    };
+    // node index → its clips (each clip = one glTF animation touching that node).
+    std::unordered_map<int, std::vector<PrefabNodeClip>> animByNode;
+    for (size_t ai = 0; ai < model.animations.size(); ++ai) {
+        const auto& anim = model.animations[ai];
+        const std::string clipName = anim.name.empty() ? fmt::format("anim_{}", ai) : anim.name;
+        for (const auto& ch : anim.channels) {
+            if (ch.target_node < 0) continue;
+            const std::string& path = ch.target_path;// translation / rotation / scale / weights
+            ActionProperty prop;
+            if (path == "translation")
+                prop = ActionProperty::Position;
+            else if (path == "scale")
+                prop = ActionProperty::Scale;
+            else if (path == "rotation")
+                prop = ActionProperty::RotationQuat;
+            else
+                continue;// weights (morph) unsupported
+
+            const auto& samp = anim.samplers[ch.sampler];
+            const std::vector<float> times = readFloat1(model.accessors[samp.input]);
+            // CUBICSPLINE packs (inTangent, value, outTangent) per key; take the
+            // value and treat as linear (tangents unsupported for now). STEP is
+            // also approximated as linear.
+            const bool cubic = samp.interpolation == "CUBICSPLINE";
+            ActionTrack track;
+            track.property = prop;
+            if (prop == ActionProperty::RotationQuat) {
+                const std::vector<glm::vec4> q = readFloat4(model.accessors[samp.output]);
+                for (size_t k = 0; k < times.size(); ++k) {
+                    const size_t vi = cubic ? k * 3 + 1 : k;
+                    if (vi >= q.size()) break;// malformed: fewer outputs than inputs
+                    track.keys.push_back({ times[k], q[vi], EasingType::Linear });
+                }
+            } else {
+                const std::vector<glm::vec3> vals = readFloat3(model.accessors[samp.output]);
+                for (size_t k = 0; k < times.size(); ++k) {
+                    const size_t vi = cubic ? k * 3 + 1 : k;
+                    if (vi >= vals.size()) break;
+                    const glm::vec3& v = vals[vi];
+                    track.keys.push_back({ times[k], glm::vec4(v.x, v.y, v.z, 0.0f), EasingType::Linear });
+                }
+            }
+            if (track.keys.empty()) continue;
+
+            auto& clips = animByNode[ch.target_node];
+            auto it = std::find_if(clips.begin(), clips.end(), [&](const PrefabNodeClip& c) {
+                return c.name == clipName;
+            });
+            if (it == clips.end()) {
+                clips.push_back({ clipName, { std::move(track) } });
+            } else {
+                it->tracks.push_back(std::move(track));
+            }
+        }
+    }
+
     // ── Node tree ─────────────────────────────────────────────────────────────
     std::function<PrefabNode(int)> buildNode = [&](int nodeIdx) -> PrefabNode {
         const tinygltf::Node& n = model.nodes[nodeIdx];
@@ -425,6 +494,7 @@ Prefab ImportGLTFPrefab(const std::string& path) {
         if (n.mesh >= 0 && n.mesh < static_cast<int>(meshPrims.size())) node.meshes = meshPrims[n.mesh];
         const int lightIdx = NodeLightIndex(n);
         if (lightIdx >= 0 && lightIdx < static_cast<int>(out.lights.size())) node.lights.push_back(lightIdx);
+        if (auto it = animByNode.find(nodeIdx); it != animByNode.end()) node.animations = std::move(it->second);
         for (int c : n.children)
             if (c >= 0 && c < static_cast<int>(model.nodes.size())) node.children.push_back(buildNode(c));
         return node;

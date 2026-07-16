@@ -86,6 +86,7 @@ enum class ActionProperty {
     Color,// vec4 tint (sprite/text/material)
     Alpha,// float in .x → color.a only
     Custom,// float in .x, routed to a callback by customId
+    RotationQuat,// quaternion (x,y,z,w) — slerp'd; glTF/USD node rotation
 };
 
 struct ActionKey {

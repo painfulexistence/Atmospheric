@@ -1,5 +1,6 @@
 #include "animation_clip.hpp"
 #include <algorithm>
+#include <glm/gtc/quaternion.hpp>
 
 // ── FlipbookClip ─────────────────────────────────────────────────────────────
 
@@ -68,6 +69,15 @@ glm::vec4 ActionTrack::Sample(float t) const {
     const float span = b.time - a.time;
     float u = span > 0.0f ? (t - a.time) / span : 1.0f;
     u = ApplyEasing(u, b.easing);// segment easing is authored on the destination key
+
+    // Rotation quaternions must be interpolated spherically, not component-wise
+    // (glTF LINEAR rotation == slerp). value is packed (x,y,z,w).
+    if (property == ActionProperty::RotationQuat) {
+        glm::quat qa(a.value.w, a.value.x, a.value.y, a.value.z);
+        glm::quat qb(b.value.w, b.value.x, b.value.y, b.value.z);
+        glm::quat q = glm::slerp(qa, qb, u);
+        return glm::vec4(q.x, q.y, q.z, q.w);
+    }
     return a.value + (b.value - a.value) * u;
 }
 

@@ -1,4 +1,5 @@
 #pragma once
+#include "animation_clip.hpp"
 #include "vertex.hpp"
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
@@ -103,6 +104,15 @@ struct MeshData {
 // (indices into the Prefab's flat arrays), and children. For .map entities,
 // classname/properties carry the full key/value block (point entities included,
 // e.g. info_player_start), so gameplay code can query spawn data pre-instantiate.
+// A named node-animation clip's tracks for the owning node: the node's local
+// TRS keyframes from one glTF/USD animation (translation → Position, rotation →
+// RotationQuat, scale → Scale). Instantiate turns these into an ActionTimeline
+// on the node's GameObject. Skinned (skeletal) animation is separate.
+struct PrefabNodeClip {
+    std::string name;
+    std::vector<ActionTrack> tracks;
+};
+
 struct PrefabNode {
     std::string name;
     glm::mat4 transform{ 1.0f };
@@ -111,6 +121,7 @@ struct PrefabNode {
     std::vector<int> lights;
     std::string classname;// .map entity classname ("" otherwise)
     std::unordered_map<std::string, std::string> properties;// .map key/values
+    std::vector<PrefabNodeClip> animations;// per-clip local-TRS tracks for this node
     std::vector<PrefabNode> children;
 };
 

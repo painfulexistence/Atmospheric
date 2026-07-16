@@ -1451,6 +1451,24 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
         if (p) go->parent = p;
         go->SetLocalTransform(node.transform);
 
+        // Node (non-skinned) animations → an ActionTimelineComponent driving this
+        // node's local TRS. All the node's clips are registered and switchable by
+        // name; the first is auto-played (looping), the sensible default for the
+        // common single-animation asset.
+        if (!node.animations.empty()) {
+            if (auto* animSub = AnimationSubsystem::Get()) {
+                auto* atc = static_cast<ActionTimelineComponent*>(go->AddComponent<ActionTimelineComponent>());
+                for (const auto& clip : node.animations) {
+                    ActionTimeline tl;
+                    tl.name = nodeName + "/" + clip.name;
+                    tl.tracks = clip.tracks;
+                    atc->AddTimeline(animSub->Library().AddTimeline(std::move(tl)));
+                }
+                atc->SetWrapMode(WrapMode::Loop);
+                atc->Play(nodeName + "/" + node.animations.front().name);
+            }
+        }
+
         for (size_t j = 0; j < node.meshes.size(); ++j) {
             const int mi = node.meshes[j];
             if (mi < 0 || mi >= static_cast<int>(handles.size()) || !handles[mi].IsValid()) continue;

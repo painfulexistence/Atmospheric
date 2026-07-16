@@ -7,6 +7,7 @@
 #include "text_2d_component.hpp"
 #include "text_3d_component.hpp"
 #include <algorithm>
+#include <glm/gtc/quaternion.hpp>
 
 // ── colour get/set across the drawable component types ───────────────────────
 namespace {
@@ -131,6 +132,14 @@ void ActionTimelineComponent::ApplyTracks(const ActionTimeline& tl, float time) 
         case ActionProperty::Rotation:
             gameObject->SetRotation(glm::vec3(v.x, v.y, v.z));
             break;
+        case ActionProperty::RotationQuat: {
+            // v is a slerp'd quaternion (x,y,z,w); GameObject takes euler radians,
+            // so convert the interpolated result once (interpolation already
+            // happened in quaternion space, so this is lossless in practice).
+            glm::quat q(v.w, v.x, v.y, v.z);
+            gameObject->SetRotation(glm::eulerAngles(q));
+            break;
+        }
         case ActionProperty::Scale:
             gameObject->SetScale(glm::vec3(v.x, v.y, v.z));
             break;
