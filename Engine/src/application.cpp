@@ -25,6 +25,7 @@
 #include "mesh.hpp"
 #include "mesh_instancer_component.hpp"
 #include "mesh_renderer_component.hpp"
+#include "skeletal_component.hpp"
 #include "prefab.hpp"
 #include "rigidbody_2d_component.hpp"
 #include "rigidbody_component.hpp"
@@ -1379,6 +1380,18 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
         return nm;
     };
 
+    // ── Skeletons + skeletal clips → AssetManager / AnimationLibrary ──────────
+    std::vector<SkeletonHandle> skelHandles(prefab.skeletons.size());
+    for (size_t i = 0; i < prefab.skeletons.size(); ++i)
+        skelHandles[i] = am.CreateSkeleton(fmt::format("{}:skel{}", baseName, i), prefab.skeletons[i]);
+    std::vector<std::vector<SkeletonClipHandle>> skinClipHandles(prefab.skeletons.size());
+    if (auto* animSub = AnimationSubsystem::Get())
+        for (const auto& psc : prefab.skeletonClips) {
+            SkeletonClipHandle h = animSub->Library().AddSkeletonClip(psc.clip);
+            if (psc.skin >= 0 && psc.skin < static_cast<int>(skinClipHandles.size()))
+                skinClipHandles[psc.skin].push_back(h);
+        }
+
     // ── MeshData → engine meshes ("<baseName>#<i>") ──────────────────────────
     std::vector<MeshHandle> handles(prefab.meshes.size());
     for (size_t i = 0; i < prefab.meshes.size(); ++i) {
@@ -1416,6 +1429,7 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
         } else {
             mesh->Initialize(md.vertices, md.indices);
         }
+        if (!md.skinVertices.empty()) mesh->UploadSkinData(md.skinVertices);
         glm::vec3 lo = md.vertices[0].position, hi = lo;
         for (const auto& v : md.vertices) {
             lo = glm::min(lo, v.position);
@@ -1476,7 +1490,27 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
             const std::string& mat = prefab.meshes[mi].material;
             leaf->SetName(mat.empty() ? fmt::format("{}#{}", nodeName, j) : mat);
             leaf->parent = go;
-            leaf->AddComponent<MeshRendererComponent>(handles[mi]);
+
+            const int skin = prefab.meshes[mi].skinIndex;
+            if (skin >= 0 && skin < static_cast<int>(skelHandles.size())) {
+                // Skinned mesh: a SkeletalComponent creates the SkinnedMaterial and
+                // registers the MeshRenderer itself. NOTE glTF ignores a skinned
+                // mesh node's own transform (joints define the pose); this assumes
+                // the mesh node is near-identity, the common authoring case.
+                auto* sk = static_cast<SkeletalComponent*>(
+                    leaf->AddComponent<SkeletalComponent>(handles[mi], skelHandles[skin], SkeletalProps{})
+                );
+                for (SkeletonClipHandle h : skinClipHandles[skin])
+                    sk->AddClip(h);
+                if (auto* animSub = AnimationSubsystem::Get(); animSub && !skinClipHandles[skin].empty()) {
+                    if (const SkeletonClip* c0 = animSub->Library().GetSkeletonClip(skinClipHandles[skin][0])) {
+                        sk->SetWrapMode(WrapMode::Loop);
+                        sk->Play(c0->name);
+                    }
+                }
+            } else {
+                leaf->AddComponent<MeshRendererComponent>(handles[mi]);
+            }
         }
 
         if (!node.colliders.empty() && _config.enablePhysics3D) {

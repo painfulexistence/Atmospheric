@@ -1,5 +1,6 @@
 #pragma once
 #include "animation_clip.hpp"
+#include "skeleton.hpp"
 #include "vertex.hpp"
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
@@ -92,6 +93,10 @@ struct PrefabCollider {
 struct MeshData {
     std::vector<Vertex> vertices;
     std::vector<uint16_t> indices;
+    // Parallel skinning attributes (same length/order as `vertices`) when this
+    // mesh is skinned; empty otherwise. `skinIndex` selects Prefab::skeletons.
+    std::vector<SkinVertex> skinVertices;
+    int skinIndex = -1;// -1 = static; else index into Prefab::skeletons
     std::string material;// resolve-by-name (.map texture name)
     int materialIndex = -1;// index into Prefab::materials (gltf/usd)
     // .map classic/Valve220 UVs are authored in *texels*; Instantiate divides by
@@ -125,12 +130,20 @@ struct PrefabNode {
     std::vector<PrefabNode> children;
 };
 
+// A skeletal animation clip plus the skin it drives (index into Prefab::skeletons).
+struct PrefabSkeletonClip {
+    int skin = 0;
+    SkeletonClip clip;
+};
+
 struct Prefab {
     std::vector<MeshData> meshes;
     std::vector<PrefabMaterial> materials;
     std::vector<PrefabImage> images;
     std::vector<PrefabLight> lights;
     std::vector<PrefabCollider> colliders;
+    std::vector<Skeleton> skeletons;// skinned-mesh bind data (usually one)
+    std::vector<PrefabSkeletonClip> skeletonClips;// skeletal animations
     PrefabNode root;
     bool ok = false;
 
