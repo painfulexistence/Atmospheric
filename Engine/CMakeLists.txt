@@ -225,6 +225,7 @@ set(SOURCES
     src/rigidbody_2d_component.cpp
     src/mesh_builder.cpp
     src/prefab.cpp
+    src/prefab_map.cpp
     src/prefab_gltf.cpp
     src/prefab_usd.cpp
     src/shape_renderer_component.cpp
