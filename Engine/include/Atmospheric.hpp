@@ -9,6 +9,8 @@
 #include "Atmospheric/deserializer.hpp"
 #include "Atmospheric/file_system.hpp"
 #include "Atmospheric/flipbook_component.hpp"
+#include "Atmospheric/skeletal_component.hpp"
+#include "Atmospheric/skeleton.hpp"
 #include "Atmospheric/game_object.hpp"
 #include "Atmospheric/graphics_subsystem.hpp"
 #include "Atmospheric/height_field.hpp"

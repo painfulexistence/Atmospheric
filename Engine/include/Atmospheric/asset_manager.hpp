@@ -7,6 +7,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "skeleton.hpp"
+
 class Mesh;
 class Material;
 class PBRMaterial;
@@ -15,6 +17,7 @@ class WaterMaterial;
 class TerrainMaterial;
 class GrassMaterial;
 class VATMaterial;
+class SkinnedMaterial;
 class PortalMaterial;
 class VoxelMaterial;
 class ShaderProgram;
@@ -68,6 +71,7 @@ public:
     TerrainMaterial* CreateTerrainMaterial();
     GrassMaterial* CreateGrassMaterial();
     VATMaterial* CreateVATMaterial();
+    SkinnedMaterial* CreateSkinnedMaterial();
     VoxelMaterial* CreateVoxelMaterial();
     Material* GetMaterial(const std::string& name) const;
     Material* GetMaterialByID(uint32_t id) const;
@@ -100,6 +104,11 @@ public:
     void LoadTextures(const std::vector<std::string>& paths);
     MeshHandle CreateMesh(Mesh* mesh = nullptr);
     MeshHandle CreateMesh(const std::string& name, Mesh* mesh = nullptr);
+
+    // Skeleton assets (skinned-mesh bind data). Referenced by handle from both
+    // SkeletalComponent (posing) and skinned meshes (joint index space).
+    SkeletonHandle CreateSkeleton(const std::string& name, Skeleton skeleton);
+    const Skeleton* GetSkeleton(SkeletonHandle handle) const;
     MeshHandle CreateCubeMesh(const std::string& name, float size = 1.0f);
     MeshHandle CreatePlaneMesh(const std::string& name, float width, float height);
     MeshHandle CreatePlaneMeshSubdivided(const std::string& name, float width, float height, int subdivisions);
@@ -218,6 +227,10 @@ private:
     std::unordered_map<std::string, uint32_t> _meshCache;
     std::unordered_set<uint32_t> _ownedMeshIDs;// IDs AssetManager must delete; excludes RegisterMesh entries
     uint32_t _nextMeshID = 1;
+
+    // Skeletons (vector<unique_ptr> so GetSkeleton pointers stay stable; handle = index+1)
+    std::vector<std::unique_ptr<Skeleton>> _skeletons;
+    std::unordered_map<std::string, uint32_t> _skeletonCache;
 
     // Raw JSON strings keyed by scene name — re-parsed on unload.
     std::unordered_map<std::string, std::string> _sceneJsons;

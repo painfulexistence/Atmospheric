@@ -1,3 +1,4 @@
+#include <cstddef>
 #include "mesh.hpp"
 #include "asset_manager.hpp"
 #include "config.hpp"
@@ -44,8 +45,28 @@ Mesh::~Mesh() {
     glDeleteBuffers(1, &vbo);
     glDeleteBuffers(1, &ebo);
     glDeleteBuffers(1, &ibo);
+    if (_skinVbo) glDeleteBuffers(1, &_skinVbo);
     glDeleteVertexArrays(1, &vao);
     // _shape (unique_ptr<btCollisionShape>) frees itself here.
+}
+
+void Mesh::UploadSkinData(const std::vector<SkinVertex>& skin) {
+    // GL/GLES/WebGL2 path only for now; WebGPU skinning is a future addition.
+    if (GfxFactory::GetBackend() == GfxBackend::WebGPU || skin.empty()) return;
+    if (!_skinVbo) glGenBuffers(1, &_skinVbo);
+
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, _skinVbo);
+    glBufferData(GL_ARRAY_BUFFER, skin.size() * sizeof(SkinVertex), skin.data(), GL_STATIC_DRAW);
+    // Joints are integers → I-pointer; weights are floats. Locations 9/10 are
+    // free (0-4 = Vertex attribs, 5-8 = per-instance World matrix).
+    glVertexAttribIPointer(9, 4, GL_INT, sizeof(SkinVertex), reinterpret_cast<void*>(offsetof(SkinVertex, joints)));
+    glVertexAttribPointer(
+        10, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex), reinterpret_cast<void*>(offsetof(SkinVertex, weights))
+    );
+    glEnableVertexAttribArray(9);
+    glEnableVertexAttribArray(10);
+    glBindVertexArray(0);
 }
 
 // Terrain mesh initialization
