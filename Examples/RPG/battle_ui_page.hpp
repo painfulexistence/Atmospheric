@@ -102,6 +102,9 @@ private:
         if (cmdOpen) {
             for (int i = 0; i < 4; i++)
                 if (_cmdItems[i]) _cmdItems[i]->SetClass("sel", b.menuSel == i);
+            FocusSelected(b.menuSel >= 0 && b.menuSel < 4 ? _cmdItems[b.menuSel] : nullptr);
+        } else if (!skillOpen && !itemOpen) {
+            _focused = nullptr;// no menu open — allow re-focus when one reopens
         }
 
         if (skillOpen) {
@@ -116,6 +119,7 @@ private:
                 _subItems[i]->SetClass("sel", b.skillSel == i);
                 _subItems[i]->SetClass("dim", false);
             }
+            FocusSelected(b.skillSel >= 0 && b.skillSel < MAX_SUB ? _subItems[b.skillSel] : nullptr);
         } else if (itemOpen) {
             if (_subTitle) _subTitle->SetInnerRML("─ Items ─");
             int count = static_cast<int>(player.items.size());
@@ -128,6 +132,17 @@ private:
                 _subItems[i]->SetClass("sel", b.itemSel == i);
                 _subItems[i]->SetClass("dim", it.count <= 0 && b.itemSel != i);
             }
+            FocusSelected(b.itemSel >= 0 && b.itemSel < MAX_SUB ? _subItems[b.itemSel] : nullptr);
+        }
+    }
+
+    // Reflect the C++ cursor into real RmlUi focus (so :focus RCSS engages and
+    // the element is the keyboard-focus target). Guarded so we only re-focus on
+    // change. The ".sel" class remains the reliable visual fallback.
+    void FocusSelected(Rml::Element* el) {
+        if (el && el != _focused) {
+            el->Focus();
+            _focused = el;
         }
     }
 
@@ -163,4 +178,5 @@ private:
     Rml::Element *_sub = nullptr, *_subTitle = nullptr, *_subItems[MAX_SUB] = {};
     Rml::Element* _logLines[MAX_LOG] = {};
     Rml::Element *_banner = nullptr, *_bannerText = nullptr;
+    Rml::Element* _focused = nullptr;// last element we called Focus() on
 };

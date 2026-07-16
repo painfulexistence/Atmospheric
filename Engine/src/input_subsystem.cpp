@@ -2,6 +2,29 @@
 #include "application.hpp"
 #include "rmlui_manager.hpp"
 #include "window.hpp"
+#include <RmlUi/Core/Input.h>
+#include <array>
+#include <utility>
+
+// Navigation/activation keys forwarded to the RmlUi context so focused UI
+// (menus, text fields) can be driven from the keyboard. Only these keys are
+// mapped; everything else is left to gameplay. When no RmlUi element is focused,
+// forwarding is a harmless no-op — existing examples are unaffected.
+static constexpr std::array<std::pair<Key, Rml::Input::KeyIdentifier>, 13> kRmlKeyMap = { {
+    { Key::UP, Rml::Input::KI_UP },
+    { Key::DOWN, Rml::Input::KI_DOWN },
+    { Key::LEFT, Rml::Input::KI_LEFT },
+    { Key::RIGHT, Rml::Input::KI_RIGHT },
+    { Key::ENTER, Rml::Input::KI_RETURN },
+    { Key::ESCAPE, Rml::Input::KI_ESCAPE },
+    { Key::SPACE, Rml::Input::KI_SPACE },
+    { Key::W, Rml::Input::KI_W },
+    { Key::A, Rml::Input::KI_A },
+    { Key::S, Rml::Input::KI_S },
+    { Key::D, Rml::Input::KI_D },
+    { Key::Z, Rml::Input::KI_Z },
+    { Key::X, Rml::Input::KI_X },
+} };
 
 static std::string GetKeyName(Key key) {
     switch (key) {
@@ -151,6 +174,17 @@ void InputSubsystem::Process(float dt) {
         _mouseOverUi = !rml->ProcessMouseMove(lx, ly, 0);
         if (_mouseDown && !_prevMouseDown) rml->ProcessMouseButtonDown(0, 0);
         if (!_mouseDown && _prevMouseDown) rml->ProcessMouseButtonUp(0, 0);
+
+        // Forward key edges to RmlUi so focused documents can navigate/activate
+        // from the keyboard (the counterpart to the mouse forwarding above).
+        for (const auto& [key, ki] : kRmlKeyMap) {
+            bool down = _keyStates[key] == KeyState::PRESSED;
+            bool prevDown = _prevKeyStates[key] == KeyState::PRESSED;
+            if (down && !prevDown)
+                rml->ProcessKeyDown(ki, 0);
+            else if (!down && prevDown)
+                rml->ProcessKeyUp(ki, 0);
+        }
     } else {
         _mouseOverUi = false;
     }

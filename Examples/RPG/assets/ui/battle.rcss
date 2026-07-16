@@ -104,9 +104,14 @@ div {
     font-size: 13dp;
     color: #d9d9e6;
     margin-bottom: 6dp;
+    tab-index: auto;/* focusable, so RmlUi can own keyboard focus (see BattleUIPage) */
 }
-.menu_item.sel {
-    color: #ffff4d;/* highlighted cursor row */
+/* Both selectors highlight the current row: ".sel" is driven from C++ as a
+   reliable fallback, ":focus" engages once the keyboard bridge focuses the
+   element via Element::Focus(). */
+.menu_item.sel,
+.menu_item:focus {
+    color: #ffff4d;
 }
 .menu_item.dim {
     color: #666666;/* unavailable (e.g. 0 items left) */

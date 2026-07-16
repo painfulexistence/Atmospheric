@@ -63,10 +63,15 @@ a **separate pass on top**, so RmlUi HUD/menus correctly overlay the immediate
 world. That is exactly why menus/log/dialogue went to RmlUi while the
 world-coupled sprites went to Canvas.
 
-Keyboard menus need **no** new engine plumbing: only mouse is bridged into the
-RmlUi context today, so selection stays in C++ (`BattleState`) and is reflected
-into the document by toggling a `.sel` class — the same pattern MultiplayerSandbox
-uses for spell slots.
+Keyboard is now bridged into RmlUi (see §5): `InputSubsystem` forwards
+navigation/activation key edges to the RmlUi context (the counterpart to the
+existing mouse forwarding), and the battle menu items are focusable
+(`tab-index: auto`) with `:focus` styling. `BattleUIPage` reflects the C++ cursor
+into real RmlUi focus via `Element::Focus()`. C++ still owns the arrow
+navigation (reliable, and the `.sel` class remains a visual fallback), so nothing
+breaks if a given RmlUi build's spatial-nav behaviour differs; flipping to
+fully RmlUi-owned arrow navigation is then just adding `nav-*` RCSS and dropping
+the C++ arrow handling.
 
 ### Explore world — also componentized (no immediate mode left)
 
@@ -108,9 +113,11 @@ The `DialogueBox` here is the seed; a real narrative game still needs:
   `DialogueBox` uses; rich spans are the next step.)
 - **Localization / string tables** — externalized strings, not literals.
 - **Save/load of narrative state** — flags, visited nodes, variables.
-- **RmlUi keyboard-focus navigation** — forward `ProcessKeyDown` and drive
-  element focus, if you want native RmlUi menu navigation instead of the
-  C++-owned-cursor approach used here.
+- **RmlUi keyboard-focus navigation** — the keyboard→RmlUi bridge now exists
+  (`InputSubsystem` forwards key edges; battle items are focusable and take real
+  `Element::Focus()`). Remaining: `nav-*` spatial navigation and letting RmlUi
+  fully own arrow movement + Enter-to-activate, instead of the C++ cursor that
+  currently retains authority.
 - **Audio hooks** — per-char blip, voice lines.
 
 **Reusable components / widgets**
@@ -130,6 +137,9 @@ The `DialogueBox` here is the seed; a real narrative game still needs:
 - `components.hpp` — `BattleSystemComponent` now drives a Canvas `BattleScene` + the RmlUi `BattleUIPage`; all `DrawBattle*` removed.
 - `main.cpp` — HUD/dialogue via `UIPageComponent`; explore world via Canvas components; no immediate draws remain.
 - `CMakeLists.txt` — stages the game's `assets/ui` into the Emscripten preload.
+- `Engine/src/input_subsystem.cpp` (engine) — forwards keyboard key edges to the
+  RmlUi context, so focused documents can be keyboard-driven. Additive; a no-op
+  for examples that don't focus RmlUi elements.
 
 ## 5. Build/verification status
 
