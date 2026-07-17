@@ -71,6 +71,7 @@ private:
         bool isBot = false;// stationary training dummy (no socket, never receives snapshots)
         uint32_t addr = 0;
         uint16_t port = 0;
+        uint32_t lastSeenMs = 0;// last packet from this sender (stale-slot reclamation)
 
         sim::Motion motion;// authoritative motion state (foot + vy + dash timers)
         float viewYaw = 0.0f, viewPitch = 0.0f;// latest reported view (for snapshot replication)

@@ -19,12 +19,50 @@ bool ClientNet::Connect(const std::string& serverIp, uint16_t serverPort) {
         return false;
     }
     _predictedMotion.foot = { -9.0f, 0.0f, 0.0f };// provisional until first snapshot
+    SendHello();// retried from Pump() until the welcome arrives
+    return true;
+}
 
+#ifdef __EMSCRIPTEN__
+bool ClientNet::ConnectUrl(const std::string& url) {
+    if (!_wt.Connect(url)) return false;
+    _useWt = true;
+    // A WebTransport session has no (addr,port); the shim reports (0,0), so
+    // zero the expected sender and HandlePacket's filter accepts the session.
+    _serverAddr = 0;
+    _serverPort = 0;
+    _predictedMotion.foot = { -9.0f, 0.0f, 0.0f };
+    // No hello yet: the session is still handshaking. Pump()'s retry sends it
+    // as soon as TransportReady() turns true.
+    return true;
+}
+#endif
+
+bool ClientNet::TransportReady() const {
+#ifdef __EMSCRIPTEN__
+    if (_useWt) return _wt.IsOpen();
+#endif
+    return _socket.IsOpen();
+}
+
+void ClientNet::SendToServer(const uint8_t* data, int len) {
+#ifdef __EMSCRIPTEN__
+    if (_useWt) {
+        _wt.Send(data, len);
+        _metrics.OnSent(len);
+        return;
+    }
+#endif
+    _socket.SendTo(_serverAddr, _serverPort, data, len);
+    _metrics.OnSent(len);
+}
+
+void ClientNet::SendHello() {
+    if (!TransportReady()) return;
     uint8_t buf[proto::kClientHelloLen];
     proto::PutU32(buf, proto::kMagic);
     buf[4] = static_cast<uint8_t>(proto::PacketType::ClientHello);
-    _socket.SendTo(_serverAddr, _serverPort, buf, sizeof(buf));
-    return true;
+    SendToServer(buf, sizeof(buf));
 }
 
 void ClientNet::SubmitInput(
@@ -40,7 +78,7 @@ void ClientNet::SubmitInput(
     bool fireRail,
     bool fireRocket
 ) {
-    if (!_socket.IsOpen()) return;
+    if (!TransportReady()) return;
     _viewYaw = yaw;
     _viewPitch = pitch;
     _shield = shield;
@@ -87,14 +125,14 @@ void ClientNet::SubmitInput(
     proto::PutU16(buf + 26, _rocketSeq);
     proto::PutU16(buf + 28, proto::QuantizeYaw(_rocketYaw));
     proto::PutU16(buf + 30, proto::QuantizePitch(_rocketPitch));
-    _socket.SendTo(_serverAddr, _serverPort, buf, sizeof(buf));
-    _metrics.OnSent(sizeof(buf));
+    SendToServer(buf, sizeof(buf));
     _inputSendMs[tick] = nowMs;// matched against ackedInputTick for RTT
 }
 
 void ClientNet::HandlePacket(const uint8_t* buf, int n, uint32_t fromAddr, uint16_t fromPort, uint32_t nowMs) {
     if (fromAddr != _serverAddr || fromPort != _serverPort) return;
     if (n < 5 || proto::GetU32(buf) != proto::kMagic) return;
+    _lastRecvMs = nowMs;// any valid server packet feeds the silence watchdog
     const auto type = static_cast<proto::PacketType>(buf[4]);
     if (type == proto::PacketType::ServerWelcome && n >= proto::kServerWelcomeLen) {
         _welcomed = true;
@@ -106,12 +144,28 @@ void ClientNet::HandlePacket(const uint8_t* buf, int n, uint32_t fromAddr, uint1
 }
 
 void ClientNet::Pump(uint32_t nowMs) {
-    if (!_socket.IsOpen()) return;
+    if (!TransportReady()) return;// includes a WT session still handshaking
+
+    // Silence watchdog + hello retry (see the constants in client_net.hpp).
+    if (_welcomed && nowMs - _lastRecvMs > kServerSilenceMs) {
+        spdlog::warn("ClientNet: server silent for {} ms — re-greeting", nowMs - _lastRecvMs);
+        _welcomed = false;
+    }
+    if (!_welcomed && nowMs - _lastHelloMs >= kHelloRetryMs) {
+        SendHello();
+        _lastHelloMs = nowMs;
+    }
+
     PumpConditioned(
         _cond,
         _metrics,
         nowMs,
-        [&](uint8_t* b, int max, uint32_t& from, uint16_t& port) { return _socket.RecvFrom(b, max, from, port); },
+        [&](uint8_t* b, int max, uint32_t& from, uint16_t& port) {
+#ifdef __EMSCRIPTEN__
+            if (_useWt) return _wt.RecvFrom(b, max, from, port);
+#endif
+            return _socket.RecvFrom(b, max, from, port);
+        },
         [&](const uint8_t* b, int n, uint32_t from, uint16_t port) { HandlePacket(b, n, from, port, nowMs); }
     );
     _metrics.pendingInputs = static_cast<int>(_pending.size());

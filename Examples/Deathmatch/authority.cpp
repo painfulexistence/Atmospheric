@@ -11,6 +11,19 @@ namespace {
     // Training-dummy home: in the open, directly in front of player 0's spawn.
     const sim::Vec3 kBotHome = { -4.0f, 0.0f, 0.0f };
     const float kBotYaw = -sim::kPi * 0.5f;// face back toward the player
+
+    // A slot whose sender has been silent this long is reclaimed, so a client
+    // that vanished without a goodbye (browser tab closed, crash, roaming NAT)
+    // can't wedge the 2-slot server forever. Longer than the client's own
+    // silence watchdog (client_net.hpp), so a client that can still reach us
+    // re-greets before we forget it.
+    constexpr uint32_t kClientTimeoutMs = 8000;
+
+    uint32_t SteadyNowMs() {
+        using namespace std::chrono;
+        static const steady_clock::time_point start = steady_clock::now();
+        return static_cast<uint32_t>(duration_cast<milliseconds>(steady_clock::now() - start).count());
+    }
 }// namespace
 
 DeathmatchAuthority::~DeathmatchAuthority() {
@@ -149,6 +162,7 @@ void DeathmatchAuthority::HandlePacket(const uint8_t* data, int len, uint32_t fr
         p.connected = true;
         p.addr = fromAddr;
         p.port = fromPort;
+        p.lastSeenMs = SteadyNowMs();
         ResetPlayer(idx);
         spdlog::info("DeathmatchAuthority: player {} connected", idx);
 
@@ -165,6 +179,7 @@ void DeathmatchAuthority::HandlePacket(const uint8_t* data, int len, uint32_t fr
         const int idx = SlotForSender(fromAddr, fromPort);
         if (idx < 0) return;
         PlayerSlot& p = _slots[idx];
+        p.lastSeenMs = SteadyNowMs();
 
         const uint32_t clientTick = proto::GetU32(data + 5);
         const uint32_t renderTick = proto::GetU32(data + 9);
@@ -333,6 +348,16 @@ void DeathmatchAuthority::Pump() {
         int n = _socket.RecvFrom(buf, static_cast<int>(sizeof(buf)), fromAddr, fromPort);
         if (n <= 0) break;
         HandlePacket(buf, n, fromAddr, fromPort);
+    }
+
+    // Reclaim slots whose sender went silent (bots are local, never time out).
+    const uint32_t nowMs = SteadyNowMs();
+    for (int i = 0; i < 2; i++) {
+        PlayerSlot& p = _slots[i];
+        if (p.connected && !p.isBot && nowMs - p.lastSeenMs > kClientTimeoutMs) {
+            spdlog::info("DeathmatchAuthority: player {} timed out, slot freed", i);
+            p = PlayerSlot{};
+        }
     }
 
     const auto now = std::chrono::steady_clock::now();

@@ -21,6 +21,9 @@
       padding: 10px 14px; cursor: pointer; background: #2d6cdf; color: #fff; }
     button:hover { background: #397ff0; }
     button:disabled { background: #23262d; color: #5c626d; cursor: not-allowed; }
+    input[type=text] { font: inherit; font-size: 13px; color: #c8ccd4; background: #0b0c10;
+      border: 1px solid #23262d; border-radius: 7px; padding: 9px 11px; outline: none; }
+    input[type=text]:focus { border-color: #2d6cdf; }
     #canvas { display: none; background: #000; width: min(92vw, 1280px); aspect-ratio: 16 / 9;
       border: 1px solid #23262d; outline: none; }
     #caption { display: none; max-width: min(92vw, 1280px); font-size: 12.5px; line-height: 1.6; color: #8b909a; }
@@ -43,11 +46,13 @@
     </div>
     <div class="card">
       <h2>Multiplayer <span class="badge">WIP</span></h2>
-      <p>Player-vs-player against a dedicated server. The browser has no raw UDP,
-        so this needs a <b>WebTransport</b> (QUIC) transport plus a server that
-        speaks it — not wired up yet. Native builds already do PvP over UDP
-        (<code>--connect</code>).</p>
-      <button id="btn-pvp" disabled title="WebTransport transport not implemented yet">Coming soon</button>
+      <p>Player-vs-player against the dedicated UDP server, reached through a
+        <b>WebTransport&nbsp;&rarr;&nbsp;UDP gateway</b> (see
+        <code>Examples/Deathmatch/gateway</code>). Needs https + a
+        browser-trusted certificate on the gateway host. Experimental — the
+        client transport is wired but young.</p>
+      <input type="text" id="pvp-url" placeholder="https://your.domain:4433/dm" spellcheck="false">
+      <button id="btn-pvp" disabled>Loading…</button>
     </div>
   </div>
 
@@ -83,6 +88,12 @@
       startGame(['--local']);
     });
 
+    document.getElementById('btn-pvp').addEventListener('click', function () {
+      var url = document.getElementById('pvp-url').value.trim();
+      if (url.indexOf('https://') !== 0) { setStatus('gateway URL must start with https://'); return; }
+      startGame(['--connect', url]);
+    });
+
     var Module = {
       canvas: document.getElementById('canvas'),
       print: function (t) { console.log(t); },
@@ -92,6 +103,8 @@
         _wasmReady = true;
         var solo = document.getElementById('btn-solo');
         solo.disabled = false; solo.textContent = 'Play';
+        var pvp = document.getElementById('btn-pvp');
+        pvp.disabled = false; pvp.textContent = 'Connect';
         setStatus('');
         if (_pendingCall) { var a = _pendingCall; _pendingCall = null; Module['callMain'](a); }
       }

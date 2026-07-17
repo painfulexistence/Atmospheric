@@ -36,6 +36,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
@@ -43,6 +44,7 @@ namespace {
     struct CliOptions {
         std::string serverIp = "127.0.0.1";
         uint16_t serverPort = 9200;
+        std::string serverUrl;// https URL of a WebTransport->UDP gateway (web PvP)
         bool local = false;
     } gcli;
 
@@ -376,9 +378,20 @@ class DeathmatchGame : public Application {
         // it; the window close button / Cmd-Q quits.
         Window::Get()->SetRelativeMouseMode(true);
 
+#ifdef __EMSCRIPTEN__
+        if (!gcli.serverUrl.empty()) {
+            // PvP via the WebTransport->UDP gateway; the session handshake is
+            // async, so failures surface in the console rather than here.
+            if (!_net.ConnectUrl(gcli.serverUrl))
+                ConsoleSubsystem::Get()->Error(fmt::format("Bad gateway URL: {}", gcli.serverUrl));
+        } else if (!_net.Connect(gcli.serverIp, gcli.serverPort)) {
+            ConsoleSubsystem::Get()->Error(fmt::format("Failed to connect to {}:{}", gcli.serverIp, gcli.serverPort));
+        }
+#else
         if (!_net.Connect(gcli.serverIp, gcli.serverPort)) {
             ConsoleSubsystem::Get()->Error(fmt::format("Failed to connect to {}:{}", gcli.serverIp, gcli.serverPort));
         }
+#endif
     }
 
     void OnUpdate(float /*dt*/, float /*time*/) override {
@@ -464,20 +477,31 @@ class DeathmatchGame : public Application {
 int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; i++) {
         if (std::strcmp(argv[i], "--connect") == 0 && i + 1 < argc) {
-            gcli.serverIp = argv[++i];
-            if (i + 1 < argc && argv[i + 1][0] != '-') gcli.serverPort = static_cast<uint16_t>(std::atoi(argv[++i]));
+            // An https URL means "via a WebTransport->UDP gateway" (web PvP);
+            // anything else is a plain <ip> [port] for direct UDP.
+            std::string target = argv[++i];
+            if (target.rfind("https://", 0) == 0) {
+                gcli.serverUrl = target;
+            } else {
+                gcli.serverIp = target;
+                if (i + 1 < argc && argv[i + 1][0] != '-')
+                    gcli.serverPort = static_cast<uint16_t>(std::atoi(argv[++i]));
+            }
         } else if (std::strcmp(argv[i], "--local") == 0) {
             gcli.local = true;
         }
     }
 
 #ifdef __EMSCRIPTEN__
-    // The shell.html lobby launches Solo via callMain(["--local"]); its PvP mode
-    // is WIP (needs a WebTransport transport + server). Until that lands the web
-    // build is always single-player: an embedded authority reached over an
-    // in-process LoopbackDatagramSocket (see datagram_socket.hpp). Forced here
-    // too so a bare launch can never end up in a broken connect state.
-    gcli.local = true;
+    // The shell.html lobby launches Solo via callMain(["--local"]) or PvP via
+    // callMain(["--connect", "<gateway https url>"]). A bare launch (no args)
+    // falls back to Solo so it can never end up in a broken connect state.
+    if (gcli.serverUrl.empty()) gcli.local = true;
+#else
+    if (!gcli.serverUrl.empty()) {
+        std::fprintf(stderr, "WebTransport gateway URLs are web-only; use --connect <ip> [port] natively.\n");
+        return 1;
+    }
 #endif
 
     DeathmatchGame game(

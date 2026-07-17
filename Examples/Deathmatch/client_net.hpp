@@ -4,6 +4,9 @@
 #include <Atmospheric/datagram_socket.hpp>
 #include <Atmospheric/net_conditioner.hpp>
 #include <Atmospheric/net_metrics.hpp>
+#ifdef __EMSCRIPTEN__
+#include <Atmospheric/web_transport_socket.hpp>
+#endif
 
 #include <cstdint>
 #include <map>
@@ -40,6 +43,14 @@ public:
     };
 
     bool Connect(const std::string& serverIp, uint16_t serverPort);
+
+#ifdef __EMSCRIPTEN__
+    // Web PvP: reach the server through a WebTransport->UDP gateway (see
+    // Examples/Deathmatch/gateway) by https URL. The session handshake is
+    // async — the hello goes out from Pump() once the session opens, via the
+    // same retry path that covers a lost hello on UDP.
+    bool ConnectUrl(const std::string& url);
+#endif
 
     // Predicts one tick of movement (incl. jump/levitate/dash), latches any
     // fire this tick (aimed along the current view), and sends the input.
@@ -125,9 +136,24 @@ private:
     static constexpr uint32_t kInterpDelayMs = 100;
     static constexpr uint32_t kInterpDelayTicks = 6;// ~100 ms at 60 Hz
 
+    // Hello/silence watchdog: hello is retried until the welcome arrives (a
+    // single hello was previously sent exactly once — a lost datagram meant a
+    // dead connect), and a welcomed client that hears nothing for
+    // kServerSilenceMs re-greets, so it recovers a server restart or its own
+    // slot being reclaimed (authority.cpp's kClientTimeoutMs, which is longer
+    // than this so a live client always re-greets before it is forgotten).
+    static constexpr uint32_t kHelloRetryMs = 500;
+    static constexpr uint32_t kServerSilenceMs = 4000;
+
     DatagramSocket _socket;
     uint32_t _serverAddr = 0;
     uint16_t _serverPort = 0;
+#ifdef __EMSCRIPTEN__
+    WebTransportSocket _wt;
+    bool _useWt = false;// ConnectUrl was used; _socket stays closed
+#endif
+    uint32_t _lastHelloMs = 0;
+    uint32_t _lastRecvMs = 0;
 
     NetConditioner _cond;
     NetMetrics _metrics;
@@ -166,6 +192,9 @@ private:
     std::vector<CosmeticRocket> _cosRockets;
 
     float InterpT(uint32_t nowMs) const;
+    bool TransportReady() const;// socket open (native/--local) or WT session established
+    void SendToServer(const uint8_t* data, int len);
+    void SendHello();
     void HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, uint16_t fromPort, uint32_t nowMs);
     void HandleSnapshot(const uint8_t* data, int len, uint32_t nowMs);
 };
