@@ -3,6 +3,9 @@ build*/
 www/
 samples/
 imgui.ini
+# Slang-generated shader outputs (regenerated at build time; see docs/slang-migration.md)
+Engine/default_assets/shaders/generated/
+*.spv
 .vscode/settings.json
 .cache/
 cache/

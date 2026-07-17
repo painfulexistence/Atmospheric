@@ -6,6 +6,26 @@ option(BUILD_SHARED_LIBS OFF)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/helpers")
 include(AssetPipeline)
 
+# Slang single-source shader codegen (OFF by default; see docs/slang-migration.md).
+include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/CompileSlang.cmake")
+if(AE_USE_SLANG)
+    file(GLOB _AE_SLANG_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/default_assets/shaders/slang/*.slang")
+    set(_AE_SLANG_OUT "${CMAKE_CURRENT_SOURCE_DIR}/default_assets/shaders/generated")
+    set(_AE_SLANG_GENERATED "")
+    foreach(_slang IN LISTS _AE_SLANG_SOURCES)
+        # Entry points are declared per-source; lighting_2d uses vs/fs. Extend
+        # this map as more shaders are ported (see docs/slang-migration.md).
+        atmos_compile_slang(_gen
+            SOURCE "${_slang}"
+            OUTDIR "${_AE_SLANG_OUT}"
+            ENTRIES vs:vertex fs:fragment)
+        list(APPEND _AE_SLANG_GENERATED ${_gen})
+    endforeach()
+    if(_AE_SLANG_GENERATED)
+        add_custom_target(AtmosphericShaders ALL DEPENDS ${_AE_SLANG_GENERATED})
+    endif()
+endif()
+
 
 # FetchContent_Populate is called directly for lua_src, sol2_src, and
 # basis_universal to avoid running their own CMakeLists.txt (which would

@@ -21,6 +21,15 @@
     "flatbuffers"
   ],
   "features": {
+    "slang": {
+      "description": "Slang single-source shader pipeline: compile .slang to WGSL and (via SPIRV-Cross) GLSL 410 / GLSL ES 300 at build time. See docs/slang-migration.md.",
+      "dependencies": [
+        {
+          "name": "spirv-cross",
+          "platform": "!emscripten"
+        }
+      ]
+    },
     "networking": {
       "description": "HTTP/2 and WebSocket networking (libcurl + libwebsockets, OpenSSL)",
       "dependencies": [
