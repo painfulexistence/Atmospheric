@@ -289,6 +289,11 @@ list(APPEND SOURCES src/net_conditioner.cpp)
 # --local single-player on the web, where there is no raw UDP. Dep-free, pure
 # logic — compiled on all platforms (it's what DatagramSocket aliases to on web).
 list(APPEND SOURCES src/loopback_datagram_socket.cpp)
+# WebTransportSocket: DatagramSocket-shaped wrapper over a browser WebTransport
+# session (QUIC datagrams) for browser<->server PvP. WIP skeleton, not yet wired
+# in. Empty TU on native (whole file is #ifdef __EMSCRIPTEN__); the EM_JS glue
+# only compiles for the web build.
+list(APPEND SOURCES src/web_transport_socket.cpp)
 # NetHud: the shared netgraph renderer (DrawNetHud) for the realtime examples.
 # Graphics-side (needs GraphicsSubsystem), so part of the engine target only —
 # unlike the primitives above, not for the dep-free servers.
