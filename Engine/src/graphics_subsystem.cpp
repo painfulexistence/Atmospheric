@@ -151,7 +151,7 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
         if (!camera) return;
     }
 
-    Frustum frustum(camera->GetProjectionMatrix() * camera->GetViewMatrix());
+    const Frustum& frustum = camera->GetViewFrustum();
 
     // Auxiliary views (portal recursion levels, water reflection) re-render
     // this frame's queues from other viewpoints. Rather than disabling culling
@@ -161,6 +161,18 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
     if (renderer) {
         for (const glm::mat4& vp : renderer->GetAuxViewProjs())
             auxFrusta.emplace_back(vp);
+    }
+
+    // Light frustum for shadow-only culling: a caster off-screen but inside
+    // the sun's ortho view still needs to reach ShadowPass, otherwise it
+    // silently stops casting shadows. Only the directional main light is
+    // considered — point/spot casters aren't in the shadow path today.
+    std::optional<Frustum> lightFrustum;
+    if (renderer) {
+        LightComponent* mainLight = GetMainLight();
+        if (mainLight && mainLight->castShadow) {
+            lightFrustum.emplace(mainLight->GetProjectionMatrix(0) * mainLight->GetViewMatrix());
+        }
     }
 
     // Submit render commands
@@ -187,29 +199,32 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
             isPortalSurface = dynamic_cast<PortalMaterial*>(mat) != nullptr;
         }
 
+        RenderCommand cmd{ .mesh = meshHandle, .material = r->GetMaterialHandle(), .transform = transform };
+
         if (FRUSTUM_CULLING_ON && !isPortalSurface) {
             ZoneScopedN("Frustum Culling");
-            const auto& boundingBox = mesh->GetBoundingBox();
-            std::array<glm::vec3, 8> worldBounds;
-            bool hasValidBounds = false;
-            for (int i = 0; i < 8; ++i) {
-                if (boundingBox[i] != glm::vec3(0.0f)) {
-                    hasValidBounds = true;
+            const AABB& localBounds = mesh->GetBounds();
+            if (!localBounds.IsEmpty()) {
+                const AABB worldBounds = AABB::Transform(localBounds, transform);
+                bool visible = frustum.Intersects(worldBounds);
+                for (const Frustum& aux : auxFrusta) {
+                    if (visible) break;
+                    visible = aux.Intersects(worldBounds);
                 }
-                worldBounds[i] = transform * glm::vec4(boundingBox[i], 1.0f);
-            }
-            bool visible = frustum.Intersects(worldBounds);
-            for (const Frustum& aux : auxFrusta) {
-                if (visible) break;
-                visible = aux.Intersects(worldBounds);
-            }
-            if (hasValidBounds && !visible) {
-                culledCount++;
-                continue;
+                if (!visible) {
+                    // Off-screen but potentially a shadow caster: route to the
+                    // shadow-only queue if it's still in the light frustum, so
+                    // its shadow keeps landing in view. Culled entirely if the
+                    // light can't see it either.
+                    if (lightFrustum && lightFrustum->Intersects(worldBounds)) {
+                        renderer->SubmitShadowOnlyCommand(cmd);
+                    }
+                    culledCount++;
+                    continue;
+                }
             }
         }
 
-        RenderCommand cmd{ .mesh = meshHandle, .material = r->GetMaterialHandle(), .transform = transform };
         renderer->SubmitCommand(cmd);
     }
 
@@ -223,20 +238,6 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
         if (inst->InstanceCount() == 0) continue;
         if (!inst->GetMesh().IsValid()) continue;
 
-        if (FRUSTUM_CULLING_ON) {
-            ZoneScopedN("Frustum Culling (instancer)");
-            const std::array<glm::vec3, 8>& worldBounds = inst->CloudBounds();
-            bool visible = frustum.Intersects(worldBounds);
-            for (const Frustum& aux : auxFrusta) {
-                if (visible) break;
-                visible = aux.Intersects(worldBounds);
-            }
-            if (!visible) {
-                culledCount++;
-                continue;
-            }
-        }
-
         const std::vector<InstanceData>& worldInstances = inst->WorldInstances();
         RenderCommand cmd{
             .mesh = inst->GetMesh(),
@@ -247,6 +248,24 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
             .instances = worldInstances.data(),
             .instanceCount = static_cast<uint32_t>(worldInstances.size()),
         };
+
+        if (FRUSTUM_CULLING_ON) {
+            ZoneScopedN("Frustum Culling (instancer)");
+            const AABB& worldBounds = inst->CloudBounds();
+            bool visible = frustum.Intersects(worldBounds);
+            for (const Frustum& aux : auxFrusta) {
+                if (visible) break;
+                visible = aux.Intersects(worldBounds);
+            }
+            if (!visible) {
+                if (lightFrustum && lightFrustum->Intersects(worldBounds)) {
+                    renderer->SubmitShadowOnlyCommand(cmd);
+                }
+                culledCount++;
+                continue;
+            }
+        }
+
         renderer->SubmitCommand(cmd);
     }
 

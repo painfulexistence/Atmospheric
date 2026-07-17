@@ -130,7 +130,7 @@ class TerrainDemo : public Application {
             CreateGameObject()->AddComponent<UIPageComponent>("assets/ui/terrain_hud.rml")
         );
         if (!_hudPage->GetDocument()) {
-            Log::Warn("Terrain HUD failed to load; keyboard controls still work.");
+            ConsoleSubsystem::Get()->Warn("Terrain HUD failed to load; keyboard controls still work.");
             return;
         }
 

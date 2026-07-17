@@ -3,7 +3,6 @@
 #include "Atmospheric/material.hpp"
 #include "Atmospheric/mesh.hpp"
 #include "Atmospheric/mesh_builder.hpp"
-#include "Atmospheric/rmlui_manager.hpp"
 #include "Atmospheric/terrain_texture_gen.hpp"
 #include <RmlUi/Core.h>
 #include <RmlUi/Core/Elements/ElementFormControlSelect.h>
@@ -11,21 +10,6 @@
 #include <chrono>
 #include <cmath>
 #include <functional>
-#include <memory>
-
-// Minimal RmlUi event listener that forwards to a std::function; owned by the
-// app so it outlives the element it's attached to (see Terrain example).
-class RmlEventCallback : public Rml::EventListener {
-public:
-    explicit RmlEventCallback(std::function<void()> cb) : _cb(std::move(cb)) {
-    }
-    void ProcessEvent(Rml::Event& /*event*/) override {
-        if (_cb) _cb();
-    }
-
-private:
-    std::function<void()> _cb;
-};
 
 // 10km x 10km streamed open-world terrain.
 //
@@ -83,14 +67,13 @@ class TerrainStreamingDemo : public Application {
     MeshHandle _treeMesh;
     MeshHandle _rockMesh;
 
-    // HUD (RmlUi native <select> controls), mirroring the Terrain example.
-    Rml::ElementDocument* _hud = nullptr;
+    // HUD (RmlUi native <select> controls), driven by an engine UIPageComponent.
+    UIPageComponent* _hudPage = nullptr;
     Rml::ElementFormControlSelect* _selMode = nullptr;
     Rml::ElementFormControlSelect* _selPalette = nullptr;
     // Guards SetSelection() so syncing the UI from code doesn't re-enter the
     // change handler (which would call Apply* again).
     bool _syncing = false;
-    std::vector<std::unique_ptr<RmlEventCallback>> _listeners;
     static constexpr int gpaletteCount = 6;
 
     float _statsTimer = 0.0f;
@@ -136,29 +119,25 @@ class TerrainStreamingDemo : public Application {
         ConsoleSubsystem::Get()->Info("Palette " + std::to_string(p));
     }
 
-    void AddListener(Rml::Element* el, const char* event, std::function<void()> cb) {
-        if (!el) return;
-        auto listener = std::make_unique<RmlEventCallback>(std::move(cb));
-        el->AddEventListener(event, listener.get());
-        _listeners.push_back(std::move(listener));
-    }
-
     void SetupHUD() {
-        _hud = RmlUiManager::Get()->LoadDocument("assets/ui/streaming_hud.rml");
-        if (!_hud) {
+        // The engine's UIPageComponent loads the document, shows it, and owns
+        // the event-listener adapters — no hand-rolled RmlUi glue here.
+        _hudPage = static_cast<UIPageComponent*>(
+            CreateGameObject()->AddComponent<UIPageComponent>("assets/ui/streaming_hud.rml")
+        );
+        if (!_hudPage->GetDocument()) {
             ConsoleSubsystem::Get()->Warn("Streaming HUD failed to load; keyboard controls still work.");
             return;
         }
-        _hud->Show();
-        _selMode = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("mode_select"));
-        _selPalette = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hud->GetElementById("palette_select"));
+        _selMode = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hudPage->GetElement("mode_select"));
+        _selPalette = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hudPage->GetElement("palette_select"));
 
         // Native <select> fires "change" on user selection; the _syncing guard
         // skips selections we set from code.
-        AddListener(_selMode, "change", [this] {
+        _hudPage->AddListener(_selMode, "change", [this] {
             if (!_syncing && _selMode) ApplyColorMode(static_cast<TerrainColorMode>(_selMode->GetSelection()));
         });
-        AddListener(_selPalette, "change", [this] {
+        _hudPage->AddListener(_selPalette, "change", [this] {
             if (!_syncing && _selPalette) ApplyPalette(_selPalette->GetSelection());
         });
     }

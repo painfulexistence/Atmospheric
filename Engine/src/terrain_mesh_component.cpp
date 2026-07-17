@@ -27,16 +27,7 @@ TerrainMeshComponent::TerrainMeshComponent(
         // range or the terrain vanishes when the flat base leaves the frustum.
         const float half = 0.5f * props.worldSize;
         const float top = std::max(props.heightScale, 0.5f);
-        meshPtr->SetBoundingBox(
-            { { glm::vec3(half, top, half),
-                glm::vec3(-half, top, half),
-                glm::vec3(-half, -0.5f, half),
-                glm::vec3(half, -0.5f, half),
-                glm::vec3(half, top, -half),
-                glm::vec3(-half, top, -half),
-                glm::vec3(-half, -0.5f, -half),
-                glm::vec3(half, -0.5f, -half) } }
-        );
+        meshPtr->SetBounds(glm::vec3(-half, -0.5f, -half), glm::vec3(half, top, half));
     }
 
     TerrainMaterial* terrainMat = am.CreateTerrainMaterial();

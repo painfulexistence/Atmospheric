@@ -23,7 +23,7 @@ inline constexpr int INIT_FRAMEBUFFER_HEIGHT = 840;// px
 #define SHOW_SYNC_COST 0
 #define SHOW_VSYNC_COST 0
 #define VSYNC_ON 1
-#define FRUSTUM_CULLING_ON 0
+#define FRUSTUM_CULLING_ON 1
 #define MSAA_ON 1
 
 // ── Graphics ────────────────────────────────────────────────────────────────

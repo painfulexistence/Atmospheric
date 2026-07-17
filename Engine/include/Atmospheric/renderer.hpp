@@ -973,6 +973,10 @@ public:
     }
 
     void SubmitCommand(const RenderCommand& cmd);
+    // For casters that failed the camera frustum test but survive the light
+    // frustum test. Kept out of opaque/transparent so main scene passes still
+    // skip them, but appended to the shadow caster set below.
+    void SubmitShadowOnlyCommand(const RenderCommand& cmd);
     void RenderFrame(GraphicsSubsystem* ctx, float dt);
 
     void BeginTransformFeedbackPass();
@@ -984,6 +988,12 @@ public:
     }
     auto& GetTransparentQueue() {
         return _transparentQueue;
+    }
+    // Casters visible to the light but not to the camera. Not sorted (shadow
+    // pass has no visual order to preserve) and never drawn by the main scene
+    // passes — see SubmitShadowOnlyCommand.
+    auto& GetShadowOnlyQueue() {
+        return _shadowOnlyQueue;
     }
 
     void SubmitUICommand(const BatchDrawCommand& cmd);
@@ -1110,6 +1120,10 @@ private:
     std::vector<SortableCommand> _afterOpaqueQueue;// raymarching, GPU particles
     std::vector<SortableCommand> _transparentQueue;// particles, world UI
     std::vector<SortableCommand> _gizmoQueue;// world debug UI
+    // Off-screen shadow casters (see SubmitShadowOnlyCommand). Not bucketed
+    // by sort key — ShadowPass concatenates it after the opaque/transparent
+    // queues and BuildBatches handles the rest.
+    std::vector<SortableCommand> _shadowOnlyQueue;
     std::vector<BatchDrawCommand> _hudQueue;// HUD (RmlUi)
     std::vector<BatchDrawCommand> _canvasQueue;// immediate mode canvas (Lua)
 

@@ -95,17 +95,7 @@ namespace Atmospheric {
 
         auto mesh = new Mesh(MeshType::PRIM);
         mesh->Initialize(vertices, indices);
-        // Calculate bounds
-        mesh->SetBoundingBox(
-            { { glm::vec3(0.5f, 0.5f, 0.0f),
-                glm::vec3(-0.5f, 0.5f, 0.0f),
-                glm::vec3(-0.5f, -0.5f, 0.0f),
-                glm::vec3(0.5f, -0.5f, 0.0f),
-                glm::vec3(0.5f, 0.5f, 0.0f),
-                glm::vec3(-0.5f, 0.5f, 0.0f),
-                glm::vec3(-0.5f, -0.5f, 0.0f),
-                glm::vec3(0.5f, -0.5f, 0.0f) } }
-        );
+        mesh->SetBounds(glm::vec3(-0.5f, -0.5f, 0.0f), glm::vec3(0.5f, 0.5f, 0.0f));
         return mesh;
     }
 
