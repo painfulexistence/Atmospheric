@@ -2,7 +2,7 @@
 
 #ifndef __EMSCRIPTEN__
 
-#include <spdlog/spdlog.h>
+#include "logging.hpp"
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -60,12 +60,12 @@ UdpSocket::~UdpSocket() {
 bool UdpSocket::Open(uint16_t port) {
     if (_sock != kInvalidSocket) Close();
     if (!EnsureSocketLib()) {
-        spdlog::error("UdpSocket: socket subsystem init failed");
+        ENGINE_ERROR("UdpSocket: socket subsystem init failed");
         return false;
     }
     _sock = ::socket(AF_INET, SOCK_DGRAM, 0);
     if (_sock == kInvalidSocket) {
-        spdlog::error("UdpSocket: socket() failed");
+        ENGINE_ERROR("UdpSocket: socket() failed");
         return false;
     }
     SetNonBlocking(_sock);
@@ -75,7 +75,7 @@ bool UdpSocket::Open(uint16_t port) {
     addr.sin_addr.s_addr = INADDR_ANY;
     addr.sin_port = htons(port);
     if (::bind(_sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-        spdlog::error("UdpSocket: bind() failed on port {} (port in use?)", port);
+        ENGINE_ERROR("UdpSocket: bind() failed on port {} (port in use?)", port);
         CloseSocketHandle(_sock);
         _sock = kInvalidSocket;
         return false;

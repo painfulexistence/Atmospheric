@@ -1,5 +1,5 @@
 #include "websocket_client.hpp"
-#include <spdlog/spdlog.h>
+#include "logging.hpp"
 #include <unordered_map>
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -134,7 +134,7 @@ WebSocketClient::WebSocketClient() : _impl(std::make_unique<Impl>()) {
     info.options = LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
     info.user = _impl.get();
     _impl->ctx = lws_create_context(&info);
-    if (!_impl->ctx) spdlog::error("WebSocketClient: failed to create lws context");
+    if (!_impl->ctx) ENGINE_ERROR("WebSocketClient: failed to create lws context");
 }
 
 WebSocketClient::~WebSocketClient() {
@@ -162,7 +162,7 @@ WsConnectionID WebSocketClient::Connect(const std::string& url, WsCallbacks cbs,
     if (parsed.ssl) {
         ccinfo.ssl_connection = LCCSCF_USE_SSL;
         if (options.allowInsecureTls) {
-            spdlog::warn(
+            ENGINE_WARN(
                 "WebSocketClient: TLS verification disabled for {} "
                 "(WsOptions::allowInsecureTls) — dev only",
                 url
@@ -176,7 +176,7 @@ WsConnectionID WebSocketClient::Connect(const std::string& url, WsCallbacks cbs,
         _impl->wsiToId[wsi] = id;
         _impl->connections[id].wsi = wsi;
     } else {
-        spdlog::error("WebSocketClient: lws_client_connect_via_info failed for {}", url);
+        ENGINE_ERROR("WebSocketClient: lws_client_connect_via_info failed for {}", url);
         auto& c = _impl->connections[id];
         c.state = WsState::Failed;
         if (c.callbacks.onClose) c.callbacks.onClose(-1, "connect failed");
@@ -303,7 +303,7 @@ WsConnectionID
     EmscriptenWebSocketCreateAttributes attr{ url.c_str(), nullptr, EM_TRUE };
     EMSCRIPTEN_WEBSOCKET_T sock = emscripten_websocket_new(&attr);
     if (sock <= 0) {
-        spdlog::error("WebSocketClient: emscripten_websocket_new failed for {}", url);
+        ENGINE_ERROR("WebSocketClient: emscripten_websocket_new failed for {}", url);
         return 0;
     }
     const WsConnectionID id = _impl->nextId++;

@@ -16,7 +16,6 @@
 
 #include "file_system.hpp"
 #include <fstream>
-#include <spdlog/spdlog.h>
 
 // Convert CSB easing type to our EasingType enum
 static EasingType GetEasingType(int csbType) {
@@ -202,7 +201,7 @@ void SceneLoader::ParseAnimations(
     // double translation.
     auto* animSub = AnimationSubsystem::Get();
     if (!animSub) {
-        spdlog::warn("SceneLoader: AnimationSubsystem unavailable; skipping CSB animations.");
+        ENGINE_WARN("SceneLoader: AnimationSubsystem unavailable; skipping CSB animations.");
         return;
     }
 

@@ -54,7 +54,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <nlohmann/json.hpp>
-#include <spdlog/spdlog.h>
 #include <thread>
 #ifndef NDEBUG
 #include "editor_layer.hpp"
@@ -705,7 +704,7 @@ void Application::RegisterComponents() {
                 key = fmt::format("prim:disc:{}:{}", radius, segments);
 
             if (key.empty()) {
-                spdlog::warn("MeshRendererComponent: unknown primitive '{}' on '{}'", primitive, o->GetName());
+                ENGINE_WARN("MeshRendererComponent: unknown primitive '{}' on '{}'", primitive, o->GetName());
                 return nullptr;
             }
             if (am.HasMesh(key)) {
@@ -724,11 +723,11 @@ void Application::RegisterComponents() {
             if (am.HasMesh(meshName)) {
                 handle = am.GetMesh(meshName);
             } else {
-                spdlog::warn("MeshRendererComponent: mesh '{}' not found for '{}'", meshName, o->GetName());
+                ENGINE_WARN("MeshRendererComponent: mesh '{}' not found for '{}'", meshName, o->GetName());
                 return nullptr;
             }
         } else {
-            spdlog::warn("MeshRendererComponent on '{}' has neither 'mesh' nor 'primitive'", o->GetName());
+            ENGINE_WARN("MeshRendererComponent on '{}' has neither 'mesh' nor 'primitive'", o->GetName());
             return nullptr;
         }
 
@@ -738,7 +737,7 @@ void Application::RegisterComponents() {
             if (mat.IsValid())
                 mr->SetMaterial(mat);
             else
-                spdlog::warn("MeshRendererComponent: material '{}' not found for '{}'", materialName, o->GetName());
+                ENGINE_WARN("MeshRendererComponent: material '{}' not found for '{}'", materialName, o->GetName());
         }
         return mr;
     });
@@ -1004,7 +1003,7 @@ static void AppendActionToTween(Tween& tw, const nlohmann::json& val, bool& loop
         loop = true;
         if (val.contains("action")) AppendActionToTween(tw, val["action"], loop);
     } else {
-        spdlog::warn("BuildTimelineFromActions: unsupported action type '{}' — ignored", type);
+        ENGINE_WARN("BuildTimelineFromActions: unsupported action type '{}' — ignored", type);
     }
 }
 
