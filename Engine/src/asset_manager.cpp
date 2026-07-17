@@ -3,7 +3,7 @@
 #include "file_system.hpp"
 #include "gfx_factory.hpp"
 #include "job_system.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_builder.hpp"
@@ -315,7 +315,7 @@ void AssetManager::UnloadSceneAssets(const std::string& sceneName) {
     // TODO: unload meshes declared in the scene JSON "meshes" array.
 
     _sceneJsons.erase(it);
-    Log::Info("[AssetManager] Unloaded assets for scene '{}'.", sceneName);
+    ENGINE_INFO("[AssetManager] Unloaded assets for scene '{}'.", sceneName);
 }
 
 // ============================================================================
@@ -332,13 +332,13 @@ std::shared_ptr<Image> AssetManager::LoadImage(const std::string& path) {
     // Read raw bytes via FileSystem to support transparent web prefetching
     FileSystem::Bytes fileData = FileSystem::Get().ReadSync(path);
     if (fileData.empty()) {
-        Log::Warn("AssetManager::LoadImage: Failed to read file bytes via FileSystem at '{}'", path);
+        ENGINE_WARN("AssetManager::LoadImage: Failed to read file bytes via FileSystem at '{}'", path);
         return nullptr;
     }
 
     int width, height, numChannels;
     if (!stbi_info_from_memory(fileData.data(), static_cast<int>(fileData.size()), &width, &height, &numChannels)) {
-        Log::Warn("stbi_info_from_memory: Failed to read image metadata at '{}'", path);
+        ENGINE_WARN("stbi_info_from_memory: Failed to read image metadata at '{}'", path);
         return nullptr;
     }
 
@@ -460,7 +460,7 @@ ShaderProgram* AssetManager::CreateShader(const std::string& name, const ShaderP
     // Check if already exists
     auto it = _shaderCache.find(name);
     if (it != _shaderCache.end()) {
-        Log::Info("Shader '{}' already exists, returning existing shader", name);
+        ENGINE_INFO("Shader '{}' already exists, returning existing shader", name);
         return shaders[it->second].get();
     }
 
@@ -469,7 +469,7 @@ ShaderProgram* AssetManager::CreateShader(const std::string& name, const ShaderP
     shaders.push_back(std::move(shader));
     _shaderCache[name] = _nextShaderID++;
 
-    Log::Info("Shader '{}' loaded", name);
+    ENGINE_INFO("Shader '{}' loaded", name);
     return ptr;
 }
 
@@ -503,7 +503,7 @@ ShaderProgram* AssetManager::ResolveShader(ShaderHandle handle) const {
 
 void AssetManager::ReloadShaders() {
     // TODO: Implement shader hot reloading
-    Log::Info("Shader reloading not yet implemented");
+    ENGINE_INFO("Shader reloading not yet implemented");
 }
 
 // ============================================================================
@@ -521,7 +521,7 @@ PBRMaterial* AssetManager::CreateMaterial(const std::string& name, const Materia
     // Check if already exists
     auto it = _materialCache.find(name);
     if (it != _materialCache.end()) {
-        Log::Info("Material '{}' already exists, returning existing material", name);
+        ENGINE_INFO("Material '{}' already exists, returning existing material", name);
         // Names are unique across kinds, so a hit under this name is a
         // PBRMaterial created by an earlier CreateMaterial call; a non-PBR
         // material of the same name would be a caller bug — surface it as null.
@@ -547,7 +547,7 @@ PBRMaterial* AssetManager::CreateMaterial(const MaterialProps& props) {
 BlinnPhongMaterial* AssetManager::CreateBlinnPhongMaterial(const std::string& name, const MaterialProps& props) {
     auto it = _materialCache.find(name);
     if (it != _materialCache.end()) {
-        Log::Info("Material '{}' already exists, returning existing material", name);
+        ENGINE_INFO("Material '{}' already exists, returning existing material", name);
         return dynamic_cast<BlinnPhongMaterial*>(GetMaterialByID(it->second));
     }
     auto material = std::make_unique<BlinnPhongMaterial>(props);
@@ -753,7 +753,7 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
             int i = regularIndices[j];
             auto& img = images[j];
             if (!img) {
-                Log::Warn("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]);
+                ENGINE_WARN("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]);
                 textures[oldCount + i] = defaultTextures.empty() ? 0u : defaultTextures[0];
                 _textureCache[regularPaths[j]] = { textures[oldCount + i], 0, 0, 0 };
                 continue;
@@ -796,7 +796,7 @@ void AssetManager::LoadTextures(const std::vector<std::string>& paths) {
         GLuint texID = regularTexIDs[j];
 
         if (!img) {
-            Log::Warn("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]);
+            ENGINE_WARN("Failed to load texture at '{}', using default fallback texture.", regularPaths[j]);
             // Re-use the default texture (defaultTextures[0]) as a safe fallback
             textures[oldCount + i] = defaultTextures.empty() ? 0u : defaultTextures[0];
             _textureCache[regularPaths[j]] = { textures[oldCount + i], 0, 0, 0 };
@@ -866,7 +866,7 @@ TextureHandle AssetManager::CreateTexture(const std::string& path) {
     // Regular image (PNG / JPG / etc.) via stb_image.
     auto image = LoadImage(redirectedPath);
     if (!image) {
-        Log::Warn(
+        ENGINE_WARN(
             "AssetManager::CreateTexture: Failed to load image at '{}', using default fallback texture.", redirectedPath
         );
         GLuint fallbackTex = defaultTextures.empty() ? 0u : defaultTextures[0];
@@ -878,7 +878,7 @@ TextureHandle AssetManager::CreateTexture(const std::string& path) {
 
 TextureHandle AssetManager::CreateTextureFromImage(const std::shared_ptr<Image>& image) {
     if (!image) {
-        Log::Warn("AssetManager::CreateTextureFromImage: Null image, returning default fallback texture.");
+        ENGINE_WARN("AssetManager::CreateTextureFromImage: Null image, returning default fallback texture.");
         GLuint fallbackTex = defaultTextures.empty() ? 0u : defaultTextures[0];
         return TextureHandle(fallbackTex);
     }
@@ -989,9 +989,7 @@ TextureHandle AssetManager::LoadHDR(const std::string& path) {
     // bypasses that and fails outside the process CWD / on web.
     FileSystem::Bytes fileData = FileSystem::Get().ReadSync(path);
     if (fileData.empty()) {
-        ConsoleSubsystem::Get()->Error(
-            fmt::format("AssetManager::LoadHDR: failed to read file bytes via FileSystem at '{}'", path)
-        );
+        ENGINE_ERROR("AssetManager::LoadHDR: failed to read file bytes via FileSystem at '{}'", path);
         return TextureHandle{};
     }
 
@@ -1003,9 +1001,7 @@ TextureHandle AssetManager::LoadHDR(const std::string& path) {
         const char* err = nullptr;
         int ret = LoadEXRFromMemory(&data, &w, &h, fileData.data(), fileData.size(), &err);// always RGBA
         if (ret != TINYEXR_SUCCESS) {
-            ConsoleSubsystem::Get()->Error(
-                fmt::format("AssetManager::LoadHDR(EXR) '{}': {}", path, err ? err : "unknown error")
-            );
+            ENGINE_ERROR("AssetManager::LoadHDR(EXR) '{}': {}", path, err ? err : "unknown error");
             if (err) FreeEXRErrorMessage(err);
             return TextureHandle{};
         }
@@ -1016,7 +1012,7 @@ TextureHandle AssetManager::LoadHDR(const std::string& path) {
         data = stbi_loadf_from_memory(fileData.data(), static_cast<int>(fileData.size()), &w, &h, &n, 4);// force RGBA
         stbi_set_flip_vertically_on_load(false);
         if (!data) {
-            ConsoleSubsystem::Get()->Error(fmt::format("AssetManager::LoadHDR: failed to decode '{}'", path));
+            ENGINE_ERROR("AssetManager::LoadHDR: failed to decode '{}'", path);
             return TextureHandle{};
         }
     }
@@ -1031,7 +1027,7 @@ TextureHandle AssetManager::LoadHDR(const std::string& path) {
         id, static_cast<uint32_t>(w), static_cast<uint32_t>(h), static_cast<size_t>(w) * h * 8
     };
     textures.push_back(id);
-    Log::Info("LoadHDR '{}': {}x{} ({})", path, w, h, fromEXR ? "exr" : "hdr");
+    ENGINE_INFO("LoadHDR '{}': {}x{} ({})", path, w, h, fromEXR ? "exr" : "hdr");
     return TextureHandle(id);
 }
 
@@ -1162,7 +1158,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
                 static_cast<int>(info0.m_width),
                 static_cast<int>(info0.m_height)
             );
-            Log::Info(
+            ENGINE_INFO(
                 "Loaded KTX2 texture '{}' ({}×{}, WebGPU {}, no mips)", path, info0.m_width, info0.m_height, fmtName
             );
             if (out) *out = { texID, info0.m_width, info0.m_height, buf.size() };
@@ -1186,7 +1182,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         uint32_t texID = GfxFactory::UploadTexture2D(
             buf.data(), static_cast<int>(info0.m_orig_width), static_cast<int>(info0.m_orig_height)
         );
-        Log::Info(
+        ENGINE_INFO(
             "Loaded KTX2 texture '{}' ({}×{}, WebGPU RGBA32 fallback, no mips)",
             path,
             info0.m_orig_width,
@@ -1231,7 +1227,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, static_cast<GLint>(levels - 1));
     } else {
         // Single level in the KTX2 — warn the user and use bilinear.
-        Log::Info("KTX2 '{}' has no pre-generated mips; encoding with -mipmap is recommended", path);
+        ENGINE_INFO("KTX2 '{}' has no pre-generated mips; encoding with -mipmap is recommended", path);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     }
 
@@ -1261,7 +1257,7 @@ GLuint AssetManager::LoadKTX2Texture(const std::string& path, Texture2D* out) {
         );
     }
 
-    Log::Info(
+    ENGINE_INFO(
         "Loaded KTX2 texture '{}' ({}×{}, {} mips, {})", path, baseWidth, baseHeight, levels, hasAlpha ? "RGBA" : "RGB"
     );
 
@@ -1461,8 +1457,8 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
         result = loader.LoadASCIIFromFile(&model, &err, &warn, path);
     }
 
-    if (!warn.empty()) Log::Warn("LoadGLTF '{}': {}", path, warn);
-    if (!err.empty()) Log::Warn("LoadGLTF '{}' error: {}", path, err);
+    if (!warn.empty()) ENGINE_WARN("LoadGLTF '{}': {}", path, warn);
+    if (!err.empty()) ENGINE_WARN("LoadGLTF '{}' error: {}", path, err);
     if (!result || model.meshes.empty()) return MeshHandle{};
 
     // Upload each referenced image to GPU immediately; CPU copy is discarded afterwards.
@@ -1569,7 +1565,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
             break;
         }
         default:
-            Log::Warn("LoadGLTF: unsupported TEXCOORD component type {}", acc.componentType);
+            ENGINE_WARN("LoadGLTF: unsupported TEXCOORD component type {}", acc.componentType);
             break;
         }
         return out;
@@ -1591,7 +1587,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
             const size_t vertCount = posAcc.count;
 
             if (vertBase + vertCount > 65535) {
-                Log::Warn(
+                ENGINE_WARN(
                     "LoadGLTF '{}': vertex count exceeds uint16_t limit, primitive skipped. "
                     "Consider splitting the mesh or upgrading to 32-bit indices.",
                     path
@@ -1646,7 +1642,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
                         allIndices.push_back(static_cast<uint16_t>(vertBase + base[i]));
                     break;
                 default:
-                    Log::Warn("LoadGLTF: unsupported index component type {}", idxAcc.componentType);
+                    ENGINE_WARN("LoadGLTF: unsupported index component type {}", idxAcc.componentType);
                     break;
                 }
             } else {
@@ -1659,7 +1655,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     }
 
     if (allVerts.empty()) {
-        Log::Warn("LoadGLTF: no geometry found in '{}'", path);
+        ENGINE_WARN("LoadGLTF: no geometry found in '{}'", path);
         return MeshHandle{};
     }
 
@@ -1667,7 +1663,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
     mesh->Initialize(allVerts, allIndices);
     if (material) mesh->SetMaterial(GetMaterialHandle(material));
 
-    Log::Info("LoadGLTF '{}': {} verts, {} indices", path, allVerts.size(), allIndices.size());
+    ENGINE_INFO("LoadGLTF '{}': {} verts, {} indices", path, allVerts.size(), allIndices.size());
     return CreateMesh(path, mesh);
 }
 
@@ -1679,7 +1675,7 @@ MeshHandle AssetManager::LoadGLTF(const std::string& path) {
 MeshHandle AssetManager::LoadTBMap(const std::string& path, float scale) {
     Prefab model = ImportMapPrefab(path, scale);
     if (!model.ok) {
-        ConsoleSubsystem::Get()->Warn(fmt::format("LoadTBMap: no brush geometry found in '{}'", path));
+        ENGINE_WARN("LoadTBMap: no brush geometry found in '{}'", path);
         return MeshHandle{};
     }
 
@@ -1698,11 +1694,9 @@ MeshHandle AssetManager::LoadTBMap(const std::string& path, float scale) {
     }
 
     if (truncated)
-        ConsoleSubsystem::Get()->Warn(
-            fmt::format("LoadTBMap '{}': geometry exceeds the 16-bit index limit; remaining brushes skipped.", path)
-        );
+        ENGINE_WARN("LoadTBMap '{}': geometry exceeds the 16-bit index limit; remaining brushes skipped.", path);
     if (allVerts.empty()) {
-        ConsoleSubsystem::Get()->Warn(fmt::format("LoadTBMap: no brush geometry found in '{}'", path));
+        ENGINE_WARN("LoadTBMap: no brush geometry found in '{}'", path);
         return MeshHandle{};
     }
 
@@ -1716,7 +1710,7 @@ MeshHandle AssetManager::LoadTBMap(const std::string& path, float scale) {
     }
     mesh->SetBounds(lo, hi);
 
-    Log::Info(
+    ENGINE_INFO(
         "LoadTBMap '{}': {} meshes, {} verts, {} indices", path, model.meshes.size(), allVerts.size(), allIndices.size()
     );
     return CreateMesh(path, mesh);
@@ -1728,7 +1722,7 @@ MeshHandle AssetManager::LoadTBMap(const std::string& path, float scale) {
 MeshHandle AssetManager::LoadUSD(const std::string& path) {
     Prefab model = ImportUSDPrefab(path);
     if (!model.ok) {
-        ConsoleSubsystem::Get()->Warn(fmt::format("LoadUSD: no mesh geometry found in '{}'", path));
+        ENGINE_WARN("LoadUSD: no mesh geometry found in '{}'", path);
         return MeshHandle{};
     }
 
@@ -1746,9 +1740,7 @@ MeshHandle AssetManager::LoadUSD(const std::string& path) {
             allIndices.push_back(static_cast<uint16_t>(base + idx));
     }
     if (truncated)
-        ConsoleSubsystem::Get()->Warn(
-            fmt::format("LoadUSD '{}': geometry exceeds the 16-bit index limit; remaining meshes skipped.", path)
-        );
+        ENGINE_WARN("LoadUSD '{}': geometry exceeds the 16-bit index limit; remaining meshes skipped.", path);
     if (allVerts.empty()) return MeshHandle{};
 
     auto* mesh = new Mesh(MeshType::PRIM);
@@ -1759,7 +1751,7 @@ MeshHandle AssetManager::LoadUSD(const std::string& path) {
         hi = glm::max(hi, v.position);
     }
     mesh->SetBounds(lo, hi);
-    Log::Info(
+    ENGINE_INFO(
         "LoadUSD '{}': {} meshes, {} verts, {} indices", path, model.meshes.size(), allVerts.size(), allIndices.size()
     );
     return CreateMesh(path, mesh);

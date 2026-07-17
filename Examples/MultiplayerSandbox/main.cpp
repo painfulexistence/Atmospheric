@@ -387,7 +387,7 @@ class NoitaLikeGame : public Application {
         if (gcli.autotestTicks > 0 && _netComp->IsStarted()) {
             const GameSim& sim = _netComp->GetSim();
             if (sim.tick >= gcli.autotestTicks) {
-                Log::Info(
+                APP_INFO(
                     "AUTOTEST tick={} checksum={:#010x} desync={}", sim.tick, sim.Checksum(), _netComp->GetNet().desync
                 );
                 _netComp->Shutdown();

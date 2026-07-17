@@ -5,7 +5,7 @@
 #include "asset_manager.hpp"
 #include "easing.hpp"
 #include "game_object.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 #include "sprite_component.hpp"
 #include "text_2d_component.hpp"
 #include "text_3d_component.hpp"
@@ -44,13 +44,13 @@ SceneLoadResult SceneLoader::Load(const std::string& filename, const glm::vec3& 
 }
 
 SceneLoadResult SceneLoader::Load(const std::string& filename, const SceneLoadConfig& config) {
-    Log::Info("SceneLoader: Loading CSB file '{}'...", filename);
+    ENGINE_INFO("SceneLoader: Loading CSB file '{}'...", filename);
 
     SceneLoadResult result;
     auto resolvedOpt = FileSystem::Get().ResolvePath(filename);
     if (!resolvedOpt) {
         result.error = "File not found: " + filename;
-        Log::Error("SceneLoader: {}", result.error);
+        ENGINE_ERROR("SceneLoader: {}", result.error);
         return result;
     }
     const std::string& path = *resolvedOpt;
@@ -58,7 +58,7 @@ SceneLoadResult SceneLoader::Load(const std::string& filename, const SceneLoadCo
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         result.error = "Failed to open file: " + path;
-        Log::Error("SceneLoader: {}", result.error);
+        ENGINE_ERROR("SceneLoader: {}", result.error);
         return result;
     }
 
@@ -68,7 +68,7 @@ SceneLoadResult SceneLoader::Load(const std::string& filename, const SceneLoadCo
     std::vector<uint8_t> buffer(size);
     if (!file.read(reinterpret_cast<char*>(buffer.data()), size)) {
         result.error = "Failed to read file: " + path;
-        Log::Error("SceneLoader: {}", result.error);
+        ENGINE_ERROR("SceneLoader: {}", result.error);
         return result;
     }
 
@@ -83,7 +83,7 @@ SceneLoadResult SceneLoader::Load(const std::string& filename, const SceneLoadCo
 
     SceneLoadResult res = LoadFromBuffer(buffer.data(), buffer.size(), actualConfig);
     if (res.success) {
-        Log::Info("SceneLoader: CSB file '{}' loaded successfully ({} nodes created)", filename, res.allNodes.size());
+        ENGINE_INFO("SceneLoader: CSB file '{}' loaded successfully ({} nodes created)", filename, res.allNodes.size());
     }
     return res;
 }
@@ -95,7 +95,7 @@ SceneLoadResult SceneLoader::LoadFromBuffer(const uint8_t* buffer, size_t size, 
     flatbuffers::Verifier verifier(buffer, size);
     if (!flatbuffers::VerifyCSParseBinaryBuffer(verifier)) {
         result.error = "Invalid CSB buffer - verification failed";
-        Log::Error("SceneLoader: {}", result.error);
+        ENGINE_ERROR("SceneLoader: {}", result.error);
         return result;
     }
 
@@ -103,13 +103,13 @@ SceneLoadResult SceneLoader::LoadFromBuffer(const uint8_t* buffer, size_t size, 
     auto csb = flatbuffers::GetCSParseBinary(buffer);
     if (!csb) {
         result.error = "Failed to parse CSB buffer";
-        Log::Error("SceneLoader: {}", result.error);
+        ENGINE_ERROR("SceneLoader: {}", result.error);
         return result;
     }
 
     // Log version
     if (csb->version()) {
-        Log::Info("SceneLoader: Loading CSB version {}", csb->version()->c_str());
+        ENGINE_INFO("SceneLoader: Loading CSB version {}", csb->version()->c_str());
     }
 
     // Load textures if requested
@@ -119,9 +119,9 @@ SceneLoadResult SceneLoader::LoadFromBuffer(const uint8_t* buffer, size_t size, 
                 std::string texPath = config.basePath + tex->c_str();
                 try {
                     AssetManager::Get().CreateTexture(texPath);
-                    Log::Debug("SceneLoader: Loaded texture {}", texPath);
+                    ENGINE_DEBUG("SceneLoader: Loaded texture {}", texPath);
                 } catch (const std::exception& e) {
-                    Log::Warn("SceneLoader: Failed to preload texture '{}': {}", texPath, e.what());
+                    ENGINE_WARN("SceneLoader: Failed to preload texture '{}': {}", texPath, e.what());
                 }
             }
         }
@@ -134,9 +134,9 @@ SceneLoadResult SceneLoader::LoadFromBuffer(const uint8_t* buffer, size_t size, 
                 std::string texPath = config.basePath + tex->c_str();
                 try {
                     AssetManager::Get().CreateTexture(texPath);
-                    Log::Debug("SceneLoader: Loaded PNG texture {}", texPath);
+                    ENGINE_DEBUG("SceneLoader: Loaded PNG texture {}", texPath);
                 } catch (const std::exception& e) {
-                    Log::Warn("SceneLoader: Failed to preload PNG texture '{}': {}", texPath, e.what());
+                    ENGINE_WARN("SceneLoader: Failed to preload PNG texture '{}': {}", texPath, e.what());
                 }
             }
         }
@@ -153,7 +153,7 @@ SceneLoadResult SceneLoader::LoadFromBuffer(const uint8_t* buffer, size_t size, 
         }
     } else {
         result.error = "CSB has no node tree";
-        Log::Warn("SceneLoader: {}", result.error);
+        ENGINE_WARN("SceneLoader: {}", result.error);
     }
 
     // Parse animations (csb->action())
@@ -170,11 +170,11 @@ void SceneLoader::ParseAnimations(
     const flatbuffers::NodeAction* actions, SceneLoadResult& result, const SceneLoadConfig& config
 ) {
     if (!actions) {
-        Log::Debug("SceneLoader: No Action data in CSB.");
+        ENGINE_DEBUG("SceneLoader: No Action data in CSB.");
         return;
     }
     if (!actions->timeLines()) {
-        Log::Debug("SceneLoader: Action data present but no TimeLines.");
+        ENGINE_DEBUG("SceneLoader: Action data present but no TimeLines.");
         return;
     }
 
@@ -185,7 +185,7 @@ void SceneLoader::ParseAnimations(
     float speed = actions->speed();
     if (speed <= 0.0f) speed = 1.0f;// Fallback to normal speed if invalid
 
-    Log::Info(
+    ENGINE_INFO(
         "SceneLoader: Parsing {} timelines at {}fps, speed={}, loop={}",
         actions->timeLines()->size(),
         frameRate,
@@ -221,18 +221,18 @@ void SceneLoader::ParseAnimations(
 
     for (auto timeline : *actions->timeLines()) {
         if (!timeline || !timeline->frames() || timeline->frames()->size() == 0) {
-            Log::Warn("SceneLoader: skipping empty timeline.");
+            ENGINE_WARN("SceneLoader: skipping empty timeline.");
             continue;
         }
 
         int actionTag = timeline->actionTag();
-        Log::Info(
+        ENGINE_INFO(
             "SceneLoader: Processing timeline for ActionTag {} Property {}", actionTag, timeline->property()->c_str()
         );
 
         auto it = result.nodesByActionTag.find(actionTag);
         if (it == result.nodesByActionTag.end()) {
-            Log::Warn(
+            ENGINE_WARN(
                 "SceneLoader: ActionTag {} not found in scene nodes (Map size: {}).",
                 actionTag,
                 result.nodesByActionTag.size()
@@ -291,11 +291,9 @@ void SceneLoader::ParseAnimations(
                 }
             }
             if (track.keys.empty()) {
-                ConsoleSubsystem::Get()->Warn(
-                    fmt::format(
-                        "SceneLoader: RotationSkew timeline found on '{}' but frames contain no IntFrame data.",
-                        target->GetName()
-                    )
+                ENGINE_WARN(
+                    "SceneLoader: RotationSkew timeline found on '{}' but frames contain no IntFrame data.",
+                    target->GetName()
                 );
             }
         } else if (property == "CColor") {
@@ -349,7 +347,7 @@ GameObject* SceneLoader::ParseNodeTree(
     if (config.customNodeHandler && config.customNodeHandler(nullptr, classname, nodeTree)) {
         // Custom handler will create and return the GameObject
         // For now, we don't support this pattern - custom handler should return via result
-        Log::Debug("SceneLoader: Custom handler used for {}", classname);
+        ENGINE_DEBUG("SceneLoader: Custom handler used for {}", classname);
     }
 
     // Get the options
@@ -423,7 +421,7 @@ GameObject* SceneLoader::ParseNodeTree(
         go = CreateNode(widgetOptions, config);
         if (go) {
             go->AddComponent<Text2DComponent>(CreateTextProps(nodeTree, widgetOptions, config));
-            Log::Debug(
+            ENGINE_DEBUG(
                 "SceneLoader: Created Text node '{}'",
                 widgetOptions && widgetOptions->name() ? widgetOptions->name()->c_str() : "Text"
             );
@@ -432,12 +430,12 @@ GameObject* SceneLoader::ParseNodeTree(
         go = CreateNode(widgetOptions, config);
     } else {
         // Unknown type - create as basic node and log warning
-        Log::Warn("SceneLoader: Unsupported node type '{}', creating as basic node", classname);
+        ENGINE_WARN("SceneLoader: Unsupported node type '{}', creating as basic node", classname);
         go = CreateNode(widgetOptions, config);
     }
 
     if (!go) {
-        Log::Error("SceneLoader: Failed to create GameObject for {}", classname);
+        ENGINE_ERROR("SceneLoader: Failed to create GameObject for {}", classname);
         return nullptr;
     }
 
@@ -624,7 +622,7 @@ int SceneLoader::ResolveTexture(
     // For now, only handle normal files (type 0)
     // TODO: Add plist/sprite sheet support
     if (resourceType == 1 && !plistFile.empty()) {
-        Log::Warn("SceneLoader: Plist sprite sheets not yet supported, loading as regular texture: {}", path);
+        ENGINE_WARN("SceneLoader: Plist sprite sheets not yet supported, loading as regular texture: {}", path);
     }
 
     try {
@@ -635,7 +633,7 @@ int SceneLoader::ResolveTexture(
         }
         return static_cast<int>(texID);
     } catch (const std::exception& e) {
-        Log::Warn("SceneLoader: Failed to load texture '{}': {}", fullPath, e.what());
+        ENGINE_WARN("SceneLoader: Failed to load texture '{}': {}", fullPath, e.what());
         return 0;// Return invalid texture ID
     }
 }

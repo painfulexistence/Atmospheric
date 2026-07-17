@@ -3,7 +3,7 @@
 #include "bullet_task_scheduler.hpp"
 #include "game_object.hpp"
 #include "job_system.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 #include "physics_debug_drawer.hpp"
 #include "rigidbody_component.hpp"
 #include <BulletCollision/CollisionDispatch/btCollisionDispatcherMt.h>
@@ -57,8 +57,8 @@ void Physics3DSubsystem::Init(Application* app) {
     btSetTaskScheduler(_taskScheduler.get());
 
     auto* scheduler = btGetTaskScheduler();
-    Log::Info("[Physics] Bullet worker threads: {}", scheduler ? scheduler->getNumThreads() : 0);
-    Log::Info("[Physics] JobSystem threads: {}", JobSystem::Get()->GetThreadCount());
+    ENGINE_INFO("[Physics] Bullet worker threads: {}", scheduler ? scheduler->getNumThreads() : 0);
+    ENGINE_INFO("[Physics] JobSystem threads: {}", JobSystem::Get()->GetThreadCount());
 
     _config = std::make_unique<btDefaultCollisionConfiguration>();
     // Use multithreaded dispatcher if thread safe

@@ -1,6 +1,6 @@
 #include "rmlui_renderer.hpp"
 #include "gfx_factory.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 #include "renderer.hpp"
 #include <RmlUi/Core.h>
 #include <spdlog/spdlog.h>
@@ -13,7 +13,7 @@ RmlUiRenderer::~RmlUiRenderer() {
 }
 
 void RmlUiRenderer::Initialize() {
-    Log::Info("RmlUi renderer initialized (Adapter mode)");
+    ENGINE_INFO("RmlUi renderer initialized (Adapter mode)");
 }
 
 void RmlUiRenderer::Shutdown() {
@@ -96,7 +96,7 @@ Rml::TextureHandle RmlUiRenderer::LoadTexture(Rml::Vector2i& texture_dimensions,
     // In a real engine, we would load the texture via AssetManager
     // For now, we return 0 or implement basic loading if needed
     // But since we are refactoring, let's keep it minimal
-    Log::Warn("RmlUi texture loading not fully implemented: {}", source);
+    ENGINE_WARN("RmlUi texture loading not fully implemented: {}", source);
     return 0;
 }
 

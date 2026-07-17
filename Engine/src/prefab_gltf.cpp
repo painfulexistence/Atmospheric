@@ -17,7 +17,7 @@
 // specular-glossiness materials, skinning/morph targets.
 #include "console_subsystem.hpp"
 #include "file_system.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 #include "prefab.hpp"
 
 #include <cmath>
@@ -147,7 +147,7 @@ Prefab ImportGLTFPrefab(const std::string& path) {
     const std::string baseDir = FileSystem::DirName(realPath);
     FileSystem::Bytes bytes = FileSystem::Get().ReadSync(path);
     if (bytes.empty()) {
-        Log::Warn("ImportGLTFPrefab '{}': file not found (native) or not prefetched (web)", path);
+        ENGINE_WARN("ImportGLTFPrefab '{}': file not found (native) or not prefetched (web)", path);
         return Prefab{};
     }
     const bool result = path.ends_with(".glb")
@@ -162,8 +162,8 @@ Prefab ImportGLTFPrefab(const std::string& path) {
                                   static_cast<unsigned int>(bytes.size()),
                                   baseDir
                               );
-    if (!warn.empty()) Log::Warn("ImportGLTFPrefab '{}': {}", path, warn);
-    if (!err.empty()) Log::Warn("ImportGLTFPrefab '{}' error: {}", path, err);
+    if (!warn.empty()) ENGINE_WARN("ImportGLTFPrefab '{}': {}", path, warn);
+    if (!err.empty()) ENGINE_WARN("ImportGLTFPrefab '{}' error: {}", path, err);
     if (!result) return Prefab{};
 
     Prefab out;

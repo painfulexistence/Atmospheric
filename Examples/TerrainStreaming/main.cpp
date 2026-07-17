@@ -105,7 +105,7 @@ class TerrainStreamingDemo : public Application {
         // turns it off. No-op on WebGL where glPolygonMode is unavailable.
         GraphicsSubsystem::Get()->renderer->EnableWireframe(mode == TerrainColorMode::LodTint);
         const char* names[] = { "textured (detail layers)", "palette", "LOD debug" };
-        ConsoleSubsystem::Get()->Info(std::string("Surface: ") + names[static_cast<int>(mode)]);
+        APP_INFO("Surface: {}", names[static_cast<int>(mode)]);
     }
 
     void ApplyPalette(int index) {
@@ -116,7 +116,7 @@ class TerrainStreamingDemo : public Application {
             _selPalette->SetSelection(p);
             _syncing = false;
         }
-        ConsoleSubsystem::Get()->Info("Palette " + std::to_string(p));
+        APP_INFO("Palette {}", p);
     }
 
     void SetupHUD() {
@@ -126,7 +126,7 @@ class TerrainStreamingDemo : public Application {
             CreateGameObject()->AddComponent<UIPageComponent>("assets/ui/streaming_hud.rml")
         );
         if (!_hudPage->GetDocument()) {
-            ConsoleSubsystem::Get()->Warn("Streaming HUD failed to load; keyboard controls still work.");
+            APP_WARN("Streaming HUD failed to load; keyboard controls still work.");
             return;
         }
         _selMode = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(_hudPage->GetElement("mode_select"));
@@ -298,9 +298,7 @@ class TerrainStreamingDemo : public Application {
 
         const auto bootMs =
             std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _bootTime).count();
-        ConsoleSubsystem::Get()->Info(
-            "TerrainStreaming: full 10.24km x 10.24km horizon ready in " + std::to_string(bootMs) + "ms"
-        );
+        APP_INFO("TerrainStreaming: full 10.24km x 10.24km horizon ready in {}ms", bootMs);
 
         // Spawn high enough for an establishing vista over the valley — at
         // ground+40 you only see the local mountainside.
@@ -326,7 +324,7 @@ class TerrainStreamingDemo : public Application {
         // Chromatic aberration on by default (toggle in the Graphics panel).
         if (auto* pp = GraphicsSubsystem::Get()->renderer->GetPass<PostProcessPass>()) pp->caEnabled = true;
 
-        ConsoleSubsystem::Get()->Info(
+        APP_INFO(
             "WASD move, arrows look, X sprint, Z slow, R/F up/down, G ground-clamp, T teleport, SPACE surface mode, "
             "P palette, I LOD debug, ESC quit."
         );
@@ -351,10 +349,7 @@ class TerrainStreamingDemo : public Application {
             pos.z = std::clamp(pos.z, -bound, bound);
             pos.y = terrain.GetHeight(pos.x, pos.z) + 200.0f;
             _camGO->SetPosition(pos);
-            ConsoleSubsystem::Get()->Info(
-                "Teleported to (" + std::to_string(static_cast<int>(pos.x)) + ", "
-                + std::to_string(static_cast<int>(pos.z)) + ")"
-            );
+            APP_INFO("Teleported to ({}, {})", static_cast<int>(pos.x), static_cast<int>(pos.z));
         }
         if (input->IsKeyPressed(Key::G) && _groundClamp) _groundClamp->enabled = !_groundClamp->enabled;
         // SPACE cycles the surface mode through the same three options as the
@@ -387,9 +382,7 @@ class TerrainStreamingDemo : public Application {
             const auto ms =
                 std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _bootTime)
                     .count();
-            ConsoleSubsystem::Get()->Info(
-                "TerrainStreaming: every tile at its target LOD after " + std::to_string(ms) + "ms"
-            );
+            APP_INFO("TerrainStreaming: every tile at its target LOD after {}ms", ms);
         }
         _statsTimer += dt;
         if (_statsTimer >= 5.0f) {
@@ -397,14 +390,20 @@ class TerrainStreamingDemo : public Application {
             const glm::vec3 pos = _camGO->GetPosition();
             const float bound = 0.5f * terrain.Props().worldSize;
             const bool inside = std::abs(pos.x) <= bound && std::abs(pos.z) <= bound;
-            ConsoleSubsystem::Get()->Info(
-                "cam (" + std::to_string(static_cast<int>(pos.x)) + ", " + std::to_string(static_cast<int>(pos.z))
-                + (inside ? ") " : ") OUTSIDE WORLD ") + "tiles " + std::to_string(stats.loadedTiles) + " visible "
-                + std::to_string(stats.visibleTiles) + " pending " + std::to_string(stats.pendingJobs) + " entities "
-                + std::to_string(stats.activeEntities) + " grass " + std::to_string(stats.grassCells) + "c/"
-                + std::to_string(stats.grassBlades / 1000) + "k cache " + std::to_string(stats.cacheHits) + "/"
-                + std::to_string(stats.cacheHits + stats.cacheMisses) + " heightmapMB "
-                + std::to_string(stats.gpuHeightmapBytes / (1024 * 1024))
+            APP_INFO(
+                "cam ({}, {}{}tiles {} visible {} pending {} entities {} grass {}c/{}k cache {}/{} heightmapMB {}",
+                static_cast<int>(pos.x),
+                static_cast<int>(pos.z),
+                inside ? ") " : ") OUTSIDE WORLD ",
+                stats.loadedTiles,
+                stats.visibleTiles,
+                stats.pendingJobs,
+                stats.activeEntities,
+                stats.grassCells,
+                stats.grassBlades / 1000,
+                stats.cacheHits,
+                stats.cacheHits + stats.cacheMisses,
+                stats.gpuHeightmapBytes / (1024 * 1024)
             );
         }
     }

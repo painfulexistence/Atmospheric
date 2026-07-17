@@ -3,7 +3,7 @@
 #include "gl_buffer.hpp"
 #include "gl_render_target.hpp"
 #include "globals.hpp"// glad / GLES3
-#include "log.hpp"
+#include "logging.hpp"
 #include <algorithm>
 #include <vector>
 
@@ -43,7 +43,7 @@ void GfxFactory::Init() {
     instDesc.requiredLimits = &instLimits;
     WGPUInstance inst = wgpuCreateInstance(&instDesc);
     if (!inst) {
-        Log::Warn("[GfxFactory] wgpuCreateInstance failed. Falling back to WebGL 2.");
+        ENGINE_WARN("[GfxFactory] wgpuCreateInstance failed. Falling back to WebGL 2.");
         _backend = GfxBackend::OpenGL;
         return;
     }
@@ -65,7 +65,7 @@ void GfxFactory::Init() {
     wgpuInstanceWaitAny(inst, 1, &adapterWait, UINT64_MAX);
 
     if (!adapter) {
-        Log::Warn("[GfxFactory] No WebGPU adapter. Falling back to WebGL 2.");
+        ENGINE_WARN("[GfxFactory] No WebGPU adapter. Falling back to WebGL 2.");
         wgpuInstanceRelease(inst);
         _backend = GfxBackend::OpenGL;
         return;
@@ -106,20 +106,20 @@ void GfxFactory::Init() {
     wgpuAdapterRelease(adapter);
 
     if (!device) {
-        Log::Warn("[GfxFactory] WebGPU device creation failed. Falling back to WebGL 2.");
+        ENGINE_WARN("[GfxFactory] WebGPU device creation failed. Falling back to WebGL 2.");
         wgpuInstanceRelease(inst);
         _backend = GfxBackend::OpenGL;
         return;
     }
 
-    Log::Info("[GfxFactory] WebGPU adapter and device acquired.");
+    ENGINE_INFO("[GfxFactory] WebGPU adapter and device acquired.");
     _backend = GfxBackend::WebGPU;
     _wgpuDevice = device;
     _wgpuQueue = wgpuDeviceGetQueue(device);
     // Device creation can silently grant fewer features than requested — only
     // trust what wgpuDeviceHasFeature reports back, not what we asked for.
     if (negotiatedCompression != TextureCompressionFormat::None && !wgpuDeviceHasFeature(device, deviceFeatures[0])) {
-        Log::Warn("[GfxFactory] Device did not grant requested texture compression feature.");
+        ENGINE_WARN("[GfxFactory] Device did not grant requested texture compression feature.");
         negotiatedCompression = TextureCompressionFormat::None;
     }
     _compressionFormat = negotiatedCompression;
@@ -128,7 +128,7 @@ void GfxFactory::Init() {
                                   : negotiatedCompression == TextureCompressionFormat::ASTC4x4
                                       ? "ASTC4x4"
                                       : "none (RGBA32 fallback)";
-    Log::Info("{}", std::string("[GfxFactory] Texture compression: ") + compressionName);
+    ENGINE_INFO("{}", std::string("[GfxFactory] Texture compression: ") + compressionName);
 
     // ── Create surface ────────────────────────────────────────────────────────
     WGPUEmscriptenSurfaceSourceCanvasHTMLSelector canvasDesc{};
@@ -143,7 +143,7 @@ void GfxFactory::Init() {
     // Instance reference no longer exists" and the swapchain never composites.
 
     if (!_surface) {
-        Log::Warn("[GfxFactory] wgpuInstanceCreateSurface failed. Falling back to WebGL 2.");
+        ENGINE_WARN("[GfxFactory] wgpuInstanceCreateSurface failed. Falling back to WebGL 2.");
         wgpuDeviceRelease(device);
         _wgpuDevice = nullptr;
         _wgpuQueue = nullptr;
@@ -164,7 +164,7 @@ void GfxFactory::Init() {
     cfg.alphaMode = WGPUCompositeAlphaMode_Opaque;
     wgpuSurfaceConfigure(_surface, &cfg);
 
-    Log::Info("[GfxFactory] WebGPU initialized successfully.");
+    ENGINE_INFO("[GfxFactory] WebGPU initialized successfully.");
     return;
 #endif
     _backend = GfxBackend::OpenGL;

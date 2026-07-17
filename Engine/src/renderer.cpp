@@ -8,7 +8,7 @@
 #include "gl_buffer.hpp"
 #include "gl_render_target.hpp"
 #include "graphics_subsystem.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 #include "particle_subsystem.hpp"
 #include "physics_subsystem_2d.hpp"
 #include "vat.hpp"
@@ -533,7 +533,7 @@ void Renderer::CheckErrors(const std::string& prefix) {
             error = "UNKNOWN";
             break;
         }
-        Log::Error("{}: {}\n", prefix, error);
+        ENGINE_ERROR("{}: {}\n", prefix, error);
     }
 }
 
@@ -641,7 +641,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
 
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
-            Log::Error("Renderer: WebGL resolved depth FBO incomplete!");
+            ENGINE_ERROR("Renderer: WebGL resolved depth FBO incomplete!");
         }
         glBindFramebuffer(GL_FRAMEBUFFER, gl.finalFBO);
 

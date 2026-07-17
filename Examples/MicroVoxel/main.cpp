@@ -98,9 +98,9 @@ class MicroVoxelApp : public Application {
             }
         }
 
-        ConsoleSubsystem::Get()->Info("MicroVoxel loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
-        ConsoleSubsystem::Get()->Info("Three raymarched 5cm-voxel volumes — no triangles. Hold E to dig into them.");
-        ConsoleSubsystem::Get()->Info(
+        APP_INFO("MicroVoxel loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
+        APP_INFO("Three raymarched 5cm-voxel volumes — no triangles. Hold E to dig into them.");
+        APP_INFO(
             "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P/X/N/V toggle "
             "GI/AO/shadow/point light/reflections/denoiser/cross-volume | B = split raw|denoised."
         );

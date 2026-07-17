@@ -35,9 +35,9 @@ class VideoPlayerDemo : public Application {
         // Open video -- supports local paths AND HTTP / HTTPS / RTSP / HLS URLs.
         if (_m_player.open(gvideoPath)) {
             _m_player.play();
-            Log::Info("Playing '{}' ({:.1f} s)", gvideoPath, _m_player.getDuration());
+            APP_INFO("Playing '{}' ({:.1f} s)", gvideoPath, _m_player.getDuration());
         } else {
-            Log::Warn(
+            APP_WARN(
                 "Could not open '{}'. "
                 "Make sure the engine was built with FFmpeg support "
                 "and that the path / URL is valid.",
@@ -72,7 +72,7 @@ class VideoPlayerDemo : public Application {
             .layer = CanvasLayer::LAYER_WORLD_2D,
         });
 
-        Log::Info("Controls: SPACE = play/pause, ESC = quit");
+        APP_INFO("Controls: SPACE = play/pause, ESC = quit");
     }
 
     void OnUpdate(float dt, float /*time*/) override {

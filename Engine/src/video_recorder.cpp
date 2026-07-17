@@ -1,6 +1,6 @@
 #include "video_recorder.hpp"
 #include "audio_subsystem.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 #include <fmt/format.h>
 
 #ifdef AE_HAS_FFMPEG
@@ -51,7 +51,7 @@ VideoRecorder::~VideoRecorder() {
 
 bool VideoRecorder::startRecording(Renderer* renderer, const Config& config) {
 #ifndef AE_HAS_FFMPEG
-    Log::Error("[VideoRecorder] Built without FFmpeg support — recording unavailable");
+    ENGINE_ERROR("[VideoRecorder] Built without FFmpeg support — recording unavailable");
     return false;
 #else
     if (_recording) {
@@ -186,7 +186,7 @@ void VideoRecorder::encoderThreadFunc() {
 
         if (!encoderInitialized) {
             if (!initEncoder(frame.width, frame.height)) {
-                Log::Error("[VideoRecorder] Encoder initialization failed");
+                ENGINE_ERROR("[VideoRecorder] Encoder initialization failed");
                 _recording = false;
                 return;
             }
@@ -218,7 +218,7 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
     width &= ~1u;
     height &= ~1u;
     if (width == 0 || height == 0) {
-        Log::Error("[VideoRecorder] Frame dimensions too small after alignment");
+        ENGINE_ERROR("[VideoRecorder] Frame dimensions too small after alignment");
         return false;
     }
 
@@ -245,18 +245,18 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
             codec = avcodec_find_encoder_by_name(gkEncoderCandidates[i]);
             if (codec) {
                 usedEncoder = gkEncoderCandidates[i];
-                Log::Info("[VideoRecorder] Encoder '{}' not found, using '{}'", _config.encoder, usedEncoder);
+                ENGINE_INFO("[VideoRecorder] Encoder '{}' not found, using '{}'", _config.encoder, usedEncoder);
                 break;
             }
         }
     }
     if (!codec) {
-        Log::Error("[VideoRecorder] No video encoder found (tried '{}' and all fallbacks)", _config.encoder);
+        ENGINE_ERROR("[VideoRecorder] No video encoder found (tried '{}' and all fallbacks)", _config.encoder);
         return false;
     }
 
     if (avformat_alloc_output_context2(&ff.fmtCtx, nullptr, nullptr, _config.outputPath.c_str()) < 0) {
-        Log::Error("[VideoRecorder] Failed to create output context for '{}'", _config.outputPath);
+        ENGINE_ERROR("[VideoRecorder] Failed to create output context for '{}'", _config.outputPath);
         return false;
     }
 
@@ -298,7 +298,7 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
     }
 
     if (avcodec_open2(ff.codecCtx, codec, nullptr) < 0) {
-        Log::Error("[VideoRecorder] Failed to open codec '{}'", usedEncoder);
+        ENGINE_ERROR("[VideoRecorder] Failed to open codec '{}'", usedEncoder);
         return false;
     }
 
@@ -312,20 +312,20 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
     // Audio stream must be added before avformat_write_header.
     if (_audioActive) {
         if (!initAudioEncoder()) {
-            Log::Error("[VideoRecorder] Audio encoder init failed — recording video only");
+            ENGINE_ERROR("[VideoRecorder] Audio encoder init failed — recording video only");
             _audioActive = false;
         }
     }
 
     if (!(ff.fmtCtx->oformat->flags & AVFMT_NOFILE)) {
         if (avio_open(&ff.fmtCtx->pb, _config.outputPath.c_str(), AVIO_FLAG_WRITE) < 0) {
-            Log::Error("[VideoRecorder] Cannot open output file '{}'", _config.outputPath);
+            ENGINE_ERROR("[VideoRecorder] Cannot open output file '{}'", _config.outputPath);
             return false;
         }
     }
 
     if (avformat_write_header(ff.fmtCtx, nullptr) < 0) {
-        Log::Error("[VideoRecorder] Failed to write container header");
+        ENGINE_ERROR("[VideoRecorder] Failed to write container header");
         return false;
     }
 
@@ -352,11 +352,11 @@ bool VideoRecorder::initEncoder(uint32_t width, uint32_t height) {
         nullptr
     );
     if (!ff.swsCtx) {
-        Log::Error("[VideoRecorder] Failed to create color space converter");
+        ENGINE_ERROR("[VideoRecorder] Failed to create color space converter");
         return false;
     }
 
-    Log::Info(
+    ENGINE_INFO(
         "[VideoRecorder] Started: {} ({}x{} @ {} fps, encoder: {}{}",
         _config.outputPath,
         width,
@@ -455,7 +455,7 @@ bool VideoRecorder::initAudioEncoder() {
 
     const AVCodec* codec = avcodec_find_encoder(AV_CODEC_ID_AAC);
     if (!codec) {
-        Log::Error("[VideoRecorder] AAC encoder not available");
+        ENGINE_ERROR("[VideoRecorder] AAC encoder not available");
         return false;
     }
 
@@ -475,7 +475,7 @@ bool VideoRecorder::initAudioEncoder() {
     }
 
     if (avcodec_open2(ff.audioCodecCtx, codec, nullptr) < 0) {
-        Log::Error("[VideoRecorder] Failed to open AAC encoder");
+        ENGINE_ERROR("[VideoRecorder] Failed to open AAC encoder");
         return false;
     }
 
@@ -505,7 +505,7 @@ bool VideoRecorder::initAudioEncoder() {
     av_channel_layout_uninit(&inLayout);
     av_channel_layout_uninit(&outLayout);
     if (swrErr < 0 || !ff.swrCtx || swr_init(ff.swrCtx) < 0) {
-        Log::Error("[VideoRecorder] Failed to init audio resampler");
+        ENGINE_ERROR("[VideoRecorder] Failed to init audio resampler");
         return false;
     }
 
@@ -516,7 +516,7 @@ bool VideoRecorder::initAudioEncoder() {
         return false;
     }
 
-    Log::Info(
+    ENGINE_INFO(
         "[VideoRecorder] Audio track: AAC {} Hz, {} ch, {} kbps",
         _config.audioSampleRate,
         _config.audioChannels,
@@ -723,6 +723,6 @@ void VideoRecorder::cleanup() {
     }
 
     _ffmpeg.reset();
-    Log::Info("[VideoRecorder] Finished: {}", _config.outputPath);
+    ENGINE_INFO("[VideoRecorder] Finished: {}", _config.outputPath);
 #endif
 }

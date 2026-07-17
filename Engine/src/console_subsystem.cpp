@@ -1,8 +1,5 @@
 #include "console_subsystem.hpp"
-#include "log.hpp"
-#ifdef __EMSCRIPTEN__
-#include "emscripten.h"
-#else
+#ifndef __EMSCRIPTEN__
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/spdlog.h"
 #endif
@@ -66,20 +63,6 @@ void ConsoleSubsystem::DrawImGui(float dt) {
             gcommand[0] = '\0';
         }
     }
-}
-
-// These forward to Log, the single logging dispatch point. "{}" passes the
-// message as data, so any braces it contains are not treated as format specs.
-void ConsoleSubsystem::Info(const std::string& message) {
-    Log::Info("{}", message);
-}
-
-void ConsoleSubsystem::Warn(const std::string& message) {
-    Log::Warn("{}", message);
-}
-
-void ConsoleSubsystem::Error(const std::string& message) {
-    Log::Error("{}", message);
 }
 
 void ConsoleSubsystem::RegisterCommand(

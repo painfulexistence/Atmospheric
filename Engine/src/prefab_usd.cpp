@@ -6,7 +6,7 @@
 // stub without AE_USE_TINYUSDZ.
 #include "console_subsystem.hpp"
 #include "file_system.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 #include "prefab.hpp"
 
 #include "fmt/core.h"
@@ -17,7 +17,7 @@
 #ifndef AE_USE_TINYUSDZ
 
 Prefab ImportUSDPrefab(const std::string& path) {
-    Log::Warn("ImportUSDPrefab '{}': USD support not compiled in (build with -DAE_USE_TINYUSDZ=ON)", path);
+    ENGINE_WARN("ImportUSDPrefab '{}': USD support not compiled in (build with -DAE_USE_TINYUSDZ=ON)", path);
     return Prefab{};
 }
 
@@ -446,7 +446,7 @@ Prefab ImportUSDPrefab(const std::string& path) {
     const std::string realPath = FileSystem::Get().ResolvePath(path).value_or(path);
     FileSystem::Bytes bytes = FileSystem::Get().ReadSync(path);
     if (bytes.empty()) {
-        Log::Warn("ImportUSDPrefab '{}': file not found (native) or not prefetched (web)", path);
+        ENGINE_WARN("ImportUSDPrefab '{}': file not found (native) or not prefetched (web)", path);
         return Prefab{};
     }
 
@@ -471,11 +471,11 @@ Prefab ImportUSDPrefab(const std::string& path) {
     const bool loaded = isUsdz ? tinyusdz::LoadUSDFromMemory(bytes.data(), bytes.size(), realPath, &stage, &warn, &err)
                                : ComposeStage(bytes, path, baseDir, &fsctx, &stage, &warn, &err);
     if (!loaded) {
-        if (!warn.empty()) Log::Warn("ImportUSDPrefab '{}': {}", path, warn);
-        if (!err.empty()) Log::Warn("ImportUSDPrefab '{}' error: {}", path, err);
+        if (!warn.empty()) ENGINE_WARN("ImportUSDPrefab '{}': {}", path, warn);
+        if (!err.empty()) ENGINE_WARN("ImportUSDPrefab '{}' error: {}", path, err);
         return Prefab{};
     }
-    if (!warn.empty()) Log::Warn("ImportUSDPrefab '{}': {}", path, warn);
+    if (!warn.empty()) ENGINE_WARN("ImportUSDPrefab '{}': {}", path, warn);
 
     tinyusdz::tydra::RenderSceneConverter converter;
     tinyusdz::tydra::RenderSceneConverterEnv env(stage);
@@ -509,7 +509,7 @@ Prefab ImportUSDPrefab(const std::string& path) {
 
     tinyusdz::tydra::RenderScene rscene;
     if (!converter.ConvertToRenderScene(env, &rscene)) {
-        Log::Warn("ImportUSDPrefab '{}' convert error: {}", path, converter.GetError());
+        ENGINE_WARN("ImportUSDPrefab '{}' convert error: {}", path, converter.GetError());
         return Prefab{};
     }
 
@@ -644,7 +644,7 @@ Prefab ImportUSDPrefab(const std::string& path) {
     out.root.transform = rootXf;
 
     out.ok = !out.meshes.empty();
-    Log::Info(
+    ENGINE_INFO(
         "ImportUSDPrefab '{}': {} mesh(es), {} material(s), {} image(s)",
         path,
         out.meshes.size(),

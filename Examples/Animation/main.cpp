@@ -24,18 +24,18 @@ class CSBDemo : public Application {
 
         _loadedScene = _sceneLoader->Load("assets/scenes/Canvas.csb", glm::vec3(0.0f), CanvasLayer::LAYER_WORLD);
         if (_loadedScene.success) {
-            Log::Info("CSB loaded successfully! {} nodes created", _loadedScene.allNodes.size());
+            APP_INFO("CSB loaded successfully! {} nodes created", _loadedScene.allNodes.size());
         } else {
-            Log::Warn("CSB load failed: {}", _loadedScene.error);
-            Log::Info("Creating layout test sprites...");
+            APP_WARN("CSB load failed: {}", _loadedScene.error);
+            APP_INFO("Creating layout test sprites...");
             CreateLayoutTestSprites();
         }
 
-        Log::Info("=== CSB Demo Controls ===");
-        Log::Info("1 - Toggle debug grid/coordinate system");
-        Log::Info("2 - Toggle node info overlay");
-        Log::Info("R - Reload scene");
-        Log::Info("ESC - Quit");
+        APP_INFO("=== CSB Demo Controls ===");
+        APP_INFO("1 - Toggle debug grid/coordinate system");
+        APP_INFO("2 - Toggle node info overlay");
+        APP_INFO("R - Reload scene");
+        APP_INFO("ESC - Quit");
     }
 
     void CreateLayoutTestSprites() {
@@ -179,20 +179,20 @@ class CSBDemo : public Application {
             _testSprites.push_back(stacked);
         }
 
-        Log::Info("Created {} layout test sprites", _testSprites.size());
+        APP_INFO("Created {} layout test sprites", _testSprites.size());
     }
 
     void OnUpdate(float dt, float time) override {
         // Toggle debug grid
         if (InputSubsystem::Get()->IsKeyPressed(Key::Num1)) {
             _showDebugGrid = !_showDebugGrid;
-            Log::Info("Debug grid: {}", _showDebugGrid ? "ON" : "OFF");
+            APP_INFO("Debug grid: {}", _showDebugGrid ? "ON" : "OFF");
         }
 
         // Toggle node info
         if (InputSubsystem::Get()->IsKeyPressed(Key::Num2)) {
             _showNodeInfo = !_showNodeInfo;
-            Log::Info("Node info: {}", _showNodeInfo ? "ON" : "OFF");
+            APP_INFO("Node info: {}", _showNodeInfo ? "ON" : "OFF");
         }
 
         // Reload scene

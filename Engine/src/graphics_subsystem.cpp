@@ -9,7 +9,7 @@
 #include "gfx_factory.hpp"
 #include "gl_render_target.hpp"
 #include "light_component.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_instancer_component.hpp"
@@ -272,7 +272,7 @@ void GraphicsSubsystem::Render(CameraComponent* camera, float dt) {
     if (totalCount > 0) {
         static int gframeCounter = 0;
         if (gframeCounter++ % 60 == 0) {
-            Log::Info("Culling: total {} culled {}", totalCount, culledCount);
+            ENGINE_INFO("Culling: total {} culled {}", totalCount, culledCount);
         }
     }
 
@@ -743,7 +743,7 @@ void GraphicsSubsystem::PushRenderTarget(RenderTarget* target) {
 
 void GraphicsSubsystem::PopRenderTarget() {
     if (_renderTargetStack.empty()) {
-        Log::Warn("GraphicsSubsystem::PopRenderTarget - Stack is empty!");
+        ENGINE_WARN("GraphicsSubsystem::PopRenderTarget - Stack is empty!");
         return;
     }
 

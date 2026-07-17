@@ -1,4 +1,4 @@
-#include "log.hpp"
+#include "logging.hpp"
 #include "window.hpp"
 #include <SDL2/SDL.h>
 #ifdef __EMSCRIPTEN__
@@ -201,7 +201,7 @@ Window::Window(WindowProps props) {
         throw std::runtime_error("Window is already initialized!");
     }
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        Log::Error("SDL could not initialize! Error: {}", SDL_GetError());
+        ENGINE_ERROR("SDL could not initialize! Error: {}", SDL_GetError());
     }
     // #ifdef __EMSCRIPTEN__
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -226,7 +226,7 @@ Window::Window(WindowProps props) {
         SDL_WINDOW_OPENGL | SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_ALLOW_HIGHDPI
     );
     if (!_internal) {
-        Log::Error("SDL could not create window! Error: {}", SDL_GetError());
+        ENGINE_ERROR("SDL could not create window! Error: {}", SDL_GetError());
     }
 
     auto window = static_cast<SDL_Window*>(_internal);
@@ -402,7 +402,7 @@ float Window::GetTime() {
 }
 
 void Window::SetTime(double time) {
-    Log::Info("SetTime is not implemented");
+    ENGINE_INFO("SetTime is not implemented");
 }
 
 ImageSize Window::GetLogicalSize() {

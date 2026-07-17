@@ -1,6 +1,6 @@
 #include "video_player.hpp"
 #include "Atmospheric/file_system.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 #include <fmt/format.h>
 
 #ifdef AE_HAS_FFMPEG
@@ -210,7 +210,7 @@ bool VideoPlayer::open(const std::string& path) {
     return true;
 #else
 #ifndef AE_HAS_FFMPEG
-    Log::Error("[VideoPlayer] Built without FFmpeg support");
+    ENGINE_ERROR("[VideoPlayer] Built without FFmpeg support");
     return false;
 #else
     close();
@@ -507,11 +507,11 @@ bool VideoPlayer::initDecoder(const std::string& path) {
     auto& ff = *_ffmpeg;
 
     if (avformat_open_input(&ff.fmtCtx, path.c_str(), nullptr, nullptr) < 0) {
-        Log::Error("[VideoPlayer] Cannot open '{}'", path);
+        ENGINE_ERROR("[VideoPlayer] Cannot open '{}'", path);
         return false;
     }
     if (avformat_find_stream_info(ff.fmtCtx, nullptr) < 0) {
-        Log::Error("[VideoPlayer] Cannot read stream info from '{}'", path);
+        ENGINE_ERROR("[VideoPlayer] Cannot read stream info from '{}'", path);
         return false;
     }
 
@@ -519,7 +519,7 @@ bool VideoPlayer::initDecoder(const std::string& path) {
     const AVCodec* codec = nullptr;
     ff.videoStreamIdx = av_find_best_stream(ff.fmtCtx, AVMEDIA_TYPE_VIDEO, -1, -1, &codec, 0);
     if (ff.videoStreamIdx < 0 || !codec) {
-        Log::Error("[VideoPlayer] No video stream found in '{}'", path);
+        ENGINE_ERROR("[VideoPlayer] No video stream found in '{}'", path);
         return false;
     }
 
@@ -586,12 +586,12 @@ bool VideoPlayer::initDecoder(const std::string& path) {
             return fmts[0];// codec didn't offer HW fmt — accept software fallback
         };
 
-        Log::Info("[VideoPlayer] HW decode: {} ({})", av_hwdevice_get_type_name(hwType), av_get_pix_fmt_name(hwPix));
+        ENGINE_INFO("[VideoPlayer] HW decode: {} ({})", av_hwdevice_get_type_name(hwType), av_get_pix_fmt_name(hwPix));
         break;
     }
 
     if (avcodec_open2(ff.codecCtx, codec, nullptr) < 0) {
-        Log::Error("[VideoPlayer] Failed to open video decoder for '{}'", path);
+        ENGINE_ERROR("[VideoPlayer] Failed to open video decoder for '{}'", path);
         return false;
     }
 
@@ -646,11 +646,11 @@ bool VideoPlayer::initDecoder(const std::string& path) {
                         static_cast<unsigned int>(ff.audioSampleRate), 16, static_cast<unsigned int>(ff.audioChannels)
                     );
                     ff.audioReady = true;
-                    Log::Info(
+                    ENGINE_INFO(
                         "[VideoPlayer] Audio: {} Hz, {} ch ({})", ff.audioSampleRate, ff.audioChannels, acodec->name
                     );
                 } else {
-                    Log::Error("[VideoPlayer] swr init failed; audio disabled");
+                    ENGINE_ERROR("[VideoPlayer] swr init failed; audio disabled");
                     if (ff.audioSwrCtx) {
                         swr_free(&ff.audioSwrCtx);
                     }
@@ -664,7 +664,7 @@ bool VideoPlayer::initDecoder(const std::string& path) {
         }
     }
 
-    Log::Info("[VideoPlayer] Opened '{}' — {}x{} {:.1f}s ({})", path, w, h, _duration, codec->name);
+    ENGINE_INFO("[VideoPlayer] Opened '{}' — {}x{} {:.1f}s ({})", path, w, h, _duration, codec->name);
     return true;
 #endif
 }
@@ -705,7 +705,7 @@ bool VideoPlayer::convertAndEnqueue(void* avframePtr) {
             nullptr
         );
         if (!ff.swsCtx) {
-            Log::Error("[VideoPlayer] Failed to create colour converter");
+            ENGINE_ERROR("[VideoPlayer] Failed to create colour converter");
             return false;
         }
     }

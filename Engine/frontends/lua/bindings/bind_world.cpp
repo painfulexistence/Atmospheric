@@ -1,6 +1,6 @@
 #include "../lua_application.hpp"
 #include "../scriptable_component.hpp"
-#include "Atmospheric/log.hpp"
+#include "Atmospheric/logging.hpp"
 
 void BindWorldAPI(sol::state& lua, LuaApplication* app) {
     sol::table atmos = lua["atmos"];
@@ -265,7 +265,7 @@ void BindWorldAPI(sol::state& lua, LuaApplication* app) {
             lua["atmos"]["scene"]["loadTable"](sceneData);
         } else {
             sol::error err = result;
-            Log::Error("[Lua Error] Failed to load scene {}: {}", name, err.what());
+            ENGINE_ERROR("[Lua Error] Failed to load scene {}: {}", name, err.what());
         }
     };
 }

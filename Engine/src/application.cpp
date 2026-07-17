@@ -1,5 +1,5 @@
 #include "application.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 #include "scene_blueprint.hpp"
 #include "scene_loader.hpp"
 #include <algorithm>
@@ -309,7 +309,7 @@ void Application::ParseAutoCaptureEnv() {
 
     if (_autoCap.enabled) {
         _capState = CaptureState::Warmup;
-        Log::Info(
+        ENGINE_INFO(
             "Auto-capture enabled: mode={}, warmup={}s, duration={}s, output={}",
             _autoCap.mode == AutoCaptureConfig::Mode::Screenshot ? "screenshot" : "video",
             _autoCap.warmup,
@@ -363,7 +363,7 @@ void Application::RegisterComponents() {
                     try {
                         texID = AssetManager::Get().CreateTexture(texPath);
                     } catch (const std::exception& e) {
-                        Log::Warn("SpriteComponent deserializer: failed to load '{}': {}", texPath, e.what());
+                        ENGINE_WARN("SpriteComponent deserializer: failed to load '{}': {}", texPath, e.what());
                     }
                 }
                 props.texture = texID;
@@ -778,7 +778,7 @@ void Application::RegisterComponents() {
 
 Application::~Application() {
     if (s_instance == this) s_instance = nullptr;
-    Log::Info("Exiting...");
+    ENGINE_INFO("Exiting...");
     if (_window) _window->DeinitImGui();
 
     _entities.clear();
@@ -811,7 +811,7 @@ void Application::Run() {
     for (auto& subsystem : _subsystems) {
         subsystem->Init(this);
     }
-    Log::Info("Subsystems initialized.");
+    ENGINE_INFO("Subsystems initialized.");
 
     if (_config.headless) {
         // Headless apps may build their world procedurally in OnInit without a
@@ -860,7 +860,7 @@ void Application::Run() {
 // sleeps between ticks, so a dedicated server idles instead of spinning a
 // core. Exits when Quit() clears _headlessRunning.
 void Application::HeadlessLoop() {
-    Log::Info("Headless main loop started (tick = {:.4f} s)", _config.fixedTimeStep);
+    ENGINE_INFO("Headless main loop started (tick = {:.4f} s)", _config.fixedTimeStep);
     const auto tick = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
         std::chrono::duration<double>(_config.fixedTimeStep)
     );
@@ -881,7 +881,7 @@ void Application::HeadlessLoop() {
         std::this_thread::sleep_until(nextWake);
         nextWake += tick;
     }
-    Log::Info("Headless main loop exited.");
+    ENGINE_INFO("Headless main loop exited.");
 }
 
 void Application::PushLayer(Layer* layer) {
@@ -1068,7 +1068,7 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
                     }
                 }
             } else {
-                Log::Warn("ParseEntity: unregistered component type '{}' on '{}' — skipping", type, name);
+                ENGINE_WARN("ParseEntity: unregistered component type '{}' on '{}' — skipping", type, name);
             }
         }
     }
@@ -1085,9 +1085,7 @@ static void ParseEntity(Application* app, const nlohmann::json& entityVal, GameO
         if (prefab.ok)
             app->Instantiate(prefab, go, name.empty() ? prefabSrc : name);
         else
-            ConsoleSubsystem::Get()->Warn(
-                fmt::format("ParseEntity '{}': failed to import prefab '{}'", name, prefabSrc)
-            );
+            ENGINE_WARN("ParseEntity '{}': failed to import prefab '{}'", name, prefabSrc);
     }
 
     if (entityVal.contains("children") && entityVal["children"].is_array()) {
@@ -1107,7 +1105,7 @@ static SceneBlueprint ParseSceneBlueprint(const std::string& jsonContent, std::s
     try {
         j = nlohmann::json::parse(jsonContent);
     } catch (const std::exception& e) {
-        Log::Error("ParseSceneBlueprint: JSON parse error: {}", e.what());
+        ENGINE_ERROR("ParseSceneBlueprint: JSON parse error: {}", e.what());
         if (error) *error = e.what();
         return bp;// bp.name is "" — caller checks this
     }
@@ -1196,7 +1194,7 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
     }
     if (!texturesToLoad.empty()) {
         AssetManager::Get().LoadTextures(texturesToLoad);
-        Log::Info("JSON Textures created.");
+        ENGINE_INFO("JSON Textures created.");
     }
 
     std::unordered_map<std::string, ShaderProgramProps> shadersToLoad;
@@ -1207,7 +1205,7 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
     if (!shadersToLoad.empty()) {
         if (_config.useDefaultShaders) AssetManager::Get().LoadDefaultShaders();
         AssetManager::Get().LoadShaders(shadersToLoad);
-        Log::Info("JSON Shaders created.");
+        ENGINE_INFO("JSON Shaders created.");
     }
 
     // Materials are created after textures so their map paths resolve to
@@ -1239,14 +1237,14 @@ void Application::LoadSceneResources(const SceneBlueprint& bp) {
             if (!mb.thicknessMapPath.empty()) mat->thicknessMap = TextureHandle(mb.thicknessMapPath);
         }
     }
-    if (!bp.materials.empty()) Log::Info("JSON Materials created.");
+    if (!bp.materials.empty()) ENGINE_INFO("JSON Materials created.");
 
     // TODO: load meshes from bp.meshes
 }
 
 // Phase 2b: create GameObjects + Components from resolved blueprints.
 void Application::InstantiateScene(const SceneBlueprint& bp) {
-    Log::Info("Loading scene '{}' from JSON...", bp.name);
+    ENGINE_INFO("Loading scene '{}' from JSON...", bp.name);
 
     auto* container = CreateGameObject();
     container->SetName(bp.name);
@@ -1255,7 +1253,7 @@ void Application::InstantiateScene(const SceneBlueprint& bp) {
     for (const auto& eb : bp.entities)
         ParseEntity(this, eb.resolvedData, container);
 
-    if (!bp.entities.empty()) Log::Info("JSON Game objects created.");
+    if (!bp.entities.empty()) ENGINE_INFO("JSON Game objects created.");
 
     mainCamera = _graphics->GetMainCamera();
     mainLight = _graphics->GetMainLight();
@@ -1594,21 +1592,21 @@ void Application::GoScene(const std::string& sceneName, std::function<void()> on
     FileSystem::Get().Prefetch({ scenePath }, [this, sceneName, scenePath, finish]() {
         auto bytes = FileSystem::Get().ReadSync(scenePath);
         if (bytes.empty()) {
-            Log::Error("GoScene: failed to read scene file '{}'", scenePath);
+            ENGINE_ERROR("GoScene: failed to read scene file '{}'", scenePath);
             finish();
             return;
         }
 
         SceneBlueprint bp = ParseSceneBlueprint(std::string(bytes.begin(), bytes.end()));
         if (bp.name.empty()) {
-            Log::Error("GoScene: scene blueprint parse failed '{}'", scenePath);
+            ENGINE_ERROR("GoScene: scene blueprint parse failed '{}'", scenePath);
             finish();
             return;
         }
 
         // Stage 2: prefetch every asset the blueprint declares, then load.
         std::vector<std::string> assetPaths = CollectPrefetchPaths(bp, _config.useDefaultTextures);
-        Log::Info("GoScene: prefetching {} asset(s) for '{}'", assetPaths.size(), sceneName);
+        ENGINE_INFO("GoScene: prefetching {} asset(s) for '{}'", assetPaths.size(), sceneName);
 
         FileSystem::Get().Prefetch(assetPaths, [this, sceneName, bp = std::move(bp), finish]() mutable {
             // Unload the current scene first. This runs under the loading overlay,
@@ -1619,7 +1617,7 @@ void Application::GoScene(const std::string& sceneName, std::function<void()> on
 
             // The single place where scene assets are uploaded and entities are
             // instantiated.
-            Log::Info("GoScene: loading '{}'...", sceneName);
+            ENGINE_INFO("GoScene: loading '{}'...", sceneName);
             LoadSceneResources(bp);
             InstantiateScene(bp);
 
@@ -1653,10 +1651,10 @@ void Application::LoadEditorScene(const uint8_t* data, size_t len) {
     auto result = loader.LoadFromBuffer(data, len);
     if (!result.success) {
         _editorSceneError = result.error;
-        Log::Warn("[Editor] Scene load failed: {}", result.error);
+        ENGINE_WARN("[Editor] Scene load failed: {}", result.error);
     } else {
         _editorSceneError.clear();
-        Log::Info("[Editor] Scene loaded: {} node(s)", result.allNodes.size());
+        ENGINE_INFO("[Editor] Scene loaded: {} node(s)", result.allNodes.size());
     }
 
     _sceneReady = true;
@@ -1697,7 +1695,7 @@ void Application::UnloadScene(const std::string& name) {
 
     mainCamera = _graphics->GetMainCamera();
     mainLight = _graphics->GetMainLight();
-    Log::Info("[Scene] Unloaded scene '{}'.", name);
+    ENGINE_INFO("[Scene] Unloaded scene '{}'.", name);
 }
 
 void Application::ClearScenes() {
@@ -1737,7 +1735,7 @@ void Application::AddScene(const std::string& json) {
     SceneBlueprint bp = ParseSceneBlueprint(json, &_editorSceneError);
     if (bp.name.empty()) {// parse failed — _editorSceneError set by ParseSceneBlueprint
         _lastLoadedScene = "";
-        Log::Warn("[Scene] AddScene JSON parse error: {}", _editorSceneError);
+        ENGINE_WARN("[Scene] AddScene JSON parse error: {}", _editorSceneError);
         return;
     }
 
@@ -1749,11 +1747,11 @@ void Application::AddScene(const std::string& json) {
         InstantiateScene(bp);
         _editorSceneError.clear();
         _lastLoadedScene = bp.name;
-        Log::Info("[Scene] Added scene '{}'.", bp.name);
+        ENGINE_INFO("[Scene] Added scene '{}'.", bp.name);
     } catch (const std::exception& e) {
         _editorSceneError = e.what();
         _lastLoadedScene = "";
-        Log::Warn("[Scene] AddScene '{}' failed: {}", bp.name, e.what());
+        ENGINE_WARN("[Scene] AddScene '{}' failed: {}", bp.name, e.what());
     }
 }
 
@@ -1776,7 +1774,7 @@ const std::string& Application::GetEditorSceneError() const {
 }
 
 void Application::Quit() {
-    Log::Info("Requested to quit.");
+    ENGINE_INFO("Requested to quit.");
     if (_window) {
         _window->Close();
     } else {
@@ -1825,7 +1823,7 @@ void Application::Update(const FrameData& props) {
     }
 
 #if SHOW_PROCESS_COST
-    Log::Info("Update costs {} ms", (GetWindowTime() - time) * 1000);
+    ENGINE_INFO("Update costs {} ms", (GetWindowTime() - time) * 1000);
 #endif
 
     for (const auto& layer : _layers) {
@@ -1867,7 +1865,7 @@ void Application::Render(const FrameData& props) {
     if (_recorder && _recorder->isRecording()) _recorder->captureFrame();
 
 #if SHOW_RENDER_AND_DRAW_COST
-    Log::Info("Render & draw cost {} ms", (GetWindowTime() - time) * 1000);
+    ENGINE_INFO("Render & draw cost {} ms", (GetWindowTime() - time) * 1000);
 #endif
 }
 
@@ -1949,7 +1947,7 @@ void Application::SaveScreenshot(const std::string& path) {
         FrameStats st = AnalyzeFrame(img.data.data(), img.width, img.height, img.channelCount);
         // Machine-readable marker consumed by scripts/smokeTest.sh (grepped from
         // stdout). Flushed so it survives the imminent auto-quit.
-        Log::Info(
+        ENGINE_INFO(
             "[Smoke] result path={} size={}x{} meanRGB={:.1f},{:.1f},{:.1f} spread={} blank={} write={}",
             path,
             img.width,
@@ -1963,9 +1961,9 @@ void Application::SaveScreenshot(const std::string& path) {
         );
         std::fflush(stdout);
         if (ok)
-            Log::Info("Screenshot saved: {} ({}x{})", path, img.width, img.height);
+            ENGINE_INFO("Screenshot saved: {} ({}x{})", path, img.width, img.height);
         else
-            Log::Error("[Screenshot] Failed to write {}", path);
+            ENGINE_ERROR("[Screenshot] Failed to write {}", path);
     });
 }
 
@@ -2042,18 +2040,18 @@ extern "C" {
             jsHeapSizeMB = static_cast<double>(jsHeapBytes) / mb;
         }
 
-        Log::Info("========== Memory Stats ==========");
-        Log::Info("WASM Heap Size     : {:.2f} MB", heapSize / mb);
-        Log::Info("dlmalloc Arena     : {:.2f} MB", mi.arena / mb);
-        Log::Info("Used               : {:.2f} MB", mi.uordblks / mb);
-        Log::Info("Free               : {:.2f} MB", mi.fordblks / mb);
+        ENGINE_INFO("========== Memory Stats ==========");
+        ENGINE_INFO("WASM Heap Size     : {:.2f} MB", heapSize / mb);
+        ENGINE_INFO("dlmalloc Arena     : {:.2f} MB", mi.arena / mb);
+        ENGINE_INFO("Used               : {:.2f} MB", mi.uordblks / mb);
+        ENGINE_INFO("Free               : {:.2f} MB", mi.fordblks / mb);
         if (jsHeapSizeMB >= 0.0) {
-            Log::Info("JS Heap Size       : {:.2f} MB", jsHeapSizeMB);
+            ENGINE_INFO("JS Heap Size       : {:.2f} MB", jsHeapSizeMB);
         } else {
-            Log::Info("JS Heap Size       : N/A (unsupported)");
+            ENGINE_INFO("JS Heap Size       : N/A (unsupported)");
         }
-        Log::Info("VRAM (textures)    : {:.2f} MB", vramBytes / mb);
-        Log::Info("==================================");
+        ENGINE_INFO("VRAM (textures)    : {:.2f} MB", vramBytes / mb);
+        ENGINE_INFO("==================================");
     }
 
 }// extern "C"

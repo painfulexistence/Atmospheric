@@ -3,7 +3,7 @@
 #include "config.hpp"
 #include "gfx_factory.hpp"
 #include "graphics_subsystem.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 
 // Frustum culling (GraphicsSubsystem::Render) transforms this AABB to world
 // space and p-vertex-tests it against the view frustum; without it a mesh
@@ -22,7 +22,7 @@ static AABB ComputeMeshAABB(const std::vector<Vertex>& verts) {
 }
 
 void PrintVertex(const Vertex& v) {
-    Log::Info(
+    ENGINE_INFO(
         "P: ({},{},{}), UV: ({},{})\n, N: ({},{},{}), T: ({},{},{}), B: ({},{},{})",
         v.position.x,
         v.position.y,

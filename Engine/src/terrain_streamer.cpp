@@ -1,11 +1,11 @@
 #include "terrain_streamer.hpp"
 #include "application.hpp"
 #include "asset_manager.hpp"
-#include "console_subsystem.hpp"
 #include "frustum.hpp"
 #include "game_object.hpp"
 #include "height_field_collider_component.hpp"
 #include "job_system.hpp"
+#include "logging.hpp"
 #include "material.hpp"
 #include "mesh.hpp"
 #include "mesh_builder.hpp"
@@ -162,10 +162,12 @@ void TerrainStreamer::Init(Application* app, const StreamingTerrainProps& props,
     }
     JobSystem::Get()->Wait();
     IntegrateFinishedJobs(-1, { _tilesPerSide / 2, _tilesPerSide / 2 });
-    ConsoleSubsystem::Get()->Info(
-        "TerrainStreamer: prewarmed " + std::to_string(_tilesPerSide * _tilesPerSide) + " tiles ("
-        + std::to_string(static_cast<int>(_props.worldSize)) + "m x "
-        + std::to_string(static_cast<int>(_props.worldSize)) + "m) at LOD " + std::to_string(coarsest)
+    ENGINE_INFO(
+        "TerrainStreamer: prewarmed {} tiles ({}m x {}m) at LOD {}",
+        _tilesPerSide * _tilesPerSide,
+        static_cast<int>(_props.worldSize),
+        static_cast<int>(_props.worldSize),
+        coarsest
     );
 }
 

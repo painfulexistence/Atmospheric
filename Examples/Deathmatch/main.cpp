@@ -297,10 +297,7 @@ class DeathmatchGame : public Application {
             // are queryable for gameplay (the netcode sim dictates actual spawns
             // here, so this just demonstrates the API).
             const auto spawns = arena.FindEntities("info_player_start");
-            ConsoleSubsystem::Get()->Info(
-                "arena.map: " + std::to_string(spawns.size()) + " spawn point(s), "
-                + std::to_string(arena.colliders.size()) + " brush collider(s)"
-            );
+            APP_INFO("arena.map: {} spawn point(s), {} brush collider(s)", spawns.size(), arena.colliders.size());
         }
 
         // Enemy avatar. In --local solo mode the "enemy" is the embedded
@@ -358,7 +355,7 @@ class DeathmatchGame : public Application {
                 gcli.serverPort = _localAuthority.BoundPort();
                 localAuth = &_localAuthority;
             } else {
-                ConsoleSubsystem::Get()->Error("Failed to bind embedded authority");
+                APP_ERROR("Failed to bind embedded authority");
             }
         }
 
@@ -375,7 +372,7 @@ class DeathmatchGame : public Application {
         Window::Get()->SetRelativeMouseMode(true);
 
         if (!_net.Connect(gcli.serverIp, gcli.serverPort)) {
-            ConsoleSubsystem::Get()->Error(fmt::format("Failed to connect to {}:{}", gcli.serverIp, gcli.serverPort));
+            APP_ERROR("Failed to connect to {}:{}", gcli.serverIp, gcli.serverPort);
         }
     }
 

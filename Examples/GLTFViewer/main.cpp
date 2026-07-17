@@ -46,12 +46,12 @@ class GLTFViewer : public Application {
             size_t verts = 0;
             for (const auto& md : prefab.meshes)
                 verts += md.vertices.size();
-            Log::Info(
+            APP_INFO(
                 "{}: {} meshes, {} materials, {} verts", path, prefab.meshes.size(), prefab.materials.size(), verts
             );
             return;
         }
-        Log::Info(
+        APP_INFO(
             "No Khronos sample found — run scripts/downloadGLTFSamples.sh to download "
             "DamagedHelmet / TransmissionTest (showing the committed sample cube instead)"
         );

@@ -5,7 +5,7 @@
 #include "camera_component.hpp"
 #include "game_object.hpp"
 #include "light_component.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 #include "material.hpp"
 #include "shader.hpp"
 #include <string>
@@ -43,7 +43,7 @@ void ScriptSubsystem::Process(float dt) {
         auto result = updateFunc(dt);
         if (!result.valid()) {
             sol::error err = result;
-            Log::Error("[ScriptSubsystem] Error in Lua update callback: {}", err.what());
+            ENGINE_ERROR("[ScriptSubsystem] Error in Lua update callback: {}", err.what());
         }
     }
 }
@@ -54,7 +54,7 @@ void ScriptSubsystem::Bind(const std::string& func) {
 void ScriptSubsystem::Source(const std::string& filename) {
     auto resolvedOpt = FileSystem::Get().ResolvePath(filename);
     if (!resolvedOpt) {
-        Log::Info("Skip loading script file {} (not found)", filename);
+        ENGINE_INFO("Skip loading script file {} (not found)", filename);
         return;
     }
     const std::string& resolvedPath = *resolvedOpt;
@@ -62,7 +62,7 @@ void ScriptSubsystem::Source(const std::string& filename) {
     if (!result.valid()) {
         sol::error err = result;
         std::string what = err.what();
-        Log::Info("Skip loading script file {} (resolved: {})", filename, resolvedPath);
+        ENGINE_INFO("Skip loading script file {} (resolved: {})", filename, resolvedPath);
     }
 }
 

@@ -27,10 +27,6 @@ public:
     void Process(float dt) override;
     void DrawImGui(float dt) override;
 
-    void Info(const std::string& message);
-    void Warn(const std::string& message);
-    void Error(const std::string& message);
-
     void RegisterCommand(const std::string& cmd, std::function<void(const std::vector<std::string>&)> callback);
     void ExecuteCommand(const std::string& cmd);
 

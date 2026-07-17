@@ -1,9 +1,9 @@
 #include "physics_debug_drawer.hpp"
 #include "graphics_subsystem.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 
 void PhysicsDebugDrawer::reportErrorWarning(const char* text) {
-    Log::Info("Bullet Warning: {}", text);
+    ENGINE_INFO("Bullet Warning: {}", text);
 }
 
 void PhysicsDebugDrawer::drawLine(const btVector3& from, const btVector3& to, const btVector3& color) {

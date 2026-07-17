@@ -58,13 +58,13 @@ class HideAndSeekListenServerGame : public Application {
         _fontID = GraphicsSubsystem::Get()->LoadFont("assets/fonts/NotoSans-SemiBold.ttf", 24.0f);
 
         if (!_authority.Bind(gcli.port)) {
-            ConsoleSubsystem::Get()->Error(fmt::format("Failed to bind authority on UDP port {}", gcli.port));
+            APP_ERROR("Failed to bind authority on UDP port {}", gcli.port);
             return;
         }
-        ConsoleSubsystem::Get()->Info(fmt::format("Hosting on UDP :{}", _authority.BoundPort()));
+        APP_INFO("Hosting on UDP :{}", _authority.BoundPort());
 
         if (!_net.Connect("127.0.0.1", _authority.BoundPort(), gcli.role)) {
-            ConsoleSubsystem::Get()->Error("Failed to connect local client to the embedded authority");
+            APP_ERROR("Failed to connect local client to the embedded authority");
         }
     }
 

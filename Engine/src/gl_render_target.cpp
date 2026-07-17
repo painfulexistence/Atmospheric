@@ -1,6 +1,6 @@
 #include "gl_render_target.hpp"
 #include "console_subsystem.hpp"
-#include "log.hpp"
+#include "logging.hpp"
 
 GLRenderTarget::GLRenderTarget(int width, int height, bool withDepth)
   : _width(width), _height(height), _withDepth(withDepth) {
@@ -141,7 +141,7 @@ void GLRenderTarget::Create() {
 
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (status != GL_FRAMEBUFFER_COMPLETE) {
-        Log::Error(
+        ENGINE_ERROR(
             "GLRenderTarget: Framebuffer incomplete! status=0x{:x} ms={} hdr={} depth={} stencil={} w={} h={}",
             status,
             _multisample,
