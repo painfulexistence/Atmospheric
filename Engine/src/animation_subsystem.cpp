@@ -33,6 +33,15 @@ VATClipHandle AnimationLibrary::AddVATClip(std::string name, std::unique_ptr<VAT
     return { id };
 }
 
+SkeletonClipHandle AnimationLibrary::AddSkeletonClip(SkeletonClip clip) {
+    clip.Recompute();
+    const std::string name = clip.name;
+    _skeletonClips.push_back(std::move(clip));
+    const uint32_t id = static_cast<uint32_t>(_skeletonClips.size());
+    if (!name.empty()) _skeletonClipByName[name] = id;
+    return { id };
+}
+
 const FlipbookClip* AnimationLibrary::GetFlipbook(FlipbookClipHandle h) const {
     if (!h.IsValid() || h.id > _flipbooks.size()) return nullptr;
     return &_flipbooks[h.id - 1];
@@ -46,6 +55,11 @@ const ActionTimeline* AnimationLibrary::GetTimeline(TimelineHandle h) const {
 VATClip* AnimationLibrary::GetVATClip(VATClipHandle h) const {
     if (!h.IsValid() || h.id > _vatClips.size()) return nullptr;
     return _vatClips[h.id - 1].get();
+}
+
+const SkeletonClip* AnimationLibrary::GetSkeletonClip(SkeletonClipHandle h) const {
+    if (!h.IsValid() || h.id > _skeletonClips.size()) return nullptr;
+    return &_skeletonClips[h.id - 1];
 }
 
 FlipbookClipHandle AnimationLibrary::FindFlipbook(const std::string& name) const {
@@ -63,12 +77,19 @@ VATClipHandle AnimationLibrary::FindVATClip(const std::string& name) const {
     return it != _vatByName.end() ? VATClipHandle{ it->second } : VATClipHandle{};
 }
 
+SkeletonClipHandle AnimationLibrary::FindSkeletonClip(const std::string& name) const {
+    auto it = _skeletonClipByName.find(name);
+    return it != _skeletonClipByName.end() ? SkeletonClipHandle{ it->second } : SkeletonClipHandle{};
+}
+
 void AnimationLibrary::Clear() {
     _flipbooks.clear();
     _timelines.clear();
+    _skeletonClips.clear();
     _vatClips.clear();
     _flipbookByName.clear();
     _timelineByName.clear();
+    _skeletonClipByName.clear();
     _vatByName.clear();
 }
 

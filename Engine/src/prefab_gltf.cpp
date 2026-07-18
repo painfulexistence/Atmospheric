@@ -19,6 +19,7 @@
 #include "file_system.hpp"
 #include "prefab.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <functional>
@@ -336,6 +337,24 @@ Prefab ImportGLTFPrefab(const std::string& path) {
     };
 
     // ── Primitives → MeshData (chunked past the 16-bit ceiling) ──────────────
+    // JOINTS_0: UNSIGNED_BYTE or UNSIGNED_SHORT vec4 → ivec4 (index space of the skin).
+    auto readJoints = [&](const tinygltf::Accessor& acc) {
+        const auto& bv = model.bufferViews[acc.bufferView];
+        const auto& buf = model.buffers[bv.buffer];
+        const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
+        const bool u16 = acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT;
+        const size_t comp = u16 ? sizeof(uint16_t) : 1;
+        const size_t stride = bv.byteStride ? bv.byteStride : comp * 4;
+        std::vector<glm::ivec4> o(acc.count, glm::ivec4(0));
+        for (size_t i = 0; i < acc.count; ++i) {
+            const uint8_t* p = base + i * stride;
+            for (int k = 0; k < 4; ++k)
+                o[i][k] =
+                    u16 ? static_cast<int>(*reinterpret_cast<const uint16_t*>(p + k * comp)) : static_cast<int>(p[k]);
+        }
+        return o;
+    };
+
     std::vector<std::vector<int>> meshPrims(model.meshes.size());
     for (size_t mi = 0; mi < model.meshes.size(); ++mi) {
         for (const auto& prim : model.meshes[mi].primitives) {
@@ -354,6 +373,14 @@ Prefab ImportGLTFPrefab(const std::string& path) {
             std::vector<glm::vec4> tangents4(vertCount, glm::vec4(1, 0, 0, 1));
             if (prim.attributes.contains("TANGENT"))
                 tangents4 = readFloat4(model.accessors[prim.attributes.at("TANGENT")]);
+
+            const bool primSkinned = prim.attributes.contains("JOINTS_0") && prim.attributes.contains("WEIGHTS_0");
+            std::vector<glm::ivec4> jointIdx;
+            std::vector<glm::vec4> jointWt;
+            if (primSkinned) {
+                jointIdx = readJoints(model.accessors[prim.attributes.at("JOINTS_0")]);
+                jointWt = readFloat4(model.accessors[prim.attributes.at("WEIGHTS_0")]);
+            }
 
             // Bake the material's baseColor KHR_texture_transform into UV0.
             const UVTransform* uvt = nullptr;
@@ -407,6 +434,12 @@ Prefab ImportGLTFPrefab(const std::string& path) {
                         v.bitangent = glm::cross(normals[s], tan) * tangents4[s].w;
                         local = static_cast<uint16_t>(cur.vertices.size());
                         cur.vertices.push_back(v);
+                        if (primSkinned) {
+                            SkinVertex sv;
+                            if (s < jointIdx.size()) sv.joints = jointIdx[s];
+                            if (s < jointWt.size()) sv.weights = jointWt[s];
+                            cur.skinVertices.push_back(sv);
+                        }
                         remap[s] = local;
                     }
                     cur.indices.push_back(local);
@@ -416,6 +449,164 @@ Prefab ImportGLTFPrefab(const std::string& path) {
         }
     }
 
+    // ── Node animations (glTF animations[] → per-node local-TRS clips) ──────────
+    // Skinned meshes are unsupported (see file header), so these are treated as
+    // plain node-transform animations: each channel drives one node's TRS.
+    auto readFloat1 = [&](const tinygltf::Accessor& acc) {
+        const auto& bv = model.bufferViews[acc.bufferView];
+        const auto& buf = model.buffers[bv.buffer];
+        const size_t stride = bv.byteStride ? bv.byteStride : sizeof(float);
+        const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
+        std::vector<float> o(acc.count);
+        for (size_t i = 0; i < acc.count; ++i)
+            o[i] = *reinterpret_cast<const float*>(base + i * stride);
+        return o;
+    };
+    auto readMat4 = [&](const tinygltf::Accessor& acc) {
+        const auto& bv = model.bufferViews[acc.bufferView];
+        const auto& buf = model.buffers[bv.buffer];
+        const size_t stride = bv.byteStride ? bv.byteStride : sizeof(float) * 16;
+        const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
+        std::vector<glm::mat4> o(acc.count);
+        for (size_t i = 0; i < acc.count; ++i)
+            std::memcpy(&o[i], base + i * stride, sizeof(float) * 16);// column-major, matches glm::mat4
+        return o;
+    };
+
+    // ── Skeletons (glTF skins[] → asset-side Skeletons) ─────────────────────────
+    // node → parent node (glTF stores only children); needed to map joint parents.
+    std::vector<int> nodeParent(model.nodes.size(), -1);
+    for (size_t ni = 0; ni < model.nodes.size(); ++ni)
+        for (int c : model.nodes[ni].children)
+            if (c >= 0 && c < static_cast<int>(nodeParent.size())) nodeParent[c] = static_cast<int>(ni);
+
+    std::unordered_map<int, std::pair<int, int>> jointOfNode;// joint node → {skin, jointIndex}
+    for (size_t si = 0; si < model.skins.size(); ++si) {
+        const auto& sk = model.skins[si];
+        Skeleton skel;
+        skel.name = sk.name;
+        std::unordered_map<int, int> localNodeToJoint;
+        for (size_t ji = 0; ji < sk.joints.size(); ++ji)
+            localNodeToJoint[sk.joints[ji]] = static_cast<int>(ji);
+        std::vector<glm::mat4> ibm;
+        if (sk.inverseBindMatrices >= 0) ibm = readMat4(model.accessors[sk.inverseBindMatrices]);
+        // NOTE: assumes glTF lists joints parent-before-child (the common case),
+        // matching SkeletalComponent's single-pass hierarchy accumulation.
+        for (size_t ji = 0; ji < sk.joints.size(); ++ji) {
+            const int nodeIdx = sk.joints[ji];
+            const tinygltf::Node& jn = model.nodes[nodeIdx];
+            Joint joint;
+            joint.name = jn.name;
+            if (jn.translation.size() == 3)
+                joint.bindTranslation = { (float)jn.translation[0],
+                                          (float)jn.translation[1],
+                                          (float)jn.translation[2] };
+            if (jn.scale.size() == 3) joint.bindScale = { (float)jn.scale[0], (float)jn.scale[1], (float)jn.scale[2] };
+            if (jn.rotation.size() == 4)// glTF quat is (x,y,z,w); glm::quat is (w,x,y,z)
+                joint.bindRotation = glm::quat(
+                    (float)jn.rotation[3], (float)jn.rotation[0], (float)jn.rotation[1], (float)jn.rotation[2]
+                );
+            joint.inverseBind = (ji < ibm.size()) ? ibm[ji] : glm::mat4(1.0f);
+            auto pit = localNodeToJoint.find(nodeParent[nodeIdx]);
+            joint.parent = (pit != localNodeToJoint.end()) ? pit->second : -1;
+            skel.joints.push_back(std::move(joint));
+            jointOfNode[nodeIdx] = { static_cast<int>(si), static_cast<int>(ji) };
+        }
+        out.skeletons.push_back(std::move(skel));
+    }
+
+    // ── Animations: split joint channels (→ SkeletonClip) from node channels ────
+    std::unordered_map<int, std::vector<PrefabNodeClip>> animByNode;// non-joint node clips (line B)
+    std::vector<std::unordered_map<std::string, SkeletonClip>> skinClips(model.skins.size());// [skin][name]
+    for (size_t ai = 0; ai < model.animations.size(); ++ai) {
+        const auto& anim = model.animations[ai];
+        const std::string clipName = anim.name.empty() ? fmt::format("anim_{}", ai) : anim.name;
+        for (const auto& ch : anim.channels) {
+            if (ch.target_node < 0) continue;
+            const std::string& path = ch.target_path;// translation / rotation / scale / weights
+            const auto& samp = anim.samplers[ch.sampler];
+            const std::vector<float> times = readFloat1(model.accessors[samp.input]);
+            // CUBICSPLINE packs (inTangent, value, outTangent) per key → take the
+            // value, treat as linear; STEP also approximated as linear.
+            const bool cubic = samp.interpolation == "CUBICSPLINE";
+
+            auto jit = jointOfNode.find(ch.target_node);
+            if (jit != jointOfNode.end()) {
+                // Skeletal: fold into the skin's clip as a per-joint channel.
+                const int si = jit->second.first, jointIdx = jit->second.second;
+                SkeletonClip& sc = skinClips[si][clipName];
+                sc.name = clipName;
+                JointChannel* jc = nullptr;
+                for (auto& c : sc.channels)
+                    if (c.joint == jointIdx) {
+                        jc = &c;
+                        break;
+                    }
+                if (!jc) {
+                    sc.channels.push_back(JointChannel{ jointIdx, {}, {}, {} });
+                    jc = &sc.channels.back();
+                }
+                if (path == "rotation") {
+                    const auto q = readFloat4(model.accessors[samp.output]);
+                    for (size_t k = 0; k < times.size(); ++k) {
+                        const size_t vi = cubic ? k * 3 + 1 : k;
+                        if (vi >= q.size()) break;
+                        jc->rotation.push_back({ times[k], glm::quat(q[vi].w, q[vi].x, q[vi].y, q[vi].z) });
+                    }
+                } else if (path == "translation" || path == "scale") {
+                    const auto vals = readFloat3(model.accessors[samp.output]);
+                    auto& dst = (path == "translation") ? jc->translation : jc->scale;
+                    for (size_t k = 0; k < times.size(); ++k) {
+                        const size_t vi = cubic ? k * 3 + 1 : k;
+                        if (vi >= vals.size()) break;
+                        dst.push_back({ times[k], vals[vi] });
+                    }
+                }
+                continue;
+            }
+
+            // Plain node animation (non-joint) — the line-B path.
+            ActionProperty prop;
+            if (path == "translation")
+                prop = ActionProperty::Position;
+            else if (path == "scale")
+                prop = ActionProperty::Scale;
+            else if (path == "rotation")
+                prop = ActionProperty::RotationQuat;
+            else
+                continue;// weights (morph) unsupported
+            ActionTrack track;
+            track.property = prop;
+            if (prop == ActionProperty::RotationQuat) {
+                const std::vector<glm::vec4> q = readFloat4(model.accessors[samp.output]);
+                for (size_t k = 0; k < times.size(); ++k) {
+                    const size_t vi = cubic ? k * 3 + 1 : k;
+                    if (vi >= q.size()) break;
+                    track.keys.push_back({ times[k], q[vi], EasingType::Linear });
+                }
+            } else {
+                const std::vector<glm::vec3> vals = readFloat3(model.accessors[samp.output]);
+                for (size_t k = 0; k < times.size(); ++k) {
+                    const size_t vi = cubic ? k * 3 + 1 : k;
+                    if (vi >= vals.size()) break;
+                    const glm::vec3& v = vals[vi];
+                    track.keys.push_back({ times[k], glm::vec4(v.x, v.y, v.z, 0.0f), EasingType::Linear });
+                }
+            }
+            if (track.keys.empty()) continue;
+            auto& clips = animByNode[ch.target_node];
+            auto it =
+                std::find_if(clips.begin(), clips.end(), [&](const PrefabNodeClip& c) { return c.name == clipName; });
+            if (it == clips.end())
+                clips.push_back({ clipName, { std::move(track) } });
+            else
+                it->tracks.push_back(std::move(track));
+        }
+    }
+    for (size_t si = 0; si < skinClips.size(); ++si)
+        for (auto& [nm, sc] : skinClips[si])
+            out.skeletonClips.push_back({ static_cast<int>(si), std::move(sc) });
+
     // ── Node tree ─────────────────────────────────────────────────────────────
     std::function<PrefabNode(int)> buildNode = [&](int nodeIdx) -> PrefabNode {
         const tinygltf::Node& n = model.nodes[nodeIdx];
@@ -423,8 +614,14 @@ Prefab ImportGLTFPrefab(const std::string& path) {
         node.name = n.name.empty() ? fmt::format("node_{}", nodeIdx) : n.name;
         node.transform = GLTFNodeMatrix(n);
         if (n.mesh >= 0 && n.mesh < static_cast<int>(meshPrims.size())) node.meshes = meshPrims[n.mesh];
+        // A skinned mesh node (has both mesh and skin): tag its meshes with the
+        // skeleton they bind to, so Instantiate attaches a SkeletalComponent.
+        if (n.skin >= 0 && n.mesh >= 0 && n.mesh < static_cast<int>(meshPrims.size()))
+            for (int mp : meshPrims[n.mesh])
+                if (mp >= 0 && mp < static_cast<int>(out.meshes.size())) out.meshes[mp].skinIndex = n.skin;
         const int lightIdx = NodeLightIndex(n);
         if (lightIdx >= 0 && lightIdx < static_cast<int>(out.lights.size())) node.lights.push_back(lightIdx);
+        if (auto it = animByNode.find(nodeIdx); it != animByNode.end()) node.animations = std::move(it->second);
         for (int c : n.children)
             if (c >= 0 && c < static_cast<int>(model.nodes.size())) node.children.push_back(buildNode(c));
         return node;

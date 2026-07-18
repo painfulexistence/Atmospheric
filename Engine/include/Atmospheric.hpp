@@ -24,6 +24,8 @@
 #include "Atmospheric/rmlui_manager.hpp"
 #include "Atmospheric/scene_loader.hpp"
 #include "Atmospheric/shape_renderer_component.hpp"
+#include "Atmospheric/skeletal_component.hpp"
+#include "Atmospheric/skeleton.hpp"
 #include "Atmospheric/spline.hpp"
 #include "Atmospheric/sprite_3d_component.hpp"
 #include "Atmospheric/sprite_component.hpp"

@@ -218,6 +218,9 @@ void AssetManager::ClearSceneAssets() {
     _ownedMeshIDs.clear();
     _nextMeshID = 1;
 
+    _skeletons.clear();
+    _skeletonCache.clear();
+
     _imageCache.clear();
     _sceneJsons.clear();
 }
@@ -440,6 +443,7 @@ void AssetManager::LoadDefaultShaders() {
           // the animation texture, then reuses pbr.frag for identical shading.
           // The depth variants let VAT meshes cast animation-matching shadows.
           { "vat", { .vert = "assets/shaders/vat.vert", .frag = "assets/shaders/pbr.frag" } },
+          { "skinned", { .vert = "assets/shaders/skinned.vert", .frag = "assets/shaders/pbr.frag" } },
           { "vat_depth", { .vert = "assets/shaders/vat_depth.vert", .frag = "assets/shaders/depth_simple.frag" } },
           { "vat_depth_cubemap",
             { .vert = "assets/shaders/vat_depth_cubemap.vert", .frag = "assets/shaders/depth_cubemap.frag" } },
@@ -598,6 +602,26 @@ VATMaterial* AssetManager::CreateVATMaterial() {
     materials.push_back(std::move(material));
     _materialCache["vat_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
     return ptr;
+}
+
+SkinnedMaterial* AssetManager::CreateSkinnedMaterial() {
+    auto material = std::make_unique<SkinnedMaterial>();
+    auto* ptr = material.get();
+    materials.push_back(std::move(material));
+    _materialCache["skinned_" + std::to_string(_nextMaterialID++)] = _nextMaterialID;
+    return ptr;
+}
+
+SkeletonHandle AssetManager::CreateSkeleton(const std::string& name, Skeleton skeleton) {
+    _skeletons.push_back(std::make_unique<Skeleton>(std::move(skeleton)));
+    const uint32_t id = static_cast<uint32_t>(_skeletons.size());// handle = index + 1
+    if (!name.empty()) _skeletonCache[name] = id;
+    return SkeletonHandle(id);
+}
+
+const Skeleton* AssetManager::GetSkeleton(SkeletonHandle handle) const {
+    if (!handle.IsValid() || handle.id > _skeletons.size()) return nullptr;
+    return _skeletons[handle.id - 1].get();
 }
 
 VoxelMaterial* AssetManager::CreateVoxelMaterial() {

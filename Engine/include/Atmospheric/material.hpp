@@ -277,6 +277,24 @@ public:
     }
 };
 
+// Material for a GPU-skinned mesh (linear blend skinning). Carries the per-frame
+// joint-matrix palette as a "bone_map" texture (RGBA32F, 4 texels per joint =
+// the mat4 columns) plus the joint count; SkeletalComponent recomputes and
+// re-uploads it each frame and points the material at the current texture. The
+// renderer selects the "skinned" shader (skinned.vert + pbr.frag) when a
+// material casts to this type, so it is a PBRMaterial and all surface/PBR fields
+// still apply.
+class SkinnedMaterial : public PBRMaterial {
+public:
+    uint32_t boneTexture = 0;// GfxFactory RGBA32F palette (GL handle / synthetic id); 0 = not ready
+    int jointCount = 0;
+
+    SkinnedMaterial() : PBRMaterial(MaterialProps{}) {
+    }
+    explicit SkinnedMaterial(const MaterialProps& props) : PBRMaterial(props) {
+    }
+};
+
 // One detail texture layer of a terrain, blended by splat-map weight (or by
 // the automatic slope/height weights when no splat map is set).
 struct TerrainLayer {

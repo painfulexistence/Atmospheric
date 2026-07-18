@@ -1,4 +1,6 @@
 #pragma once
+#include "animation_clip.hpp"
+#include "skeleton.hpp"
 #include "vertex.hpp"
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
@@ -91,6 +93,10 @@ struct PrefabCollider {
 struct MeshData {
     std::vector<Vertex> vertices;
     std::vector<uint16_t> indices;
+    // Parallel skinning attributes (same length/order as `vertices`) when this
+    // mesh is skinned; empty otherwise. `skinIndex` selects Prefab::skeletons.
+    std::vector<SkinVertex> skinVertices;
+    int skinIndex = -1;// -1 = static; else index into Prefab::skeletons
     std::string material;// resolve-by-name (.map texture name)
     int materialIndex = -1;// index into Prefab::materials (gltf/usd)
     // .map classic/Valve220 UVs are authored in *texels*; Instantiate divides by
@@ -103,6 +109,15 @@ struct MeshData {
 // (indices into the Prefab's flat arrays), and children. For .map entities,
 // classname/properties carry the full key/value block (point entities included,
 // e.g. info_player_start), so gameplay code can query spawn data pre-instantiate.
+// A named node-animation clip's tracks for the owning node: the node's local
+// TRS keyframes from one glTF/USD animation (translation → Position, rotation →
+// RotationQuat, scale → Scale). Instantiate turns these into an ActionTimeline
+// on the node's GameObject. Skinned (skeletal) animation is separate.
+struct PrefabNodeClip {
+    std::string name;
+    std::vector<ActionTrack> tracks;
+};
+
 struct PrefabNode {
     std::string name;
     glm::mat4 transform{ 1.0f };
@@ -111,7 +126,14 @@ struct PrefabNode {
     std::vector<int> lights;
     std::string classname;// .map entity classname ("" otherwise)
     std::unordered_map<std::string, std::string> properties;// .map key/values
+    std::vector<PrefabNodeClip> animations;// per-clip local-TRS tracks for this node
     std::vector<PrefabNode> children;
+};
+
+// A skeletal animation clip plus the skin it drives (index into Prefab::skeletons).
+struct PrefabSkeletonClip {
+    int skin = 0;
+    SkeletonClip clip;
 };
 
 struct Prefab {
@@ -120,6 +142,8 @@ struct Prefab {
     std::vector<PrefabImage> images;
     std::vector<PrefabLight> lights;
     std::vector<PrefabCollider> colliders;
+    std::vector<Skeleton> skeletons;// skinned-mesh bind data (usually one)
+    std::vector<PrefabSkeletonClip> skeletonClips;// skeletal animations
     PrefabNode root;
     bool ok = false;
 
