@@ -1,9 +1,9 @@
-#include <cstddef>
 #include "mesh.hpp"
 #include "asset_manager.hpp"
 #include "config.hpp"
 #include "gfx_factory.hpp"
 #include "graphics_subsystem.hpp"
+#include <cstddef>
 
 // Frustum culling (GraphicsSubsystem::Render) transforms this AABB to world
 // space and p-vertex-tests it against the view frustum; without it a mesh

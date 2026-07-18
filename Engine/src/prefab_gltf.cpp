@@ -19,9 +19,9 @@
 #include "file_system.hpp"
 #include "prefab.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <algorithm>
 #include <functional>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -349,8 +349,8 @@ Prefab ImportGLTFPrefab(const std::string& path) {
         for (size_t i = 0; i < acc.count; ++i) {
             const uint8_t* p = base + i * stride;
             for (int k = 0; k < 4; ++k)
-                o[i][k] = u16 ? static_cast<int>(*reinterpret_cast<const uint16_t*>(p + k * comp))
-                              : static_cast<int>(p[k]);
+                o[i][k] =
+                    u16 ? static_cast<int>(*reinterpret_cast<const uint16_t*>(p + k * comp)) : static_cast<int>(p[k]);
         }
         return o;
     };
@@ -374,8 +374,7 @@ Prefab ImportGLTFPrefab(const std::string& path) {
             if (prim.attributes.contains("TANGENT"))
                 tangents4 = readFloat4(model.accessors[prim.attributes.at("TANGENT")]);
 
-            const bool primSkinned =
-                prim.attributes.contains("JOINTS_0") && prim.attributes.contains("WEIGHTS_0");
+            const bool primSkinned = prim.attributes.contains("JOINTS_0") && prim.attributes.contains("WEIGHTS_0");
             std::vector<glm::ivec4> jointIdx;
             std::vector<glm::vec4> jointWt;
             if (primSkinned) {
@@ -459,7 +458,8 @@ Prefab ImportGLTFPrefab(const std::string& path) {
         const size_t stride = bv.byteStride ? bv.byteStride : sizeof(float);
         const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
         std::vector<float> o(acc.count);
-        for (size_t i = 0; i < acc.count; ++i) o[i] = *reinterpret_cast<const float*>(base + i * stride);
+        for (size_t i = 0; i < acc.count; ++i)
+            o[i] = *reinterpret_cast<const float*>(base + i * stride);
         return o;
     };
     auto readMat4 = [&](const tinygltf::Accessor& acc) {
@@ -486,7 +486,8 @@ Prefab ImportGLTFPrefab(const std::string& path) {
         Skeleton skel;
         skel.name = sk.name;
         std::unordered_map<int, int> localNodeToJoint;
-        for (size_t ji = 0; ji < sk.joints.size(); ++ji) localNodeToJoint[sk.joints[ji]] = static_cast<int>(ji);
+        for (size_t ji = 0; ji < sk.joints.size(); ++ji)
+            localNodeToJoint[sk.joints[ji]] = static_cast<int>(ji);
         std::vector<glm::mat4> ibm;
         if (sk.inverseBindMatrices >= 0) ibm = readMat4(model.accessors[sk.inverseBindMatrices]);
         // NOTE: assumes glTF lists joints parent-before-child (the common case),
@@ -497,12 +498,14 @@ Prefab ImportGLTFPrefab(const std::string& path) {
             Joint joint;
             joint.name = jn.name;
             if (jn.translation.size() == 3)
-                joint.bindTranslation = { (float)jn.translation[0], (float)jn.translation[1], (float)jn.translation[2] };
-            if (jn.scale.size() == 3)
-                joint.bindScale = { (float)jn.scale[0], (float)jn.scale[1], (float)jn.scale[2] };
+                joint.bindTranslation = { (float)jn.translation[0],
+                                          (float)jn.translation[1],
+                                          (float)jn.translation[2] };
+            if (jn.scale.size() == 3) joint.bindScale = { (float)jn.scale[0], (float)jn.scale[1], (float)jn.scale[2] };
             if (jn.rotation.size() == 4)// glTF quat is (x,y,z,w); glm::quat is (w,x,y,z)
-                joint.bindRotation =
-                    glm::quat((float)jn.rotation[3], (float)jn.rotation[0], (float)jn.rotation[1], (float)jn.rotation[2]);
+                joint.bindRotation = glm::quat(
+                    (float)jn.rotation[3], (float)jn.rotation[0], (float)jn.rotation[1], (float)jn.rotation[2]
+                );
             joint.inverseBind = (ji < ibm.size()) ? ibm[ji] : glm::mat4(1.0f);
             auto pit = localNodeToJoint.find(nodeParent[nodeIdx]);
             joint.parent = (pit != localNodeToJoint.end()) ? pit->second : -1;
@@ -592,9 +595,8 @@ Prefab ImportGLTFPrefab(const std::string& path) {
             }
             if (track.keys.empty()) continue;
             auto& clips = animByNode[ch.target_node];
-            auto it = std::find_if(clips.begin(), clips.end(), [&](const PrefabNodeClip& c) {
-                return c.name == clipName;
-            });
+            auto it =
+                std::find_if(clips.begin(), clips.end(), [&](const PrefabNodeClip& c) { return c.name == clipName; });
             if (it == clips.end())
                 clips.push_back({ clipName, { std::move(track) } });
             else

@@ -112,8 +112,7 @@ void SkeletalComponent::Evaluate(float time) {
                 }
             }
         }
-        const glm::mat4 local =
-            glm::translate(glm::mat4(1.0f), T) * glm::mat4_cast(R) * glm::scale(glm::mat4(1.0f), S);
+        const glm::mat4 local = glm::translate(glm::mat4(1.0f), T) * glm::mat4_cast(R) * glm::scale(glm::mat4(1.0f), S);
         // Skeleton is topologically ordered, so the parent is already computed.
         _model[j] = (jt.parent >= 0 && jt.parent < static_cast<int>(j)) ? _model[jt.parent] * local : local;
         _palette[j] = _model[j] * jt.inverseBind;
@@ -138,6 +137,8 @@ void SkeletalComponent::UploadPalette() {
 void SkeletalComponent::DrawImGui() {
     // Editor wraps each component in its own CollapsingHeader(GetName()) + PushID.
     const Skeleton* skel = AssetManager::Get().GetSkeleton(_skeleton);
-    ImGui::Text("Joints: %zu   Clip: %s", skel ? skel->JointCount() : 0, _activeName.empty() ? "(bind)" : _activeName.c_str());
+    ImGui::Text(
+        "Joints: %zu   Clip: %s", skel ? skel->JointCount() : 0, _activeName.empty() ? "(bind)" : _activeName.c_str()
+    );
     AnimatorComponent::DrawImGui();
 }

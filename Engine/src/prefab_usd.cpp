@@ -407,10 +407,7 @@ static void DecomposeTRS(const glm::mat4& m, glm::vec3& t, glm::quat& r, glm::ve
 // parent-before-child, matching SkeletalComponent's single-pass accumulation
 // (the UsdSkel convention, and the same assumption the glTF path makes).
 static void FlattenSkelNode(
-    const tinyusdz::tydra::SkelNode& sn,
-    int parentJointId,
-    Skeleton& skel,
-    std::map<std::string, int>& nameToId
+    const tinyusdz::tydra::SkelNode& sn, int parentJointId, Skeleton& skel, std::map<std::string, int>& nameToId
 ) {
     if (sn.joint_id >= 0) {
         if (sn.joint_id >= static_cast<int>(skel.joints.size())) skel.joints.resize(sn.joint_id + 1);
@@ -435,9 +432,8 @@ static void FlattenSkelNode(
 // joint name; resolve each to a joint index via `nameToId` and fold the T/R/S
 // samplers into the joint's channel. A sampler with no time samples but a
 // static value contributes a single key (a posed-but-not-animated joint).
-static SkeletonClip BuildSkeletonClip(
-    const tinyusdz::tydra::Animation& anim, const std::map<std::string, int>& nameToId
-) {
+static SkeletonClip
+    BuildSkeletonClip(const tinyusdz::tydra::Animation& anim, const std::map<std::string, int>& nameToId) {
     using Ch = tinyusdz::tydra::AnimationChannel;
     SkeletonClip clip;
     clip.name = anim.prim_name.empty() ? anim.abs_path : anim.prim_name;
@@ -451,10 +447,14 @@ static SkeletonClip BuildSkeletonClip(
                 for (const auto& smp : ch.translations.samples)
                     jc.translation.push_back({ smp.t, glm::vec3(smp.value[0], smp.value[1], smp.value[2]) });
                 if (ch.translations.samples.empty() && ch.translations.static_value)
-                    jc.translation.push_back({ 0.0f,
-                        glm::vec3(ch.translations.static_value.value()[0],
-                            ch.translations.static_value.value()[1],
-                            ch.translations.static_value.value()[2]) });
+                    jc.translation.push_back(
+                        { 0.0f,
+                          glm::vec3(
+                              ch.translations.static_value.value()[0],
+                              ch.translations.static_value.value()[1],
+                              ch.translations.static_value.value()[2]
+                          ) }
+                    );
             } else if (ctype == Ch::ChannelType::Rotation) {
                 for (const auto& smp : ch.rotations.samples)
                     jc.rotation.push_back({ smp.t, ToGlmQuat(smp.value) });
@@ -464,10 +464,14 @@ static SkeletonClip BuildSkeletonClip(
                 for (const auto& smp : ch.scales.samples)
                     jc.scale.push_back({ smp.t, glm::vec3(smp.value[0], smp.value[1], smp.value[2]) });
                 if (ch.scales.samples.empty() && ch.scales.static_value)
-                    jc.scale.push_back({ 0.0f,
-                        glm::vec3(ch.scales.static_value.value()[0],
-                            ch.scales.static_value.value()[1],
-                            ch.scales.static_value.value()[2]) });
+                    jc.scale.push_back(
+                        { 0.0f,
+                          glm::vec3(
+                              ch.scales.static_value.value()[0],
+                              ch.scales.static_value.value()[1],
+                              ch.scales.static_value.value()[2]
+                          ) }
+                    );
             }
         }
         if (!jc.translation.empty() || !jc.rotation.empty() || !jc.scale.empty())

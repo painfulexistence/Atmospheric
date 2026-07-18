@@ -99,9 +99,7 @@ glm::vec3 SampleVec3Track(const std::vector<Vec3Key>& keys, float t, const glm::
     if (keys.empty()) return fallback;
     if (keys.size() == 1 || t <= keys.front().time) return keys.front().value;
     if (t >= keys.back().time) return keys.back().value;
-    auto hi = std::upper_bound(keys.begin(), keys.end(), t, [](float time, const Vec3Key& k) {
-        return time < k.time;
-    });
+    auto hi = std::upper_bound(keys.begin(), keys.end(), t, [](float time, const Vec3Key& k) { return time < k.time; });
     const Vec3Key& b = *hi;
     const Vec3Key& a = *(hi - 1);
     const float span = b.time - a.time;
@@ -113,9 +111,7 @@ glm::quat SampleQuatTrack(const std::vector<QuatKey>& keys, float t, const glm::
     if (keys.empty()) return fallback;
     if (keys.size() == 1 || t <= keys.front().time) return keys.front().value;
     if (t >= keys.back().time) return keys.back().value;
-    auto hi = std::upper_bound(keys.begin(), keys.end(), t, [](float time, const QuatKey& k) {
-        return time < k.time;
-    });
+    auto hi = std::upper_bound(keys.begin(), keys.end(), t, [](float time, const QuatKey& k) { return time < k.time; });
     const QuatKey& b = *hi;
     const QuatKey& a = *(hi - 1);
     const float span = b.time - a.time;
