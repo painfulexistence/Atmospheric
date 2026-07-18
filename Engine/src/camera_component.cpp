@@ -95,6 +95,25 @@ glm::mat4 CameraComponent::GetProjectionMatrix() {
     return _projectionMatrix;
 }
 
+// Exact bit compare — GetViewMatrix() returns identical bits when the
+// GameObject transform and yaw/pitch haven't changed, so a mismatch on any
+// element means the camera actually moved.
+static bool MatBitsEqual(const glm::mat4& a, const glm::mat4& b) {
+    for (int c = 0; c < 4; ++c)
+        for (int r = 0; r < 4; ++r)
+            if (a[c][r] != b[c][r]) return false;
+    return true;
+}
+
+const Frustum& CameraComponent::GetViewFrustum() {
+    const glm::mat4 vp = GetProjectionMatrix() * GetViewMatrix();
+    if (!_cachedFrustum || !MatBitsEqual(vp, _cachedFrustumVP)) {
+        _cachedFrustum.emplace(vp);
+        _cachedFrustumVP = vp;
+    }
+    return *_cachedFrustum;
+}
+
 glm::vec3 CameraComponent::GetMoveVector(Axis axis) {
     glm::vec3 dir = GetEyeDirection();
     switch (axis) {

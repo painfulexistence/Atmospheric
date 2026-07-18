@@ -55,20 +55,14 @@ void MeshInstancerComponent::_rebuild() {
     const glm::mat4 goTransform = gameObject ? gameObject->GetTransform() : glm::mat4(1.0f);
     _worldInstances.resize(_props.localTransforms.size());
 
-    // Prototype's local bounding box. Degenerate (all-zero) when the mesh has
-    // no computed bounds; then we bound instance origins directly so the cloud
-    // still gets a finite AABB.
-    std::array<glm::vec3, 8> protoBox{};
-    bool hasProtoBox = false;
+    // Prototype's local AABB. Empty (min == max) when the mesh has no computed
+    // bounds; then we bound instance origins directly so the cloud still gets a
+    // finite AABB.
+    AABB protoBox;
     if (Mesh* mesh = AssetManager::Get().GetMeshPtr(_props.prototype)) {
-        protoBox = mesh->GetBoundingBox();
-        for (const glm::vec3& c : protoBox) {
-            if (c != glm::vec3(0.0f)) {
-                hasProtoBox = true;
-                break;
-            }
-        }
+        protoBox = mesh->GetBounds();
     }
+    const bool hasProtoBox = !protoBox.IsEmpty();
 
     glm::vec3 mn(std::numeric_limits<float>::max());
     glm::vec3 mx(std::numeric_limits<float>::lowest());
@@ -77,11 +71,9 @@ void MeshInstancerComponent::_rebuild() {
         const glm::mat4 world = goTransform * _props.localTransforms[i];
         _worldInstances[i].modelMatrix = world;
         if (hasProtoBox) {
-            for (const glm::vec3& c : protoBox) {
-                const glm::vec3 wc = glm::vec3(world * glm::vec4(c, 1.0f));
-                mn = glm::min(mn, wc);
-                mx = glm::max(mx, wc);
-            }
+            const AABB wb = AABB::Transform(protoBox, world);
+            mn = glm::min(mn, wb.min);
+            mx = glm::max(mx, wb.max);
         } else {
             const glm::vec3 wp = glm::vec3(world[3]);
             mn = glm::min(mn, wp);
@@ -90,15 +82,10 @@ void MeshInstancerComponent::_rebuild() {
         any = true;
     }
     if (!any) {
-        mn = glm::vec3(0.0f);
-        mx = glm::vec3(0.0f);
+        _cloudBounds = {};
+    } else {
+        _cloudBounds = { mn, mx };
     }
-
-    _cloudBounds = {
-        glm::vec3(mn.x, mn.y, mn.z), glm::vec3(mx.x, mn.y, mn.z), glm::vec3(mx.x, mx.y, mn.z),
-        glm::vec3(mn.x, mx.y, mn.z), glm::vec3(mn.x, mn.y, mx.z), glm::vec3(mx.x, mn.y, mx.z),
-        glm::vec3(mx.x, mx.y, mx.z), glm::vec3(mn.x, mx.y, mx.z),
-    };
 
     _cachedGoTransform = goTransform;
     _dirty = false;
@@ -109,7 +96,7 @@ const std::vector<InstanceData>& MeshInstancerComponent::WorldInstances() {
     return _worldInstances;
 }
 
-const std::array<glm::vec3, 8>& MeshInstancerComponent::CloudBounds() {
+const AABB& MeshInstancerComponent::CloudBounds() {
     if (_needsRebuild()) _rebuild();
     return _cloudBounds;
 }

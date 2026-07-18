@@ -10,14 +10,16 @@
 #include <vector>
 
 // ---------------------------------------------------------------------------
-// Axis-aligned bounding box helpers
+// 2D rect helpers (screen-space {x, y, w, h}). Distinct from the engine's
+// 3D AABB in frustum.hpp, which this example pulls in transitively via
+// mesh.hpp.
 // ---------------------------------------------------------------------------
 
-struct AABB {
+struct Rect {
     float x, y, w, h;
 };
 
-inline bool AABBOverlaps(const AABB& a, const AABB& b) {
+inline bool RectOverlaps(const Rect& a, const Rect& b) {
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
@@ -88,7 +90,7 @@ struct Entity {
         return y + h * 0.5f;
     }
 
-    AABB aabb() const {
+    Rect rect() const {
         return { x, y, w, h };
     }
 };

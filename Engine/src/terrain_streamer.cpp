@@ -867,16 +867,7 @@ TerrainStreamer::GrassCell* TerrainStreamer::AcquireGrassCell() {
     auto* mesh = new Mesh(MeshType::GRASS);
     mesh->updateFreq = UpdateFrequency::Dynamic;
     const float c = _props.grassCellSize, top = _props.heightScale + _props.grassBladeHeight;
-    mesh->SetBoundingBox(
-        { { glm::vec3(c, top, c),
-            glm::vec3(0, top, c),
-            glm::vec3(0, 0, c),
-            glm::vec3(c, 0, c),
-            glm::vec3(c, top, 0),
-            glm::vec3(0, top, 0),
-            glm::vec3(0, 0, 0),
-            glm::vec3(c, 0, 0) } }
-    );
+    mesh->SetBounds(glm::vec3(0.0f), glm::vec3(c, top, c));
     mesh->InitGrassInstanced();
     MeshHandle handle = am.CreateMesh(name, mesh);
     mesh->SetMaterial(am.GetMaterialHandle(_grassMaterial));

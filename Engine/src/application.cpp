@@ -39,7 +39,6 @@
 #include "text_2d_component.hpp"
 #include "text_3d_component.hpp"
 #include "transform_component.hpp"
-#include "ui_page_manager.hpp"
 #include "video_recorder.hpp"
 #include "voxel_volume_component.hpp"
 #include "voxel_world_component.hpp"
@@ -264,7 +263,6 @@ Application::Application(AppConfig config) : _config(config) {
 
     _assetManager = std::make_unique<AssetManager>();
     _rmlUi = std::make_unique<RmlUiManager>();
-    _uiPages = std::make_unique<UIPageManager>();
 
     PushLayer(new GameLayer(this));
 #ifndef NDEBUG
@@ -1435,16 +1433,7 @@ GameObject* Application::Instantiate(const Prefab& prefab, GameObject* parent, c
             lo = glm::min(lo, v.position);
             hi = glm::max(hi, v.position);
         }
-        mesh->SetBoundingBox(
-            { glm::vec3(lo.x, lo.y, lo.z),
-              glm::vec3(hi.x, lo.y, lo.z),
-              glm::vec3(lo.x, hi.y, lo.z),
-              glm::vec3(hi.x, hi.y, lo.z),
-              glm::vec3(lo.x, lo.y, hi.z),
-              glm::vec3(hi.x, lo.y, hi.z),
-              glm::vec3(lo.x, hi.y, hi.z),
-              glm::vec3(hi.x, hi.y, hi.z) }
-        );
+        mesh->SetBounds(lo, hi);
         MeshHandle h = am.CreateMesh(fmt::format("{}#{}", baseName, i), mesh);
         if (mat.IsValid())
             if (Mesh* mp = am.GetMeshPtr(h)) mp->SetMaterial(mat);

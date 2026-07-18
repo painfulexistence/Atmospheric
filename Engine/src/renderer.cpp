@@ -268,6 +268,13 @@ void Renderer::SubmitCommand(const RenderCommand& cmd) {
     _commandList.push_back(cmd);
 }
 
+void Renderer::SubmitShadowOnlyCommand(const RenderCommand& cmd) {
+    // Bypass BucketCommands entirely — this queue is drawn only by ShadowPass,
+    // which doesn't consume the sort key. Wrap with a dummy zero key so
+    // BuildBatches's existing (mesh, material) grouping path works unchanged.
+    _shadowOnlyQueue.push_back(SortableCommand{ cmd, 0 });
+}
+
 std::vector<glm::mat4> Renderer::GetAuxViewProjs() {
     // Last frame's aux views (submission runs before the passes). Portal
     // recursion levels plus the water reflection, so the submission side can
@@ -306,6 +313,9 @@ void Renderer::SortAndBucket(const glm::vec3& cameraPos) {
     // _hudQueue.clear(); // Managed separately
     _gizmoQueue.clear();
     _afterOpaqueQueue.clear();
+    // Shadow-only casters are refilled per frame directly (they bypass
+    // BucketCommands), so drop the previous frame's set here.
+    _shadowOnlyQueue.clear();
 
     // Bucket commands based on material properties
     BucketCommands(cameraPos);
@@ -930,6 +940,10 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
         };
         collect(renderer.GetOpaqueQueue());
         collect(renderer.GetTransparentQueue());
+        // Off-screen shadow casters (light-frustum-visible only). Concatenated
+        // last so their ordering doesn't perturb the visible-set drawing;
+        // ShadowPass has no depth-sort requirement.
+        collect(renderer.GetShadowOnlyQueue());
 
         // Light-space VP with the GL [-1,1] → WebGPU [0,1] NDC-z fixup baked
         // in; without it the ortho projection would clip half the depth range.
@@ -1025,12 +1039,16 @@ void ShadowPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 #endif
 
-    // Combine queues for shadow casting
+    // Combine queues for shadow casting. GetShadowOnlyQueue holds casters that
+    // failed the camera frustum test but survive the light frustum — without
+    // this concat they'd stop shadowing the moment they left the view.
     // TODO: Filter out objects that don't cast shadows
     std::vector<Renderer::SortableCommand> shadowCasters;
     for (auto& cmd : renderer.GetOpaqueQueue())
         shadowCasters.push_back(cmd);
     for (auto& cmd : renderer.GetTransparentQueue())
+        shadowCasters.push_back(cmd);
+    for (auto& cmd : renderer.GetShadowOnlyQueue())
         shadowCasters.push_back(cmd);
 
     // Batching for shadow casters

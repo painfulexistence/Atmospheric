@@ -220,12 +220,13 @@ set(SOURCES
     src/rmlui_renderer.cpp
     src/rmlui_system.cpp
     src/rmlui_manager.cpp
-    src/ui_page_manager.cpp
+    src/ui_page_component.cpp
     src/batch_renderer_2d.cpp
     src/physics_subsystem_2d.cpp
     src/rigidbody_2d_component.cpp
     src/mesh_builder.cpp
     src/prefab.cpp
+    src/prefab_map.cpp
     src/prefab_gltf.cpp
     src/prefab_usd.cpp
     src/shape_renderer_component.cpp

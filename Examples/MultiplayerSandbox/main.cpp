@@ -2,11 +2,11 @@
 #include "Atmospheric/gfx_factory.hpp"
 #include "Atmospheric/net_debug_controls.hpp"
 #include "Atmospheric/net_hud.hpp"
-#include "Atmospheric/rmlui_manager.hpp"
 #include "components.hpp"
 #include "game_sim.hpp"
 #include "net_lockstep.hpp"
 
+#include <RmlUi/Core.h>
 #include <cstring>
 #include <ctime>
 
@@ -105,8 +105,8 @@ class NoitaLikeGame : public Application {
     std::vector<uint32_t> _pixels;
     FontHandle _fontID = 0;
 
-    // RmlUi HUD elements.
-    Rml::ElementDocument* _hud = nullptr;
+    // RmlUi HUD (read-only status readout), driven by an engine UIPageComponent.
+    UIPageComponent* _hudPage = nullptr;
     Rml::Element* _elStatus = nullptr;
     Rml::Element* _elHp[2] = { nullptr, nullptr };
     Rml::Element* _elScore[2] = { nullptr, nullptr };
@@ -132,16 +132,18 @@ class NoitaLikeGame : public Application {
             reinterpret_cast<const uint8_t*>(_pixels.data()), SandWorld::W, SandWorld::H, TextureFilter::Nearest
         );
 
-        _hud = RmlUiManager::Get()->LoadDocument("assets/ui/hud.rml");
-        if (_hud) {
-            _hud->Show();
-            _elStatus = _hud->GetElementById("status");
-            _elHp[0] = _hud->GetElementById("p1hp");
-            _elHp[1] = _hud->GetElementById("p2hp");
-            _elScore[0] = _hud->GetElementById("p1score");
-            _elScore[1] = _hud->GetElementById("p2score");
+        // The component loads the document, shows it, and ties its lifetime to
+        // the entity tree; this HUD only reads back element handles to update.
+        _hudPage =
+            static_cast<UIPageComponent*>(CreateGameObject()->AddComponent<UIPageComponent>("assets/ui/hud.rml"));
+        if (_hudPage->GetDocument()) {
+            _elStatus = _hudPage->GetElement("status");
+            _elHp[0] = _hudPage->GetElement("p1hp");
+            _elHp[1] = _hudPage->GetElement("p2hp");
+            _elScore[0] = _hudPage->GetElement("p1score");
+            _elScore[1] = _hudPage->GetElement("p2score");
             for (int i = 0; i < static_cast<int>(SpellType::Count); i++)
-                _elSlots[i] = _hud->GetElementById(fmt::format("slot{}", i));
+                _elSlots[i] = _hudPage->GetElement(fmt::format("slot{}", i));
         }
 
         // Lockstep session: owns net + sim, drives fixed-update loop via OnTick.
@@ -256,7 +258,7 @@ class NoitaLikeGame : public Application {
     }
 
     void UpdateHud() {
-        if (!_hud) return;
+        if (!_hudPage || !_hudPage->GetDocument()) return;
         const GameSim& sim = _netComp->GetSim();
         const LockstepNet& net = _netComp->GetNet();
 
