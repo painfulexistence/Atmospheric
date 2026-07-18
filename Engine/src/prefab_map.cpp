@@ -2,8 +2,8 @@
 // prefab.cpp so each format lives in its own translation unit (cf. prefab_gltf.cpp,
 // prefab_usd.cpp); prefab.cpp keeps only the shared IR helpers and the extension
 // dispatch. .map is static brush geometry — no animation, skinning, or skeletons.
-#include "prefab.hpp"
 #include "file_system.hpp"
+#include "prefab.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
