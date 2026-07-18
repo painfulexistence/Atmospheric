@@ -1900,7 +1900,13 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             // so only the shader handle and a few extra VAT uniforms differ.
             // The lookup is lazy so scenes without VAT never require the shader.
             VATMaterial* vatMat = dynamic_cast<VATMaterial*>(material);
-            ShaderProgram* meshShader = vatMat ? ctx->GetShader("vat") : colorShader;
+            // Skinned meshes swap in the "skinned" vertex shader (GPU linear blend
+            // skinning from the bone-matrix palette); same fragment stage/uniforms
+            // as "color", like VAT. Both are PBRMaterial subclasses so pbrMat below
+            // still drives the surface uniforms.
+            SkinnedMaterial* skinMat = dynamic_cast<SkinnedMaterial*>(material);
+            ShaderProgram* meshShader =
+                skinMat ? ctx->GetShader("skinned") : (vatMat ? ctx->GetShader("vat") : colorShader);
             // Shading-model params now live in the leaf material types (base
             // Material carries only the shared surface inputs).
             auto* pbrMat = dynamic_cast<PBRMaterial*>(material);
@@ -2078,6 +2084,18 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
                 meshShader->SetUniform(std::string("vat_remap"), 0);
                 meshShader->SetUniform(std::string("vat_bounds_min"), glm::vec3(0.0f));
                 meshShader->SetUniform(std::string("vat_bounds_max"), glm::vec3(1.0f));
+            }
+
+            // Skinned meshes: bind the per-frame bone-matrix palette. skinned.vert
+            // treats skin_enabled == 0 as "use static attributes", so a material
+            // whose palette isn't ready degrades to the mesh's bind pose.
+            if (skinMat) {
+                const bool ready = skinMat->boneTexture != 0 && skinMat->jointCount > 0;
+                glActiveTexture(GL_TEXTURE8);
+                glBindTexture(GL_TEXTURE_2D, ready ? skinMat->boneTexture : 0);
+                meshShader->SetUniform(std::string("bone_map"), 8);
+                meshShader->SetUniform(std::string("skin_enabled"), ready ? 1 : 0);
+                meshShader->SetUniform(std::string("joint_count"), ready ? skinMat->jointCount : 0);
             }
 
             glBindVertexArray(mesh->vao);

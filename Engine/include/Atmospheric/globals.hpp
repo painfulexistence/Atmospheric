@@ -264,6 +264,31 @@ struct MeshHandle {
     }
 };
 
+// Handle to a Skeleton asset (joint hierarchy + inverse-bind), owned by
+// AssetManager alongside meshes/materials. Referenced by both the skinned
+// mesh binding (SkinnedMaterial) and the animation side (SkeletalComponent).
+struct SkeletonHandle {
+    static constexpr uint32_t INVALID = 0;
+    uint32_t id = INVALID;
+
+    SkeletonHandle() = default;
+    SkeletonHandle(uint32_t val) : id(val) {
+    }
+
+    bool IsValid() const {
+        return id != INVALID;
+    }
+    bool operator==(const SkeletonHandle& other) const {
+        return id == other.id;
+    }
+    bool operator!=(const SkeletonHandle& other) const {
+        return id != other.id;
+    }
+    operator bool() const noexcept {
+        return IsValid();
+    }
+};
+
 enum class Axis { UP, DOWN, BACK, FRONT, RIGHT, LEFT };
 
 // Canvas layer constants for z-ordering

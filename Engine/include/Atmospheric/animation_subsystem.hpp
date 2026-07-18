@@ -23,15 +23,18 @@ public:
     FlipbookClipHandle AddFlipbook(FlipbookClip clip);
     TimelineHandle AddTimeline(ActionTimeline timeline);
     VATClipHandle AddVATClip(std::string name, std::unique_ptr<VATClip> clip);
+    SkeletonClipHandle AddSkeletonClip(SkeletonClip clip);
 
     const FlipbookClip* GetFlipbook(FlipbookClipHandle h) const;
     const ActionTimeline* GetTimeline(TimelineHandle h) const;
     VATClip* GetVATClip(VATClipHandle h) const;
+    const SkeletonClip* GetSkeletonClip(SkeletonClipHandle h) const;
 
     // By-name lookups (return an invalid handle if absent).
     FlipbookClipHandle FindFlipbook(const std::string& name) const;
     TimelineHandle FindTimeline(const std::string& name) const;
     VATClipHandle FindVATClip(const std::string& name) const;
+    SkeletonClipHandle FindSkeletonClip(const std::string& name) const;
 
     void Clear();
 
@@ -44,10 +47,12 @@ private:
     // across push_back while preserving index access.
     std::deque<FlipbookClip> _flipbooks;// index = handle.id - 1
     std::deque<ActionTimeline> _timelines;
+    std::deque<SkeletonClip> _skeletonClips;
     std::vector<std::unique_ptr<VATClip>> _vatClips;// .get() is already stable
 
     std::unordered_map<std::string, uint32_t> _flipbookByName;
     std::unordered_map<std::string, uint32_t> _timelineByName;
+    std::unordered_map<std::string, uint32_t> _skeletonClipByName;
     std::unordered_map<std::string, uint32_t> _vatByName;
 };
 

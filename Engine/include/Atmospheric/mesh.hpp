@@ -44,6 +44,9 @@ public:
 
     void Initialize(const std::vector<Vertex>& verts);
     void Initialize(const std::vector<Vertex>& verts, const std::vector<uint16_t>& tris);
+    // Attach a parallel per-vertex skinning stream (joints/weights) at attribute
+    // locations 9/10 on this mesh's VAO. Call after Initialize (GL path only).
+    void UploadSkinData(const std::vector<SkinVertex>& skin);
 
     // Dynamic update methods for per-frame geometry (legacy)
     template<typename VertexType>
@@ -115,6 +118,7 @@ public:
 
 private:
     GLuint vbo, ebo;
+    GLuint _skinVbo = 0;// parallel skinning attributes (joints/weights); 0 until UploadSkinData
     GLenum _primitiveType = GL_TRIANGLES;
     AABB _bounds;
 
