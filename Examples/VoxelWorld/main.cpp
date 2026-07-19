@@ -3,6 +3,12 @@
 #include "Atmospheric/voxel_chunk_component.hpp"
 #include "Atmospheric/voxel_world_component.hpp"
 #include "Atmospheric/water_component.hpp"
+#if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
+// SDL_main.h renames main() to SDL_main so SDLActivity/UIKit can invoke it.
+#include "Atmospheric/touch_controls_component.hpp"
+#include <SDL3/SDL_main.h>
+#define VW_MOBILE 1
+#endif
 
 // Camera navigation is CameraController3D; world streaming and rendering are
 // VoxelWorldComponent (both engine-level). Everything demo-specific — water
@@ -15,6 +21,9 @@ class VoxelWorldApp : public Application {
     bool _wireframe = false;
     VoxelWorldComponent* _world = nullptr;
     GameObject* _waterGO = nullptr;
+#ifdef VW_MOBILE
+    TouchControlsComponent* _touchControls = nullptr;
+#endif
 
     void OnInit() override {
         GoScene("main", [this] { OnLoad(); });
@@ -31,6 +40,14 @@ class VoxelWorldApp : public Application {
         mainCamera->gameObject->AddComponent<CameraController3D>(
             /*moveSpeed=*/20.0f, /*lookSpeed=*/1.5f, /*slowMultiplier=*/0.2f, /*fastMultiplier=*/10.0f
         );
+#ifdef VW_MOBILE
+        // Touch overlay: floating joystick (move), drag (look), DIG button.
+        // Speed matches the keyboard controller's base speed — no sprint on
+        // touch, which also keeps the camera behind chunk streaming.
+        _touchControls = static_cast<TouchControlsComponent*>(
+            mainCamera->gameObject->AddComponent<TouchControlsComponent>(/*moveSpeed=*/20.0f, /*lookSpeed=*/2.6f)
+        );
+#endif
 
         auto* worldObj = CreateGameObject();
         _world = static_cast<VoxelWorldComponent*>(worldObj->AddComponent<VoxelWorldComponent>(/*seed=*/1337));
@@ -132,7 +149,13 @@ class VoxelWorldApp : public Application {
                 ConsoleSubsystem::Get()->Info(ssgi->ssgiEnabled ? "GI: SSGI (screen-space)" : "GI: off");
             }
         }
-        if (InputSubsystem::Get()->IsKeyDown(Key::E)) {
+        // Hold E (or the touch DIG button) to dig; aim is the camera's facing,
+        // so keyboard and touch share one code path.
+        bool digHeld = InputSubsystem::Get()->IsKeyDown(Key::E);
+#ifdef VW_MOBILE
+        digHeld = digHeld || (_touchControls && _touchControls->IsActionHeld());
+#endif
+        if (digHeld) {
             const glm::vec3 ro = mainCamera->GetEyePosition();
             const glm::vec3 rd = mainCamera->GetEyeDirection();
             glm::vec3 hit;

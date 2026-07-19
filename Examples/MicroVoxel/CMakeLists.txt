@@ -58,10 +58,6 @@ if(EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/ui
             ${EM_PRELOAD_STAGING_DIR}/ui
-        COMMAND ${CMAKE_COMMAND}
-            -Dsrc=${CMAKE_CURRENT_SOURCE_DIR}/assets/ui
-            -Ddst=${EM_PRELOAD_STAGING_DIR}/ui
-            -P ${CMAKE_SOURCE_DIR}/cmake/copy_if_exists.cmake
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/Engine/default_assets/textures
             ${EM_PRELOAD_STAGING_DIR}/textures

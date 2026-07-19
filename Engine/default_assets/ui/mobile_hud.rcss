@@ -34,7 +34,7 @@ div {
     background-color: #ffffff64;
 }
 
-#dig_btn {
+#action_btn {
     position: absolute;
     text-align: center;
     color: #ffffffc8;
@@ -43,7 +43,7 @@ div {
     border-color: #ffffff5a;
 }
 
-#dig_btn.pressed {
+#action_btn.pressed {
     background-color: #4fd1c58c;
     border-color: #4fd1c5;
     color: #10141c;

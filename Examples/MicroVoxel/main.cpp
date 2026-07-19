@@ -5,7 +5,7 @@
 #include "Atmospheric/window.hpp"
 #if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
 // SDL_main.h renames main() to SDL_main so SDLActivity/UIKit can invoke it.
-#include "touch_controls.hpp"
+#include "Atmospheric/touch_controls_component.hpp"
 #include <SDL3/SDL_main.h>
 #define MV_MOBILE 1
 #endif
@@ -133,7 +133,7 @@ class MicroVoxelApp : public Application {
         // same code serves keyboard and touch.
         bool digHeld = input->IsKeyDown(Key::E);
 #ifdef MV_MOBILE
-        digHeld = digHeld || (_touchControls && _touchControls->IsDigHeld());
+        digHeld = digHeld || (_touchControls && _touchControls->IsActionHeld());
 #endif
         if (digHeld && !_carveTargets.empty()) {
             const glm::vec3 ro = mainCamera->GetEyePosition();

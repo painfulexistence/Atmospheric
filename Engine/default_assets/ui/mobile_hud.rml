@@ -1,0 +1,20 @@
+<rml>
+<head>
+    <title>mobile_hud</title>
+    <link type="text/rcss" href="mobile_hud.rcss"/>
+</head>
+<!-- Transparent touch overlay for TouchControlsComponent
+     (Engine/include/Atmospheric/touch_controls_component.hpp). Everything
+     here is visual only: finger classification and hit-testing live in the
+     component, which also drives the joystick's position, the action
+     button's label/pressed state, and all sizes (screen-fraction layout).
+     pointer-events is disabled document-wide so the overlay never captures
+     RmlUi's (single, mouse-synthesized) cursor. -->
+<body id="mobile_hud">
+    <div id="crosshair">+</div>
+    <div id="vjoy_base">
+        <div id="vjoy_knob"/>
+    </div>
+    <div id="action_btn">DIG</div>
+</body>
+</rml>
