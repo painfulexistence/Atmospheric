@@ -1,6 +1,7 @@
 #pragma once
 #include "config.hpp"
 #include "globals.hpp"
+#include <cstdint>
 #include <functional>
 #include <unordered_map>
 
@@ -107,6 +108,12 @@ using KeyPressCallback = std::function<void(Key, int)>;
 using KeyReleaseCallback = std::function<void(Key, int)>;
 using ViewportResizeCallback = std::function<void(int, int)>;
 using FramebufferResizeCallback = std::function<void(int, int)>;
+// Touch contact events (fingerId, x, y). Coordinates are physical/framebuffer
+// pixels — the same space as GetMousePosition(). Unlike the synthesized mouse
+// (which only mirrors the first finger), these report every finger, which is
+// what virtual joysticks + simultaneous look-drag need. Only the SDL backend
+// emits them (touchscreens); the GLFW/web backend registers but never fires.
+using TouchCallback = std::function<void(int64_t, float, float)>;
 
 using WindowEventCallbackID = uint32_t;
 
@@ -150,6 +157,9 @@ public:
     WindowEventCallbackID AddKeyReleaseCallback(KeyReleaseCallback callback);
     WindowEventCallbackID AddViewportResizeCallback(ViewportResizeCallback callback);
     WindowEventCallbackID AddFramebufferResizeCallback(FramebufferResizeCallback callback);
+    WindowEventCallbackID AddTouchDownCallback(TouchCallback callback);
+    WindowEventCallbackID AddTouchMoveCallback(TouchCallback callback);
+    WindowEventCallbackID AddTouchUpCallback(TouchCallback callback);
     void RemoveMouseMoveCallback(WindowEventCallbackID id);
     void RemoveMouseEnterCallback(WindowEventCallbackID id);
     void RemoveMouseLeaveCallback(WindowEventCallbackID id);
@@ -157,6 +167,9 @@ public:
     void RemoveKeyReleaseCallback(WindowEventCallbackID id);
     void RemoveViewportResizeCallback(WindowEventCallbackID id);
     void RemoveFramebufferResizeCallback(WindowEventCallbackID id);
+    void RemoveTouchDownCallback(WindowEventCallbackID id);
+    void RemoveTouchMoveCallback(WindowEventCallbackID id);
+    void RemoveTouchUpCallback(WindowEventCallbackID id);
     void RemoveAllEventCallbacks();
 
     glm::vec2 GetMousePosition();
@@ -217,4 +230,7 @@ private:
     std::unordered_map<WindowEventCallbackID, KeyReleaseCallback> _keyReleaseCallbacks;
     std::unordered_map<WindowEventCallbackID, ViewportResizeCallback> _viewportResizeCallbacks;
     std::unordered_map<WindowEventCallbackID, FramebufferResizeCallback> _framebufferResizeCallbacks;
+    std::unordered_map<WindowEventCallbackID, TouchCallback> _touchDownCallbacks;
+    std::unordered_map<WindowEventCallbackID, TouchCallback> _touchMoveCallbacks;
+    std::unordered_map<WindowEventCallbackID, TouchCallback> _touchUpCallbacks;
 };
