@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "HelloWorld-Android"
+rootProject.name = "3DBasics-Android"
 include(":app")

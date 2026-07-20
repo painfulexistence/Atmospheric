@@ -1,11 +1,26 @@
 import java.io.BufferedInputStream
 import java.io.FileOutputStream
 import java.net.URI
+import java.util.Properties
 import java.util.zip.ZipInputStream
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+// Release signing, kept out of the repo: put an upload keystore + a
+// keystore.properties next to settings.gradle.kts (both gitignored):
+//   storeFile=upload-keystore.jks   (path relative to platforms/android/)
+//   storePassword=...
+//   keyAlias=upload
+//   keyPassword=...
+// Without the file, release builds stay unsigned (CI/library use).
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
 }
 
 val downloadSDLJavaSources = tasks.register("downloadSDLJavaSources") {
@@ -58,14 +73,14 @@ val copyAssetsTask = tasks.register<Copy>("copyAssetsForAndroid") {
 }
 
 android {
-    namespace = "com.atmospheric.helloworld"
-    compileSdk = 34
+    namespace = "com.atmospheric.threedbasics"
+    compileSdk = 35
     ndkVersion = "29.0.13113456"
 
     defaultConfig {
-        applicationId = "com.atmospheric.helloworld"
+        applicationId = "com.atmospheric.threedbasics"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
 
@@ -92,10 +107,24 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                storeFile = rootProject.file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

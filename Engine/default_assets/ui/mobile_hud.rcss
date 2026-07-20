@@ -1,0 +1,50 @@
+body {
+    font-family: Noto Sans;
+    width: 100%;
+    height: 100%;
+    /* Never capture the synthesized mouse — all input handling is done from
+       raw touches in TouchControlsComponent. */
+    pointer-events: none;
+}
+
+/* RmlUi defaults <div> to display:inline (unlike HTML). */
+div {
+    display: block;
+}
+
+/* Sizes and positions of the controls are set at runtime by
+   TouchControlsComponent (as fractions of the screen, so they stay
+   thumb-sized on every density); only colors/shape live here. */
+
+#crosshair {
+    position: absolute;
+    text-align: center;
+    color: #ffffff8c;
+}
+
+#vjoy_base {
+    position: absolute;
+    background-color: #10141c3c;
+    border-width: 2px;
+    border-color: #ffffff46;
+}
+
+#vjoy_knob {
+    position: absolute;
+    background-color: #ffffff64;
+}
+
+#action_btn {
+    position: absolute;
+    text-align: center;
+    color: #ffffffc8;
+    background-color: #10141c50;
+    border-width: 2px;
+    border-color: #ffffff5a;
+}
+
+#action_btn.pressed {
+    background-color: #4fd1c58c;
+    border-color: #4fd1c5;
+    color: #10141c;
+}

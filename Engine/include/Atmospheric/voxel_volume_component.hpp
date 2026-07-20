@@ -46,8 +46,10 @@ public:
     }
 
     // Grid config (gridDim must be a multiple of brickDim; Generate enforces it).
-#ifdef __EMSCRIPTEN__
-    int gridDim = 192;// 9.6 m at 5 cm voxels (WebGL2 fragment raymarch is pricier per pixel)
+#if defined(__EMSCRIPTEN__) || defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
+    // 9.6 m at 5 cm voxels — WebGL2 and mobile GLES fragment raymarch is
+    // pricier per pixel, and phones also pay 3D-texture memory for each volume.
+    int gridDim = 192;
 #else
     int gridDim = 256;// 12.8 m at 5 cm voxels
 #endif

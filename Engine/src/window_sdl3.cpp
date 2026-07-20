@@ -349,6 +349,26 @@ void Window::MainLoop(std::function<void(float, float)> callback) {
                     callback(ConvertFromSdlKey(event.key.scancode), event.key.mod);
                 }
                 break;
+            case SDL_EVENT_FINGER_DOWN:
+            case SDL_EVENT_FINGER_MOTION:
+            case SDL_EVENT_FINGER_UP:
+            case SDL_EVENT_FINGER_CANCELED: {
+                // tfinger.x/y are normalized [0,1] across the window; deliver
+                // physical pixels to match GetMousePosition()'s space. A canceled
+                // finger (palm rejection, gesture takeover) is reported as up so
+                // listeners never leak a stuck contact.
+                const ImageSize size = ctx.window->GetPhysicalSize();
+                const auto fingerId = static_cast<int64_t>(event.tfinger.fingerID);
+                const float x = event.tfinger.x * static_cast<float>(size.width);
+                const float y = event.tfinger.y * static_cast<float>(size.height);
+                const auto& callbacks = (event.type == SDL_EVENT_FINGER_DOWN)     ? ctx.window->_touchDownCallbacks
+                                        : (event.type == SDL_EVENT_FINGER_MOTION) ? ctx.window->_touchMoveCallbacks
+                                                                                  : ctx.window->_touchUpCallbacks;
+                for (auto [id, callback] : callbacks) {
+                    callback(fingerId, x, y);
+                }
+                break;
+            }
             }
         }
 
@@ -616,6 +636,21 @@ WindowEventCallbackID Window::AddFramebufferResizeCallback(FramebufferResizeCall
     return _nextCallbackID++;
 }
 
+WindowEventCallbackID Window::AddTouchDownCallback(TouchCallback callback) {
+    _touchDownCallbacks[_nextCallbackID] = callback;
+    return _nextCallbackID++;
+}
+
+WindowEventCallbackID Window::AddTouchMoveCallback(TouchCallback callback) {
+    _touchMoveCallbacks[_nextCallbackID] = callback;
+    return _nextCallbackID++;
+}
+
+WindowEventCallbackID Window::AddTouchUpCallback(TouchCallback callback) {
+    _touchUpCallbacks[_nextCallbackID] = callback;
+    return _nextCallbackID++;
+}
+
 void Window::RemoveMouseMoveCallback(WindowEventCallbackID id) {
     _mouseMoveCallbacks.erase(id);
 }
@@ -644,6 +679,18 @@ void Window::RemoveFramebufferResizeCallback(WindowEventCallbackID id) {
     _framebufferResizeCallbacks.erase(id);
 }
 
+void Window::RemoveTouchDownCallback(WindowEventCallbackID id) {
+    _touchDownCallbacks.erase(id);
+}
+
+void Window::RemoveTouchMoveCallback(WindowEventCallbackID id) {
+    _touchMoveCallbacks.erase(id);
+}
+
+void Window::RemoveTouchUpCallback(WindowEventCallbackID id) {
+    _touchUpCallbacks.erase(id);
+}
+
 void Window::RemoveAllEventCallbacks() {
     _mouseMoveCallbacks.clear();
     _mouseEnterCallbacks.clear();
@@ -652,6 +699,9 @@ void Window::RemoveAllEventCallbacks() {
     _keyReleaseCallbacks.clear();
     _viewportResizeCallbacks.clear();
     _framebufferResizeCallbacks.clear();
+    _touchDownCallbacks.clear();
+    _touchMoveCallbacks.clear();
+    _touchUpCallbacks.clear();
 }
 
 bool Window::IsWebGPUAvailable() {

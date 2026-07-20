@@ -1,22 +1,34 @@
 set(GAME_NAME MicroVoxel)
+set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 
 find_package(glm CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(Bullet CONFIG REQUIRED)
 
-add_executable(${GAME_NAME}
-    main.cpp
-)
-set_target_properties(${GAME_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}
-)
+if(ANDROID)
+    # Shared library loaded by SDLActivity (see platforms/android). Deliberately
+    # NOT named "main": the Gradle build configures the whole repo, and 3DBasics
+    # already defines a "main" target on Android — duplicate target names abort
+    # the configure. MainActivity.getLibraries() must return this exact name.
+    set(GAME_TARGET ${GAME_NAME})
+    add_library(${GAME_TARGET} SHARED main.cpp)
+elseif(IOS)
+    set(GAME_TARGET ${GAME_NAME})
+    add_executable(${GAME_TARGET} MACOSX_BUNDLE main.cpp)
+else()
+    set(GAME_TARGET ${GAME_NAME})
+    add_executable(${GAME_TARGET} main.cpp)
+    set_target_properties(${GAME_TARGET} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${GAME_NAME}
+    )
+endif()
 
-target_include_directories(${GAME_NAME} PRIVATE
+target_include_directories(${GAME_TARGET} PRIVATE
     ${CMAKE_SOURCE_DIR}/Engine/include
 )
 
 # Base dependencies (available on all platforms)
-target_link_libraries(${GAME_NAME} PRIVATE
+target_link_libraries(${GAME_TARGET} PRIVATE
     AtmosphericEngine
     glm::glm
     fmt::fmt
@@ -73,22 +85,39 @@ if(EMSCRIPTEN)
     endif()
 else()
     # ── Native build ─────────────────────────────────────────────────────────
-    find_package(spdlog CONFIG REQUIRED)
-    find_package(glad CONFIG REQUIRED)
+    if(NOT IOS)
+        find_package(spdlog CONFIG REQUIRED)
+        find_package(glad CONFIG REQUIRED)
+        target_link_libraries(${GAME_TARGET} PRIVATE glad::glad spdlog::spdlog raudio)
+    endif()
 
-    target_link_libraries(${GAME_NAME} PRIVATE
-        glad::glad
-        spdlog::spdlog
-        raudio
-        SDL3::SDL3
-    )
+    target_link_libraries(${GAME_TARGET} PRIVATE SDL3::SDL3)
 endif()
 
 # ── Asset sync ───────────────────────────────────────────────────────────────
-set(GAME_ASSETS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/assets)
-ae_copy_engine_assets(${GAME_NAME})
-ae_copy_game_assets(${GAME_NAME} "${GAME_ASSETS_DIR}")
-ae_convert_textures(${GAME_NAME}
+ae_copy_engine_assets(${GAME_TARGET})
+ae_copy_game_assets(${GAME_TARGET} "${GAME_ASSETS_DIR}")
+ae_convert_textures(${GAME_TARGET}
     "${GAME_ASSETS_DIR}/textures"
-    "$<TARGET_FILE_DIR:${GAME_NAME}>/assets/textures"
+    "$<TARGET_FILE_DIR:${GAME_TARGET}>/assets/textures"
 )
+
+if(ANDROID)
+    # Automatically copy SDL3 Java sources from the fetched dependency to Gradle source sets
+    include(FetchContent)
+    FetchContent_GetProperties(SDL3)
+    set(SDL3_JAVA_SRC_DIR "")
+    if(sdl3_SOURCE_DIR)
+        set(SDL3_JAVA_SRC_DIR "${sdl3_SOURCE_DIR}/android-project/app/src/main/java/org")
+    elseif(SDL3_SOURCE_DIR)
+        set(SDL3_JAVA_SRC_DIR "${SDL3_SOURCE_DIR}/android-project/app/src/main/java/org")
+    endif()
+
+    if(SDL3_JAVA_SRC_DIR AND EXISTS "${SDL3_JAVA_SRC_DIR}")
+        message(STATUS "Android CMake: Copying SDL3 Java sources from ${SDL3_JAVA_SRC_DIR}")
+        file(COPY "${SDL3_JAVA_SRC_DIR}"
+             DESTINATION "${CMAKE_CURRENT_SOURCE_DIR}/platforms/android/app/src/main/java")
+    else()
+        message(WARNING "Android CMake: SDL3 Java sources not found at '${SDL3_JAVA_SRC_DIR}'!")
+    endif()
+endif()
