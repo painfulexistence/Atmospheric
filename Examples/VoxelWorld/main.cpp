@@ -7,7 +7,6 @@
 // SDL_main.h renames main() to SDL_main so SDLActivity/UIKit can invoke it.
 #include "Atmospheric/touch_controls_component.hpp"
 #include <SDL3/SDL_main.h>
-#define VW_MOBILE 1
 #endif
 
 // Camera navigation is CameraController3D; world streaming and rendering are
@@ -21,7 +20,7 @@ class VoxelWorldApp : public Application {
     bool _wireframe = false;
     VoxelWorldComponent* _world = nullptr;
     GameObject* _waterGO = nullptr;
-#ifdef VW_MOBILE
+#if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     TouchControlsComponent* _touchControls = nullptr;
 #endif
 
@@ -40,7 +39,7 @@ class VoxelWorldApp : public Application {
         mainCamera->gameObject->AddComponent<CameraController3D>(
             /*moveSpeed=*/20.0f, /*lookSpeed=*/1.5f, /*slowMultiplier=*/0.2f, /*fastMultiplier=*/10.0f
         );
-#ifdef VW_MOBILE
+#if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
         // Touch overlay: floating joystick (move), drag (look), DIG button.
         // Speed matches the keyboard controller's base speed — no sprint on
         // touch, which also keeps the camera behind chunk streaming.
@@ -152,7 +151,7 @@ class VoxelWorldApp : public Application {
         // Hold E (or the touch DIG button) to dig; aim is the camera's facing,
         // so keyboard and touch share one code path.
         bool digHeld = InputSubsystem::Get()->IsKeyDown(Key::E);
-#ifdef VW_MOBILE
+#if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
         digHeld = digHeld || (_touchControls && _touchControls->IsActionHeld());
 #endif
         if (digHeld) {

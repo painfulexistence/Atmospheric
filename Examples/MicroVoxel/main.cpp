@@ -7,7 +7,6 @@
 // SDL_main.h renames main() to SDL_main so SDLActivity/UIKit can invoke it.
 #include "Atmospheric/touch_controls_component.hpp"
 #include <SDL3/SDL_main.h>
-#define MV_MOBILE 1
 #endif
 
 // Micro voxel rendering demo: a raymarched 12.8m diorama of 5cm voxels
@@ -20,7 +19,7 @@ class MicroVoxelApp : public Application {
     using Application::Application;
 
     std::vector<VoxelVolumeComponent*> _carveTargets;// volumes the E key / DIG button can dig into
-#ifdef MV_MOBILE
+#if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     TouchControlsComponent* _touchControls = nullptr;
 #endif
 
@@ -83,7 +82,7 @@ class MicroVoxelApp : public Application {
         mainCamera->Yaw(glm::radians(-90.0f));
         mainCamera->Pitch(glm::radians(-16.0f));
         mainCamera->gameObject->AddComponent<CameraController3D>(/*moveSpeed=*/6.0f, /*lookSpeed=*/1.5f);
-#ifdef MV_MOBILE
+#if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
         // Touch overlay: floating joystick (move), drag (look), DIG button.
         _touchControls = static_cast<TouchControlsComponent*>(
             mainCamera->gameObject->AddComponent<TouchControlsComponent>(/*moveSpeed=*/6.0f, /*lookSpeed=*/2.6f)
@@ -132,7 +131,7 @@ class MicroVoxelApp : public Application {
         // rebuild its mesh here). Aim is the screen-center crosshair, so the
         // same code serves keyboard and touch.
         bool digHeld = input->IsKeyDown(Key::E);
-#ifdef MV_MOBILE
+#if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
         digHeld = digHeld || (_touchControls && _touchControls->IsActionHeld());
 #endif
         if (digHeld && !_carveTargets.empty()) {
