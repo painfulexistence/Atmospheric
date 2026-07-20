@@ -1,11 +1,26 @@
 import java.io.BufferedInputStream
 import java.io.FileOutputStream
 import java.net.URI
+import java.util.Properties
 import java.util.zip.ZipInputStream
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+// Release signing, kept out of the repo: put an upload keystore + a
+// keystore.properties next to settings.gradle.kts (both gitignored):
+//   storeFile=upload-keystore.jks   (path relative to platforms/android/)
+//   storePassword=...
+//   keyAlias=upload
+//   keyPassword=...
+// Without the file, release builds stay unsigned (CI/library use).
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
 }
 
 val downloadSDLJavaSources = tasks.register("downloadSDLJavaSources") {
@@ -92,10 +107,24 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                storeFile = rootProject.file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
