@@ -285,6 +285,10 @@ list(APPEND SOURCES src/udp_relay_client.cpp)
 # empty on Emscripten, and dep-free so headless servers can use it too.
 # (NetMetrics is header-only — Engine/include/Atmospheric/net_metrics.hpp.)
 list(APPEND SOURCES src/net_conditioner.cpp)
+# ReliableChannel: sequencing + ack-bitfield + reliable-ordered messages on top
+# of an unreliable datagram transport (the "reliable UDP" layer for must-arrive
+# events). Dep-free, pure logic — usable by clients and servers alike.
+list(APPEND SOURCES src/reliable_channel.cpp)
 # LoopbackDatagramSocket: in-process DatagramSocket impl (no OS sockets) for
 # --local single-player on the web, where there is no raw UDP. Dep-free, pure
 # logic — compiled on all platforms (it's what DatagramSocket aliases to on web).
