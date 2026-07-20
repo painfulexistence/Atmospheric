@@ -73,14 +73,14 @@ val copyAssetsTask = tasks.register<Copy>("copyAssetsForAndroid") {
 }
 
 android {
-    namespace = "com.atmospheric.helloworld"
-    compileSdk = 34
+    namespace = "com.atmospheric.threedbasics"
+    compileSdk = 35
     ndkVersion = "29.0.13113456"
 
     defaultConfig {
-        applicationId = "com.atmospheric.helloworld"
+        applicationId = "com.atmospheric.threedbasics"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
 
