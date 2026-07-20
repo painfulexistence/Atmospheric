@@ -361,10 +361,9 @@ void Window::MainLoop(std::function<void(float, float)> callback) {
                 const auto fingerId = static_cast<int64_t>(event.tfinger.fingerID);
                 const float x = event.tfinger.x * static_cast<float>(size.width);
                 const float y = event.tfinger.y * static_cast<float>(size.height);
-                const auto& callbacks = (event.type == SDL_EVENT_FINGER_DOWN) ? ctx.window->_touchDownCallbacks
-                                        : (event.type == SDL_EVENT_FINGER_MOTION)
-                                            ? ctx.window->_touchMoveCallbacks
-                                            : ctx.window->_touchUpCallbacks;
+                const auto& callbacks = (event.type == SDL_EVENT_FINGER_DOWN)     ? ctx.window->_touchDownCallbacks
+                                        : (event.type == SDL_EVENT_FINGER_MOTION) ? ctx.window->_touchMoveCallbacks
+                                                                                  : ctx.window->_touchUpCallbacks;
                 for (auto [id, callback] : callbacks) {
                     callback(fingerId, x, y);
                 }

@@ -35,9 +35,7 @@ public:
     TouchControlsComponent(
         GameObject* owner, float moveSpeed = 6.0f, float lookSpeed = 2.6f, std::string actionLabel = "DIG"
     )
-      : UIPageComponent(owner, "assets/ui/mobile_hud.rml"),
-        _moveSpeed(moveSpeed),
-        _lookSpeed(lookSpeed),
+      : UIPageComponent(owner, "assets/ui/mobile_hud.rml"), _moveSpeed(moveSpeed), _lookSpeed(lookSpeed),
         _actionLabel(std::move(actionLabel)) {
     }
 
