@@ -684,6 +684,12 @@ endif()
 if(AE_BUILD_EXAMPLES AND NOT EMSCRIPTEN)
     add_executable(HeadlessSmokeTest tests/headless_smoke_test.cpp)
     target_link_libraries(HeadlessSmokeTest PRIVATE AtmosphericEngine)
+
+    # Animation data/sampling layer: GL-free and deterministic (no window, no
+    # asset files), so unlike HeadlessSmokeTest it is safe to gate CI on.
+    add_executable(AnimationSmokeTest tests/animation_smoke_test.cpp)
+    target_link_libraries(AnimationSmokeTest PRIVATE AtmosphericEngine)
+    add_test(NAME AnimationSmokeTest COMMAND AnimationSmokeTest)
 endif()
 
 set(AE_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/default_assets" PARENT_SCOPE)
