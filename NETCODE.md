@@ -145,8 +145,7 @@ Knowing *when not to use* the reliable channel is as much the point as having it
 Native (Windows/macOS/Linux) and the browser via Emscripten. Lockstep uses a
 WebRTC DataChannel for browser P2P; the server-authoritative examples run
 `--local` in-browser today and reach a dedicated server via the WebTransport
-gateway. See `docs/pvp-testing` for the deployment/testing runbook and
-`docs/netcode-rooms-ccu.md` for the rooms/CCU roadmap.
+gateway.
 
 ## How it's verified
 
