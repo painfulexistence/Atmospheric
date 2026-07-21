@@ -104,15 +104,31 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 include(FetchContent)
 
+# Unit tests (Catch2, via ctest). Default ON for a top-level desktop build; OFF
+# for the cross/wasm targets (host unit tests don't run there) and when consumed
+# as a submodule. Declared here — after project()/toolchain — so EMSCRIPTEN,
+# ANDROID, and IOS are populated.
+set(_ae_tests_default OFF)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND NOT EMSCRIPTEN AND NOT ANDROID AND NOT IOS)
+    set(_ae_tests_default ON)
+endif()
+option(AE_BUILD_TESTS "Build unit tests (Catch2, run via ctest)" ${_ae_tests_default})
+
 # Must precede add_subdirectory(Engine): add_test() calls inside a directory
 # only register with ctest when testing was enabled before that directory was
 # added (Examples' RelayLoopback; Engine currently builds HeadlessSmokeTest
 # but doesn't register it as a test — see Engine/CMakeLists.txt).
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND AE_BUILD_EXAMPLES)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND (AE_BUILD_EXAMPLES OR AE_BUILD_TESTS))
     enable_testing()
 endif()
 
 add_subdirectory(Engine)
+
+# Networking unit suite. Compiles the dependency-free net sources directly, so it
+# needs neither the graphics stack nor AE_BUILD_EXAMPLES.
+if(AE_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
 
 # Propagate AE_ASSETS_DIR to the consumer's scope when used as a submodule.
 # Engine/CMakeLists.txt sets it with PARENT_SCOPE (→ this scope); re-export it
