@@ -1,9 +1,7 @@
 #pragma once
 #include "protocol.hpp"
 #include "sim_common.hpp"
-#include <Atmospheric/datagram_socket.hpp>
-#include <Atmospheric/net_conditioner.hpp>
-#include <Atmospheric/net_metrics.hpp>
+#include <Atmospheric/net_endpoint.hpp>// transport + conditioner + metrics, bundled
 
 #include <cstdint>
 #include <map>
@@ -56,21 +54,19 @@ public:
     // Netgraph data + the live inbound link emulator (mutable so HUD keybinds
     // can dial it). Sits on this client's snapshot path — works in --local too.
     const NetMetrics& Metrics() const {
-        return _metrics;
+        return _net.Metrics();
     }
     NetConditioner& Conditioner() {
-        return _cond;
+        return _net.Conditioner();
     }
 
 private:
-    DatagramSocket _socket;
+    NetEndpoint<> _net;// datagram socket + conditioner + metrics behind Open/Send/Poll
     uint32_t _serverAddr = 0;
     uint16_t _serverPort = 0;
     proto::Role _role = proto::Role::Seeker;
     bool _welcomed = false;
 
-    NetConditioner _cond;
-    NetMetrics _metrics;
     std::map<uint32_t, uint32_t> _inputSendMs;// tick -> send time, for RTT on ack
 
     sim::Vec2 _predictedPos;
