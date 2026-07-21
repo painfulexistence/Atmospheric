@@ -33,16 +33,18 @@ namespace {
 
     // Wire layout:
     //   header (9 bytes): seq(2) ack(2) ackBits(4) msgCount(1)
-    //   per message:      flags(1, bit0=reliable) id(2) len(2) payload(len)
+    //   per message:      flags(1, bit0=reliable) channel(1) id(2) len(2) payload(len)
     constexpr int kHeaderLen = 9;
-    constexpr int kMsgHeaderLen = 5;
+    constexpr int kMsgHeaderLen = 6;
 }// namespace
 
-bool ReliableChannel::SendReliable(const uint8_t* data, int len) {
+bool ReliableChannel::SendReliable(const uint8_t* data, int len, uint8_t channel) {
     if (len < 0) return false;
+    if (channel >= kNumChannels) return false;// unknown channel: reject, don't misroute
     if (static_cast<int>(_unacked.size()) >= kMaxInFlight) return false;// window full: backpressure
     OutMsg m;
-    m.id = _nextMsgId++;
+    m.channel = channel;
+    m.id = _nextMsgId[channel]++;// per-channel id space
     m.data.assign(data, data + len);
     _unacked.push_back(std::move(m));
     return true;
@@ -62,18 +64,19 @@ int ReliableChannel::WritePacket(uint8_t* buf, int maxLen) {
     SentPacket& sent = _sent[seq % kSentHistory];
     sent.seq = seq;
     sent.used = true;
-    sent.msgIds.clear();
+    sent.msgRefs.clear();
 
     // Reliable first (oldest unacked), re-sent until acknowledged.
     for (const OutMsg& m : _unacked) {
         const int need = kMsgHeaderLen + static_cast<int>(m.data.size());
         if (off + need > maxLen || count == 255) break;
         buf[off] = 0x01;// reliable
-        PutU16(buf + off + 1, m.id);
-        PutU16(buf + off + 3, static_cast<uint16_t>(m.data.size()));
+        buf[off + 1] = m.channel;
+        PutU16(buf + off + 2, m.id);
+        PutU16(buf + off + 4, static_cast<uint16_t>(m.data.size()));
         std::memcpy(buf + off + kMsgHeaderLen, m.data.data(), m.data.size());
         off += need;
-        sent.msgIds.push_back(m.id);
+        sent.msgRefs.push_back({m.channel, m.id});
         count++;
     }
     // Then unreliable, consumed as they are sent.
@@ -82,8 +85,9 @@ int ReliableChannel::WritePacket(uint8_t* buf, int maxLen) {
         const int need = kMsgHeaderLen + static_cast<int>(m.size());
         if (off + need > maxLen) break;
         buf[off] = 0x00;// unreliable
-        PutU16(buf + off + 1, 0);
-        PutU16(buf + off + 3, static_cast<uint16_t>(m.size()));
+        buf[off + 1] = 0;// channel unused for unreliable
+        PutU16(buf + off + 2, 0);
+        PutU16(buf + off + 4, static_cast<uint16_t>(m.size()));
         std::memcpy(buf + off + kMsgHeaderLen, m.data(), m.size());
         off += need;
         _unrelOut.pop_front();
@@ -111,9 +115,9 @@ int ReliableChannel::WritePacket(uint8_t* buf, int maxLen) {
 void ReliableChannel::MarkAcked(uint16_t ackSeq) {
     SentPacket& s = _sent[ackSeq % kSentHistory];
     if (!s.used || s.seq != ackSeq) return;
-    for (uint16_t id : s.msgIds) {
+    for (const SentPacket::Ref& ref : s.msgRefs) {
         for (auto it = _unacked.begin(); it != _unacked.end(); ++it) {
-            if (it->id == id) {
+            if (it->channel == ref.channel && it->id == ref.id) {
                 _unacked.erase(it);
                 break;
             }
@@ -150,40 +154,48 @@ void ReliableChannel::ReadPacket(const uint8_t* data, int len) {
     for (int n = 0; n < 32; n++)
         if (ackBits & (1u << n)) MarkAcked(static_cast<uint16_t>(ack - 1 - n));
 
-    // Parse messages: buffer reliable ones for ordered release, dedupe by id.
+    // Parse messages: buffer reliable ones for ordered release per channel,
+    // dedupe by (channel, id).
     int off = kHeaderLen;
     for (uint8_t i = 0; i < count; i++) {
         if (off + kMsgHeaderLen > len) break;
         const uint8_t flags = data[off];
-        const uint16_t id = GetU16(data + off + 1);
-        const uint16_t mlen = GetU16(data + off + 3);
+        const uint8_t channel = data[off + 1];
+        const uint16_t id = GetU16(data + off + 2);
+        const uint16_t mlen = GetU16(data + off + 4);
         off += kMsgHeaderLen;
         if (off + mlen > len) break;
         const uint8_t* payload = data + off;
         off += mlen;
 
         if (flags & 0x01) {
-            if (SeqLess(id, _nextDeliverId)) continue;      // already delivered
-            if (_recvReliable.count(id)) continue;          // already buffered (dup)
-            _recvReliable[id].assign(payload, payload + mlen);
+            if (channel >= kNumChannels) continue;             // unknown channel: drop
+            if (SeqLess(id, _nextDeliverId[channel])) continue;// already delivered
+            if (_recvReliable[channel].count(id)) continue;    // already buffered (dup)
+            _recvReliable[channel][id].assign(payload, payload + mlen);
         } else {
             _recvUnrel.emplace_back(payload, payload + mlen);
         }
     }
 }
 
-int ReliableChannel::Receive(uint8_t* buf, int maxLen, bool* outReliable) {
-    // Reliable strictly in order: release _nextDeliverId if we have it.
-    auto it = _recvReliable.find(_nextDeliverId);
-    if (it != _recvReliable.end()) {
-        const std::vector<uint8_t>& m = it->second;
-        int n = static_cast<int>(m.size());
-        if (n > maxLen) n = maxLen;
-        std::memcpy(buf, m.data(), static_cast<size_t>(n));
-        _recvReliable.erase(it);
-        _nextDeliverId++;
-        if (outReliable) *outReliable = true;
-        return n;
+int ReliableChannel::Receive(uint8_t* buf, int maxLen, bool* outReliable, uint8_t* outChannel) {
+    // Reliable strictly in order, per channel: release _nextDeliverId[ch] for the
+    // lowest channel that has it ready. Channels are independent, so a stall on
+    // one never blocks another.
+    for (int ch = 0; ch < kNumChannels; ch++) {
+        auto it = _recvReliable[ch].find(_nextDeliverId[ch]);
+        if (it != _recvReliable[ch].end()) {
+            const std::vector<uint8_t>& m = it->second;
+            int n = static_cast<int>(m.size());
+            if (n > maxLen) n = maxLen;
+            std::memcpy(buf, m.data(), static_cast<size_t>(n));
+            _recvReliable[ch].erase(it);
+            _nextDeliverId[ch]++;
+            if (outReliable) *outReliable = true;
+            if (outChannel) *outChannel = static_cast<uint8_t>(ch);
+            return n;
+        }
     }
     if (!_recvUnrel.empty()) {
         const std::vector<uint8_t>& m = _recvUnrel.front();
@@ -192,6 +204,7 @@ int ReliableChannel::Receive(uint8_t* buf, int maxLen, bool* outReliable) {
         std::memcpy(buf, m.data(), static_cast<size_t>(n));
         _recvUnrel.pop_front();
         if (outReliable) *outReliable = false;
+        if (outChannel) *outChannel = 0;
         return n;
     }
     return 0;

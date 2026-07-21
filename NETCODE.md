@@ -119,6 +119,13 @@ actually matters — join/leave, score, match-end, chat — which is what
 - Reliable messages carry a 16-bit id and ride *every* outgoing packet until an
   ack confirms them (redundancy, not a retransmit timer). The receiver dedupes
   by id and releases in order, buffering early arrivals.
+- **Channels** — ordering is guaranteed *within* a channel, not across them.
+  Each channel keeps its own id counter, delivery cursor, and reorder buffer, so
+  a message stalled on one (waiting for a lost predecessor's resend) can't hold
+  back another. Put logically-independent traffic on separate channels (chat vs.
+  scoreboard) to escape cross-stream head-of-line blocking — the ENet model. The
+  seq/ack layer stays global; `channel` defaults to 0 for callers that want a
+  single stream.
 - Wrap-safe `(int16_t)(a - b)` serial comparison throughout.
 
 Knowing *when not to use* the reliable channel is as much the point as having it.
