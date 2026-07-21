@@ -52,9 +52,10 @@ cd Atmospheric
 ```
 4. Build the project with CMake
 ```
-cmake --preset=dev
-cmake --build --preset=dev
+cmake --preset ninja
+cmake --build --preset debug   # or --preset release
 ```
+(Optional: `cp CMakeUserPresets.json.example CMakeUserPresets.json` for a personal `dev` preset with ccache.)
 
 ### WebAssembly (Emscripten)
 We support building WebAssembly targets for browser deployment.

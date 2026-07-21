@@ -2,71 +2,55 @@
   "version": 3,
   "configurePresets": [
     {
-      "name": "local-vcpkg",
+      "name": "vcpkg",
       "hidden": true,
+      "description": "Toolchain base: the bundled vcpkg submodule. compile_commands.json is exported wherever the generator supports it.",
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
     {
-      "name": "global-vcpkg",
+      "name": "vcpkg-global",
       "hidden": true,
+      "description": "Toolchain base: a system-wide vcpkg via $VCPKG_ROOT.",
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
     {
       "name": "ccache",
       "hidden": true,
-      "description": "Opt-in compiler cache. Not part of dev/release because ccache isn't guaranteed on every machine (and MSVC needs extra setup). Enable it from your machine-local CMakeUserPresets.json: { \"name\": \"my-dev\", \"inherits\": [\"dev\", \"ccache\"] }.",
+      "description": "Opt-in compiler cache mixin. Not baked into the shared presets because ccache isn't guaranteed on every machine (and MSVC needs extra setup). Enable it from your machine-local CMakeUserPresets.json — see CMakeUserPresets.json.example.",
       "cacheVariables": {
         "CMAKE_C_COMPILER_LAUNCHER": "ccache",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"
       }
     },
     {
-      "name": "ninja-local-vcpkg",
+      "name": "ninja",
+      "displayName": "Ninja Multi-Config (bundled vcpkg)",
+      "description": "The default family on every desktop platform: configure once, then build any config via the debug/release build presets from the same tree. On Windows this drives MSVC — run from a 'x64 Native Tools for VS 2022' prompt, or let VS Code's CMake Tools supply the kit. Historical note: ASan (-fsanitize=address) was removed from the old dev preset — it deadlocks on macOS 26.1+ (Xcode 26.1+); re-add locally when Apple fixes the ASan/dyld interaction bug.",
       "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build",
-      "inherits": ["local-vcpkg"]
+      "inherits": ["vcpkg"]
     },
     {
-      "name": "ninja-global-vcpkg",
+      "name": "ninja-global",
+      "displayName": "Ninja Multi-Config (system vcpkg via $VCPKG_ROOT)",
       "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build",
-      "inherits": ["global-vcpkg"]
+      "inherits": ["vcpkg-global"]
     },
     {
-      "name": "dev",
-      "displayName": "Dev (Debug, Ninja Multi-Config, bundled vcpkg)",
-      "description": "The documented daily-driver preset (README: cmake --preset=dev), portable across GCC/Clang/MSVC — each compiler keeps its own default Debug flags. On Windows run from a 'x64 Native Tools for VS 2022' prompt, or let VS Code's CMake Tools supply the MSVC kit. Historical note: ASan (-fsanitize=address) was removed here — it deadlocks on macOS 26.1+ (Xcode 26.1+); re-add locally when Apple fixes the ASan/dyld interaction bug. CMAKE_BUILD_TYPE is kept for configure-time gates even though the multi-config generator ignores it at compile time.",
-      "inherits": ["ninja-local-vcpkg"],
-      "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
-    },
-    {
-      "name": "release",
-      "displayName": "Release (Ninja Multi-Config, bundled vcpkg)",
-      "description": "Optimized build with each compiler's default Release flags (-O3 -DNDEBUG on GCC/Clang, /O2 on MSVC).",
-      "inherits": ["ninja-local-vcpkg"],
-      "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "CMAKE_BUILD_TYPE": "Release"
-      }
-    },
-    {
-      "name": "windows-vs",
-      "displayName": "Windows · Visual Studio 2022 (x64)",
-      "description": "MSVC via the Visual Studio generator. Produces Atmospheric.sln in build/ — open it in Visual Studio and F5 to build + debug. Uses the bundled vcpkg toolchain. For CLI/VS Code builds on Windows, prefer the cross-platform 'dev' preset (Ninja + MSVC).",
+      "name": "vs",
+      "displayName": "Visual Studio 2022 (x64)",
+      "description": "The Windows IDE family: produces Atmospheric.sln in build-vs/ — open it in Visual Studio and F5 to build + debug (native debugger, profiler, natvis). Locates MSVC itself, so no developer prompt is needed. Separate binary dir from the ninja family — CMake refuses to reuse a build tree across generators.",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
-      "binaryDir": "${sourceDir}/build",
-      "inherits": ["local-vcpkg"],
-      "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-      },
+      "binaryDir": "${sourceDir}/build-vs",
+      "inherits": ["vcpkg"],
       "condition": {
         "type": "equals",
         "lhs": "${hostSystemName}",
@@ -76,18 +60,18 @@
   ],
   "buildPresets": [
     {
-      "name": "dev",
-      "configurePreset": "dev",
+      "name": "debug",
+      "configurePreset": "ninja",
       "configuration": "Debug"
     },
     {
       "name": "release",
-      "configurePreset": "release",
+      "configurePreset": "ninja",
       "configuration": "Release"
     },
     {
-      "name": "windows-vs-debug",
-      "configurePreset": "windows-vs",
+      "name": "vs-debug",
+      "configurePreset": "vs",
       "configuration": "Debug",
       "condition": {
         "type": "equals",
@@ -96,8 +80,8 @@
       }
     },
     {
-      "name": "windows-vs-release",
-      "configurePreset": "windows-vs",
+      "name": "vs-release",
+      "configurePreset": "vs",
       "configuration": "Release",
       "condition": {
         "type": "equals",
