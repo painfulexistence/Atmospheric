@@ -1,5 +1,7 @@
 #include "reliable_channel.hpp"
 
+#include <cstring>// memcpy
+
 namespace {
     // Wrap-safe serial-number comparison (RFC 1982): a < b when the signed
     // 16-bit difference is negative. Correct across the uint16 wrap so long as
@@ -36,12 +38,14 @@ namespace {
     constexpr int kMsgHeaderLen = 5;
 }// namespace
 
-void ReliableChannel::SendReliable(const uint8_t* data, int len) {
-    if (len < 0) return;
+bool ReliableChannel::SendReliable(const uint8_t* data, int len) {
+    if (len < 0) return false;
+    if (static_cast<int>(_unacked.size()) >= kMaxInFlight) return false;// window full: backpressure
     OutMsg m;
     m.id = _nextMsgId++;
     m.data.assign(data, data + len);
     _unacked.push_back(std::move(m));
+    return true;
 }
 
 void ReliableChannel::SendUnreliable(const uint8_t* data, int len) {
@@ -67,7 +71,7 @@ int ReliableChannel::WritePacket(uint8_t* buf, int maxLen) {
         buf[off] = 0x01;// reliable
         PutU16(buf + off + 1, m.id);
         PutU16(buf + off + 3, static_cast<uint16_t>(m.data.size()));
-        for (size_t i = 0; i < m.data.size(); i++) buf[off + kMsgHeaderLen + i] = m.data[i];
+        std::memcpy(buf + off + kMsgHeaderLen, m.data.data(), m.data.size());
         off += need;
         sent.msgIds.push_back(m.id);
         count++;
@@ -80,7 +84,7 @@ int ReliableChannel::WritePacket(uint8_t* buf, int maxLen) {
         buf[off] = 0x00;// unreliable
         PutU16(buf + off + 1, 0);
         PutU16(buf + off + 3, static_cast<uint16_t>(m.size()));
-        for (size_t i = 0; i < m.size(); i++) buf[off + kMsgHeaderLen + i] = m[i];
+        std::memcpy(buf + off + kMsgHeaderLen, m.data(), m.size());
         off += need;
         _unrelOut.pop_front();
         count++;
@@ -175,7 +179,7 @@ int ReliableChannel::Receive(uint8_t* buf, int maxLen, bool* outReliable) {
         const std::vector<uint8_t>& m = it->second;
         int n = static_cast<int>(m.size());
         if (n > maxLen) n = maxLen;
-        for (int i = 0; i < n; i++) buf[i] = m[i];
+        std::memcpy(buf, m.data(), static_cast<size_t>(n));
         _recvReliable.erase(it);
         _nextDeliverId++;
         if (outReliable) *outReliable = true;
@@ -185,7 +189,7 @@ int ReliableChannel::Receive(uint8_t* buf, int maxLen, bool* outReliable) {
         const std::vector<uint8_t>& m = _recvUnrel.front();
         int n = static_cast<int>(m.size());
         if (n > maxLen) n = maxLen;
-        for (int i = 0; i < n; i++) buf[i] = m[i];
+        std::memcpy(buf, m.data(), static_cast<size_t>(n));
         _recvUnrel.pop_front();
         if (outReliable) *outReliable = false;
         return n;

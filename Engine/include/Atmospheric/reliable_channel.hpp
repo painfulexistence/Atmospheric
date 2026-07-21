@@ -31,9 +31,14 @@
 class ReliableChannel {
 public:
     // Queue one application message.
-    //   Reliable   — delivered exactly once, in send order.
-    //   Unreliable — sent in the next packet, never resent, not ordered.
-    void SendReliable(const uint8_t* data, int len);
+    //   Reliable   — delivered exactly once, in send order. Returns false when
+    //     the in-flight window (kMaxInFlight) is full: the message was NOT
+    //     queued, and the caller should retry later. This bounds memory and
+    //     applies backpressure instead of letting the unacked queue grow without
+    //     limit when the app produces faster than the link acknowledges.
+    //   Unreliable — sent in the next packet, never resent, not ordered. Always
+    //     accepted (it is drained the moment it is next written).
+    [[nodiscard]] bool SendReliable(const uint8_t* data, int len);
     void SendUnreliable(const uint8_t* data, int len);
 
     // Assemble the next outbound packet (header + as many pending messages as
@@ -67,7 +72,8 @@ private:
         std::vector<uint16_t> msgIds;// reliable ids this packet carried
     };
 
-    static constexpr int kSentHistory = 256;
+    static constexpr int kSentHistory = 256;  // packets remembered for ack -> message-id lookup
+    static constexpr int kMaxInFlight = 256;   // cap on unacked reliable messages (bounded memory / backpressure)
 
     // Outbound.
     uint16_t _nextSeq = 0;

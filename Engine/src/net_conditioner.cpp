@@ -1,5 +1,7 @@
 #include "net_conditioner.hpp"
 
+#include <cstring>// memcpy
+
 uint32_t NetConditioner::NextU32() {
     // xorshift32 — tiny, fast, dependency-free, and deterministic per seed.
     uint32_t x = _rng;
@@ -54,10 +56,10 @@ bool NetConditioner::Pop(uint32_t nowMs, uint32_t& fromAddr, uint16_t& fromPort,
     }
     if (best < 0) return false;
 
-    Held& h = _q[best];
+    Held& h = _q[static_cast<size_t>(best)];
     int n = static_cast<int>(h.bytes.size());
     if (n > maxLen) n = maxLen;
-    for (int i = 0; i < n; i++) buf[i] = h.bytes[i];
+    std::memcpy(buf, h.bytes.data(), static_cast<size_t>(n));
     outLen = n;
     fromAddr = h.fromAddr;
     fromPort = h.fromPort;
