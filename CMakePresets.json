@@ -16,6 +16,15 @@
       }
     },
     {
+      "name": "ccache",
+      "hidden": true,
+      "description": "Opt-in compiler cache. Not part of dev/release because ccache isn't guaranteed on every machine (and MSVC needs extra setup). Enable it from your machine-local CMakeUserPresets.json: { \"name\": \"my-dev\", \"inherits\": [\"dev\", \"ccache\"] }.",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"
+      }
+    },
+    {
       "name": "ninja-local-vcpkg",
       "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build",
@@ -28,27 +37,31 @@
       "inherits": ["global-vcpkg"]
     },
     {
-      "name": "windows-vs",
-      "displayName": "Windows · Visual Studio 2022 (x64)",
-      "description": "MSVC via the Visual Studio generator. Produces Atmospheric.sln in build/ — open it in Visual Studio and F5 to build + debug. Uses the bundled vcpkg toolchain.",
-      "generator": "Visual Studio 17 2022",
-      "architecture": "x64",
-      "binaryDir": "${sourceDir}/build",
-      "inherits": ["local-vcpkg"],
+      "name": "dev",
+      "displayName": "Dev (Debug, Ninja Multi-Config, bundled vcpkg)",
+      "description": "The documented daily-driver preset (README: cmake --preset=dev), portable across GCC/Clang/MSVC — each compiler keeps its own default Debug flags. On Windows run from a 'x64 Native Tools for VS 2022' prompt, or let VS Code's CMake Tools supply the MSVC kit. Historical note: ASan (-fsanitize=address) was removed here — it deadlocks on macOS 26.1+ (Xcode 26.1+); re-add locally when Apple fixes the ASan/dyld interaction bug. CMAKE_BUILD_TYPE is kept for configure-time gates even though the multi-config generator ignores it at compile time.",
+      "inherits": ["ninja-local-vcpkg"],
       "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-      },
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
-      "name": "windows-ninja",
-      "displayName": "Windows · Ninja + MSVC",
-      "description": "MSVC via Ninja Multi-Config — fast command-line / VS Code builds. Run from a 'x64 Native Tools for VS 2022' prompt, or let the VS Code CMake Tools extension supply the MSVC kit. Uses the bundled vcpkg toolchain.",
-      "generator": "Ninja Multi-Config",
+      "name": "release",
+      "displayName": "Release (Ninja Multi-Config, bundled vcpkg)",
+      "description": "Optimized build with each compiler's default Release flags (-O3 -DNDEBUG on GCC/Clang, /O2 on MSVC).",
+      "inherits": ["ninja-local-vcpkg"],
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "windows-vs",
+      "displayName": "Windows · Visual Studio 2022 (x64)",
+      "description": "MSVC via the Visual Studio generator. Produces Atmospheric.sln in build/ — open it in Visual Studio and F5 to build + debug. Uses the bundled vcpkg toolchain. For CLI/VS Code builds on Windows, prefer the cross-platform 'dev' preset (Ninja + MSVC).",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
       "binaryDir": "${sourceDir}/build",
       "inherits": ["local-vcpkg"],
       "cacheVariables": {
@@ -63,24 +76,34 @@
   ],
   "buildPresets": [
     {
+      "name": "dev",
+      "configurePreset": "dev",
+      "configuration": "Debug"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "configuration": "Release"
+    },
+    {
       "name": "windows-vs-debug",
       "configurePreset": "windows-vs",
-      "configuration": "Debug"
+      "configuration": "Debug",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     },
     {
       "name": "windows-vs-release",
       "configurePreset": "windows-vs",
-      "configuration": "Release"
-    },
-    {
-      "name": "windows-ninja-debug",
-      "configurePreset": "windows-ninja",
-      "configuration": "Debug"
-    },
-    {
-      "name": "windows-ninja-release",
-      "configurePreset": "windows-ninja",
-      "configuration": "Release"
+      "configuration": "Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     }
   ]
 }

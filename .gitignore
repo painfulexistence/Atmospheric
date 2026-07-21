@@ -35,3 +35,7 @@ local.properties
 # Fetched sample models
 Examples/USDViewer/assets/models/
 Examples/GLTFViewer/assets/models
+
+# Machine-local CMake presets (personal overrides — inherit the shared
+# presets from CMakePresets.json here, e.g. dev + ccache)
+CMakeUserPresets.json
