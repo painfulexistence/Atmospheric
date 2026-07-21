@@ -76,7 +76,7 @@ int ReliableChannel::WritePacket(uint8_t* buf, int maxLen) {
         PutU16(buf + off + 4, static_cast<uint16_t>(m.data.size()));
         std::memcpy(buf + off + kMsgHeaderLen, m.data.data(), m.data.size());
         off += need;
-        sent.msgRefs.push_back({m.channel, m.id});
+        sent.msgRefs.push_back({ m.channel, m.id });
         count++;
     }
     // Then unreliable, consumed as they are sent.
@@ -169,9 +169,9 @@ void ReliableChannel::ReadPacket(const uint8_t* data, int len) {
         off += mlen;
 
         if (flags & 0x01) {
-            if (channel >= kNumChannels) continue;             // unknown channel: drop
+            if (channel >= kNumChannels) continue;// unknown channel: drop
             if (SeqLess(id, _nextDeliverId[channel])) continue;// already delivered
-            if (_recvReliable[channel].count(id)) continue;    // already buffered (dup)
+            if (_recvReliable[channel].count(id)) continue;// already buffered (dup)
             _recvReliable[channel][id].assign(payload, payload + mlen);
         } else {
             _recvUnrel.emplace_back(payload, payload + mlen);

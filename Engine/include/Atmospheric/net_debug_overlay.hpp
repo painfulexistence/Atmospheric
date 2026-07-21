@@ -1,7 +1,7 @@
 #pragma once
 #include "component.hpp"
 #include "net_debug_controls.hpp"// DialConditioner + ConditionerKeys (pulls input_subsystem + net_conditioner)
-#include "net_hud.hpp"           // DrawNetHud (pulls graphics_subsystem + net_metrics + net_conditioner)
+#include "net_hud.hpp"// DrawNetHud (pulls graphics_subsystem + net_metrics + net_conditioner)
 #include "window.hpp"
 
 #include <string>

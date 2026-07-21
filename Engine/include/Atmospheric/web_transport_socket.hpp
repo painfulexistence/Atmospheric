@@ -34,12 +34,12 @@ public:
     bool Connect(const std::string& url);
     void Close();
 
-    bool IsOpen() const;      // session established (wt.ready resolved)
+    bool IsOpen() const;// session established (wt.ready resolved)
     bool IsConnecting() const;// handshake in flight
-    bool Failed() const;      // handshake failed or session closed
+    bool Failed() const;// handshake failed or session closed
 
     void Send(const uint8_t* data, int len);// write one datagram
-    int Recv(uint8_t* buf, int maxLen);      // pop one queued datagram, or 0
+    int Recv(uint8_t* buf, int maxLen);// pop one queued datagram, or 0
 
     // ── DatagramSocket contract shims (single session; addr/port ignored) ──
     bool Open(uint16_t /*port*/ = 0) {

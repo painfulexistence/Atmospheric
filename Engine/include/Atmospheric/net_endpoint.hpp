@@ -21,8 +21,7 @@
 // instead of in every ClientNet. Templated on the socket so it works over any
 // DatagramSocket-shaped transport — real UDP, in-process loopback, WebTransport —
 // and is unit-testable off a loopback socket without real networking.
-template <class Socket = DatagramSocket>
-class NetEndpoint {
+template<class Socket = DatagramSocket> class NetEndpoint {
 public:
     bool Open(uint16_t port = 0) {
         return _socket.Open(port);
@@ -44,8 +43,7 @@ public:
 
     // Drain this frame's inbound datagrams through the conditioner + metrics,
     // dispatching each ready one to handle(data, len, fromAddr, fromPort).
-    template <class Handle>
-    void Poll(uint32_t nowMs, Handle&& handle) {
+    template<class Handle> void Poll(uint32_t nowMs, Handle&& handle) {
         PumpConditioned(
             _cond,
             _metrics,

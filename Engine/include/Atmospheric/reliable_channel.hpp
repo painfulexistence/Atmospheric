@@ -94,15 +94,15 @@ private:
         std::vector<Ref> msgRefs;// reliable (channel,id) pairs this packet carried
     };
 
-    static constexpr int kSentHistory = 256;  // packets remembered for ack -> message-id lookup
-    static constexpr int kMaxInFlight = 256;   // cap on unacked reliable messages (bounded memory / backpressure)
+    static constexpr int kSentHistory = 256;// packets remembered for ack -> message-id lookup
+    static constexpr int kMaxInFlight = 256;// cap on unacked reliable messages (bounded memory / backpressure)
 
     // Outbound.
     uint16_t _nextSeq = 0;
     uint16_t _nextMsgId[kNumChannels] = {};// per-channel id counter
-    std::deque<OutMsg> _unacked;        // reliable (all channels), resent until acked
+    std::deque<OutMsg> _unacked;// reliable (all channels), resent until acked
     std::deque<std::vector<uint8_t>> _unrelOut;// unreliable, one send each
-    SentPacket _sent[kSentHistory];     // seq % N -> reliable (channel,id) carried
+    SentPacket _sent[kSentHistory];// seq % N -> reliable (channel,id) carried
 
     // Which of the PEER's packets we have received (to build our own acks).
     uint16_t _recvLatest = 0;
