@@ -6,6 +6,15 @@
       "displayName": "Dev (ninja + ccache)",
       "description": "Personal daily driver. To use: copy this file to CMakeUserPresets.json (gitignored) and adjust freely. Names must not collide with the shared presets in CMakePresets.json — CMake errors on duplicates, so extend via inherits instead of redefining ninja/vs. Strict JSON: no comments allowed once CMake parses it.",
       "inherits": ["ninja", "ccache"]
+    },
+    {
+      "name": "dev-global",
+      "displayName": "Dev (system vcpkg via $VCPKG_ROOT)",
+      "description": "Like dev but against a system-wide vcpkg instead of the bundled submodule — a machine choice, which is why it lives here and not in the shared presets. The toolchain override is a plain cacheVariables entry (a preset's own values beat inherited ones), deliberately not an inherits mixin: in an inherits list the EARLIER preset wins, so a toolchain mixin behind ninja would be silently ignored.",
+      "inherits": ["dev"],
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      }
     }
   ],
   "buildPresets": [
@@ -18,6 +27,11 @@
       "name": "dev-release",
       "configurePreset": "dev",
       "configuration": "Release"
+    },
+    {
+      "name": "dev-global",
+      "configurePreset": "dev-global",
+      "configuration": "Debug"
     }
   ]
 }

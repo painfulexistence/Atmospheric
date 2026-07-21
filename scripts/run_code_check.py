@@ -72,7 +72,7 @@ def run_clang_tidy(project_root, source_files):
     compile_commands = os.path.join(project_root, 'build', 'compile_commands.json')
     if not os.path.exists(compile_commands):
         print("Error: build/compile_commands.json not found.")
-        print("Run CMake first: cmake --preset ninja-global")
+        print("Run CMake first: cmake --preset ninja")
         sys.exit(1)
 
     cores = multiprocessing.cpu_count()

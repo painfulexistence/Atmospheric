@@ -11,15 +11,6 @@
       }
     },
     {
-      "name": "vcpkg-global",
-      "hidden": true,
-      "description": "Toolchain base: a system-wide vcpkg via $VCPKG_ROOT.",
-      "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-      }
-    },
-    {
       "name": "ccache",
       "hidden": true,
       "description": "Opt-in compiler cache mixin. Not baked into the shared presets because ccache isn't guaranteed on every machine (and MSVC needs extra setup). Enable it from your machine-local CMakeUserPresets.json — see CMakeUserPresets.json.example.",
@@ -35,13 +26,6 @@
       "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build",
       "inherits": ["vcpkg"]
-    },
-    {
-      "name": "ninja-global",
-      "displayName": "Ninja Multi-Config (system vcpkg via $VCPKG_ROOT)",
-      "generator": "Ninja Multi-Config",
-      "binaryDir": "${sourceDir}/build",
-      "inherits": ["vcpkg-global"]
     },
     {
       "name": "vs",
