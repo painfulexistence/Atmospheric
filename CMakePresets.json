@@ -26,6 +26,61 @@
       "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build",
       "inherits": ["global-vcpkg"]
+    },
+    {
+      "name": "windows-vs",
+      "displayName": "Windows · Visual Studio 2022 (x64)",
+      "description": "MSVC via the Visual Studio generator. Produces Atmospheric.sln in build/ — open it in Visual Studio and F5 to build + debug. Uses the bundled vcpkg toolchain.",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build",
+      "inherits": ["local-vcpkg"],
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "windows-ninja",
+      "displayName": "Windows · Ninja + MSVC",
+      "description": "MSVC via Ninja Multi-Config — fast command-line / VS Code builds. Run from a 'x64 Native Tools for VS 2022' prompt, or let the VS Code CMake Tools extension supply the MSVC kit. Uses the bundled vcpkg toolchain.",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/build",
+      "inherits": ["local-vcpkg"],
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-vs-debug",
+      "configurePreset": "windows-vs",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-vs-release",
+      "configurePreset": "windows-vs",
+      "configuration": "Release"
+    },
+    {
+      "name": "windows-ninja-debug",
+      "configurePreset": "windows-ninja",
+      "configuration": "Debug"
+    },
+    {
+      "name": "windows-ninja-release",
+      "configurePreset": "windows-ninja",
+      "configuration": "Release"
     }
   ]
 }
