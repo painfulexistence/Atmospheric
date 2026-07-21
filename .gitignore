@@ -36,6 +36,7 @@ local.properties
 Examples/USDViewer/assets/models/
 Examples/GLTFViewer/assets/models
 
-# Machine-local CMake presets (personal overrides — inherit the shared
-# presets from CMakePresets.json here, e.g. dev + ccache)
+# Machine-local CMake presets (personal overrides). Get started with:
+#   cp CMakeUserPresets.json.example CMakeUserPresets.json
+# then adjust freely — it inherits the shared presets from CMakePresets.json.
 CMakeUserPresets.json

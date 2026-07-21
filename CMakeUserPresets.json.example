@@ -1,0 +1,28 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "my-dev",
+      "displayName": "My dev (dev + ccache)",
+      "description": "Personal daily driver. To use: copy this file to CMakeUserPresets.json (gitignored) and adjust freely. Names must not collide with the shared presets in CMakePresets.json — CMake errors on duplicates, so extend via inherits instead of redefining dev/release. Strict JSON: no comments allowed once CMake parses it.",
+      "inherits": ["dev", "ccache"]
+    },
+    {
+      "name": "my-release",
+      "displayName": "My release (release + ccache)",
+      "inherits": ["release", "ccache"]
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "my-dev",
+      "configurePreset": "my-dev",
+      "configuration": "Debug"
+    },
+    {
+      "name": "my-release",
+      "configurePreset": "my-release",
+      "configuration": "Release"
+    }
+  ]
+}
