@@ -171,7 +171,7 @@ void ClientNet::Pump(uint32_t nowMs) {
 #ifdef __EMSCRIPTEN__
     if (_useWt) {
         if (!_helloSent && _wt.IsOpen()) SendHello();// session opened → greet now
-        if (!_wt.IsOpen()) return;                   // still connecting (or failed)
+        if (!_wt.IsOpen()) return;// still connecting (or failed)
     } else
 #endif
     {
@@ -198,8 +198,9 @@ void ClientNet::Pump(uint32_t nowMs) {
     uint8_t out[600];
     proto::PutU32(out, proto::kMagic);
     out[4] = static_cast<uint8_t>(proto::PacketType::Reliable);
-    const int wn = _reliable.WritePacket(out + proto::kReliablePayloadOffset,
-                                         static_cast<int>(sizeof(out)) - proto::kReliablePayloadOffset);
+    const int wn = _reliable.WritePacket(
+        out + proto::kReliablePayloadOffset, static_cast<int>(sizeof(out)) - proto::kReliablePayloadOffset
+    );
     if (wn > 0) {
         SendToServer(out, proto::kReliablePayloadOffset + wn);
         _metrics.OnSent(proto::kReliablePayloadOffset + wn);

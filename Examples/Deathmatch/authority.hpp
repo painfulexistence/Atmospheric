@@ -120,7 +120,7 @@ private:
     void HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, uint16_t fromPort);
     int SlotForSender(uint32_t addr, uint16_t port) const;
     void QueueKill(int killerIdx, int victimIdx);// enqueue a reliable kill-feed event to both humans
-    void FlushReliable(int idx);                 // drain slot's ReliableChannel into a Reliable datagram
+    void FlushReliable(int idx);// drain slot's ReliableChannel into a Reliable datagram
     sim::Vec3 HistoricalPos(int idx, uint32_t tick) const;
     void ApplyDamage(int targetIdx, int dmg, int killerIdx);
     void FireRail(int shooterIdx, float yaw, float pitch, uint32_t renderTick);

@@ -123,8 +123,9 @@ void DeathmatchAuthority::FlushReliable(int idx) {
     uint8_t buf[600];
     proto::PutU32(buf, proto::kMagic);
     buf[4] = static_cast<uint8_t>(proto::PacketType::Reliable);
-    const int n = p.reliable.WritePacket(buf + proto::kReliablePayloadOffset,
-                                         static_cast<int>(sizeof(buf)) - proto::kReliablePayloadOffset);
+    const int n = p.reliable.WritePacket(
+        buf + proto::kReliablePayloadOffset, static_cast<int>(sizeof(buf)) - proto::kReliablePayloadOffset
+    );
     if (n > 0) SendTo(p.addr, p.port, buf, proto::kReliablePayloadOffset + n);
 }
 

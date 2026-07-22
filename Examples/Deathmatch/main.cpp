@@ -392,8 +392,8 @@ class DeathmatchGame : public Application {
         } else
 #endif
             if (!_net.Connect(gcli.serverIp, gcli.serverPort)) {
-                ConsoleSubsystem::Get()->Error(fmt::format("Failed to connect to {}:{}", gcli.serverIp, gcli.serverPort));
-            }
+            ConsoleSubsystem::Get()->Error(fmt::format("Failed to connect to {}:{}", gcli.serverIp, gcli.serverPort));
+        }
     }
 
     void OnUpdate(float dt, float /*time*/) override {

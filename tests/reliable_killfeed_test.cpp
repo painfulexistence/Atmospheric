@@ -24,7 +24,8 @@ namespace {
         uint32_t a;
         uint16_t p;
         int got;
-        while (link.Pop(nowMs, a, p, pkt, sizeof pkt, got)) to.ReadPacket(pkt, got);
+        while (link.Pop(nowMs, a, p, pkt, sizeof pkt, got))
+            to.ReadPacket(pkt, got);
     }
 }// namespace
 
@@ -55,7 +56,7 @@ TEST_CASE("reliable kill-feed events survive heavy loss, exactly once and in ord
     for (int tick = 0; tick < 5000; tick++) {
         nowMs += 16;// ~60 Hz
         Pump(server, down, client, nowMs);// events down
-        Pump(client, up, server, nowMs);  // acks up
+        Pump(client, up, server, nowMs);// acks up
 
         uint8_t buf[64];
         bool reliable = false;
@@ -70,7 +71,7 @@ TEST_CASE("reliable kill-feed events survive heavy loss, exactly once and in ord
     REQUIRE(got.size() == static_cast<size_t>(N));// none lost, none duplicated
     for (int i = 0; i < N; i++) {
         INFO("kill-feed index " << i);
-        CHECK(got[static_cast<size_t>(i)].first == i % 2);      // in order
+        CHECK(got[static_cast<size_t>(i)].first == i % 2);// in order
         CHECK(got[static_cast<size_t>(i)].second == 1 - (i % 2));
     }
     CHECK(server.UnackedCount() == 0);// every event acked, resend queue drained
