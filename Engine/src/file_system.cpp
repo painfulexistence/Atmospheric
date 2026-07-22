@@ -19,6 +19,8 @@
 #include "file_system.hpp"
 #include "console_subsystem.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -215,6 +217,67 @@ bool FileSystem::Exists(const std::string& path) const {
     std::string normPath = NormalizePath(path);
     if (IsCached(normPath)) return true;
     return std::filesystem::exists(normPath);
+}
+
+std::vector<std::string>
+    FileSystem::List(const std::string& dir, const std::string& extensions, bool recursive) const {
+    namespace fs = std::filesystem;
+    std::vector<std::string> out;
+
+    // Parse the ';'/','-separated extension filter into a lowercase set (no dots).
+    std::vector<std::string> exts;
+    {
+        std::string cur;
+        for (char c : extensions) {
+            if (c == ';' || c == ',') {
+                if (!cur.empty()) exts.push_back(cur);
+                cur.clear();
+            } else {
+                cur.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+            }
+        }
+        if (!cur.empty()) exts.push_back(cur);
+    }
+    auto matches = [&](const std::string& name) {
+        if (exts.empty()) return true;
+        const size_t dot = name.find_last_of('.');
+        if (dot == std::string::npos) return false;
+        std::string e = name.substr(dot + 1);
+        for (char& c : e)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return std::find(exts.begin(), exts.end(), e) != exts.end();
+    };
+
+    const std::string normDir = NormalizePath(dir);
+    std::error_code ec;
+    if (!fs::is_directory(normDir, ec)) return out;// missing dir → empty
+
+    // Emit a matching regular file as a VIRTUAL path (relative to the asset
+    // root), not the normalized absolute one, so it feeds straight into
+    // ReadSync / import. generic_string() keeps forward slashes on Windows; the
+    // sub-directory prefix is preserved for recursive walks.
+    auto emit = [&](const fs::directory_entry& entry) {
+        std::error_code fec;
+        if (!entry.is_regular_file(fec) || fec) return;
+        if (!matches(entry.path().filename().string())) return;
+        const std::string rel = entry.path().lexically_relative(normDir).generic_string();
+        out.push_back(JoinPath(dir, rel));
+    };
+
+    if (recursive) {
+        // skip_permission_denied + the error_code increment keep an unreadable
+        // sub-directory from throwing mid-walk.
+        fs::recursive_directory_iterator it(normDir, fs::directory_options::skip_permission_denied, ec), end;
+        for (; !ec && it != end; it.increment(ec))
+            emit(*it);
+    } else {
+        for (const auto& entry : fs::directory_iterator(normDir, ec)) {
+            if (ec) break;
+            emit(entry);
+        }
+    }
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 FileSystem::Bytes FileSystem::ReadSync(const std::string& path) {

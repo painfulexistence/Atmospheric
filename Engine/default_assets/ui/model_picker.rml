@@ -1,0 +1,13 @@
+<rml>
+<head>
+    <title>model_picker</title>
+    <link type="text/rcss" href="model_picker.rcss"/>
+</head>
+<body id="model_picker">
+    <div id="panel">
+        <div class="title">Models</div>
+        <select id="model_select"></select>
+        <div id="count" class="hint">assets/models</div>
+    </div>
+</body>
+</rml>
