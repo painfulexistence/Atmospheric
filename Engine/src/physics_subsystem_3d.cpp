@@ -3,6 +3,7 @@
 #include "bullet_task_scheduler.hpp"
 #include "game_object.hpp"
 #include "job_system.hpp"
+#include "logging.hpp"
 #include "physics_debug_drawer.hpp"
 #include "rigidbody_component.hpp"
 #include <BulletCollision/CollisionDispatch/btCollisionDispatcherMt.h>
@@ -12,20 +13,20 @@
 
 class RaycastCallback : public btCollisionWorld::ClosestRayResultCallback {
 private:
-    btVector3 _m_rayFromWorld;
-    btVector3 _m_rayToWorld;
+    btVector3 _rayFromWorld;
+    btVector3 _rayToWorld;
 
 public:
-    // float m_hitDistance;
+    // float _hitDistance;
 
     RaycastCallback(const btVector3& rayFromWorld, const btVector3& rayToWorld)
-      : btCollisionWorld::ClosestRayResultCallback(rayFromWorld, rayToWorld), _m_rayFromWorld(rayFromWorld),
-        _m_rayToWorld(rayToWorld) {
+      : btCollisionWorld::ClosestRayResultCallback(rayFromWorld, rayToWorld), _rayFromWorld(rayFromWorld),
+        _rayToWorld(rayToWorld) {
     }
 
     btScalar addSingleResult(btCollisionWorld::LocalRayResult& rayResult, bool normalInWorldSpace) override {
         btScalar result = ClosestRayResultCallback::addSingleResult(rayResult, normalInWorldSpace);
-        // m_hitDistance = rayResult.m_hitFraction * (m_rayFromWorld.distance(m_rayToWorld));
+        // _hitDistance = rayResult.m_hitFraction * (_rayFromWorld.distance(_rayToWorld));
         return result;
     }
 };
@@ -56,8 +57,8 @@ void Physics3DSubsystem::Init(Application* app) {
     btSetTaskScheduler(_taskScheduler.get());
 
     auto* scheduler = btGetTaskScheduler();
-    spdlog::info("[Physics] Bullet worker threads: {}", scheduler ? scheduler->getNumThreads() : 0);
-    spdlog::info("[Physics] JobSystem threads: {}", JobSystem::Get()->GetThreadCount());
+    ENGINE_INFO("[Physics] Bullet worker threads: {}", scheduler ? scheduler->getNumThreads() : 0);
+    ENGINE_INFO("[Physics] JobSystem threads: {}", JobSystem::Get()->GetThreadCount());
 
     _config = std::make_unique<btDefaultCollisionConfiguration>();
     // Use multithreaded dispatcher if thread safe

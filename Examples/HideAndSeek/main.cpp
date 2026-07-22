@@ -64,14 +64,14 @@ class HideAndSeekGame : public Application {
         if (gcli.local) {
             // Embed the authority in this process and talk to it over loopback.
             if (!_localAuthority.Bind(0)) {
-                ConsoleSubsystem::Get()->Error("Failed to bind embedded authority");
+                APP_ERROR("Failed to bind embedded authority");
                 return;
             }
             gcli.serverIp = "127.0.0.1";
             gcli.serverPort = _localAuthority.BoundPort();
         }
         if (!_net.Connect(gcli.serverIp, gcli.serverPort, gcli.role)) {
-            ConsoleSubsystem::Get()->Error(fmt::format("Failed to connect to {}:{}", gcli.serverIp, gcli.serverPort));
+            APP_ERROR("Failed to connect to {}:{}", gcli.serverIp, gcli.serverPort);
         }
     }
 

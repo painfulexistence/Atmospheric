@@ -8,6 +8,7 @@
 #include "gl_buffer.hpp"
 #include "gl_render_target.hpp"
 #include "graphics_subsystem.hpp"
+#include "logging.hpp"
 #include "particle_subsystem.hpp"
 #include "physics_subsystem_2d.hpp"
 #include "vat.hpp"
@@ -173,11 +174,11 @@ void Renderer::Init(int width, int height) {
     CreateCanvasVAO();
     CreateScreenBuffer();
 
-    m_BatchRenderer = std::make_unique<BatchRenderer2D>();
-    m_BatchRenderer->Init();
+    _BatchRenderer = std::make_unique<BatchRenderer2D>();
+    _BatchRenderer->Init();
 
 #if defined(AE_USE_WEBGPU) && defined(__EMSCRIPTEN__)
-    m_GPUCanvasPass = std::make_unique<GPUCanvasPass>();
+    _GPUCanvasPass = std::make_unique<GPUCanvasPass>();
 #endif
 
     // Screen-space quad VAO for post-process passes (bloom, etc.)
@@ -239,9 +240,9 @@ void Renderer::Init(int width, int height) {
 }
 
 void Renderer::Cleanup() {
-    if (m_BatchRenderer) {
-        m_BatchRenderer->Shutdown();
-        m_BatchRenderer.reset();
+    if (_BatchRenderer) {
+        _BatchRenderer->Shutdown();
+        _BatchRenderer.reset();
     }
     DestroyRTs();
     DestroyFBOs();
@@ -532,7 +533,7 @@ void Renderer::CheckErrors(const std::string& prefix) {
             error = "UNKNOWN";
             break;
         }
-        ConsoleSubsystem::Get()->Error(fmt::format("{}: {}\n", prefix, error));
+        ENGINE_ERROR("{}: {}\n", prefix, error);
     }
 }
 
@@ -640,7 +641,7 @@ void Renderer::CreateRTs(const RenderTargetProps& props) {
 
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
-            ConsoleSubsystem::Get()->Error("Renderer: WebGL resolved depth FBO incomplete!");
+            ENGINE_ERROR("Renderer: WebGL resolved depth FBO incomplete!");
         }
         glBindFramebuffer(GL_FRAMEBUFFER, gl.finalFBO);
 
@@ -1486,7 +1487,7 @@ void ForwardOpaquePass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comm
             WGPUDevice dev = GfxFactory::GetWebGPUDevice();
             WGPUQueue q = GfxFactory::GetWebGPUQueue();
             if (!dev) return;
-            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, (uint32_t)rv.target->GetNumSamples());
+            _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, static_cast<uint32_t>(rv.target->GetNumSamples()));
         }
 
         struct DrawItem {
@@ -2629,7 +2630,8 @@ void WorldCanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
         std::vector<CanvasDrawable*> worldDrawables;
         for (auto* drawable : ctx->canvasDrawables) {
             if (!drawable->gameObject->isActive) continue;
-            if ((int)drawable->GetLayer() < (int)CanvasLayer::LAYER_WORLD_2D) worldDrawables.push_back(drawable);
+            if (static_cast<int>(drawable->GetLayer()) < static_cast<int>(CanvasLayer::LAYER_WORLD_2D))
+                worldDrawables.push_back(drawable);
         }
         if (worldDrawables.empty()) return;
         if (!renderer.sceneRT) return;
@@ -2666,7 +2668,7 @@ void WorldCanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Comman
             allCommands,
             /*depthTest=*/true,
             /*toSwapchain=*/false,
-            (uint32_t)rv.target->GetNumSamples()
+            static_cast<uint32_t>(rv.target->GetNumSamples())
         );
         rv.target->End();
         return;
@@ -2768,7 +2770,7 @@ void CanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             viewProj = camera->GetProjectionMatrix() * camera->GetViewMatrix();
         } else {
             auto [winW, winH] = Window::Get()->GetLogicalSize();
-            viewProj = glm::ortho(0.0f, (float)winW, (float)winH, 0.0f, -1.0f, 1.0f);
+            viewProj = glm::ortho(0.0f, static_cast<float>(winW), static_cast<float>(winH), 0.0f, -1.0f, 1.0f);
         }
 
         // Drain canvasDrawables through BatchRenderer2D's CPU path (no GL calls)
@@ -2800,7 +2802,7 @@ void CanvasPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEnco
             allCommands,
             /*depthTest=*/false,
             /*toSwapchain=*/false,
-            (uint32_t)renderer.sceneRT->GetNumSamples()
+            static_cast<uint32_t>(renderer.sceneRT->GetNumSamples())
         );
         renderer.sceneRT->End();
         return;
@@ -3054,7 +3056,9 @@ void UIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder*
         if (!swapchainView) return;// surface not ready (device still initializing)
 
         auto logicalSize = Window::Get()->GetLogicalSize();
-        glm::mat4 projection = glm::ortho(0.0f, (float)logicalSize.width, (float)logicalSize.height, 0.0f, -1.0f, 1.0f);
+        glm::mat4 projection = glm::ortho(
+            0.0f, static_cast<float>(logicalSize.width), static_cast<float>(logicalSize.height), 0.0f, -1.0f, 1.0f
+        );
 
         // UIPass runs after PostProcessPass, which has already resolved
         // sceneRT to the swapchain — record onto the swapchain view directly
@@ -3077,7 +3081,7 @@ void UIPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder*
             allCommands,
             /*depthTest=*/false,
             /*toSwapchain=*/true,
-            renderer.sceneRT ? (uint32_t)renderer.sceneRT->GetNumSamples() : 1u
+            renderer.sceneRT ? static_cast<uint32_t>(renderer.sceneRT->GetNumSamples()) : 1u
         );
 
         wgpuRenderPassEncoderEnd(pass);
@@ -3181,56 +3185,56 @@ void Renderer::schedulePixelReadback() {
     const size_t bufSize = static_cast<size_t>(w) * h * 4;
 
     // Lazy-init or re-init when resolution changes.
-    if (m_readbackFBO == 0 || w != m_readbackPBOWidth || h != m_readbackPBOHeight) {
+    if (_readbackFBO == 0 || w != _readbackPBOWidth || h != _readbackPBOHeight) {
         destroyReadbackPBOs();
 
-        glGenFramebuffers(1, &m_readbackFBO);
-        glGenBuffers(READBACK_PBO_COUNT, m_readbackPBOs);
+        glGenFramebuffers(1, &_readbackFBO);
+        glGenBuffers(READBACK_PBO_COUNT, _readbackPBOs);
         for (int i = 0; i < READBACK_PBO_COUNT; ++i) {
-            glBindBuffer(GL_PIXEL_PACK_BUFFER, m_readbackPBOs[i]);
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, _readbackPBOs[i]);
             glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(bufSize), nullptr, GL_STREAM_READ);
         }
         glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
-        m_readbackPBOWidth = w;
-        m_readbackPBOHeight = h;
-        m_readbackFrameIdx = 0;
+        _readbackPBOWidth = w;
+        _readbackPBOHeight = h;
+        _readbackFrameIdx = 0;
     }
 
-    const int writeIdx = static_cast<int>(m_readbackFrameIdx % READBACK_PBO_COUNT);
+    const int writeIdx = static_cast<int>(_readbackFrameIdx % READBACK_PBO_COUNT);
 
     GLint prevReadFBO = 0;
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevReadFBO);
 
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, m_readbackFBO);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, _readbackFBO);
     glFramebufferTexture2D(
         GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, static_cast<GLuint>(src->GetTextureID()), 0
     );
 
     // nullptr offset = write into the bound PBO; returns immediately (async DMA).
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, m_readbackPBOs[writeIdx]);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, _readbackPBOs[writeIdx]);
     glReadPixels(0, 0, static_cast<GLsizei>(w), static_cast<GLsizei>(h), GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
     glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(prevReadFBO));
 
-    ++m_readbackFrameIdx;
+    ++_readbackFrameIdx;
 }
 
 std::optional<GpuImageData> Renderer::collectPixelReadback() {
     // Pipeline needs READBACK_PBO_COUNT frames to prime before any data is ready.
-    if (m_readbackFBO == 0 || m_readbackFrameIdx < static_cast<uint32_t>(READBACK_PBO_COUNT)) return std::nullopt;
+    if (_readbackFBO == 0 || _readbackFrameIdx < static_cast<uint32_t>(READBACK_PBO_COUNT)) return std::nullopt;
 
-    const uint32_t w = m_readbackPBOWidth;
-    const uint32_t h = m_readbackPBOHeight;
+    const uint32_t w = _readbackPBOWidth;
+    const uint32_t h = _readbackPBOHeight;
     const size_t bufSize = static_cast<size_t>(w) * h * 4;
 
-    // After schedulePixelReadback() incremented m_readbackFrameIdx, the oldest
-    // in-flight PBO is at index m_readbackFrameIdx % READBACK_PBO_COUNT.
+    // After schedulePixelReadback() incremented _readbackFrameIdx, the oldest
+    // in-flight PBO is at index _readbackFrameIdx % READBACK_PBO_COUNT.
     // The GPU finished its DMA into this slot (READBACK_PBO_COUNT-1) frames ago.
-    const int readIdx = static_cast<int>(m_readbackFrameIdx % READBACK_PBO_COUNT);
+    const int readIdx = static_cast<int>(_readbackFrameIdx % READBACK_PBO_COUNT);
 
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, m_readbackPBOs[readIdx]);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, _readbackPBOs[readIdx]);
     const auto* gpuPtr = static_cast<const uint8_t*>(
         glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, static_cast<GLsizeiptr>(bufSize), GL_MAP_READ_BIT)
     );
@@ -3252,16 +3256,16 @@ std::optional<GpuImageData> Renderer::collectPixelReadback() {
 }
 
 void Renderer::destroyReadbackPBOs() {
-    if (m_readbackFBO) {
-        glDeleteFramebuffers(1, &m_readbackFBO);
-        m_readbackFBO = 0;
+    if (_readbackFBO) {
+        glDeleteFramebuffers(1, &_readbackFBO);
+        _readbackFBO = 0;
     }
-    if (m_readbackPBOs[0]) {
-        glDeleteBuffers(READBACK_PBO_COUNT, m_readbackPBOs);
-        for (auto& pbo : m_readbackPBOs)
+    if (_readbackPBOs[0]) {
+        glDeleteBuffers(READBACK_PBO_COUNT, _readbackPBOs);
+        for (auto& pbo : _readbackPBOs)
             pbo = 0;
     }
-    m_readbackFrameIdx = 0;
-    m_readbackPBOWidth = 0;
-    m_readbackPBOHeight = 0;
+    _readbackFrameIdx = 0;
+    _readbackPBOWidth = 0;
+    _readbackPBOHeight = 0;
 }

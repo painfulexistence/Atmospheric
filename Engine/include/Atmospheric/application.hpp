@@ -1,5 +1,6 @@
 #pragma once
 #include "audio_subsystem.hpp"
+#include "camera_component.hpp"
 #include "config.hpp"
 #include "console_subsystem.hpp"
 #include "game_object.hpp"
@@ -7,9 +8,9 @@
 #include "imgui.h"
 #include "input_subsystem.hpp"
 #include "layer.hpp"
+#include "light_component.hpp"
 #include "physics_subsystem_2d.hpp"
 #include "physics_subsystem_3d.hpp"
-#include "scene.hpp"
 #include "scene_transition.hpp"
 
 #include <memory>
@@ -206,7 +207,6 @@ protected:
     // game code included — through their static locator, e.g.
     // GraphicsSubsystem::Get() / InputSubsystem::Get(), consistent with
     // AssetManager / FileSystem / Window.
-    std::vector<Scene> scenes;
     CameraComponent* mainCamera = nullptr;
     LightComponent* mainLight = nullptr;
 

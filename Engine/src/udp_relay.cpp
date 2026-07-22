@@ -2,8 +2,8 @@
 
 #ifndef __EMSCRIPTEN__
 
+#include "logging.hpp"
 #include <cstring>
-#include <spdlog/spdlog.h>
 
 namespace {
 
@@ -17,7 +17,7 @@ bool UdpRelay::Start(uint16_t port) {
     if (_running) Stop();
     if (!_socket.Open(port)) return false;
     _running = true;
-    spdlog::info("UdpRelay: listening on UDP port {}", _socket.BoundPort());
+    ENGINE_INFO("UdpRelay: listening on UDP port {}", _socket.BoundPort());
     return true;
 }
 
@@ -25,7 +25,7 @@ void UdpRelay::Stop() {
     _socket.Close();
     _rooms.clear();
     _running = false;
-    spdlog::info("UdpRelay: stopped");
+    ENGINE_INFO("UdpRelay: stopped");
 }
 
 void UdpRelay::Process(float dt) {
@@ -113,7 +113,7 @@ void UdpRelay::_pump() {
 void UdpRelay::_evictStaleRooms() {
     for (auto it = _rooms.begin(); it != _rooms.end();) {
         if (_totalMs - it->second.lastActivityMs > kRoomTimeoutMs) {
-            spdlog::debug("UdpRelay: evicting idle room {}", it->first);
+            ENGINE_DEBUG("UdpRelay: evicting idle room {}", it->first);
             it = _rooms.erase(it);
         } else {
             ++it;
@@ -128,7 +128,7 @@ bool UdpRelay::_allowNewRoom(uint32_t senderAddr) {
         budget.roomsThisWindow = 0;
     }
     if (budget.roomsThisWindow >= maxNewRoomsPerIpPerWindow) {
-        spdlog::debug("UdpRelay: rate-limiting new-room request from {:#010x}", senderAddr);
+        ENGINE_DEBUG("UdpRelay: rate-limiting new-room request from {:#010x}", senderAddr);
         return false;
     }
     budget.roomsThisWindow++;

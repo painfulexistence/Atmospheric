@@ -1,5 +1,6 @@
 #include "rmlui_system.hpp"
 #include "console_subsystem.hpp"
+#include "logging.hpp"
 #include "window.hpp"
 #include <fmt/format.h>
 
@@ -18,16 +19,16 @@ bool RmlUiSystem::LogMessage(Rml::Log::Type type, const Rml::String& message) {
     switch (type) {
     case Rml::Log::LT_ALWAYS:
     case Rml::Log::LT_ERROR:
-        ConsoleSubsystem::Get()->Error(msg);
+        ENGINE_ERROR("{}", msg);
         break;
     case Rml::Log::LT_WARNING:
-        ConsoleSubsystem::Get()->Warn(msg);
+        ENGINE_WARN("{}", msg);
         break;
     case Rml::Log::LT_INFO:
-        ConsoleSubsystem::Get()->Info(msg);
+        ENGINE_INFO("{}", msg);
         break;
     case Rml::Log::LT_DEBUG:
-        // ConsoleSubsystem::Get()->Info(msg); // Treat debug as info or ignore?
+        // ENGINE_INFO("{}", msg); // Treat debug as info or ignore?
         break;
     default:
         break;

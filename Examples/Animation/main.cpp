@@ -24,20 +24,18 @@ class CSBDemo : public Application {
 
         _loadedScene = _sceneLoader->Load("assets/scenes/Canvas.csb", glm::vec3(0.0f), CanvasLayer::LAYER_WORLD);
         if (_loadedScene.success) {
-            ConsoleSubsystem::Get()->Info(
-                fmt::format("CSB loaded successfully! {} nodes created", _loadedScene.allNodes.size())
-            );
+            APP_INFO("CSB loaded successfully! {} nodes created", _loadedScene.allNodes.size());
         } else {
-            ConsoleSubsystem::Get()->Warn(fmt::format("CSB load failed: {}", _loadedScene.error));
-            ConsoleSubsystem::Get()->Info("Creating layout test sprites...");
+            APP_WARN("CSB load failed: {}", _loadedScene.error);
+            APP_INFO("Creating layout test sprites...");
             CreateLayoutTestSprites();
         }
 
-        ConsoleSubsystem::Get()->Info("=== CSB Demo Controls ===");
-        ConsoleSubsystem::Get()->Info("1 - Toggle debug grid/coordinate system");
-        ConsoleSubsystem::Get()->Info("2 - Toggle node info overlay");
-        ConsoleSubsystem::Get()->Info("R - Reload scene");
-        ConsoleSubsystem::Get()->Info("ESC - Quit");
+        APP_INFO("=== CSB Demo Controls ===");
+        APP_INFO("1 - Toggle debug grid/coordinate system");
+        APP_INFO("2 - Toggle node info overlay");
+        APP_INFO("R - Reload scene");
+        APP_INFO("ESC - Quit");
     }
 
     void CreateLayoutTestSprites() {
@@ -181,20 +179,20 @@ class CSBDemo : public Application {
             _testSprites.push_back(stacked);
         }
 
-        ConsoleSubsystem::Get()->Info(fmt::format("Created {} layout test sprites", _testSprites.size()));
+        APP_INFO("Created {} layout test sprites", _testSprites.size());
     }
 
     void OnUpdate(float dt, float time) override {
         // Toggle debug grid
         if (InputSubsystem::Get()->IsKeyPressed(Key::Num1)) {
             _showDebugGrid = !_showDebugGrid;
-            ConsoleSubsystem::Get()->Info(fmt::format("Debug grid: {}", _showDebugGrid ? "ON" : "OFF"));
+            APP_INFO("Debug grid: {}", _showDebugGrid ? "ON" : "OFF");
         }
 
         // Toggle node info
         if (InputSubsystem::Get()->IsKeyPressed(Key::Num2)) {
             _showNodeInfo = !_showNodeInfo;
-            ConsoleSubsystem::Get()->Info(fmt::format("Node info: {}", _showNodeInfo ? "ON" : "OFF"));
+            APP_INFO("Node info: {}", _showNodeInfo ? "ON" : "OFF");
         }
 
         // Reload scene

@@ -89,11 +89,11 @@ public:
         switch (mode) {
         case LockstepNet::Mode::Host:
             _net.StartHost(port, seed, delay);
-            con->Info(fmt::format("Hosting on UDP port {} (seed {})", port, seed));
+            APP_INFO("Hosting on UDP port {} (seed {})", port, seed);
             break;
         case LockstepNet::Mode::Client:
             _net.StartClient(joinIp, port);
-            con->Info(fmt::format("Joining {}:{} ...", joinIp, port));
+            APP_INFO("Joining {}:{} ...", joinIp, port);
             break;
         default:
             _net.StartSolo(seed);
@@ -157,9 +157,7 @@ public:
         if (!_started && _net.state == LockstepNet::State::Running) {
             _sim.Init(_net.seed);
             _started = true;
-            ConsoleSubsystem::Get()->Info(
-                fmt::format("Game started, seed {}, local player {}", _net.seed, _net.localPlayer)
-            );
+            APP_INFO("Game started, seed {}, local player {}", _net.seed, _net.localPlayer);
         }
 
         if (_started) RunFixedUpdate(dt);

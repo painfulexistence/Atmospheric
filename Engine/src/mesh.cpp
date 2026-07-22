@@ -3,6 +3,7 @@
 #include "config.hpp"
 #include "gfx_factory.hpp"
 #include "graphics_subsystem.hpp"
+#include "logging.hpp"
 #include <cstddef>
 
 // Frustum culling (GraphicsSubsystem::Render) transforms this AABB to world
@@ -22,8 +23,8 @@ static AABB ComputeMeshAABB(const std::vector<Vertex>& verts) {
 }
 
 void PrintVertex(const Vertex& v) {
-    fmt::print(
-        "P: ({},{},{}), UV: ({},{})\n, N: ({},{},{}), T: ({},{},{}), B: ({},{},{})\n",
+    ENGINE_INFO(
+        "P: ({},{},{}), UV: ({},{})\n, N: ({},{},{}), T: ({},{},{}), B: ({},{},{})",
         v.position.x,
         v.position.y,
         v.position.z,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Atmospheric.hpp"
+#include "Atmospheric/logging.hpp"
 #include <sol/sol.hpp>
 #include <string>
 
@@ -122,7 +123,7 @@ template<typename... Args> void ScriptableComponent::CallMethod(const std::strin
         auto result = method(_instance, std::forward<Args>(args)...);
         if (!result.valid()) {
             sol::error err = result;
-            fmt::print(stderr, "[Lua Error] {}:{} - {}\n", _className, methodName, err.what());
+            ENGINE_ERROR("[Lua Error] {}:{} - {}", _className, methodName, err.what());
         }
     }
 }
@@ -136,6 +137,6 @@ void ScriptableComponent::CallMethodSafeWithArgs(
     auto result = func(_instance, std::forward<Args>(args)...);
     if (!result.valid()) {
         sol::error err = result;
-        fmt::print(stderr, "[Lua Error] {}:{} - {}\n", _className, methodName, err.what());
+        ENGINE_ERROR("[Lua Error] {}:{} - {}", _className, methodName, err.what());
     }
 }

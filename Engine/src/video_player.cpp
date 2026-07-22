@@ -1,5 +1,6 @@
 #include "video_player.hpp"
 #include "Atmospheric/file_system.hpp"
+#include "logging.hpp"
 #include <fmt/format.h>
 
 #ifdef AE_HAS_FFMPEG
@@ -202,14 +203,14 @@ bool VideoPlayer::open(const std::string& path) {
         resolvedPath = FileSystem::Get().ResolvePath(path).value_or(path);
     }
     js_video_open(reinterpret_cast<uintptr_t>(this), resolvedPath.c_str());
-    m_currentTime = 0.0;
-    m_hasCurrentFrame = false;
-    m_finished = false;
-    m_open = true;
+    _currentTime = 0.0;
+    _hasCurrentFrame = false;
+    _finished = false;
+    _open = true;
     return true;
 #else
 #ifndef AE_HAS_FFMPEG
-    fmt::print(stderr, "[VideoPlayer] Built without FFmpeg support\n");
+    ENGINE_ERROR("[VideoPlayer] Built without FFmpeg support");
     return false;
 #else
     close();
@@ -219,95 +220,95 @@ bool VideoPlayer::open(const std::string& path) {
         resolvedPath = FileSystem::Get().ResolvePath(path).value_or(path);
     }
 
-    m_ffmpeg = std::make_unique<FFmpegDecodeContext>();
+    _ffmpeg = std::make_unique<FFmpegDecodeContext>();
     if (!initDecoder(resolvedPath)) {
         cleanup();
         return false;
     }
 
-    m_currentTime = 0.0;
-    m_hasCurrentFrame = false;
-    m_stop = false;
-    m_finished = false;
-    m_open = true;
+    _currentTime = 0.0;
+    _hasCurrentFrame = false;
+    _stop = false;
+    _finished = false;
+    _open = true;
 
-    m_decodeThread = std::thread(&VideoPlayer::decodeThreadFunc, this);
+    _decodeThread = std::thread(&VideoPlayer::decodeThreadFunc, this);
     return true;
 #endif
 #endif
 }
 
 void VideoPlayer::close() {
-    if (!m_open) {
+    if (!_open) {
         return;
     }
 
 #ifdef __EMSCRIPTEN__
     js_video_close(reinterpret_cast<uintptr_t>(this));
-    m_open = false;
-    m_playing = false;
-    m_finished = false;
-    m_currentTime = 0.0;
-    m_duration = 0.0;
-    m_hasCurrentFrame = false;
-    m_frameQueue.clear();
+    _open = false;
+    _playing = false;
+    _finished = false;
+    _currentTime = 0.0;
+    _duration = 0.0;
+    _hasCurrentFrame = false;
+    _frameQueue.clear();
     return;
 #endif
 
-    m_stop = true;
-    m_cv.notify_all();
+    _stop = true;
+    _cv.notify_all();
 
-    if (m_decodeThread.joinable()) {
-        m_decodeThread.join();
+    if (_decodeThread.joinable()) {
+        _decodeThread.join();
     }
 
 #ifdef AE_HAS_FFMPEG
-    if (m_ffmpeg && m_ffmpeg->audioReady) {
-        StopAudioStream(m_ffmpeg->audioStream);
-        UnloadAudioStream(m_ffmpeg->audioStream);
-        m_ffmpeg->audioReady = false;
+    if (_ffmpeg && _ffmpeg->audioReady) {
+        StopAudioStream(_ffmpeg->audioStream);
+        UnloadAudioStream(_ffmpeg->audioStream);
+        _ffmpeg->audioReady = false;
     }
-    if (m_ffmpeg) {
-        std::lock_guard<std::mutex> al(m_ffmpeg->audioMutex);
-        m_ffmpeg->audioPCM.clear();
+    if (_ffmpeg) {
+        std::lock_guard<std::mutex> al(_ffmpeg->audioMutex);
+        _ffmpeg->audioPCM.clear();
     }
 #endif
 
     cleanup();
 
-    m_open = false;
-    m_playing = false;
-    m_finished = false;
-    m_currentTime = 0.0;
-    m_duration = 0.0;
-    m_hasCurrentFrame = false;
+    _open = false;
+    _playing = false;
+    _finished = false;
+    _currentTime = 0.0;
+    _duration = 0.0;
+    _hasCurrentFrame = false;
 
-    std::lock_guard<std::mutex> lock(m_mutex);
-    m_frameQueue.clear();
+    std::lock_guard<std::mutex> lock(_mutex);
+    _frameQueue.clear();
 }
 
 void VideoPlayer::play() {
-    m_playing = true;
+    _playing = true;
 #ifdef __EMSCRIPTEN__
     js_video_play(reinterpret_cast<uintptr_t>(this));
     return;
 #endif
 #ifdef AE_HAS_FFMPEG
-    if (m_ffmpeg && m_ffmpeg->audioReady) {
-        PlayAudioStream(m_ffmpeg->audioStream);
+    if (_ffmpeg && _ffmpeg->audioReady) {
+        PlayAudioStream(_ffmpeg->audioStream);
     }
 #endif
 }
 
 void VideoPlayer::pause() {
-    m_playing = false;
+    _playing = false;
 #ifdef __EMSCRIPTEN__
     js_video_pause(reinterpret_cast<uintptr_t>(this));
     return;
 #endif
 #ifdef AE_HAS_FFMPEG
-    if (m_ffmpeg && m_ffmpeg->audioReady) {
-        PauseAudioStream(m_ffmpeg->audioStream);
+    if (_ffmpeg && _ffmpeg->audioReady) {
+        PauseAudioStream(_ffmpeg->audioStream);
     }
 #endif
 }
@@ -315,7 +316,7 @@ void VideoPlayer::pause() {
 // ─── Main-thread update ────────────────────────────────────────────────────────────────────────────
 
 bool VideoPlayer::update(double deltaTime) {
-    if (!m_open || !m_playing) {
+    if (!_open || !_playing) {
         return false;
     }
 
@@ -325,12 +326,12 @@ bool VideoPlayer::update(double deltaTime) {
 
     uint32_t w = static_cast<uint32_t>(info[0]);
     uint32_t h = static_cast<uint32_t>(info[1]);
-    m_duration = info[2];
-    m_currentTime = info[3];
-    m_finished = (info[4] > 0.5);
+    _duration = info[2];
+    _currentTime = info[3];
+    _finished = (info[4] > 0.5);
 
-    if (m_finished) {
-        m_playing = false;
+    if (_finished) {
+        _playing = false;
         return false;
     }
 
@@ -338,73 +339,73 @@ bool VideoPlayer::update(double deltaTime) {
         return false;
     }
 
-    if (m_currentFrame.width != w || m_currentFrame.height != h) {
-        m_currentFrame.pixels.resize(w * h * 4);
-        m_currentFrame.width = w;
-        m_currentFrame.height = h;
+    if (_currentFrame.width != w || _currentFrame.height != h) {
+        _currentFrame.pixels.resize(w * h * 4);
+        _currentFrame.width = w;
+        _currentFrame.height = h;
     }
 
-    int updated = js_video_grab_frame(reinterpret_cast<uintptr_t>(this), m_currentFrame.pixels.data());
+    int updated = js_video_grab_frame(reinterpret_cast<uintptr_t>(this), _currentFrame.pixels.data());
     if (updated) {
-        m_hasCurrentFrame = true;
-        m_currentFrame.pts = m_currentTime;
+        _hasCurrentFrame = true;
+        _currentFrame.pts = _currentTime;
         return true;
     }
     return false;
 #else
 #ifdef AE_HAS_FFMPEG
-    if (m_ffmpeg && m_ffmpeg->audioReady) {
-        unsigned int played = GetAudioStreamFramesPlayed(m_ffmpeg->audioStream);
-        m_currentTime = static_cast<double>(played) / m_ffmpeg->audioSampleRate;
+    if (_ffmpeg && _ffmpeg->audioReady) {
+        unsigned int played = GetAudioStreamFramesPlayed(_ffmpeg->audioStream);
+        _currentTime = static_cast<double>(played) / _ffmpeg->audioSampleRate;
     } else {
-        m_currentTime += deltaTime;
+        _currentTime += deltaTime;
     }
 #else
-    m_currentTime += deltaTime;
+    _currentTime += deltaTime;
 #endif
 
     bool frameChanged = false;
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard<std::mutex> lock(_mutex);
 
-        while (!m_frameQueue.empty() && m_frameQueue.front().pts <= m_currentTime) {
-            m_currentFrame = std::move(m_frameQueue.front());
-            m_frameQueue.pop_front();
-            m_hasCurrentFrame = true;
+        while (!_frameQueue.empty() && _frameQueue.front().pts <= _currentTime) {
+            _currentFrame = std::move(_frameQueue.front());
+            _frameQueue.pop_front();
+            _hasCurrentFrame = true;
             frameChanged = true;
         }
     }
 
-    m_cv.notify_one();
+    _cv.notify_one();
 
 #ifdef AE_HAS_FFMPEG
-    if (m_ffmpeg && m_ffmpeg->audioReady) {
-        if (IsAudioStreamProcessed(m_ffmpeg->audioStream)) {
-            std::lock_guard<std::mutex> al(m_ffmpeg->audioMutex);
+    if (_ffmpeg && _ffmpeg->audioReady) {
+        if (IsAudioStreamProcessed(_ffmpeg->audioStream)) {
+            std::lock_guard<std::mutex> al(_ffmpeg->audioMutex);
             static constexpr int gchunkFrames = 4096;
-            int ch = m_ffmpeg->audioChannels;
-            int available = static_cast<int>(m_ffmpeg->audioPCM.size()) / ch;
+            int ch = _ffmpeg->audioChannels;
+            int available = static_cast<int>(_ffmpeg->audioPCM.size()) / ch;
             int toSend = std::min(available, gchunkFrames);
             if (toSend > 0) {
                 std::vector<int16_t> buf(static_cast<size_t>(toSend) * ch, 0);
                 for (int i = 0; i < toSend * ch; ++i) {
-                    buf[i] = m_ffmpeg->audioPCM.front();
-                    m_ffmpeg->audioPCM.pop_front();
+                    buf[i] = _ffmpeg->audioPCM.front();
+                    _ffmpeg->audioPCM.pop_front();
                 }
-                UpdateAudioStream(m_ffmpeg->audioStream, buf.data(), toSend);
+                UpdateAudioStream(_ffmpeg->audioStream, buf.data(), toSend);
             }
         }
     }
 #endif
 
-    if (m_finished && frameChanged) {
+    if (_finished && frameChanged) {
         bool queueEmpty;
         {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            queueEmpty = m_frameQueue.empty();
+            std::lock_guard<std::mutex> lock(_mutex);
+            queueEmpty = _frameQueue.empty();
         }
         if (queueEmpty) {
-            m_playing = false;
+            _playing = false;
         }
     }
 
@@ -413,14 +414,14 @@ bool VideoPlayer::update(double deltaTime) {
 }
 
 const VideoPlayer::Frame* VideoPlayer::getCurrentFrame() const {
-    return m_hasCurrentFrame ? &m_currentFrame : nullptr;
+    return _hasCurrentFrame ? &_currentFrame : nullptr;
 }
 
 // ─── Decode thread ────────────────────────────────────────────────────────────────────────────────
 
 void VideoPlayer::decodeThreadFunc() {
 #ifdef AE_HAS_FFMPEG
-    auto& ff = *m_ffmpeg;
+    auto& ff = *_ffmpeg;
 
     // Helper: decode one audio packet's frames and push PCM into the queue.
     auto enqueueAudio = [&](AVFrame* af) {
@@ -446,12 +447,12 @@ void VideoPlayer::decodeThreadFunc() {
         }
     };
 
-    while (!m_stop) {
+    while (!_stop) {
         {
-            std::unique_lock<std::mutex> lock(m_mutex);
-            m_cv.wait(lock, [this] { return m_frameQueue.size() < MAX_BUFFERED_FRAMES || m_stop.load(); });
+            std::unique_lock<std::mutex> lock(_mutex);
+            _cv.wait(lock, [this] { return _frameQueue.size() < MAX_BUFFERED_FRAMES || _stop.load(); });
         }
-        if (m_stop) {
+        if (_stop) {
             break;
         }
 
@@ -469,7 +470,7 @@ void VideoPlayer::decodeThreadFunc() {
                     enqueueAudio(ff.audioFrame);
                 }
             }
-            m_finished = true;
+            _finished = true;
             break;
         }
         if (ret < 0) {
@@ -503,14 +504,14 @@ bool VideoPlayer::initDecoder(const std::string& path) {
 #ifndef AE_HAS_FFMPEG
     return false;
 #else
-    auto& ff = *m_ffmpeg;
+    auto& ff = *_ffmpeg;
 
     if (avformat_open_input(&ff.fmtCtx, path.c_str(), nullptr, nullptr) < 0) {
-        fmt::print(stderr, "[VideoPlayer] Cannot open '{}'\n", path);
+        ENGINE_ERROR("[VideoPlayer] Cannot open '{}'", path);
         return false;
     }
     if (avformat_find_stream_info(ff.fmtCtx, nullptr) < 0) {
-        fmt::print(stderr, "[VideoPlayer] Cannot read stream info from '{}'\n", path);
+        ENGINE_ERROR("[VideoPlayer] Cannot read stream info from '{}'", path);
         return false;
     }
 
@@ -518,7 +519,7 @@ bool VideoPlayer::initDecoder(const std::string& path) {
     const AVCodec* codec = nullptr;
     ff.videoStreamIdx = av_find_best_stream(ff.fmtCtx, AVMEDIA_TYPE_VIDEO, -1, -1, &codec, 0);
     if (ff.videoStreamIdx < 0 || !codec) {
-        fmt::print(stderr, "[VideoPlayer] No video stream found in '{}'\n", path);
+        ENGINE_ERROR("[VideoPlayer] No video stream found in '{}'", path);
         return false;
     }
 
@@ -526,7 +527,7 @@ bool VideoPlayer::initDecoder(const std::string& path) {
     ff.timeBase = av_q2d(vstream->time_base);
 
     if (ff.fmtCtx->duration != AV_NOPTS_VALUE) {
-        m_duration = static_cast<double>(ff.fmtCtx->duration) / AV_TIME_BASE;
+        _duration = static_cast<double>(ff.fmtCtx->duration) / AV_TIME_BASE;
     }
 
     ff.codecCtx = avcodec_alloc_context3(codec);
@@ -585,12 +586,12 @@ bool VideoPlayer::initDecoder(const std::string& path) {
             return fmts[0];// codec didn't offer HW fmt — accept software fallback
         };
 
-        fmt::print("[VideoPlayer] HW decode: {} ({})\n", av_hwdevice_get_type_name(hwType), av_get_pix_fmt_name(hwPix));
+        ENGINE_INFO("[VideoPlayer] HW decode: {} ({})", av_hwdevice_get_type_name(hwType), av_get_pix_fmt_name(hwPix));
         break;
     }
 
     if (avcodec_open2(ff.codecCtx, codec, nullptr) < 0) {
-        fmt::print(stderr, "[VideoPlayer] Failed to open video decoder for '{}'\n", path);
+        ENGINE_ERROR("[VideoPlayer] Failed to open video decoder for '{}'", path);
         return false;
     }
 
@@ -645,11 +646,11 @@ bool VideoPlayer::initDecoder(const std::string& path) {
                         static_cast<unsigned int>(ff.audioSampleRate), 16, static_cast<unsigned int>(ff.audioChannels)
                     );
                     ff.audioReady = true;
-                    fmt::print(
-                        "[VideoPlayer] Audio: {} Hz, {} ch ({})\n", ff.audioSampleRate, ff.audioChannels, acodec->name
+                    ENGINE_INFO(
+                        "[VideoPlayer] Audio: {} Hz, {} ch ({})", ff.audioSampleRate, ff.audioChannels, acodec->name
                     );
                 } else {
-                    fmt::print(stderr, "[VideoPlayer] swr init failed; audio disabled\n");
+                    ENGINE_ERROR("[VideoPlayer] swr init failed; audio disabled");
                     if (ff.audioSwrCtx) {
                         swr_free(&ff.audioSwrCtx);
                     }
@@ -663,7 +664,7 @@ bool VideoPlayer::initDecoder(const std::string& path) {
         }
     }
 
-    fmt::print("[VideoPlayer] Opened '{}' — {}x{} {:.1f}s ({})\n", path, w, h, m_duration, codec->name);
+    ENGINE_INFO("[VideoPlayer] Opened '{}' — {}x{} {:.1f}s ({})", path, w, h, _duration, codec->name);
     return true;
 #endif
 }
@@ -672,7 +673,7 @@ bool VideoPlayer::convertAndEnqueue(void* avframePtr) {
 #ifndef AE_HAS_FFMPEG
     return false;
 #else
-    auto& ff = *m_ffmpeg;
+    auto& ff = *_ffmpeg;
     auto* avframe = static_cast<AVFrame*>(avframePtr);
 
     // If the frame is in hardware memory, transfer it to a CPU frame first.
@@ -704,7 +705,7 @@ bool VideoPlayer::convertAndEnqueue(void* avframePtr) {
             nullptr
         );
         if (!ff.swsCtx) {
-            fmt::print(stderr, "[VideoPlayer] Failed to create colour converter\n");
+            ENGINE_ERROR("[VideoPlayer] Failed to create colour converter");
             return false;
         }
     }
@@ -720,12 +721,12 @@ bool VideoPlayer::convertAndEnqueue(void* avframePtr) {
     sws_scale(ff.swsCtx, swFrame->data, swFrame->linesize, 0, h, dstPlanes, dstStrides);
 
     {
-        std::unique_lock<std::mutex> lock(m_mutex);
-        m_cv.wait(lock, [this] { return m_frameQueue.size() < MAX_BUFFERED_FRAMES || m_stop.load(); });
-        if (m_stop) {
+        std::unique_lock<std::mutex> lock(_mutex);
+        _cv.wait(lock, [this] { return _frameQueue.size() < MAX_BUFFERED_FRAMES || _stop.load(); });
+        if (_stop) {
             return false;
         }
-        m_frameQueue.push_back(std::move(decoded));
+        _frameQueue.push_back(std::move(decoded));
     }
     return true;
 #endif
@@ -733,10 +734,10 @@ bool VideoPlayer::convertAndEnqueue(void* avframePtr) {
 
 void VideoPlayer::cleanup() {
 #ifdef AE_HAS_FFMPEG
-    if (!m_ffmpeg) {
+    if (!_ffmpeg) {
         return;
     }
-    auto& ff = *m_ffmpeg;
+    auto& ff = *_ffmpeg;
 
     // Audio
     if (ff.audioSwrCtx) {
@@ -773,6 +774,6 @@ void VideoPlayer::cleanup() {
         avformat_close_input(&ff.fmtCtx);
     }
 
-    m_ffmpeg.reset();
+    _ffmpeg.reset();
 #endif
 }

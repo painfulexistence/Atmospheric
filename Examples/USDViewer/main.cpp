@@ -46,13 +46,15 @@ class USDViewer : public Application {
                 size_t verts = 0;
                 for (const auto& md : prefab.meshes)
                     verts += md.vertices.size();
-                ConsoleSubsystem::Get()->Info(
-                    "Kitchen_set: " + std::to_string(prefab.meshes.size()) + " meshes, "
-                    + std::to_string(prefab.materials.size()) + " materials, " + std::to_string(verts) + " verts"
+                APP_INFO(
+                    "Kitchen_set: {} meshes, {} materials, {} verts",
+                    prefab.meshes.size(),
+                    prefab.materials.size(),
+                    verts
                 );
             }
         } else {
-            ConsoleSubsystem::Get()->Info(
+            APP_INFO(
                 "Kitchen_set not found — run scripts/downloadUSDSamples.sh to download it "
                 "(showing the committed sample cube instead)"
             );

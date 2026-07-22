@@ -83,7 +83,7 @@ public:
     void stopRecording();
 
     bool isRecording() const {
-        return m_recording.load();
+        return _recording.load();
     }
 
     // Schedule capture of the current rendered frame. Call once per frame
@@ -100,45 +100,45 @@ public:
     // automatically attach/detach raudio's mixed processor.
     // Call once after construction (e.g. in Application::Run).
     void setAudioManager(AudioSubsystem* mgr) {
-        m_audioManager = mgr;
+        _audioManager = mgr;
     }
 
     // Set the directory where timestamped recordings are saved.
     void setBaseOutputDir(const std::string& dir) {
-        m_baseOutputDir = dir;
+        _baseOutputDir = dir;
         refreshOutputPath();
     }
 
     // Draw the recording section inside whatever ImGui window is currently open.
     void drawImGui(Renderer& renderer) {
         ImGui::SetNextItemWidth(-1.0f);
-        ImGui::InputText("##recpath", m_outputBuf, sizeof(m_outputBuf));
+        ImGui::InputText("##recpath", _outputBuf, sizeof(_outputBuf));
 
         if (!isRecording()) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.55f, 0.15f, 1.0f));
             if (ImGui::Button("Start##rec", ImVec2(-1.0f, 0.0f))) {
                 std::error_code ec;
-                std::filesystem::create_directories(std::filesystem::path(m_outputBuf).parent_path(), ec);
+                std::filesystem::create_directories(std::filesystem::path(_outputBuf).parent_path(), ec);
                 Config cfg;
-                cfg.outputPath = m_outputBuf;
-                cfg.captureAudio = (m_audioManager != nullptr);
+                cfg.outputPath = _outputBuf;
+                cfg.captureAudio = (_audioManager != nullptr);
                 cfg.audioSampleRate = 44100;
                 cfg.audioChannels = 2;
                 if (startRecording(&renderer, cfg))
-                    m_status.clear();
+                    _status.clear();
                 else
-                    m_status = "Failed to start (FFmpeg unavailable?)";
+                    _status = "Failed to start (FFmpeg unavailable?)";
             }
             ImGui::PopStyleColor();
         } else {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.1f, 0.1f, 1.0f));
             if (ImGui::Button("Stop##rec", ImVec2(-1.0f, 0.0f))) {
                 stopRecording();
-                m_status = fmt::format("Saved: {}", m_outputBuf);
+                _status = fmt::format("Saved: {}", _outputBuf);
                 refreshOutputPath();
             }
             ImGui::PopStyleColor();
-            auto elapsed = std::chrono::steady_clock::now() - m_recordingStart;
+            auto elapsed = std::chrono::steady_clock::now() - _recordingStart;
             auto secs = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
             ImGui::TextColored(
                 ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
@@ -147,7 +147,7 @@ public:
                 static_cast<int>(secs % 60)
             );
         }
-        if (!m_status.empty()) ImGui::TextDisabled("%s", m_status.c_str());
+        if (!_status.empty()) ImGui::TextDisabled("%s", _status.c_str());
     }
 
 private:
@@ -172,9 +172,9 @@ private:
     void encodeAudioFrame(int nbSamples);
     void flushAudioEncoder();
 
-    std::string m_baseOutputDir = "output";
-    char m_outputBuf[256] = {};
-    std::string m_status;
+    std::string _baseOutputDir = "output";
+    char _outputBuf[256] = {};
+    std::string _status;
 
     void refreshOutputPath() {
         auto now = std::chrono::system_clock::now();
@@ -187,34 +187,34 @@ private:
 #endif
         char filename[64];
         std::strftime(filename, sizeof(filename), "recording_%Y%m%d_%H%M%S.mp4", &tm);
-        auto path = (std::filesystem::path(m_baseOutputDir) / filename).string();
-        strncpy(m_outputBuf, path.c_str(), sizeof(m_outputBuf) - 1);
-        m_outputBuf[sizeof(m_outputBuf) - 1] = '\0';
+        auto path = (std::filesystem::path(_baseOutputDir) / filename).string();
+        strncpy(_outputBuf, path.c_str(), sizeof(_outputBuf) - 1);
+        _outputBuf[sizeof(_outputBuf) - 1] = '\0';
     }
 
-    Renderer* m_renderer = nullptr;
-    Config m_config;
-    std::chrono::steady_clock::time_point m_recordingStart;
+    Renderer* _renderer = nullptr;
+    Config _config;
+    std::chrono::steady_clock::time_point _recordingStart;
 
-    std::unique_ptr<FFmpegContext> m_ffmpeg;
+    std::unique_ptr<FFmpegContext> _ffmpeg;
 
-    std::queue<RawFrame> m_frameQueue;
-    std::mutex m_mutex;
-    std::condition_variable m_cv;
-    std::thread m_encoderThread;
+    std::queue<RawFrame> _frameQueue;
+    std::mutex _mutex;
+    std::condition_variable _cv;
+    std::thread _encoderThread;
 
-    std::atomic<bool> m_recording{ false };
-    std::atomic<bool> m_stop{ false };
+    std::atomic<bool> _recording{ false };
+    std::atomic<bool> _stop{ false };
 
     static constexpr size_t MAX_QUEUE_FRAMES = 16;
 
-    AudioSubsystem* m_audioManager = nullptr;
+    AudioSubsystem* _audioManager = nullptr;
 
     // ── Audio capture state ──────────────────────────────────────────────────
-    bool m_audioActive = false;// true when this session records an audio track
+    bool _audioActive = false;// true when this session records an audio track
 
     // Interleaved float32 PCM from writeAudio(), consumed by the encoder thread.
     // Bounded to ~5 s to prevent unbounded growth if the encoder falls behind.
-    std::deque<float> m_audioQueue;
-    std::mutex m_audioMutex;
+    std::deque<float> _audioQueue;
+    std::mutex _audioMutex;
 };

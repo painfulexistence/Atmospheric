@@ -1,3 +1,4 @@
+#include "logging.hpp"
 #include "window.hpp"
 #include <GLFW/glfw3.h>
 #ifdef __EMSCRIPTEN__
@@ -336,11 +337,11 @@ void Window::Init() {
 
     // Default event listeners
     AddMouseMoveCallback([](float x, float y) {
-        // ENGINE_LOG("-- Mouse moved to ({},{})\n", x, y);
+        // ENGINE_INFO("-- Mouse moved to ({},{})\n", x, y);
     });
-    AddViewportResizeCallback([](int width, int height) { ENGINE_LOG("Viewport resized to {}X{}\n", width, height); });
+    AddViewportResizeCallback([](int width, int height) { ENGINE_INFO("Viewport resized to {}X{}\n", width, height); });
     AddFramebufferResizeCallback([](int width, int height) {
-        ENGINE_LOG("Framebuffer resized to {}X{}\n", width, height);
+        ENGINE_INFO("Framebuffer resized to {}X{}\n", width, height);
     });
 }
 

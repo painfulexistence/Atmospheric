@@ -1,11 +1,12 @@
 #include "scriptable_component.hpp"
+#include "Atmospheric/logging.hpp"
 
 ScriptableComponent::ScriptableComponent(GameObject* go, sol::state& lua, const std::string& className)
   : _lua(lua), _className(className) {
     gameObject = go;
 
     if (!CreateInstance()) {
-        fmt::print(stderr, "[ScriptableComponent] Failed to create instance of class '{}'\n", _className);
+        ENGINE_ERROR("[ScriptableComponent] Failed to create instance of class '{}'", _className);
     }
 }
 
@@ -32,13 +33,13 @@ bool ScriptableComponent::CreateInstance() {
     // Look up the class in global scope
     sol::object classObj = _lua[_className];
     if (!classObj.valid()) {
-        fmt::print(stderr, "[ScriptableComponent] Class '{}' not found in Lua state\n", _className);
+        ENGINE_ERROR("[ScriptableComponent] Class '{}' not found in Lua state", _className);
         return false;
     }
 
     // Check if it's a table (Lua class)
     if (!classObj.is<sol::table>()) {
-        fmt::print(stderr, "[ScriptableComponent] '{}' is not a table/class\n", _className);
+        ENGINE_ERROR("[ScriptableComponent] '{}' is not a table/class", _className);
         return false;
     }
 
@@ -52,7 +53,7 @@ bool ScriptableComponent::CreateInstance() {
 
         if (!result.valid()) {
             sol::error err = result;
-            fmt::print(stderr, "[ScriptableComponent] Error calling {}.new(): {}\n", _className, err.what());
+            ENGINE_ERROR("[ScriptableComponent] Error calling {}.new(): {}", _className, err.what());
             return false;
         }
 
@@ -60,7 +61,7 @@ bool ScriptableComponent::CreateInstance() {
         if (instance.is<sol::table>()) {
             _instance = instance.as<sol::table>();
         } else {
-            fmt::print(stderr, "[ScriptableComponent] {}.new() did not return a table\n", _className);
+            ENGINE_ERROR("[ScriptableComponent] {}.new() did not return a table", _className);
             return false;
         }
     } else {
@@ -142,6 +143,6 @@ void ScriptableComponent::CallMethodSafe(sol::protected_function& func, const st
     auto result = func(_instance);
     if (!result.valid()) {
         sol::error err = result;
-        fmt::print(stderr, "[Lua Error] {}:{} - {}\n", _className, methodName, err.what());
+        ENGINE_ERROR("[Lua Error] {}:{} - {}", _className, methodName, err.what());
     }
 }

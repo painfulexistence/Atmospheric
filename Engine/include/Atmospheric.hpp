@@ -14,6 +14,7 @@
 #include "Atmospheric/height_field.hpp"
 #include "Atmospheric/height_field_collider_component.hpp"
 #include "Atmospheric/input_subsystem.hpp"
+#include "Atmospheric/logging.hpp"
 #include "Atmospheric/particle_emitter.hpp"
 #include "Atmospheric/particle_subsystem.hpp"
 #include "Atmospheric/physics_subsystem_2d.hpp"

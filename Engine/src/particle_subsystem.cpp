@@ -1,4 +1,5 @@
 #include "particle_subsystem.hpp"
+#include "logging.hpp"
 
 #include "asset_manager.hpp"
 #include "console_subsystem.hpp"
@@ -25,13 +26,13 @@ namespace Atmospheric {
         }
 
         if (!_enabled) {
-            ConsoleSubsystem::Get()->Info("Particle Subsystem disabled (kill-switch); Init skipped.");
+            ENGINE_INFO("Particle Subsystem disabled (kill-switch); Init skipped.");
             return;
         }
 
         CreateSharedResources();
         CreatePipelines();
-        ConsoleSubsystem::Get()->Info("Particle Subsystem Initialized");
+        ENGINE_INFO("Particle Subsystem Initialized");
     }
 
     void ParticleSubsystem::Shutdown() {
@@ -70,7 +71,7 @@ namespace Atmospheric {
             drawing_shader = assets.GetShaderHandle("particle_draw");
 
         } catch (const std::exception& e) {
-            ConsoleSubsystem::Get()->Error(fmt::format("Failed to create particle shaders: {}", e.what()));
+            ENGINE_ERROR("Failed to create particle shaders: {}", e.what());
             throw;
         }
     }

@@ -1,11 +1,11 @@
 #include "network_subsystem.hpp"
 #include "application.hpp"
+#include "logging.hpp"
 #include <imgui.h>
-#include <spdlog/spdlog.h>
 
 void NetworkSubsystem::Init(Application* app) {
     Subsystem::Init(app);
-    spdlog::info("NetworkSubsystem: initialized");
+    ENGINE_INFO("NetworkSubsystem: initialized");
 }
 
 void NetworkSubsystem::Process(float /*dt*/) {

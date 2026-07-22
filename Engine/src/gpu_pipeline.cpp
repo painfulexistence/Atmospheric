@@ -72,7 +72,7 @@ GpuPipeline GpuPipelineBuilder::build() {
             wgpuEntries.push_back(we);
         }
         WGPUBindGroupLayoutDescriptor bglDesc{};
-        bglDesc.entryCount = (uint32_t)wgpuEntries.size();
+        bglDesc.entryCount = static_cast<uint32_t>(wgpuEntries.size());
         bglDesc.entries = wgpuEntries.data();
         WGPUBindGroupLayout bgl = wgpuDeviceCreateBindGroupLayout(_device, &bglDesc);
         result.bgls.push_back(bgl);
@@ -81,7 +81,7 @@ GpuPipeline GpuPipelineBuilder::build() {
 
     // Build pipeline layout
     WGPUPipelineLayoutDescriptor plDesc{};
-    plDesc.bindGroupLayoutCount = (uint32_t)layouts.size();
+    plDesc.bindGroupLayoutCount = static_cast<uint32_t>(layouts.size());
     plDesc.bindGroupLayouts = layouts.empty() ? nullptr : layouts.data();
     WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(_device, &plDesc);
 
@@ -151,14 +151,14 @@ GpuPipeline GpuPipelineBuilder::build() {
     if (!wgpuAttrs.empty()) {
         vbls[vblCount].arrayStride = _stride;
         vbls[vblCount].stepMode = WGPUVertexStepMode_Vertex;
-        vbls[vblCount].attributeCount = (uint32_t)wgpuAttrs.size();
+        vbls[vblCount].attributeCount = static_cast<uint32_t>(wgpuAttrs.size());
         vbls[vblCount].attributes = wgpuAttrs.data();
         ++vblCount;
     }
     if (!wgpuInstanceAttrs.empty()) {
         vbls[vblCount].arrayStride = _instanceStride;
         vbls[vblCount].stepMode = WGPUVertexStepMode_Instance;
-        vbls[vblCount].attributeCount = (uint32_t)wgpuInstanceAttrs.size();
+        vbls[vblCount].attributeCount = static_cast<uint32_t>(wgpuInstanceAttrs.size());
         vbls[vblCount].attributes = wgpuInstanceAttrs.data();
         ++vblCount;
     }

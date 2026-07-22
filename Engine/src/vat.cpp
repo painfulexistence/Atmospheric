@@ -2,6 +2,7 @@
 #include "console_subsystem.hpp"
 #include "gfx_factory.hpp"
 #include "globals.hpp"
+#include "logging.hpp"
 
 namespace {
     // Packs positions[f][v] / normals[f][v] into a flat, row-major RGBA float array
@@ -33,16 +34,12 @@ VATClip::~VATClip() {
 std::unique_ptr<VATClip> VATClip::Bake(const VATFrameData& data) {
     const size_t frameCount = data.positions.size();
     if (frameCount == 0 || data.positions[0].empty()) {
-        ConsoleSubsystem::Get()->Error("[Engine] VATClip::Bake: empty frame data");
+        ENGINE_ERROR("VATClip::Bake: empty frame data");
         return nullptr;
     }
     if (data.normals.size() != frameCount) {
-        ConsoleSubsystem::Get()->Error(
-            fmt::format(
-                "[Engine] VATClip::Bake: positions/normals frame count mismatch ({} vs {})",
-                frameCount,
-                data.normals.size()
-            )
+        ENGINE_ERROR(
+            "VATClip::Bake: positions/normals frame count mismatch ({} vs {})", frameCount, data.normals.size()
         );
         return nullptr;
     }
@@ -50,9 +47,7 @@ std::unique_ptr<VATClip> VATClip::Bake(const VATFrameData& data) {
     const size_t vertCount = data.positions[0].size();
     for (size_t f = 0; f < frameCount; ++f) {
         if (data.positions[f].size() != vertCount || data.normals[f].size() != vertCount) {
-            ConsoleSubsystem::Get()->Error(
-                fmt::format("[Engine] VATClip::Bake: ragged frame {} (expected {} verts)", f, vertCount)
-            );
+            ENGINE_ERROR("VATClip::Bake: ragged frame {} (expected {} verts)", f, vertCount);
             return nullptr;
         }
     }
@@ -71,6 +66,6 @@ std::unique_ptr<VATClip> VATClip::Bake(const VATFrameData& data) {
         normData.data(), static_cast<int>(clip->_vertCount), static_cast<int>(clip->_frameCount)
     );
 
-    ENGINE_LOG("VATClip::Bake: {} verts x {} frames @ {} fps", vertCount, frameCount, data.frameRate);
+    ENGINE_INFO("VATClip::Bake: {} verts x {} frames @ {} fps", vertCount, frameCount, data.frameRate);
     return clip;
 }

@@ -106,7 +106,7 @@ void GPUCanvasPass::_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat 
                  .wgsl(QUAD_WGSL)
                  .bgl({ gpuDynUniform(0, wgsl_stage::vert, 64) })
                  .bgl({ gpuTexture(0), gpuSampler(1) })
-                 .vertex((uint64_t)FLOATS_PER_VERT * sizeof(float), _quadAttrs())
+                 .vertex(static_cast<uint64_t>(FLOATS_PER_VERT) * sizeof(float), _quadAttrs())
                  .colorFormat(format)
                  .blend(GpuPipelineBuilder::Blend::Alpha)
                  .depth(false, WGPUCompareFunction_Always)

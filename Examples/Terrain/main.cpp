@@ -47,9 +47,7 @@ class TerrainDemo : public Application {
             _selMode->SetSelection(procedural ? 0 : 1);
             _syncing = false;
         }
-        ConsoleSubsystem::Get()->Info(
-            procedural ? "Switched to procedural noise terrain" : "Switched to heightmap terrain"
-        );
+        APP_INFO("{}", procedural ? "Switched to procedural noise terrain" : "Switched to heightmap terrain");
     }
 
     void ApplyPalette(int index) {
@@ -64,7 +62,7 @@ class TerrainDemo : public Application {
             _selPalette->SetSelection(_paletteIndex);
             _syncing = false;
         }
-        ConsoleSubsystem::Get()->Info(std::string("Terrain palette ") + gpaletteNames[_paletteIndex]);
+        APP_INFO("Terrain palette {}", gpaletteNames[_paletteIndex]);
     }
 
     GameObject* CreateTerrain(const std::string& name, const std::shared_ptr<HeightField>& hf) {
@@ -132,7 +130,7 @@ class TerrainDemo : public Application {
             CreateGameObject()->AddComponent<UIPageComponent>("assets/ui/terrain_hud.rml")
         );
         if (!_hudPage->GetDocument()) {
-            ConsoleSubsystem::Get()->Warn("Terrain HUD failed to load; keyboard controls still work.");
+            APP_WARN("Terrain HUD failed to load; keyboard controls still work.");
             return;
         }
 
@@ -217,7 +215,7 @@ class TerrainDemo : public Application {
         ApplyProcedural(_showProcedural);
         ApplyPalette(_paletteIndex);
 
-        ConsoleSubsystem::Get()->Info(
+        APP_INFO(
             "Terrain loaded. WASD move, Arrow keys look, Z slow, SPACE/LMB switch terrain, P palette, I wireframe, "
             "ESC quit."
         );

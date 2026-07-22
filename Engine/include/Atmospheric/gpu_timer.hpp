@@ -1,6 +1,7 @@
 #pragma once
 #include "console_subsystem.hpp"
 #include "globals.hpp"
+#include "logging.hpp"
 #include <cstring>
 
 // GL_TIMESTAMP / glQueryCounter require OpenGL ≥ 3.3 (GL_ARB_timer_query,
@@ -79,7 +80,7 @@ struct GpuTimer {
         if (!loggedOnce) {
             loggedOnce = true;
             if (err != GL_NO_ERROR || startQ[0] == 0 || endQ[0] == 0) {
-                ENGINE_LOG(
+                ENGINE_INFO(
                     "GpuTimer: glGenQueries failed (GL error 0x{:x}) on '{}' / GL {} -- "
                     "per-pass GPU timings will read 0.",
                     static_cast<unsigned>(err),
@@ -118,7 +119,7 @@ struct GpuTimer {
                 static bool loggedFirstResult = false;
                 if (!loggedFirstResult) {
                     loggedFirstResult = true;
-                    ENGINE_LOG("GpuTimer: first result -- t0={} t1={} delta={}ns ({:.3f}ms)", t0, t1, t1 - t0, ms);
+                    ENGINE_INFO("GpuTimer: first result -- t0={} t1={} delta={}ns ({:.3f}ms)", t0, t1, t1 - t0, ms);
                 }
             } else if (++pendingFrames == 120) {
                 // ~2s at 60fps with nothing ever becoming available — the driver is
@@ -126,7 +127,7 @@ struct GpuTimer {
                 static bool loggedStall = false;
                 if (!loggedStall) {
                     loggedStall = true;
-                    ENGINE_LOG(
+                    ENGINE_INFO(
                         "GpuTimer: GL_QUERY_RESULT_AVAILABLE never became true after {} frames on '{}' / GL {} -- "
                         "driver may not support GL_TIMESTAMP queries despite reporting GL_ARB_timer_query.",
                         pendingFrames,

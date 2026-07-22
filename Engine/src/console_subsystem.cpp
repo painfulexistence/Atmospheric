@@ -1,7 +1,5 @@
 #include "console_subsystem.hpp"
-#ifdef __EMSCRIPTEN__
-#include "emscripten.h"
-#else
+#ifndef __EMSCRIPTEN__
 #include "spdlog/sinks/stdout_color_sinks.h"
 #include "spdlog/spdlog.h"
 #endif
@@ -65,36 +63,6 @@ void ConsoleSubsystem::DrawImGui(float dt) {
             gcommand[0] = '\0';
         }
     }
-}
-
-void ConsoleSubsystem::Info(const std::string& message) {
-#if RUNTIME_LOG_ON
-#ifdef __EMSCRIPTEN__
-    EM_ASM({ console.info(UTF8ToString($0)); }, message.c_str());
-#else
-    spdlog::info(message);
-#endif
-#endif
-}
-
-void ConsoleSubsystem::Warn(const std::string& message) {
-#if RUNTIME_LOG_ON
-#ifdef __EMSCRIPTEN__
-    EM_ASM({ console.warn(UTF8ToString($0)); }, message.c_str());
-#else
-    spdlog::warn(message);
-#endif
-#endif
-}
-
-void ConsoleSubsystem::Error(const std::string& message) {
-#if RUNTIME_LOG_ON
-#ifdef __EMSCRIPTEN__
-    EM_ASM({ console.error(UTF8ToString($0)); }, message.c_str());
-#else
-    spdlog::error(message);
-#endif
-#endif
 }
 
 void ConsoleSubsystem::RegisterCommand(

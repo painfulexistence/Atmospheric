@@ -37,12 +37,14 @@
 #define TracyNoop
 #endif
 
-#define CAMERA_ANGULAR_OFFSET 0.05
-#define CAMERA_SPEED 15
-#define CAMERA_VERTICAL_SPEED 8
-#define PI 3.1416
-#define GRAVITY 9.8
-#define FIXED_TIME_STEP 1.0 / 60.0
+// Typed, scoped compile-time constants (were #defines; PI in particular was a
+// lossy 3.1416). inline so the single definition is shared across every TU.
+inline constexpr float PI = 3.14159265358979323846f;
+inline constexpr float GRAVITY = 9.8f;
+inline constexpr float FIXED_TIME_STEP = 1.0f / 60.0f;
+inline constexpr float CAMERA_ANGULAR_OFFSET = 0.05f;
+inline constexpr float CAMERA_SPEED = 15.0f;
+inline constexpr float CAMERA_VERTICAL_SPEED = 8.0f;
 
 struct TextureHandle {
     static constexpr uint32_t INVALID = 0;

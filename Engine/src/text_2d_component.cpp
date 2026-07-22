@@ -5,6 +5,7 @@
 #include "game_object.hpp"
 #include "graphics_subsystem.hpp"
 #include "imgui.h"
+#include "logging.hpp"
 
 Text2DComponent::Text2DComponent(GameObject* gameObject, const Text2DProps& props) : CanvasDrawable(gameObject) {
     _text = props.text;
@@ -37,7 +38,7 @@ void Text2DComponent::DrawImGui() {
 }
 
 void Text2DComponent::OnAttach() {
-    ConsoleSubsystem::Get()->Info(fmt::format("Text2DComponent: Attaching with text='{}'", _text));
+    ENGINE_INFO("Text2DComponent: Attaching with text='{}'", _text);
     auto* graphics = GraphicsSubsystem::Get();
     graphics->RegisterCanvasDrawable(this);
 

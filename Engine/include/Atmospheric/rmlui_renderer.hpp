@@ -38,7 +38,7 @@ public:
     void Shutdown();
 
 private:
-    Renderer* m_Renderer;
+    Renderer* _Renderer;
 
     struct TextureData {
         GLuint id = 0;
@@ -60,14 +60,14 @@ private:
     };
 
     // Texture management
-    std::unordered_map<Rml::TextureHandle, TextureData> m_textures;
-    Rml::TextureHandle m_next_texture_handle = 1;
+    std::unordered_map<Rml::TextureHandle, TextureData> _textures;
+    Rml::TextureHandle _next_texture_handle = 1;
 
     // Geometry management
-    std::unordered_map<Rml::CompiledGeometryHandle, CompiledGeometry> m_geometry;
-    Rml::CompiledGeometryHandle m_next_geometry_handle = 1;
+    std::unordered_map<Rml::CompiledGeometryHandle, CompiledGeometry> _geometry;
+    Rml::CompiledGeometryHandle _next_geometry_handle = 1;
 
     // State
-    Scissor m_scissor;
-    glm::mat4 m_transform = glm::mat4(1.0f);
+    Scissor _scissor;
+    glm::mat4 _transform = glm::mat4(1.0f);
 };

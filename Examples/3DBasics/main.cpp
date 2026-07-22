@@ -70,11 +70,9 @@ class HelloWorld : public Application {
             .color = glm::vec4(1.0f, 1.0f, 0.0f, 1.0f),
         });
 
-        ConsoleSubsystem::Get()->Info(fmt::format("Game fully loaded in {:.1f} seconds", GetWindowTime()));
-        ConsoleSubsystem::Get()->Info("Press R to reload shaders, ESC to quit");
-        ConsoleSubsystem::Get()->Info(
-            "Scene (camera, 3D sprites, 2D sprites, HUD) loaded from assets/scenes/main.json"
-        );
+        APP_INFO("Game fully loaded in {:.1f} seconds", GetWindowTime());
+        APP_INFO("Press R to reload shaders, ESC to quit");
+        APP_INFO("Scene (camera, 3D sprites, 2D sprites, HUD) loaded from assets/scenes/main.json");
     }
 
     void OnUpdate(float dt, float time) override {

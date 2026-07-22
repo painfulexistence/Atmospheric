@@ -63,20 +63,20 @@ public:
     const Frame* getCurrentFrame() const;
 
     bool isOpen() const {
-        return m_open.load();
+        return _open.load();
     }
     bool isPlaying() const {
-        return m_playing.load();
+        return _playing.load();
     }
     bool isFinished() const {
-        return m_finished.load();
+        return _finished.load();
     }
 
     double getDuration() const {
-        return m_duration;
+        return _duration;
     }
     double getCurrentTime() const {
-        return m_currentTime;
+        return _currentTime;
     }
 
 private:
@@ -87,23 +87,23 @@ private:
     void cleanup();
     bool convertAndEnqueue(void* avframe);
 
-    std::unique_ptr<FFmpegDecodeContext> m_ffmpeg;
+    std::unique_ptr<FFmpegDecodeContext> _ffmpeg;
 
-    std::deque<Frame> m_frameQueue;
-    std::mutex m_mutex;
-    std::condition_variable m_cv;
-    std::thread m_decodeThread;
+    std::deque<Frame> _frameQueue;
+    std::mutex _mutex;
+    std::condition_variable _cv;
+    std::thread _decodeThread;
 
-    std::atomic<bool> m_open{ false };
-    std::atomic<bool> m_playing{ false };
-    std::atomic<bool> m_stop{ false };
-    std::atomic<bool> m_finished{ false };
+    std::atomic<bool> _open{ false };
+    std::atomic<bool> _playing{ false };
+    std::atomic<bool> _stop{ false };
+    std::atomic<bool> _finished{ false };
 
-    double m_currentTime = 0.0;
-    double m_duration = 0.0;
+    double _currentTime = 0.0;
+    double _duration = 0.0;
 
-    Frame m_currentFrame;
-    bool m_hasCurrentFrame = false;
+    Frame _currentFrame;
+    bool _hasCurrentFrame = false;
 
     static constexpr size_t MAX_BUFFERED_FRAMES = 4;
 };

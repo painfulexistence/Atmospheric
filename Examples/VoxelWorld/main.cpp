@@ -88,13 +88,11 @@ class VoxelWorldApp : public Application {
             pp->vignetteEnabled = true;
         }
 
-        ConsoleSubsystem::Get()->Info(
+        APP_INFO(
             "VoxelWorld loaded. WASD move, RF up/down, Arrow keys look, Z slow, X sprint, P palette, I wireframe, O "
             "corner AO, G VoxelGI, K SSGI, ESC quit."
         );
-        ConsoleSubsystem::Get()->Info(
-            "Hold E to dig — greedy-meshed 1m voxels, so carving re-meshes the affected chunks."
-        );
+        APP_INFO("Hold E to dig — greedy-meshed 1m voxels, so carving re-meshes the affected chunks.");
     }
 
     static constexpr int gpaletteCount = 6;
@@ -110,7 +108,7 @@ class VoxelWorldApp : public Application {
         if (_world && InputSubsystem::Get()->IsKeyPressed(Key::P)) {
             int& idx = _world->World().paletteIndex;
             idx = (idx + 1) % gpaletteCount;
-            ConsoleSubsystem::Get()->Info(std::string("Voxel palette ") + gpaletteNames[idx]);
+            APP_INFO("Voxel palette {}", gpaletteNames[idx]);
         }
         if (InputSubsystem::Get()->IsKeyPressed(Key::I)) {
             _wireframe = !_wireframe;
@@ -121,7 +119,7 @@ class VoxelWorldApp : public Application {
         if (InputSubsystem::Get()->IsKeyPressed(Key::O)) {
             if (auto* vp = GraphicsSubsystem::Get()->renderer->GetPass<VoxelChunkPass>()) {
                 vp->aoEnabled = !vp->aoEnabled;
-                ConsoleSubsystem::Get()->Info(vp->aoEnabled ? "Corner AO: on" : "Corner AO: off");
+                APP_INFO("{}", vp->aoEnabled ? "Corner AO: on" : "Corner AO: off");
             }
         }
         // Cycle global illumination: Off -> VoxelGI -> SSGI -> Off. Also
@@ -136,7 +134,7 @@ class VoxelWorldApp : public Application {
             if (vp) {
                 vp->giMode = (vp->giMode == GIMode::VoxelGI) ? GIMode::Off : GIMode::VoxelGI;
                 if (vp->giMode == GIMode::VoxelGI && ssgi) ssgi->ssgiEnabled = false;
-                ConsoleSubsystem::Get()->Info(vp->giMode == GIMode::VoxelGI ? "GI: VoxelGI (cone tracing)" : "GI: off");
+                APP_INFO("{}", vp->giMode == GIMode::VoxelGI ? "GI: VoxelGI (cone tracing)" : "GI: off");
             }
         }
         if (InputSubsystem::Get()->IsKeyPressed(Key::K)) {
@@ -145,7 +143,7 @@ class VoxelWorldApp : public Application {
             if (ssgi) {
                 ssgi->ssgiEnabled = !ssgi->ssgiEnabled;
                 if (ssgi->ssgiEnabled && vp) vp->giMode = VoxelChunkPass::GIMode::Off;
-                ConsoleSubsystem::Get()->Info(ssgi->ssgiEnabled ? "GI: SSGI (screen-space)" : "GI: off");
+                APP_INFO("{}", ssgi->ssgiEnabled ? "GI: SSGI (screen-space)" : "GI: off");
             }
         }
         // Hold E (or the touch DIG button) to dig; aim is the camera's facing,

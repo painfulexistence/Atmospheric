@@ -3,6 +3,7 @@
 #include "console_subsystem.hpp"
 #include "gfx_factory.hpp"
 #include "globals.hpp"// provides glad on native, GLES3/gl3.h on Emscripten
+#include "logging.hpp"
 #include "shader.hpp"
 #include <array>
 #include <fmt/format.h>
@@ -118,12 +119,12 @@ void BatchRenderer2D::Init() {
     try {
         auto shader = AssetManager::Get().GetShader("canvas");
         if (!shader) {
-            ConsoleSubsystem::Get()->Error("BatchRenderer2D::Init: 'canvas' shader not found!");
+            ENGINE_ERROR("BatchRenderer2D::Init: 'canvas' shader not found!");
         } else {
-            ConsoleSubsystem::Get()->Info("BatchRenderer2D::Init: 'canvas' shader loaded successfully.");
+            ENGINE_INFO("BatchRenderer2D::Init: 'canvas' shader loaded successfully.");
         }
     } catch (const std::exception& e) {
-        ConsoleSubsystem::Get()->Error(fmt::format("BatchRenderer2D::Init: Exception loading shader: {}", e.what()));
+        ENGINE_ERROR("BatchRenderer2D::Init: Exception loading shader: {}", e.what());
     }
 
     glBindVertexArray(0);// Unbind VAO to avoid state leakage
@@ -158,14 +159,14 @@ void BatchRenderer2D::BeginBatch(const glm::mat4& viewProj, BlendMode blendMode)
     // Check for errors after Activate
     GLenum err;
     while ((err = glGetError()) != GL_NO_ERROR) {
-        ConsoleSubsystem::Get()->Error(fmt::format("BatchRenderer2D::BeginScene (Activate): {}", err));
+        ENGINE_ERROR("BatchRenderer2D::BeginScene (Activate): {}", err);
     }
 
     m_Data->textureShader->SetUniform("Projection", viewProj);
 
     // Check for errors after SetUniform
     while ((err = glGetError()) != GL_NO_ERROR) {
-        ConsoleSubsystem::Get()->Error(fmt::format("BatchRenderer2D::BeginScene (SetUniform): {}", err));
+        ENGINE_ERROR("BatchRenderer2D::BeginScene (SetUniform): {}", err);
     }
 
     // Set blend mode
@@ -245,7 +246,7 @@ void BatchRenderer2D::Flush() {
     // Check for errors
     GLenum err;
     while ((err = glGetError()) != GL_NO_ERROR) {
-        ConsoleSubsystem::Get()->Error(fmt::format("BatchRenderer2D::Flush: {}", err));
+        ENGINE_ERROR("BatchRenderer2D::Flush: {}", err);
     }
 
     m_Data->stats.drawCalls++;

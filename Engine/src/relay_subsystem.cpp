@@ -3,12 +3,12 @@
 #ifndef __EMSCRIPTEN__
 
 #include "application.hpp"
+#include "logging.hpp"
 #include <imgui.h>
-#include <spdlog/spdlog.h>
 
 void RelaySubsystem::Init(Application* app) {
     Subsystem::Init(app);
-    spdlog::info("RelaySubsystem: initialized");
+    ENGINE_INFO("RelaySubsystem: initialized");
 }
 
 void RelaySubsystem::Process(float dt) {
