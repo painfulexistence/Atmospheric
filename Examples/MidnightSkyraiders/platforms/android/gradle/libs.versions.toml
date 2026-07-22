@@ -1,0 +1,12 @@
+[versions]
+agp            = "8.7.0"
+kotlin         = "2.1.0"
+billing        = "7.1.1"
+
+[libraries]
+billing        = { group = "com.android.billingclient", name = "billing",     version.ref = "billing" }
+billing-ktx    = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android      = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }

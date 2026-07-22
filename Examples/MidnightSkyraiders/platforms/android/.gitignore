@@ -1,0 +1,7 @@
+.gradle/
+build/
+app/.cxx/
+app/src/main/java/org/
+keystore.properties
+*.jks
+*.keystore
