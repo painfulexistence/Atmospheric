@@ -168,6 +168,14 @@ class DeathmatchGame : public Application {
     GameObject* _enemyGO = nullptr;
     std::vector<GameObject*> _rocketPool;
 
+    // On-screen kill-feed, fed by the reliable side-channel (exactly-once events),
+    // each line fading out over a few seconds.
+    struct FeedLine {
+        std::string text;
+        float ttl = 0.0f;
+    };
+    std::vector<FeedLine> _killFeed;
+
     void OnInit() override {
         GoScene("main", [this] { OnLoad(); });
     }
@@ -379,8 +387,24 @@ class DeathmatchGame : public Application {
         }
     }
 
-    void OnUpdate(float /*dt*/, float /*time*/) override {
+    void OnUpdate(float dt, float /*time*/) override {
         const uint32_t nowMs = NowMs();
+
+        // Reliable kill-feed events (delivered exactly once, in order): format and
+        // push as fading feed lines. Empty on most frames.
+        for (const auto& k : _net.TakeKillEvents()) {
+            const int me = _net.PlayerId();
+            const std::string who = (k.killer == me) ? "You" : "Enemy";
+            const std::string whom = (k.victim == me) ? "you" : "enemy";
+            _killFeed.push_back(FeedLine{ who + " fragged " + whom, 5.0f });
+        }
+        // Age and compact (avoids pulling in <algorithm> for remove_if).
+        size_t w = 0;
+        for (size_t r = 0; r < _killFeed.size(); ++r) {
+            _killFeed[r].ttl -= dt;
+            if (_killFeed[r].ttl > 0.0f) _killFeed[w++] = _killFeed[r];
+        }
+        _killFeed.resize(w);
 
         // Enemy capsule (interpolated position + yaw); a red-shift could denote
         // the shield in the polish pass — EnemyShielded() is available.
@@ -438,6 +462,13 @@ class DeathmatchGame : public Application {
             gfx->DrawText(_fontID, "DASH READY", 20.0f, 116.0f, 0.7f, glm::vec4(0.7f, 1.0f, 0.7f, 1.0f));
         if (!_net.IsAlive())
             gfx->DrawText(_fontID, "DOWNED — respawning...", 20.0f, 148.0f, 0.9f, glm::vec4(1.0f, 0.5f, 0.5f, 1.0f));
+        // Kill-feed (reliable events), top-center, fading out over the last second.
+        float fy = 20.0f;
+        for (const auto& f : _killFeed) {
+            const float a = f.ttl < 1.0f ? f.ttl : 1.0f;
+            gfx->DrawText(_fontID, f.text, ws.width * 0.5f - 70.0f, fy, 0.7f, glm::vec4(1.0f, 0.9f, 0.4f, a));
+            fy += 26.0f;
+        }
         // Crosshair.
         gfx->DrawLine(
             ws.width * 0.5f - 8,

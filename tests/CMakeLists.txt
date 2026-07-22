@@ -19,11 +19,13 @@ FetchContent_MakeAvailable(Catch2)
 add_executable(net_tests
     reliable_channel_test.cpp
     net_conditioner_test.cpp
+    reliable_killfeed_test.cpp
     ${CMAKE_SOURCE_DIR}/Engine/src/reliable_channel.cpp
     ${CMAKE_SOURCE_DIR}/Engine/src/net_conditioner.cpp
 )
 target_include_directories(net_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/Engine/include/Atmospheric
+    ${CMAKE_SOURCE_DIR}/Examples/Deathmatch# reliable_killfeed_test shares the game's kill-event codec (protocol.hpp)
 )
 target_link_libraries(net_tests PRIVATE Catch2::Catch2WithMain)
 

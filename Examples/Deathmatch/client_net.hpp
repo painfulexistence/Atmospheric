@@ -4,6 +4,7 @@
 #include <Atmospheric/datagram_socket.hpp>
 #include <Atmospheric/net_conditioner.hpp>
 #include <Atmospheric/net_metrics.hpp>
+#include <Atmospheric/reliable_channel.hpp>
 
 #include <cstdint>
 #include <map>
@@ -37,6 +38,10 @@ public:
         sim::Vec3 pos;
         sim::Vec3 vel;
         float life = 0.0f;
+    };
+    struct KillEvent {
+        int killer = 0;
+        int victim = 0;
     };
 
     bool Connect(const std::string& serverIp, uint16_t serverPort);
@@ -106,6 +111,14 @@ public:
         return _cosRockets;
     }
 
+    // Reliable kill-feed events delivered (exactly once, in order) since the last
+    // call; clears the queue. Empty on most frames. Drives the on-screen feed.
+    std::vector<KillEvent> TakeKillEvents() {
+        std::vector<KillEvent> out;
+        out.swap(_killFeed);
+        return out;
+    }
+
     // Netgraph data + the live link emulator (mutable so the HUD keybinds can
     // dial latency/jitter/loss). The conditioner sits on this client's inbound
     // snapshot path, so it works even in --local loopback play.
@@ -131,6 +144,8 @@ private:
 
     NetConditioner _cond;
     NetMetrics _metrics;
+    ReliableChannel _reliable;// reliable side-channel (kill-feed) over the same socket
+    std::vector<KillEvent> _killFeed;// decoded reliable events awaiting TakeKillEvents()
     std::map<uint32_t, uint32_t> _inputSendMs;// tick -> send time, for RTT on ack
 
     bool _welcomed = false;

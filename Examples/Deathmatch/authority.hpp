@@ -2,6 +2,7 @@
 #include "protocol.hpp"
 #include "sim_common.hpp"
 #include <Atmospheric/datagram_socket.hpp>
+#include <Atmospheric/reliable_channel.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -87,6 +88,10 @@ private:
         uint16_t lastRailSeq = 0;
         uint16_t lastRocketSeq = 0;
 
+        // Reliable side-channel to THIS client: carries must-arrive events
+        // (kill-feed) multiplexed on the same socket as the unreliable snapshots.
+        ReliableChannel reliable;
+
         sim::Vec3 posHistory[kHistoryTicks];
         uint32_t historyTick[kHistoryTicks] = { 0 };
         bool historyValid[kHistoryTicks] = { false };
@@ -114,6 +119,8 @@ private:
     void ResetPlayer(int idx);
     void HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, uint16_t fromPort);
     int SlotForSender(uint32_t addr, uint16_t port) const;
+    void QueueKill(int killerIdx, int victimIdx);// enqueue a reliable kill-feed event to both humans
+    void FlushReliable(int idx);                 // drain slot's ReliableChannel into a Reliable datagram
     sim::Vec3 HistoricalPos(int idx, uint32_t tick) const;
     void ApplyDamage(int targetIdx, int dmg, int killerIdx);
     void FireRail(int shooterIdx, float yaw, float pitch, uint32_t renderTick);

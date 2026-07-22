@@ -102,6 +102,11 @@ void ClientNet::HandlePacket(const uint8_t* buf, int n, uint32_t fromAddr, uint1
         spdlog::info("ClientNet: welcomed as player {}", _playerId);
     } else if (type == proto::PacketType::ServerSnapshot && n >= proto::kServerSnapshotHeaderLen) {
         HandleSnapshot(buf, n, nowMs);
+    } else if (type == proto::PacketType::Reliable) {
+        // Reliable side-channel bytes (kill-feed). Feeding the channel here means
+        // they pass through the conditioner like everything else, so dialing loss
+        // actually exercises the reliable resend. Messages are drained in Pump.
+        _reliable.ReadPacket(buf + proto::kReliablePayloadOffset, n - proto::kReliablePayloadOffset);
     }
 }
 
@@ -114,6 +119,27 @@ void ClientNet::Pump(uint32_t nowMs) {
         [&](uint8_t* b, int max, uint32_t& from, uint16_t& port) { return _socket.RecvFrom(b, max, from, port); },
         [&](const uint8_t* b, int n, uint32_t from, uint16_t port) { HandlePacket(b, n, from, port, nowMs); }
     );
+
+    // Drain reliable side-channel messages (exactly-once, in order) into the feed.
+    uint8_t msg[64];
+    bool reliable = false;
+    int mn = 0;
+    while ((mn = _reliable.Receive(msg, static_cast<int>(sizeof(msg)), &reliable)) > 0) {
+        if (reliable && mn >= proto::kKillMsgLen && msg[0] == static_cast<uint8_t>(proto::RelMsg::Kill))
+            _killFeed.push_back(KillEvent{ msg[1], msg[2] });
+    }
+    // Send our reliable packet: the ack we owe for received events (and a home for
+    // any future client→server reliable message). Stays quiet when nothing is due.
+    uint8_t out[600];
+    proto::PutU32(out, proto::kMagic);
+    out[4] = static_cast<uint8_t>(proto::PacketType::Reliable);
+    const int wn = _reliable.WritePacket(out + proto::kReliablePayloadOffset,
+                                         static_cast<int>(sizeof(out)) - proto::kReliablePayloadOffset);
+    if (wn > 0) {
+        _socket.SendTo(_serverAddr, _serverPort, out, proto::kReliablePayloadOffset + wn);
+        _metrics.OnSent(proto::kReliablePayloadOffset + wn);
+    }
+
     _metrics.pendingInputs = static_cast<int>(_pending.size());
     _metrics.lossPct = _cond.Active() ? _cond.MeasuredLossPct() : 0.0f;
 }

@@ -93,7 +93,39 @@ void DeathmatchAuthority::ApplyDamage(int targetIdx, int dmg, int killerIdx) {
         t.respawnTimer = sim::kRespawnDelay;
         if (killerIdx >= 0 && killerIdx != targetIdx) _slots[killerIdx].score++;
         spdlog::info("DeathmatchAuthority: player {} downed by {}", targetIdx, killerIdx);
+        QueueKill(killerIdx, targetIdx);// reliable, must-arrive kill-feed event
     }
+}
+
+// A kill is edge-triggered: enqueue it on every human's reliable channel so the
+// feed line shows exactly once, even under packet loss (score, by contrast, is
+// level-triggered in every snapshot and needs no reliability).
+void DeathmatchAuthority::QueueKill(int killerIdx, int victimIdx) {
+    uint8_t msg[proto::kKillMsgLen];
+    proto::EncodeKill(msg, killerIdx, victimIdx);
+    for (int i = 0; i < 2; i++) {
+        PlayerSlot& p = _slots[i];
+        if (!p.connected || p.isBot) continue;
+        if (!p.reliable.SendReliable(msg, proto::kKillMsgLen)) {
+            // Window full only if a client stopped acking for ~256 events — it is
+            // about to be reaped by the silence timeout anyway; dropping its feed
+            // line is harmless. Logged so it is never silent.
+            spdlog::warn("DeathmatchAuthority: reliable window full for player {}, kill-feed event dropped", i);
+        }
+    }
+}
+
+// Wrap the slot's next ReliableChannel packet (reliable messages awaiting ack,
+// plus the ack it owes us) in a PacketType::Reliable datagram and send it.
+void DeathmatchAuthority::FlushReliable(int idx) {
+    PlayerSlot& p = _slots[idx];
+    if (!p.connected || p.isBot) return;
+    uint8_t buf[600];
+    proto::PutU32(buf, proto::kMagic);
+    buf[4] = static_cast<uint8_t>(proto::PacketType::Reliable);
+    const int n = p.reliable.WritePacket(buf + proto::kReliablePayloadOffset,
+                                         static_cast<int>(sizeof(buf)) - proto::kReliablePayloadOffset);
+    if (n > 0) SendTo(p.addr, p.port, buf, proto::kReliablePayloadOffset + n);
 }
 
 void DeathmatchAuthority::FireRail(int shooterIdx, float yaw, float pitch, uint32_t renderTick) {
@@ -132,6 +164,15 @@ void DeathmatchAuthority::SpawnRocket(int shooterIdx, float yaw, float pitch, ui
 void DeathmatchAuthority::HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, uint16_t fromPort) {
     if (len < 5 || proto::GetU32(data) != proto::kMagic) return;
     const auto type = static_cast<proto::PacketType>(data[4]);
+
+    if (type == proto::PacketType::Reliable) {
+        // Client's reliable packet: carries acks for our kill-feed events (and
+        // room for future client→server reliable messages). Feed the channel.
+        const int idx = SlotForSender(fromAddr, fromPort);
+        if (idx < 0) return;
+        _slots[idx].reliable.ReadPacket(data + proto::kReliablePayloadOffset, len - proto::kReliablePayloadOffset);
+        return;
+    }
 
     if (type == proto::PacketType::ClientHello && len >= proto::kClientHelloLen) {
         int idx = SlotForSender(fromAddr, fromPort);
@@ -274,9 +315,14 @@ void DeathmatchAuthority::Tick() {
         std::remove_if(_rockets.begin(), _rockets.end(), [](const Rocket& r) { return !r.active; }), _rockets.end()
     );
 
-    // 5. One snapshot per connected human client (bots have no socket).
+    // 5. One snapshot (unreliable) + one reliable-channel flush per human client.
+    //    The reliable flush resends any unacked kill-feed events and the ack we
+    //    owe; it stays quiet (0 bytes) when there is nothing pending.
     for (int i = 0; i < 2; i++) {
-        if (_slots[i].connected && !_slots[i].isBot) SendSnapshot(i);
+        if (_slots[i].connected && !_slots[i].isBot) {
+            SendSnapshot(i);
+            FlushReliable(i);
+        }
     }
 }
 

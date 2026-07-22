@@ -147,7 +147,10 @@ void ReliableChannel::ReadPacket(const uint8_t* data, int len) {
         const uint16_t back = static_cast<uint16_t>(_recvLatest - seq);
         if (back < 32) _recvBits |= (1u << back);// a gap being filled, or a dup
     }
-    _ackOwed = true;
+    // Owe an ack only for a packet that carried messages — a pure ack needs no
+    // ack of its own. Otherwise two peers exchanging acks would ping-pong a tiny
+    // packet every tick forever; this keeps an idle reliable channel silent.
+    if (count > 0) _ackOwed = true;
 
     // Retire our reliable messages the peer confirms (ack + its 32 predecessors).
     MarkAcked(ack);
