@@ -44,6 +44,7 @@ namespace {
         std::string serverIp = "127.0.0.1";
         uint16_t serverPort = 9200;
         bool local = false;
+        std::string serverUrl;// web PvP: WebTransport gateway URL (empty = not used)
     } gcli;
 
     uint32_t NowMs() {
@@ -382,9 +383,17 @@ class DeathmatchGame : public Application {
         // it; the window close button / Cmd-Q quits.
         Window::Get()->SetRelativeMouseMode(true);
 
-        if (!_net.Connect(gcli.serverIp, gcli.serverPort)) {
-            ConsoleSubsystem::Get()->Error(fmt::format("Failed to connect to {}:{}", gcli.serverIp, gcli.serverPort));
-        }
+#ifdef __EMSCRIPTEN__
+        if (!gcli.serverUrl.empty()) {
+            // Web PvP: async WebTransport session to the gateway. Success/failure
+            // surfaces via IsConnecting()/ConnectFailed(); the HUD shows it.
+            if (!_net.ConnectWebTransport(gcli.serverUrl))
+                ConsoleSubsystem::Get()->Error(fmt::format("Bad WebTransport URL: {}", gcli.serverUrl));
+        } else
+#endif
+            if (!_net.Connect(gcli.serverIp, gcli.serverPort)) {
+                ConsoleSubsystem::Get()->Error(fmt::format("Failed to connect to {}:{}", gcli.serverIp, gcli.serverPort));
+            }
     }
 
     void OnUpdate(float dt, float /*time*/) override {
@@ -441,6 +450,22 @@ class DeathmatchGame : public Application {
     void DrawHud() {
         auto* gfx = GraphicsSubsystem::Get();
         auto ws = Window::Get()->GetLogicalSize();
+
+        // Connection status until the first snapshot lands. On web PvP this shows
+        // "Connecting..." during the WebTransport handshake and "Connection failed"
+        // if it's rejected — visible locally even with no gateway running.
+        if (!_net.IsWelcomed()) {
+            const bool failed = _net.ConnectFailed();
+            gfx->DrawText(
+                _fontID,
+                failed ? "Connection failed" : "Connecting...",
+                ws.width * 0.5f - 80.0f,
+                ws.height * 0.5f - 40.0f,
+                1.0f,
+                failed ? glm::vec4(1.0f, 0.5f, 0.5f, 1.0f) : glm::vec4(0.9f, 0.9f, 0.9f, 1.0f)
+            );
+        }
+
         gfx->DrawText(
             _fontID,
             "HP " + std::to_string(_net.GetHealth()),
@@ -532,18 +557,20 @@ int main(int argc, char* argv[]) {
         if (std::strcmp(argv[i], "--connect") == 0 && i + 1 < argc) {
             gcli.serverIp = argv[++i];
             if (i + 1 < argc && argv[i + 1][0] != '-') gcli.serverPort = static_cast<uint16_t>(std::atoi(argv[++i]));
+        } else if (std::strcmp(argv[i], "--connect-wt") == 0 && i + 1 < argc) {
+            gcli.serverUrl = argv[++i];// web PvP via the WebTransport gateway
         } else if (std::strcmp(argv[i], "--local") == 0) {
             gcli.local = true;
         }
     }
 
 #ifdef __EMSCRIPTEN__
-    // The shell.html lobby launches Solo via callMain(["--local"]); its PvP mode
-    // is WIP (needs a WebTransport transport + server). Until that lands the web
-    // build is always single-player: an embedded authority reached over an
-    // in-process LoopbackDatagramSocket (see datagram_socket.hpp). Forced here
-    // too so a bare launch can never end up in a broken connect state.
-    gcli.local = true;
+    // The shell.html lobby launches Solo via callMain(["--local"]) and PvP via
+    // callMain(["--connect-wt", <gatewayUrl>]). Solo runs an embedded authority
+    // over an in-process LoopbackDatagramSocket; PvP dials the WebTransport→UDP
+    // gateway. A bare launch (no args) defaults to Solo so it can never land in a
+    // broken connect state.
+    if (gcli.serverUrl.empty()) gcli.local = true;
     // Warm the cache, then start (async: main returns, the event loop keeps the
     // page alive and fires StartGame once every fetch settles).
     FileSystem::Get().Prefetch(kWebAssets, StartGame);
