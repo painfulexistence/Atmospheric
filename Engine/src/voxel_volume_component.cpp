@@ -130,8 +130,9 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
     };
     // 2-row material table (256 x 2 RGBA8), uploaded as a 2-row 2D texture:
     //   row 0: albedo.rgb, emission.a         (surface color + self-illumination)
-    //   row 1: reflectivity.r, roughness.g    (mirror reflection; roughness
-    //          reserved for future glossy jitter)
+    //   row 1: reflectivity.r, roughness.g,   (glossy-jittered reflection)
+    //          transmission.b, ior.a          (dielectric BTDF; actual IOR
+    //                                          decodes as 1.0 + a/255)
     // The shader reads row 0 with texelFetch(u_palette, ivec2(mat, 0)) and the
     // material params with ivec2(mat, 1).
     paletteRGBA.assign(256 * 2 * 4, 0);
@@ -146,6 +147,13 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
         paletteRGBA[base + 0] = reflectivity;
         paletteRGBA[base + 1] = roughness;
     };
+    // Dielectric transmission (the BTDF path): iorByte encodes actual IOR as
+    // 1.0 + iorByte/255 (glass 1.5 -> 128, crystal 1.55 -> 140).
+    auto setGlass = [this](uint8_t idx, uint8_t transmission, uint8_t iorByte) {
+        const int base = (256 + idx) * 4;// row 1
+        paletteRGBA[base + 2] = transmission;
+        paletteRGBA[base + 3] = iorByte;
+    };
     for (int i = 9; i < 256; i++)
         setPalette(static_cast<uint8_t>(i), 128, 128, 128);
     setPalette(MatGrass, 64, 140, 46);
@@ -154,13 +162,17 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
     setPalette(MatSnow, 235, 240, 250);
     setPalette(MatSand, 204, 184, 122);
     setPalette(MatOre, 242, 191, 64);
-    setPalette(MatCrystal, 115, 191, 242, 160);// cool cyan glow
+    setPalette(MatCrystal, 115, 191, 242, 110);// cool cyan; emission dimmed now light passes through
     setPalette(MatGlow, 255, 140, 48, 255);// warm glowstone, full emission
-    // Reflective materials: crystals are near-mirror; ore and snow catch a
-    // faint sheen. Everything else stays matte (reflectivity 0).
-    setMaterial(MatCrystal, 210, 20);// glossy crystal — mirrors the scene
+    // Reflective materials: ore and snow catch a roughness-jittered sheen.
+    // Everything else stays matte (reflectivity 0).
     setMaterial(MatOre, 90, 60);// metallic-ish speckle
     setMaterial(MatSnow, 40, 120);// faint wet sheen
+    // Crystals are the transmission showcase: near-clear cyan glass. On the
+    // glass path Fresnel comes from the IOR, so reflectivity only matters if
+    // transmission is ever zeroed.
+    setMaterial(MatCrystal, 210, 20);
+    setGlass(MatCrystal, 200, 140);// transmission 200/255, IOR 1.55
 
     // Terrain heightfield: gradient-noise fbm with gentle amplitude (~0.28
     // height/width ratio) so the terrain reads as rolling hills rather than
