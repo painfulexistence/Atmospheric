@@ -126,7 +126,8 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
         MatSand = 5,
         MatOre = 6,
         MatCrystal = 7,
-        MatGlow = 8
+        MatGlow = 8,
+        MatWater = 9
     };
     // 2-row material table (256 x 2 RGBA8), uploaded as a 2-row 2D texture:
     //   row 0: albedo.rgb, emission.a         (surface color + self-illumination)
@@ -154,7 +155,7 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
         paletteRGBA[base + 2] = transmission;
         paletteRGBA[base + 3] = iorByte;
     };
-    for (int i = 9; i < 256; i++)
+    for (int i = 10; i < 256; i++)
         setPalette(static_cast<uint8_t>(i), 128, 128, 128);
     setPalette(MatGrass, 64, 140, 46);
     setPalette(MatDirt, 107, 77, 46);
@@ -162,17 +163,19 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
     setPalette(MatSnow, 235, 240, 250);
     setPalette(MatSand, 204, 184, 122);
     setPalette(MatOre, 242, 191, 64);
-    setPalette(MatCrystal, 115, 191, 242, 110);// cool cyan; emission dimmed now light passes through
+    setPalette(MatCrystal, 115, 191, 242, 160);// cool cyan glow (the original look)
     setPalette(MatGlow, 255, 140, 48, 255);// warm glowstone, full emission
-    // Reflective materials: ore and snow catch a roughness-jittered sheen.
-    // Everything else stays matte (reflectivity 0).
+    setPalette(MatWater, 56, 130, 196);// deep blue; Beer tints what's below
+    // Reflective materials: crystals keep the original near-mirror; ore and
+    // snow catch a roughness-jittered sheen. Everything else stays matte.
+    setMaterial(MatCrystal, 210, 20);// glossy crystal — mirrors the scene
     setMaterial(MatOre, 90, 60);// metallic-ish speckle
     setMaterial(MatSnow, 40, 120);// faint wet sheen
-    // Crystals are the transmission showcase: near-clear cyan glass. On the
-    // glass path Fresnel comes from the IOR, so reflectivity only matters if
-    // transmission is ever zeroed.
-    setMaterial(MatCrystal, 210, 20);
-    setGlass(MatCrystal, 200, 140);// transmission 200/255, IOR 1.55
+    // Water is the transmission showcase: IOR 1.33 (byte 84), lightly rippled
+    // refraction via the glossy jitter (roughness 25). Fresnel comes from the
+    // IOR on the glass path, so reflectivity stays 0.
+    setMaterial(MatWater, 0, 25);
+    setGlass(MatWater, 215, 84);
 
     // Terrain heightfield: gradient-noise fbm with gentle amplitude (~0.28
     // height/width ratio) so the terrain reads as rolling hills rather than
@@ -181,6 +184,8 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
     const float varH = 0.34f * static_cast<float>(N);
     const float snowLine = baseH + 0.75f * varH;
     const float sandLine = baseH + 0.12f * varH;
+    // Water fills valleys up to just under the sand line, so beaches ring it.
+    const uint32_t waterLevel = static_cast<uint32_t>(baseH + 0.08f * varH);
     std::vector<float> heights(static_cast<size_t>(N) * N);
     for (uint32_t z = 0; z < N; z++) {
         for (uint32_t x = 0; x < N; x++) {
@@ -220,6 +225,13 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
                         mat = MatOre;
                     }
                     voxelAt(x, y, z) = mat;
+                    localSolid++;
+                }
+                // Water column: from the terrain surface up to the water level.
+                // Water voxels are solid to the DDA; the shader's transmission
+                // path refracts through them (Beer-tinted) to the bed below.
+                for (uint32_t y = top + 1; y <= waterLevel && y < N; y++) {
+                    voxelAt(x, y, z) = MatWater;
                     localSolid++;
                 }
             }
