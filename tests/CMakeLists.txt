@@ -27,7 +27,21 @@ target_include_directories(net_tests PRIVATE
 )
 target_link_libraries(net_tests PRIVATE Catch2::Catch2WithMain)
 
+# UI navigator + FSM: both are dependency-free (UINavigator drives the
+# IUIPage interface, fsm.hpp is pure logic), so like the net suite they
+# compile their sources straight into the binary — no engine, no RmlUi.
+add_executable(ui_fsm_tests
+    ui_navigator_test.cpp
+    fsm_test.cpp
+    ${CMAKE_SOURCE_DIR}/Engine/src/ui_navigator.cpp
+)
+target_include_directories(ui_fsm_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/Engine/include/Atmospheric
+)
+target_link_libraries(ui_fsm_tests PRIVATE Catch2::Catch2WithMain)
+
 # catch_discover_tests registers each TEST_CASE as an individual ctest test.
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 include(Catch)
 catch_discover_tests(net_tests)
+catch_discover_tests(ui_fsm_tests)

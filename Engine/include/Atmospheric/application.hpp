@@ -23,6 +23,7 @@ class VideoRecorder;
 class AssetManager;
 class RmlUiManager;
 class AnimationSubsystem;
+class UINavigator;
 struct SceneBlueprint;
 struct Prefab;
 
@@ -254,6 +255,7 @@ private:
     std::unique_ptr<AnimationSubsystem> _animation;
     std::unique_ptr<AssetManager> _assetManager;
     std::unique_ptr<RmlUiManager> _rmlUi;
+    std::unique_ptr<UINavigator> _uiNavigator;
     std::vector<std::shared_ptr<Subsystem>> _subsystems;
     bool _initialized = false;
 

@@ -29,6 +29,7 @@
 #include "rigidbody_2d_component.hpp"
 #include "rigidbody_component.hpp"
 #include "rmlui_manager.hpp"
+#include "ui_navigator.hpp"
 #include "scene.hpp"
 #include "scene_transition.hpp"
 #include "shape_renderer_component.hpp"
@@ -263,6 +264,7 @@ Application::Application(AppConfig config) : _config(config) {
 
     _assetManager = std::make_unique<AssetManager>();
     _rmlUi = std::make_unique<RmlUiManager>();
+    _uiNavigator = std::make_unique<UINavigator>();
 
     PushLayer(new GameLayer(this));
 #ifndef NDEBUG

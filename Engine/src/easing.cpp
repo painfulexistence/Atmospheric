@@ -96,12 +96,22 @@ static float EaseInOutBack(float t) {
                     : (std::pow(2.0f * t - 2.0f, 2.0f) * ((c2 + 1.0f) * (t * 2.0f - 2.0f) + c2) + 2.0f) / 2.0f;
 }
 
+// NOTE: the common one-liner form `n1 * (t -= x) * t` reads and writes t
+// unsequenced (UB even in C++17); the statements below are the same math,
+// well-defined.
 static float EaseOutBounce(float t) {
     const float n1 = 7.5625f, d1 = 2.75f;
     if (t < 1.0f / d1) return n1 * t * t;
-    if (t < 2.0f / d1) return n1 * (t -= 1.5f / d1) * t + 0.75f;
-    if (t < 2.5f / d1) return n1 * (t -= 2.25f / d1) * t + 0.9375f;
-    return n1 * (t -= 2.625f / d1) * t + 0.984375f;
+    if (t < 2.0f / d1) {
+        t -= 1.5f / d1;
+        return n1 * t * t + 0.75f;
+    }
+    if (t < 2.5f / d1) {
+        t -= 2.25f / d1;
+        return n1 * t * t + 0.9375f;
+    }
+    t -= 2.625f / d1;
+    return n1 * t * t + 0.984375f;
 }
 static float EaseInBounce(float t) {
     return 1.0f - EaseOutBounce(1.0f - t);
