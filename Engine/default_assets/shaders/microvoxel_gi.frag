@@ -10,8 +10,14 @@
 // surface is NOT applied here — the composite pass modulates by albedo, so
 // accumulation blurs lighting, not texture detail).
 // Temporal: the primary hit's exact world position is reprojected with the
-// previous frame's viewProj (the volume is static, so this is exact for
-// camera motion); history is validated by stored camera distance (alpha).
+// previous frame's viewProj; history is validated by stored camera distance
+// (alpha), and rejected outright when the hit volume moved this frame
+// (u_moved) — a moving volume's history describes its old pose.
+//
+// Every volume is traced in its own LOCAL space: rays are transformed by the
+// volume's u_invModels entry (rigid, unit scale, so t stays a world distance),
+// marched against the axis-aligned local grid, and normals come back through
+// u_models. Slab tests use the tight solid bounds (u_boundsMin/Max).
 //
 // DDA / volume bindings duplicate microvoxel.frag — keep them in sync.
 
@@ -24,15 +30,21 @@ precision highp sampler2D;
 
 in vec2 v_uv;
 
-// Brute-force multi-volume trace: each ray tests every registered volume in its
-// own local space at full resolution and takes the nearest hit, so light bleeds
-// across volumes (A's glowstone lights B). GL can't dynamically index a sampler
-// array, so the samplers are explicit and dispatched by an if-chain over
-// u_volumeCount (raycastOne takes the sampler as a parameter — GLSL allows it).
+// Brute-force multi-volume trace over the nearest-K volumes the pass selected:
+// each ray tests every slot in its own local space at full resolution and takes
+// the nearest hit, so light bleeds across volumes (A's glowstone lights B).
+// GL can't dynamically index a sampler array, so the samplers are explicit and
+// dispatched by an if-chain over u_volumeCount (raycastOne takes the sampler as
+// a parameter — GLSL allows it).
 const int MAX_VOLUMES = 4;
 uniform usampler3D u_vol0, u_vol1, u_vol2, u_vol3;
 uniform usampler3D u_occ0, u_occ1, u_occ2, u_occ3;
-uniform vec3  u_origins[MAX_VOLUMES];
+uniform vec3  u_origins[MAX_VOLUMES];   // LOCAL-space grid min corners
+uniform vec3  u_boundsMin[MAX_VOLUMES]; // LOCAL-space tight solid bounds
+uniform vec3  u_boundsMax[MAX_VOLUMES];
+uniform mat4  u_models[MAX_VOLUMES];    // local -> world (rigid)
+uniform mat4  u_invModels[MAX_VOLUMES]; // world -> local
+uniform int   u_moved[MAX_VOLUMES];     // nonzero = transform changed this frame
 uniform float u_voxelSizes[MAX_VOLUMES];
 uniform int   u_gridDims[MAX_VOLUMES];
 uniform int   u_volumeCount;
@@ -60,9 +72,10 @@ const float PI = 3.1415927;
 
 struct Hit {
     float t;
-    vec3  normal;
+    vec3  normal;   // WORLD-space face normal
     uint  material;
     bool  hit;
+    int   vol;      // index of the volume that was hit (-1 = miss)
 };
 
 // ── DDA (keep in sync with microvoxel.frag) ─────────────────────────────────
@@ -72,7 +85,7 @@ Hit traverseBrick(
     vec3 enterNormal
 ) {
     Hit r;
-    r.hit = false; r.t = tStart; r.normal = enterNormal; r.material = 0u;
+    r.hit = false; r.t = tStart; r.normal = enterNormal; r.material = 0u; r.vol = -1;
 
     ivec3 lo = brickCell * bd;
     ivec3 hi = lo + bd - 1;
@@ -113,16 +126,23 @@ Hit traverseBrick(
     return r;
 }
 
-Hit raycastOne(usampler3D vol, usampler3D occ, vec3 origin, float vsize, int gdim, int bd, int maxSteps, vec3 ro, vec3 rd) {
+// One volume, WORLD-space ray in, WORLD-space hit out. The ray is transformed
+// into the volume's local space (rigid, so t is a world distance), marched with
+// the two-level DDA, and the hit normal is rotated back to world space.
+Hit raycastOne(
+    usampler3D vol, usampler3D occ, vec3 origin, vec3 bMin, vec3 bMax, mat4 invM, mat4 M, float vsize, int gdim,
+    int bd, int maxSteps, vec3 roWorld, vec3 rdWorld
+) {
     Hit r;
-    r.hit = false; r.t = 0.0; r.normal = vec3(0.0); r.material = 0u;
+    r.hit = false; r.t = 0.0; r.normal = vec3(0.0); r.material = 0u; r.vol = -1;
+
+    vec3 ro = (invM * vec4(roWorld, 1.0)).xyz;
+    vec3 rd = normalize(mat3(invM) * rdWorld);
 
     vec3 invDir = mix(vec3(1e30), 1.0 / rd, notEqual(rd, vec3(0.0)));
-    vec3 bmin = origin;
-    vec3 bmax = bmin + vec3(float(gdim)) * vsize;
 
-    vec3 tA = (bmin - ro) * invDir;
-    vec3 tB = (bmax - ro) * invDir;
+    vec3 tA = (bMin - ro) * invDir;
+    vec3 tB = (bMax - ro) * invDir;
     vec3 tNear = min(tA, tB);
     vec3 tFar  = max(tA, tB);
     float tEnter = max(max(tNear.x, tNear.y), tNear.z);
@@ -147,12 +167,12 @@ Hit raycastOne(usampler3D vol, usampler3D occ, vec3 origin, float vsize, int gdi
     float t = max(tEnter, 0.0);
     float eps = vsize * 1e-3;
     vec3 p = ro + rd * (t + eps);
-    ivec3 cell = clamp(ivec3(floor((p - bmin) / brickSize)), ivec3(0), brickGrid - 1);
+    ivec3 cell = clamp(ivec3(floor((p - origin) / brickSize)), ivec3(0), brickGrid - 1);
 
     ivec3 stepDir = ivec3(sign(rd));
     vec3 tDelta = abs(vec3(brickSize) * invDir);
     vec3 stepPos = vec3(greaterThan(rd, vec3(0.0)));
-    vec3 boundary = bmin + (vec3(cell) + stepPos) * brickSize;
+    vec3 boundary = origin + (vec3(cell) + stepPos) * brickSize;
     vec3 tMax = mix(vec3(1e30), (boundary - ro) * invDir, notEqual(rd, vec3(0.0)));
 
     vec3 normal = enterNormal;
@@ -160,7 +180,10 @@ Hit raycastOne(usampler3D vol, usampler3D occ, vec3 origin, float vsize, int gdi
     for (int i = 0; i < maxSteps; i++) {
         if (texelFetch(occ, cell, 0).r != 0u) {
             Hit h = traverseBrick(vol, origin, vsize, bd, ro, rd, invDir, t, cell, normal);
-            if (h.hit) return h;
+            if (h.hit) {
+                h.normal = normalize(mat3(M) * h.normal);// back to world
+                return h;
+            }
         }
         if (tMax.x < tMax.y && tMax.x < tMax.z) {
             t = tMax.x; tMax.x += tDelta.x; cell.x += stepDir.x;
@@ -180,26 +203,30 @@ Hit raycastOne(usampler3D vol, usampler3D occ, vec3 origin, float vsize, int gdi
     return r;
 }
 
-// Brute-force nearest hit across all active volumes (each in its own local
-// space). GL can't index a sampler array, so dispatch explicitly per slot.
+// Brute-force nearest hit across all active volumes. GL can't index a sampler
+// array, so dispatch explicitly per slot.
 Hit raycast(vec3 ro, vec3 rd) {
     Hit best;
-    best.hit = false; best.t = 1e30; best.normal = vec3(0.0); best.material = 0u;
+    best.hit = false; best.t = 1e30; best.normal = vec3(0.0); best.material = 0u; best.vol = -1;
     if (u_volumeCount > 0) {
-        Hit h = raycastOne(u_vol0, u_occ0, u_origins[0], u_voxelSizes[0], u_gridDims[0], u_brickDim, u_maxRaySteps, ro, rd);
-        if (h.hit && h.t < best.t) best = h;
+        Hit h = raycastOne(u_vol0, u_occ0, u_origins[0], u_boundsMin[0], u_boundsMax[0], u_invModels[0], u_models[0],
+                           u_voxelSizes[0], u_gridDims[0], u_brickDim, u_maxRaySteps, ro, rd);
+        if (h.hit && h.t < best.t) { best = h; best.vol = 0; }
     }
     if (u_volumeCount > 1) {
-        Hit h = raycastOne(u_vol1, u_occ1, u_origins[1], u_voxelSizes[1], u_gridDims[1], u_brickDim, u_maxRaySteps, ro, rd);
-        if (h.hit && h.t < best.t) best = h;
+        Hit h = raycastOne(u_vol1, u_occ1, u_origins[1], u_boundsMin[1], u_boundsMax[1], u_invModels[1], u_models[1],
+                           u_voxelSizes[1], u_gridDims[1], u_brickDim, u_maxRaySteps, ro, rd);
+        if (h.hit && h.t < best.t) { best = h; best.vol = 1; }
     }
     if (u_volumeCount > 2) {
-        Hit h = raycastOne(u_vol2, u_occ2, u_origins[2], u_voxelSizes[2], u_gridDims[2], u_brickDim, u_maxRaySteps, ro, rd);
-        if (h.hit && h.t < best.t) best = h;
+        Hit h = raycastOne(u_vol2, u_occ2, u_origins[2], u_boundsMin[2], u_boundsMax[2], u_invModels[2], u_models[2],
+                           u_voxelSizes[2], u_gridDims[2], u_brickDim, u_maxRaySteps, ro, rd);
+        if (h.hit && h.t < best.t) { best = h; best.vol = 2; }
     }
     if (u_volumeCount > 3) {
-        Hit h = raycastOne(u_vol3, u_occ3, u_origins[3], u_voxelSizes[3], u_gridDims[3], u_brickDim, u_maxRaySteps, ro, rd);
-        if (h.hit && h.t < best.t) best = h;
+        Hit h = raycastOne(u_vol3, u_occ3, u_origins[3], u_boundsMin[3], u_boundsMax[3], u_invModels[3], u_models[3],
+                           u_voxelSizes[3], u_gridDims[3], u_brickDim, u_maxRaySteps, ro, rd);
+        if (h.hit && h.t < best.t) { best = h; best.vol = 3; }
     }
     return best;
 }
@@ -233,8 +260,8 @@ void main() {
 
     vec3 hitPos = ro + rd * h.t;
 
-    // Cosine-weighted hemisphere sample around the (axis-aligned) hit normal.
-    // With cosine sampling the estimator is just the incoming radiance.
+    // Cosine-weighted hemisphere sample around the hit normal. With cosine
+    // sampling the estimator is just the incoming radiance.
     vec3 n = h.normal;
     vec3 t1 = (abs(n.x) > 0.5) ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
     vec3 t2 = normalize(cross(n, t1));
@@ -271,10 +298,13 @@ void main() {
     }
 
     // Temporal accumulation: reproject the exact hit position into last frame.
+    // Skip history entirely when the hit volume moved this frame — the stored
+    // samples describe its previous pose (reprojection assumes a static world).
     float camDist = length(hitPos - u_cameraPos);
     vec3 result = radiance;
+    bool volMoved = (h.vol >= 0) && (u_moved[h.vol] != 0);
     vec4 prevClip = u_prevViewProj * vec4(hitPos, 1.0);
-    if (prevClip.w > 0.0) {
+    if (!volMoved && prevClip.w > 0.0) {
         vec2 prevUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
         if (all(greaterThanEqual(prevUV, vec2(0.0))) && all(lessThanEqual(prevUV, vec2(1.0)))) {
             vec4 hist = texture(u_history, prevUV);

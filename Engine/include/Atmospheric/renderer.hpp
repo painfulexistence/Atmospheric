@@ -498,11 +498,13 @@ public:
     // frame. The example toggles it (0.5) with B.
     float giSplitCompare = -1.0f;
 
-    // Cross-volume GI: the GI bounce ray brute-force tests every registered
-    // volume (up to kMaxGiVolumes) and keeps the nearest hit, so light bleeds
-    // between volumes (A's glowstone lights B) and every volume's pixels get GI.
-    // When off, GI traces only the pixel's own volume. Brute-force replaced the
-    // coarse merged-global-grid approach, which lost too much detail.
+    // Cross-volume GI: the GI bounce ray brute-force tests the nearest
+    // kMaxGiVolumes volumes (sorted by camera distance each frame) and keeps
+    // the nearest hit, so light bleeds between volumes (A's glowstone lights B)
+    // and those volumes' pixels get GI; volumes outside the set fall back to
+    // flat ambient (the composite checks the GI sample's validity). When off,
+    // GI traces only the primary volume. Brute-force replaced the coarse
+    // merged-global-grid approach, which lost too much detail.
     bool giCrossVolume = true;
     int debugMode = 0;// 0=off 1=albedo 2=normal 3=ao 4=shadow 5=gi 6=material
     bool shadowEnabled = true;
@@ -529,20 +531,32 @@ public:
 private:
     void _uploadGL(VoxelVolumeComponent* v);
     void _ensureGIRenderTargets(int w, int h);
+    void _ensureCubeVAO();
 
     std::vector<VoxelVolumeComponent*> _volumes;
 
     // Per-volume GL textures (palette-index 3D + occupancy 3D + palette 2D),
-    // uploaded lazily and re-uploaded when the volume's dirty flag is set
-    // (regeneration or a runtime edit). Each registered volume gets its own set;
-    // the main pass draws one bounding box per volume, depth-composited.
+    // uploaded lazily; a full re-upload happens on (re)generation (fullDirty),
+    // while runtime edits upload only the recorded dirty sub-box. Each
+    // registered volume gets its own set; the main pass draws one bounding box
+    // per volume, depth-composited. prevModel tracks the transform across
+    // frames so the GI pass can reject history on volumes that moved.
     struct GLVolume {
         GLuint volumeTex = 0;
         GLuint occupancyTex = 0;
         GLuint paletteTex = 0;
+        glm::mat4 prevModel{ 1.0f };
+        bool prevModelValid = false;
     };
     std::unordered_map<VoxelVolumeComponent*, GLVolume> _glVolumes;
     VoxelVolumeComponent* _uploadedVolume = nullptr;// WebGPU single-volume upload tracking
+
+    // Volume bounding box mesh with consistent outward (CCW) winding, so the
+    // pass can cull front faces and shade each covered pixel exactly once (the
+    // shared skybox cube has mixed winding and can't be face-culled). Drawing
+    // only back faces works from outside AND inside the box.
+    GLuint _cubeVAO = 0;
+    GLuint _cubeVBO = 0;
 
     // GI accumulation ping-pong (RGBA16F: rgb = indirect radiance, a = camera
     // distance for history validation)
@@ -575,6 +589,7 @@ private:
     WGPUTexture _volumeTexGPU = nullptr;
     WGPUTexture _occupancyTexGPU = nullptr;
     WGPUTexture _paletteTexGPU = nullptr;
+    uint32_t _gpuVolDim = 0;// allocated 3D texture edge, for partial-update reuse
 #endif
 };
 

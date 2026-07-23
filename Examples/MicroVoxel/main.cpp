@@ -3,18 +3,20 @@
 #include "Atmospheric/light_component.hpp"
 #include "Atmospheric/voxel_volume_component.hpp"
 #include "Atmospheric/window.hpp"
+#include <fmt/format.h>
 #if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
 // SDL_main.h renames main() to SDL_main so SDLActivity/UIKit can invoke it.
 #include "Atmospheric/touch_controls_component.hpp"
 #include <SDL3/SDL_main.h>
 #endif
 
-// Micro voxel rendering demo: a raymarched 12.8m diorama of 5cm voxels
-// (procedural terrain + caves + ore + floating crystals), depth-composited
-// with the rasterized scene by MicroVoxelPass. Contrast with the VoxelWorld
-// example, which greedy-meshes 1m macro voxels into triangles — here no
-// triangles are generated at all; every pixel raymarches the volume with a
-// two-level DDA (brick skip + per-voxel walk).
+// Micro voxel rendering demo: a raymarched 12.8m terrain of 5cm voxels
+// (procedural terrain + caves + ore + floating crystals) plus ~20 small
+// per-object volumes (crates / boulders / crystal clusters, several rotated),
+// depth-composited with the rasterized scene by MicroVoxelPass. Contrast with
+// the VoxelWorld example, which greedy-meshes 1m macro voxels into triangles —
+// here no triangles are generated at all; every pixel raymarches a volume with
+// a two-level DDA (brick skip + per-voxel walk) in that volume's local space.
 class MicroVoxelApp : public Application {
     using Application::Application;
 
@@ -28,29 +30,74 @@ class MicroVoxelApp : public Application {
     }
 
     void OnLoad() override {
-        // Several independent voxel volumes, each attached to its own
-        // GameObject. Each grid is centred over its object in x/z and rises from
-        // y=0; MicroVoxelPass draws one bounding box per volume, so they
-        // depth-composite with each other. Different seeds give different
-        // terrain — proof the renderer handles many independent volumes.
-        // Three volumes sitting edge-to-edge along x; spacing is one grid
-        // width, derived from the component so it stays right whether gridDim
-        // is 256 (native, 12.8m) or 192 (web, 9.6m).
-        struct {
-            float xOffset;// in grid widths
-            uint32_t seed;
-            const char* name;
-        } kVolumes[] = {
-            { 0.0f, 1337u, "Volume.Center" },
-            { 1.0f, 7u, "Volume.Right" },
-            { -1.0f, 99u, "Volume.Left" },
+        // One big terrain volume plus a scatter of small per-object volumes
+        // (crates / boulders / crystal clusters, 16-48 voxels per edge — a few
+        // dozen KB each instead of terrain's megabytes). This is the
+        // right-sizing layout the physics stage builds on: every object has its
+        // own grid, its own transform (several are rotated to exercise the OBB
+        // raymarch), and MicroVoxelPass frustum-culls and draws each tight box
+        // depth-composited.
+        auto* terrainObj = CreateGameObject();
+        terrainObj->SetName("Volume.Terrain");
+        auto* terrain = static_cast<VoxelVolumeComponent*>(terrainObj->AddComponent<VoxelVolumeComponent>(1337u));
+        terrainObj->SetPosition(glm::vec3(0.0f));
+        _carveTargets.push_back(terrain);
+
+        // Drop a world-space point onto the terrain surface (the terrain is
+        // generated in AddComponent above, so its raycast is ready).
+        auto surfaceY = [terrain](float x, float z) -> float {
+            glm::vec3 hit;
+            if (terrain->RaycastVoxel(glm::vec3(x, 40.0f, z), glm::vec3(0.0f, -1.0f, 0.0f), 80.0f, hit)) {
+                return hit.y;
+            }
+            return 0.0f;
         };
-        for (const auto& vd : kVolumes) {
-            auto* volumeObj = CreateGameObject();
-            volumeObj->SetName(vd.name);
-            auto* vc = static_cast<VoxelVolumeComponent*>(volumeObj->AddComponent<VoxelVolumeComponent>(vd.seed));
-            volumeObj->SetPosition(glm::vec3(vd.xOffset * vc->WorldExtent(), 0.0f, 0.0f));
+
+        // kind, gridDim, world x/z, yaw (deg), tilt (deg, exercises full OBB)
+        struct ObjDef {
+            VoxelVolumeKind kind;
+            int gridDim;
+            float x, z;
+            float yawDeg;
+            float tiltDeg;
+        };
+        const float s = terrain->WorldExtent() / 12.8f;// keep layout sane on the 9.6m web grid
+        const ObjDef kObjects[] = {
+            { VoxelVolumeKind::Crate, 32, -4.2f * s, -3.6f * s, 15.0f, 0.0f },
+            { VoxelVolumeKind::Crate, 32, -3.4f * s, -4.1f * s, 40.0f, 0.0f },
+            { VoxelVolumeKind::Crate, 24, -3.8f * s, -3.0f * s, 70.0f, 8.0f },
+            { VoxelVolumeKind::Crate, 24, 2.6f * s, -4.0f * s, 25.0f, 0.0f },
+            { VoxelVolumeKind::Crate, 32, 3.3f * s, -3.3f * s, 55.0f, 0.0f },
+            { VoxelVolumeKind::Crate, 24, 4.1f * s, 2.8f * s, 10.0f, -6.0f },
+            { VoxelVolumeKind::Crate, 32, -0.6f * s, 3.9f * s, 80.0f, 0.0f },
+            { VoxelVolumeKind::Crate, 24, 0.4f * s, 4.4f * s, 35.0f, 0.0f },
+            { VoxelVolumeKind::Boulder, 48, -1.8f * s, -2.2f * s, 0.0f, 0.0f },
+            { VoxelVolumeKind::Boulder, 32, 1.5f * s, -1.9f * s, 30.0f, 0.0f },
+            { VoxelVolumeKind::Boulder, 32, 2.2f * s, 1.4f * s, 60.0f, 12.0f },
+            { VoxelVolumeKind::Boulder, 24, -2.6f * s, 1.8f * s, 90.0f, 0.0f },
+            { VoxelVolumeKind::Boulder, 48, 4.4f * s, -0.8f * s, 45.0f, 0.0f },
+            { VoxelVolumeKind::Boulder, 24, -4.5f * s, 0.6f * s, 20.0f, 0.0f },
+            { VoxelVolumeKind::CrystalCluster, 24, -1.0f * s, -4.4f * s, 0.0f, 0.0f },
+            { VoxelVolumeKind::CrystalCluster, 16, 0.8f * s, -3.1f * s, 45.0f, 0.0f },
+            { VoxelVolumeKind::CrystalCluster, 24, 3.9f * s, 4.1f * s, 15.0f, 0.0f },
+            { VoxelVolumeKind::CrystalCluster, 16, -3.2f * s, 4.3f * s, 75.0f, 0.0f },
+            { VoxelVolumeKind::CrystalCluster, 24, 1.9f * s, 3.2f * s, 30.0f, -9.0f },
+            { VoxelVolumeKind::CrystalCluster, 16, -2.1f * s, -0.9f * s, 60.0f, 0.0f },
+        };
+        int objIndex = 0;
+        for (const auto& od : kObjects) {
+            auto* obj = CreateGameObject();
+            obj->SetName(fmt::format("Volume.Obj{}", objIndex));
+            // Position first (sunk 5cm so objects seat into the terrain), then
+            // attach: Generate runs on attach and the volume follows the
+            // object's transform every frame after.
+            obj->SetPosition(glm::vec3(od.x, surfaceY(od.x, od.z) - 0.05f, od.z));
+            obj->SetRotation(glm::vec3(glm::radians(od.tiltDeg), glm::radians(od.yawDeg), 0.0f));
+            auto* vc = static_cast<VoxelVolumeComponent*>(
+                obj->AddComponent<VoxelVolumeComponent>(1000u + static_cast<uint32_t>(objIndex) * 17u, od.gridDim, od.kind)
+            );
             _carveTargets.push_back(vc);
+            objIndex++;
         }
 
         // An angled warm sun. Without one the engine falls back to its default
@@ -113,7 +160,14 @@ class MicroVoxelApp : public Application {
         }
 
         ConsoleSubsystem::Get()->Info("MicroVoxel loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
-        ConsoleSubsystem::Get()->Info("Three raymarched 5cm-voxel volumes — no triangles. Hold E to dig into them.");
+        ConsoleSubsystem::Get()->Info(
+            fmt::format(
+                "{} raymarched 5cm-voxel volumes (1 terrain + {} objects, several rotated) — no triangles. "
+                "Hold E to dig into any of them.",
+                _carveTargets.size(),
+                _carveTargets.size() - 1
+            )
+        );
         ConsoleSubsystem::Get()->Info(
             "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P/X/N/V toggle "
             "GI/AO/shadow/point light/reflections/denoiser/cross-volume | B = split raw|denoised."
