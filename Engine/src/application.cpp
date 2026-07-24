@@ -1752,6 +1752,30 @@ void Application::UnloadScene(const std::string& name) {
     _console->Info(fmt::format("[Scene] Unloaded scene '{}'.", name));
 }
 
+void Application::DestroyGameObject(GameObject* go) {
+    if (!go) return;
+
+    // Collect `go` + its whole subtree (GameObject has no children list, so walk
+    // `_entities` by parent pointer, same as UnloadScene).
+    std::unordered_set<GameObject*> toRemove;
+    std::vector<GameObject*> stack = { go };
+    while (!stack.empty()) {
+        auto* node = stack.back();
+        stack.pop_back();
+        toRemove.insert(node);
+        for (const auto& e : _entities)
+            if (e->parent == node) stack.push_back(e.get());
+    }
+
+    // Erasing destroys the objects; each GameObject detaches its components
+    // (unregistering them from the graphics/physics servers) as it dies.
+    std::erase_if(_entities, [&toRemove](const std::unique_ptr<GameObject>& e) { return toRemove.contains(e.get()); });
+
+    // Cameras/lights registered by the removed subtree may have been the mains.
+    mainCamera = _graphics->GetMainCamera();
+    mainLight = _graphics->GetMainLight();
+}
+
 void Application::ClearScenes() {
     if (!_defaultGameObject) return;
     // Collect names of all direct children of __root__ first to avoid

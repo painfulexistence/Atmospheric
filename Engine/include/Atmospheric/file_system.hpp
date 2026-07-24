@@ -114,6 +114,29 @@ public:
     // Returns std::nullopt if the path does not exist in the cache or on disk.
     [[nodiscard]] std::optional<std::string> ResolvePath(const std::string& path) const;
 
+    // ── Directory listing ──────────────────────────────────────────────────────
+    // Enumerate regular files under a virtual directory, returned as sorted
+    // virtual paths (relative, forward-slash) ready to hand straight to ReadSync
+    // / ImportPrefab. `extensions` optionally filters by a ';'-separated,
+    // case-insensitive list of extensions WITHOUT dots (e.g. "gltf;glb"); ""
+    // lists every file.
+    //
+    // `maxDepth` bounds recursion: 0 = the directory itself only (flat); 1 also
+    // includes files one sub-directory down (e.g. "kitchen/Kitchen_set.usd")
+    // without descending into that sub-directory's own sub-trees; N descends N
+    // levels; a negative value is unlimited. Keeping it shallow avoids flooding
+    // a picker with a self-contained asset package's referenced parts (Pixar's
+    // Kitchen_set scatters hundreds of prop .usd files under kitchen/assets/*/).
+    //
+    // Backed by std::filesystem, so it enumerates the real disk on native and
+    // Emscripten MEMFS on web — where --preload-file'd assets live — giving a
+    // single VFS-listing path that works in sandboxed/bundled environments
+    // instead of an OS file dialog. Bundle-only platforms whose assets are not
+    // on a std::filesystem-visible path (Android AAsset) will need a platform
+    // hook, like _PlatformReadAsync; returns {} there for now.
+    [[nodiscard]] std::vector<std::string>
+        List(const std::string& dir, const std::string& extensions = "", int maxDepth = 0) const;
+
     // Absolute prefix that relative paths resolve against on native builds
     // (SDL_GetBasePath — the executable's directory), with a trailing
     // separator. Empty on web, where paths are virtual (MEMFS / fetch). Use it
