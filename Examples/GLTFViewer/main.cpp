@@ -22,8 +22,8 @@
 // compression (geometry comes in empty), KTX2 textures.
 //
 // Controls: WASD + mouse — the engine's CameraController3D (assets/scenes/main.json).
-#include "Atmospheric.hpp"
 #include "../common/model_picker.hpp"
+#include "Atmospheric.hpp"
 #if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
 #include <SDL3/SDL_main.h>
 #endif
@@ -48,10 +48,9 @@ class GLTFViewer : public Application {
         for (const auto& md : prefab.meshes)
             verts += md.vertices.size();
         ConsoleSubsystem::Get()->Info(
-            path + ": " + std::to_string(prefab.meshes.size()) + " meshes, "
-            + std::to_string(prefab.materials.size()) + " materials, " + std::to_string(verts) + " verts, "
-            + std::to_string(prefab.skeletons.size()) + " skeletons, " + std::to_string(prefab.skeletonClips.size())
-            + " clips"
+            path + ": " + std::to_string(prefab.meshes.size()) + " meshes, " + std::to_string(prefab.materials.size())
+            + " materials, " + std::to_string(verts) + " verts, " + std::to_string(prefab.skeletons.size())
+            + " skeletons, " + std::to_string(prefab.skeletonClips.size()) + " clips"
         );
         return go;
     }

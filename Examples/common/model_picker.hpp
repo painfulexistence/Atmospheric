@@ -32,9 +32,7 @@ public:
     ModelPickerHud(
         GameObject* owner, std::vector<std::string> files, std::string current, std::function<void(std::string)> onPick
     )
-      : UIPageComponent(owner, "assets/ui/model_picker.rml"),
-        _files(std::move(files)),
-        _current(std::move(current)),
+      : UIPageComponent(owner, "assets/ui/model_picker.rml"), _files(std::move(files)), _current(std::move(current)),
         _onPick(std::move(onPick)) {
     }
 

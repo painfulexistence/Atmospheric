@@ -219,8 +219,7 @@ bool FileSystem::Exists(const std::string& path) const {
     return std::filesystem::exists(normPath);
 }
 
-std::vector<std::string>
-    FileSystem::List(const std::string& dir, const std::string& extensions, int maxDepth) const {
+std::vector<std::string> FileSystem::List(const std::string& dir, const std::string& extensions, int maxDepth) const {
     namespace fs = std::filesystem;
     std::vector<std::string> out;
 
