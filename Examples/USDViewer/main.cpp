@@ -15,9 +15,10 @@
 //     handling orients and scales it automatically.
 //
 // A model-picker HUD (RmlUi) lists the .usd/.usda/.usdc/.usdz files under
-// assets/models and loads the one you choose at runtime, without recompiling.
-// The list comes from the engine VFS (FileSystem::List), so it works the same on
-// native and web. See Examples/common/model_picker.hpp.
+// assets/models and swaps to the one you choose at runtime. The list comes from
+// the engine VFS (FileSystem::List). Picking destroys the current model and
+// instantiates the new one in place (no scene reload), so the HUD and prior
+// models don't pile up. See Examples/common/model_picker.hpp.
 //
 // Controls: WASD + mouse — the engine's CameraController3D (declared in
 // assets/scenes/main.json).
@@ -34,14 +35,15 @@ class USDViewer : public Application {
         GoScene("main", [this] { OnLoad(); });
     }
 
-    // Import + spawn one USD file; logs a mesh/material/vertex summary.
-    bool LoadModelFile(const std::string& path) {
+    // Import + spawn one USD file; logs a summary and returns the spawned root
+    // (nullptr on failure) so it can later be swapped out via DestroyGameObject.
+    GameObject* LoadModelFile(const std::string& path) {
         Prefab prefab = ImportPrefab(path);
         if (!prefab.ok) {
             ConsoleSubsystem::Get()->Warn("Failed to import " + path);
-            return false;
+            return nullptr;
         }
-        Instantiate(prefab, nullptr, path);
+        GameObject* go = Instantiate(prefab, nullptr, path);
         size_t verts = 0;
         for (const auto& md : prefab.meshes)
             verts += md.vertices.size();
@@ -51,39 +53,25 @@ class USDViewer : public Application {
             + std::to_string(prefab.skeletons.size()) + " skeletons, " + std::to_string(prefab.skeletonClips.size())
             + " clips"
         );
-        return true;
+        return go;
     }
 
+    // Runs once (from OnInit's GoScene). cube.usda arrives via the scene JSON's
+    // "prefab" field; here we load the optional Kitchen_set as the initial
+    // swappable model, then build the persistent picker HUD.
     void OnLoad() override {
-        if (!_selectedModel.empty()) {
-            // A runtime pick replaces the demo model. The importer applies the
-            // stage's upAxis / metersPerUnit, so no manual scale is assumed here.
-            LoadModelFile(_selectedModel);
-            SetupPickerHud();
-            return;
-        }
-
-        // The committed cube.usda arrives via the scene JSON's "prefab" field.
-        // The kitchen is optional and big, so it loads here with a fallback hint.
+        std::string initial;
         const std::string kitchen = "assets/models/kitchen/Kitchen_set.usd";
         if (FileSystem::Get().Exists(kitchen)) {
-            Prefab prefab = ImportPrefab(kitchen);
-            if (prefab.ok) {
-                GameObject* root = Instantiate(prefab, nullptr, "Kitchen_set");
-                // Kitchen_set is authored in centimetres but omits the
-                // `metersPerUnit` stage metadatum, so tinyusdz reports the 1.0
-                // default and the importer applies no unit scale — the set comes
-                // in 100x too large. Scale the instance to metres here. (SetScale
-                // recomposes from the decomposed transform, preserving the
-                // importer's Z-up -> Y-up root rotation.)
-                if (root) root->SetScale(glm::vec3(0.01f));
-                size_t verts = 0;
-                for (const auto& md : prefab.meshes)
-                    verts += md.vertices.size();
-                ConsoleSubsystem::Get()->Info(
-                    "Kitchen_set: " + std::to_string(prefab.meshes.size()) + " meshes, "
-                    + std::to_string(prefab.materials.size()) + " materials, " + std::to_string(verts) + " verts"
-                );
+            _modelRoot = LoadModelFile(kitchen);
+            // Kitchen_set is authored in centimetres but omits the
+            // `metersPerUnit` stage metadatum, so tinyusdz reports the 1.0
+            // default and the importer applies no unit scale — it comes in 100x
+            // too large. Scale to metres. (SetScale recomposes from the
+            // decomposed transform, preserving the Z-up -> Y-up root rotation.)
+            if (_modelRoot) {
+                _modelRoot->SetScale(glm::vec3(0.01f));
+                initial = kitchen;
             }
         } else {
             ConsoleSubsystem::Get()->Info(
@@ -91,29 +79,31 @@ class USDViewer : public Application {
                 "from the Models dropdown (showing the committed sample cube for now)"
             );
         }
-        SetupPickerHud();
+        SetupPickerHud(initial);
     }
 
-    void SetupPickerHud() {
+    void SetupPickerHud(const std::string& current) {
         std::vector<std::string> files = FileSystem::Get().List("assets/models", "usd;usda;usdc;usdz", true);
         std::function<void(std::string)> onPick = [this](std::string path) { _pendingModel = std::move(path); };
         _hud = static_cast<ModelPickerHud*>(
-            CreateGameObject()->AddComponent<ModelPickerHud>(std::move(files), _selectedModel, std::move(onPick))
+            CreateGameObject()->AddComponent<ModelPickerHud>(std::move(files), current, std::move(onPick))
         );
     }
 
     void OnUpdate(float, float) override {
-        // The <select> "change" callback stashes a path; apply it here (not from
-        // inside the UI event) so reloading the scene doesn't tear the document
-        // down mid-dispatch. Reloading re-runs OnLoad, which loads the pick.
-        if (!_pendingModel.empty()) {
-            _selectedModel = std::move(_pendingModel);
-            _pendingModel.clear();
-            GoScene("main", [this] { OnLoad(); });
-        }
+        if (_pendingModel.empty()) return;
+        std::string path = std::move(_pendingModel);
+        _pendingModel.clear();
+        // Defer the swap to the next-frame flush point (safe entity mutation):
+        // drop the current model, instantiate the pick in its place. The HUD
+        // persists, so nothing accumulates and the scene is not reloaded.
+        DeferSpawn([this, path] {
+            if (_modelRoot) DestroyGameObject(_modelRoot);
+            _modelRoot = LoadModelFile(path);
+        });
     }
 
-    std::string _selectedModel;
+    GameObject* _modelRoot = nullptr;
     std::string _pendingModel;
     ModelPickerHud* _hud = nullptr;
 };
