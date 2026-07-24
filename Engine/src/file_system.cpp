@@ -220,7 +220,7 @@ bool FileSystem::Exists(const std::string& path) const {
 }
 
 std::vector<std::string>
-    FileSystem::List(const std::string& dir, const std::string& extensions, bool recursive) const {
+    FileSystem::List(const std::string& dir, const std::string& extensions, int maxDepth) const {
     namespace fs = std::filesystem;
     std::vector<std::string> out;
 
@@ -264,17 +264,16 @@ std::vector<std::string>
         out.push_back(JoinPath(dir, rel));
     };
 
-    if (recursive) {
-        // skip_permission_denied + the error_code increment keep an unreadable
-        // sub-directory from throwing mid-walk.
-        fs::recursive_directory_iterator it(normDir, fs::directory_options::skip_permission_denied, ec), end;
-        for (; !ec && it != end; it.increment(ec))
-            emit(*it);
-    } else {
-        for (const auto& entry : fs::directory_iterator(normDir, ec)) {
-            if (ec) break;
-            emit(entry);
-        }
+    // One recursive walk with depth pruning covers every maxDepth: it.depth()
+    // is 0 for direct children. skip_permission_denied + the error_code
+    // increment keep an unreadable sub-directory from throwing mid-walk.
+    fs::recursive_directory_iterator it(normDir, fs::directory_options::skip_permission_denied, ec), end;
+    for (; !ec && it != end; it.increment(ec)) {
+        // Don't descend past the requested depth (negative = unlimited). A dir
+        // entry at depth == maxDepth would yield children at maxDepth+1.
+        std::error_code dec;
+        if (maxDepth >= 0 && it.depth() >= maxDepth && it->is_directory(dec)) it.disable_recursion_pending();
+        emit(*it);
     }
     std::sort(out.begin(), out.end());
     return out;

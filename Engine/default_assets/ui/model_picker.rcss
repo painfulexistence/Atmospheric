@@ -77,7 +77,12 @@ select selectarrow:hover {
 select selectbox {
     margin-top: 2dp;         /* sit just below the select */
     width: 100%;
-    max-height: 320dp;
+    /* Bounded + scrollable so a long models directory stays usable: options
+       past the cap scroll inside the box instead of running off-screen (where
+       drags would scroll rather than select). */
+    height: auto;
+    max-height: 300dp;
+    overflow-y: auto;
     background-color: #161a28f2;
     border-width: 1dp;
     border-color: #38405a;

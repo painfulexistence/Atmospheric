@@ -70,7 +70,7 @@ class GLTFViewer : public Application {
     // Runs once (from OnInit's GoScene). Shows the first model in the list as a
     // default (cube, when it's the only one present) and builds the picker HUD.
     void OnLoad() override {
-        std::vector<std::string> files = FileSystem::Get().List("assets/models", "gltf;glb", true);
+        std::vector<std::string> files = FileSystem::Get().List("assets/models", "gltf;glb", 1);
         if (!files.empty()) SwapTo(files.front());
         std::function<void(std::string)> onPick = [this](std::string path) { _pendingModel = std::move(path); };
         _hud = static_cast<ModelPickerHud*>(
