@@ -98,7 +98,7 @@ class USDViewer : public Application {
         std::vector<std::string> files = FileSystem::Get().List("assets/models", "usd;usda;usdc;usdz", true);
         std::function<void(std::string)> onPick = [this](std::string path) { _pendingModel = std::move(path); };
         _hud = static_cast<ModelPickerHud*>(
-            CreateGameObject()->AddComponent<ModelPickerHud>(std::move(files), std::move(onPick))
+            CreateGameObject()->AddComponent<ModelPickerHud>(std::move(files), _selectedModel, std::move(onPick))
         );
     }
 
