@@ -19,12 +19,69 @@ bool ClientNet::Connect(const std::string& serverIp, uint16_t serverPort) {
         return false;
     }
     _predictedMotion.foot = { -9.0f, 0.0f, 0.0f };// provisional until first snapshot
+    SendHello();// UDP/loopback is ready immediately — greet now
+    return true;
+}
 
+#ifdef __EMSCRIPTEN__
+bool ClientNet::ConnectWebTransport(const std::string& url) {
+    _useWt = true;
+    _serverAddr = 0;// WebTransport is a single session; addr/port are unused
+    _serverPort = 0;
+    _predictedMotion.foot = { -9.0f, 0.0f, 0.0f };
+    _helloSent = false;// deferred until wt.ready resolves — Pump sends it then
+    return _wt.Connect(url);
+}
+#endif
+
+void ClientNet::SendHello() {
     uint8_t buf[proto::kClientHelloLen];
     proto::PutU32(buf, proto::kMagic);
     buf[4] = static_cast<uint8_t>(proto::PacketType::ClientHello);
-    _socket.SendTo(_serverAddr, _serverPort, buf, sizeof(buf));
-    return true;
+    SendToServer(buf, sizeof(buf));
+    _helloSent = true;
+}
+
+void ClientNet::SendToServer(const uint8_t* data, int len) {
+#ifdef __EMSCRIPTEN__
+    if (_useWt) {
+        _wt.Send(data, len);
+        return;
+    }
+#endif
+    _socket.SendTo(_serverAddr, _serverPort, data, len);
+}
+
+int ClientNet::RecvFromServer(uint8_t* buf, int maxLen, uint32_t& fromAddr, uint16_t& fromPort) {
+#ifdef __EMSCRIPTEN__
+    if (_useWt) {
+        fromAddr = _serverAddr;// single session: report the "server" so HandlePacket's guard passes
+        fromPort = _serverPort;
+        return _wt.Recv(buf, maxLen);
+    }
+#endif
+    return _socket.RecvFrom(buf, maxLen, fromAddr, fromPort);
+}
+
+bool ClientNet::TransportOpen() const {
+#ifdef __EMSCRIPTEN__
+    if (_useWt) return _wt.IsOpen();
+#endif
+    return _socket.IsOpen();
+}
+
+bool ClientNet::IsConnecting() const {
+#ifdef __EMSCRIPTEN__
+    if (_useWt) return _wt.IsConnecting() || (_wt.IsOpen() && !_welcomed);
+#endif
+    return _socket.IsOpen() && !_welcomed;// connected transport, awaiting the welcome
+}
+
+bool ClientNet::ConnectFailed() const {
+#ifdef __EMSCRIPTEN__
+    if (_useWt) return _wt.Failed();
+#endif
+    return false;// UDP is connectionless — no handshake to fail
 }
 
 void ClientNet::SubmitInput(
@@ -40,7 +97,7 @@ void ClientNet::SubmitInput(
     bool fireRail,
     bool fireRocket
 ) {
-    if (!_socket.IsOpen()) return;
+    if (!TransportOpen()) return;
     _viewYaw = yaw;
     _viewPitch = pitch;
     _shield = shield;
@@ -87,7 +144,7 @@ void ClientNet::SubmitInput(
     proto::PutU16(buf + 26, _rocketSeq);
     proto::PutU16(buf + 28, proto::QuantizeYaw(_rocketYaw));
     proto::PutU16(buf + 30, proto::QuantizePitch(_rocketPitch));
-    _socket.SendTo(_serverAddr, _serverPort, buf, sizeof(buf));
+    SendToServer(buf, sizeof(buf));
     _metrics.OnSent(sizeof(buf));
     _inputSendMs[tick] = nowMs;// matched against ackedInputTick for RTT
 }
@@ -102,18 +159,53 @@ void ClientNet::HandlePacket(const uint8_t* buf, int n, uint32_t fromAddr, uint1
         spdlog::info("ClientNet: welcomed as player {}", _playerId);
     } else if (type == proto::PacketType::ServerSnapshot && n >= proto::kServerSnapshotHeaderLen) {
         HandleSnapshot(buf, n, nowMs);
+    } else if (type == proto::PacketType::Reliable) {
+        // Reliable side-channel bytes (kill-feed). Feeding the channel here means
+        // they pass through the conditioner like everything else, so dialing loss
+        // actually exercises the reliable resend. Messages are drained in Pump.
+        _reliable.ReadPacket(buf + proto::kReliablePayloadOffset, n - proto::kReliablePayloadOffset);
     }
 }
 
 void ClientNet::Pump(uint32_t nowMs) {
-    if (!_socket.IsOpen()) return;
+#ifdef __EMSCRIPTEN__
+    if (_useWt) {
+        if (!_helloSent && _wt.IsOpen()) SendHello();// session opened → greet now
+        if (!_wt.IsOpen()) return;// still connecting (or failed)
+    } else
+#endif
+    {
+        if (!_socket.IsOpen()) return;
+    }
     PumpConditioned(
         _cond,
         _metrics,
         nowMs,
-        [&](uint8_t* b, int max, uint32_t& from, uint16_t& port) { return _socket.RecvFrom(b, max, from, port); },
+        [&](uint8_t* b, int max, uint32_t& from, uint16_t& port) { return RecvFromServer(b, max, from, port); },
         [&](const uint8_t* b, int n, uint32_t from, uint16_t port) { HandlePacket(b, n, from, port, nowMs); }
     );
+
+    // Drain reliable side-channel messages (exactly-once, in order) into the feed.
+    uint8_t msg[64];
+    bool reliable = false;
+    int mn = 0;
+    while ((mn = _reliable.Receive(msg, static_cast<int>(sizeof(msg)), &reliable)) > 0) {
+        if (reliable && mn >= proto::kKillMsgLen && msg[0] == static_cast<uint8_t>(proto::RelMsg::Kill))
+            _killFeed.push_back(KillEvent{ msg[1], msg[2] });
+    }
+    // Send our reliable packet: the ack we owe for received events (and a home for
+    // any future client→server reliable message). Stays quiet when nothing is due.
+    uint8_t out[600];
+    proto::PutU32(out, proto::kMagic);
+    out[4] = static_cast<uint8_t>(proto::PacketType::Reliable);
+    const int wn = _reliable.WritePacket(
+        out + proto::kReliablePayloadOffset, static_cast<int>(sizeof(out)) - proto::kReliablePayloadOffset
+    );
+    if (wn > 0) {
+        SendToServer(out, proto::kReliablePayloadOffset + wn);
+        _metrics.OnSent(proto::kReliablePayloadOffset + wn);
+    }
+
     _metrics.pendingInputs = static_cast<int>(_pending.size());
     _metrics.lossPct = _cond.Active() ? _cond.MeasuredLossPct() : 0.0f;
 }

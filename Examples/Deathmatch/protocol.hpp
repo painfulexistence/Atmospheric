@@ -36,6 +36,7 @@ namespace proto {
         ServerWelcome = 2,
         ClientInput = 3,
         ServerSnapshot = 4,
+        Reliable = 5,// envelope for ReliableChannel bytes (see below); demuxed by type
     };
 
     // ── byte helpers (little-endian) ─────────────────────────────────────────
@@ -133,5 +134,31 @@ namespace proto {
     // Rocket entry: id(u16) ownerId(u8) pos(vec3)
     constexpr int kRocketEntryLen = 2 + 1 + 12;
     constexpr int kMaxRocketsInSnapshot = 16;
+
+    // ── reliable side-channel messages ───────────────────────────────────────
+    // The realtime paths (input, snapshot) are unreliable on purpose: a lost
+    // snapshot is superseded by the next, so resending only adds latency. But a
+    // handful of events are *edge-triggered* and must arrive exactly once — a
+    // kill for the kill-feed is the canonical case. Score is level-triggered
+    // (absolute in every snapshot, so loss self-heals), but "who fragged whom"
+    // is a one-shot notification: miss the packet and the feed line never shows.
+    //
+    // These ride a ReliableChannel (Engine) whose packets are wrapped in a
+    // PacketType::Reliable datagram — magic(4) type(1) then the channel's bytes —
+    // so they share the one UDP socket with the unreliable game traffic and are
+    // demuxed by the existing type switch. Header cost of the envelope is 5 bytes.
+    constexpr int kReliablePayloadOffset = 5;// magic(4) + type(1)
+
+    enum class RelMsg : uint8_t {
+        Kill = 1,// killerId(u8) victimId(u8)
+    };
+    constexpr int kKillMsgLen = 3;// msgType(1) killer(1) victim(1)
+
+    inline int EncodeKill(uint8_t* buf, int killerId, int victimId) {
+        buf[0] = static_cast<uint8_t>(RelMsg::Kill);
+        buf[1] = static_cast<uint8_t>(killerId);
+        buf[2] = static_cast<uint8_t>(victimId);
+        return kKillMsgLen;
+    }
 
 }// namespace proto

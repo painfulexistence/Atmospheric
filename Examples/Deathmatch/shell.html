@@ -21,6 +21,8 @@
       padding: 10px 14px; cursor: pointer; background: #2d6cdf; color: #fff; }
     button:hover { background: #397ff0; }
     button:disabled { background: #23262d; color: #5c626d; cursor: not-allowed; }
+    input[type=text] { font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 6px;
+      border: 1px solid #23262d; background: #0b0c10; color: #c8ccd4; width: 100%; box-sizing: border-box; }
     #canvas { display: none; background: #000; width: min(92vw, 1280px); aspect-ratio: 16 / 9;
       border: 1px solid #23262d; outline: none; }
     #caption { display: none; max-width: min(92vw, 1280px); font-size: 12.5px; line-height: 1.6; color: #8b909a; }
@@ -44,10 +46,11 @@
     <div class="card">
       <h2>Multiplayer <span class="badge">WIP</span></h2>
       <p>Player-vs-player against a dedicated server. The browser has no raw UDP,
-        so this needs a <b>WebTransport</b> (QUIC) transport plus a server that
-        speaks it — not wired up yet. Native builds already do PvP over UDP
-        (<code>--connect</code>).</p>
-      <button id="btn-pvp" disabled title="WebTransport transport not implemented yet">Coming soon</button>
+        so the client dials a <b>WebTransport→UDP gateway</b> (QUIC) that bridges
+        to the same server native clients reach over UDP. Enter the gateway URL,
+        then Connect — you'll see <b>Connecting…</b> while the QUIC session opens.</p>
+      <input id="pvp-url" type="text" value="https://localhost:4433/dm" spellcheck="false" autocapitalize="off" autocomplete="off">
+      <button id="btn-pvp" disabled>Loading…</button>
     </div>
   </div>
 
@@ -83,6 +86,12 @@
       startGame(['--local']);
     });
 
+    document.getElementById('btn-pvp').addEventListener('click', function () {
+      var url = (document.getElementById('pvp-url').value || '').trim();
+      if (!url) { setStatus('enter a gateway URL'); return; }
+      startGame(['--connect-wt', url]);
+    });
+
     var Module = {
       canvas: document.getElementById('canvas'),
       print: function (t) { console.log(t); },
@@ -92,6 +101,8 @@
         _wasmReady = true;
         var solo = document.getElementById('btn-solo');
         solo.disabled = false; solo.textContent = 'Play';
+        var pvp = document.getElementById('btn-pvp');
+        pvp.disabled = false; pvp.textContent = 'Connect';
         setStatus('');
         if (_pendingCall) { var a = _pendingCall; _pendingCall = null; Module['callMain'](a); }
       }

@@ -4,6 +4,10 @@
 #include <Atmospheric/datagram_socket.hpp>
 #include <Atmospheric/net_conditioner.hpp>
 #include <Atmospheric/net_metrics.hpp>
+#include <Atmospheric/reliable_channel.hpp>
+#ifdef __EMSCRIPTEN__
+#include <Atmospheric/web_transport_socket.hpp>
+#endif
 
 #include <cstdint>
 #include <map>
@@ -38,8 +42,27 @@ public:
         sim::Vec3 vel;
         float life = 0.0f;
     };
+    struct KillEvent {
+        int killer = 0;
+        int victim = 0;
+    };
 
+    // Native / web-solo: connectionless UDP (or in-process loopback on web).
+    // Sends the hello synchronously.
     bool Connect(const std::string& serverIp, uint16_t serverPort);
+
+#ifdef __EMSCRIPTEN__
+    // Web PvP: connect to the WebTransport→UDP gateway at an https URL. The
+    // session is async, so the hello is deferred until it opens (see Pump); the
+    // UI can watch IsConnecting() / ConnectFailed() meanwhile.
+    bool ConnectWebTransport(const std::string& url);
+#endif
+
+    // Connection status for the lobby/HUD. IsConnecting() is true from the
+    // connect call until the first ServerWelcome; ConnectFailed() is web-only
+    // (the WebTransport handshake was rejected or the session dropped).
+    bool IsConnecting() const;
+    bool ConnectFailed() const;
 
     // Predicts one tick of movement (incl. jump/levitate/dash), latches any
     // fire this tick (aimed along the current view), and sends the input.
@@ -106,6 +129,14 @@ public:
         return _cosRockets;
     }
 
+    // Reliable kill-feed events delivered (exactly once, in order) since the last
+    // call; clears the queue. Empty on most frames. Drives the on-screen feed.
+    std::vector<KillEvent> TakeKillEvents() {
+        std::vector<KillEvent> out;
+        out.swap(_killFeed);
+        return out;
+    }
+
     // Netgraph data + the live link emulator (mutable so the HUD keybinds can
     // dial latency/jitter/loss). The conditioner sits on this client's inbound
     // snapshot path, so it works even in --local loopback play.
@@ -131,6 +162,8 @@ private:
 
     NetConditioner _cond;
     NetMetrics _metrics;
+    ReliableChannel _reliable;// reliable side-channel (kill-feed) over the same socket
+    std::vector<KillEvent> _killFeed;// decoded reliable events awaiting TakeKillEvents()
     std::map<uint32_t, uint32_t> _inputSendMs;// tick -> send time, for RTT on ack
 
     bool _welcomed = false;
@@ -168,4 +201,18 @@ private:
     float InterpT(uint32_t nowMs) const;
     void HandlePacket(const uint8_t* data, int len, uint32_t fromAddr, uint16_t fromPort, uint32_t nowMs);
     void HandleSnapshot(const uint8_t* data, int len, uint32_t nowMs);
+
+    // Transport indirection: one server, reached over either the UDP/loopback
+    // socket or (web PvP) the WebTransport session. Everything above sends and
+    // receives through these instead of touching _socket directly.
+    void SendHello();
+    void SendToServer(const uint8_t* data, int len);
+    int RecvFromServer(uint8_t* buf, int maxLen, uint32_t& fromAddr, uint16_t& fromPort);
+    bool TransportOpen() const;
+
+    bool _helloSent = false;
+#ifdef __EMSCRIPTEN__
+    WebTransportSocket _wt;// web PvP transport (unused in solo/--local)
+    bool _useWt = false;
+#endif
 };
