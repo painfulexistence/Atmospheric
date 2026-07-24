@@ -1,0 +1,30 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Windows · Debug launch target (MSVC)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "//": "Resolves whatever target you pick as the CMake Tools launch target (status bar). cwd is the target's own dir so assets/ — copied next to the exe by the build — resolve via SDL_GetBasePath.",
+      "program": "${command:cmake.launchTargetPath}",
+      "cwd": "${command:cmake.launchTargetDirectory}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Unix · Debug launch target (lldb/gdb)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "cwd": "${command:cmake.launchTargetDirectory}",
+      "MIMode": "lldb",
+      "//": "macOS uses lldb; on Linux change MIMode to gdb.",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    }
+  ]
+}

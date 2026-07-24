@@ -2,30 +2,76 @@
   "version": 3,
   "configurePresets": [
     {
-      "name": "local-vcpkg",
+      "name": "vcpkg",
       "hidden": true,
+      "description": "Toolchain base: the bundled vcpkg submodule. compile_commands.json is exported wherever the generator supports it.",
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
     {
-      "name": "global-vcpkg",
+      "name": "ccache",
       "hidden": true,
+      "description": "Opt-in compiler cache mixin. Not baked into the shared presets because ccache isn't guaranteed on every machine (and MSVC needs extra setup). Enable it from your machine-local CMakeUserPresets.json — see CMakeUserPresets.json.example.",
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"
       }
     },
     {
-      "name": "ninja-local-vcpkg",
+      "name": "ninja",
+      "displayName": "Ninja Multi-Config (bundled vcpkg)",
+      "description": "The default family on every desktop platform: configure once, then build any config via the debug/release build presets from the same tree. On Windows this drives MSVC — run from a 'x64 Native Tools for VS 2022' prompt, or let VS Code's CMake Tools supply the kit. Historical note: ASan (-fsanitize=address) was removed from the old dev preset — it deadlocks on macOS 26.1+ (Xcode 26.1+); re-add locally when Apple fixes the ASan/dyld interaction bug.",
       "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build",
-      "inherits": ["local-vcpkg"]
+      "inherits": ["vcpkg"]
     },
     {
-      "name": "ninja-global-vcpkg",
-      "generator": "Ninja Multi-Config",
-      "binaryDir": "${sourceDir}/build",
-      "inherits": ["global-vcpkg"]
+      "name": "vs",
+      "displayName": "Visual Studio 2022 (x64)",
+      "description": "The Windows IDE family: produces Atmospheric.sln in build-vs/ — open it in Visual Studio and F5 to build + debug (native debugger, profiler, natvis). Locates MSVC itself, so no developer prompt is needed. Separate binary dir from the ninja family — CMake refuses to reuse a build tree across generators.",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/build-vs",
+      "inherits": ["vcpkg"],
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "ninja",
+      "configuration": "Debug"
+    },
+    {
+      "name": "release",
+      "configurePreset": "ninja",
+      "configuration": "Release"
+    },
+    {
+      "name": "vs-debug",
+      "configurePreset": "vs",
+      "configuration": "Debug",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "vs-release",
+      "configurePreset": "vs",
+      "configuration": "Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     }
   ]
 }
