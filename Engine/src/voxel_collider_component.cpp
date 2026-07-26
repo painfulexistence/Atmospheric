@@ -2,6 +2,8 @@
 #include "bullet_collision.hpp"
 #include "bullet_dynamics.hpp"
 #include "bullet_linear_math.hpp"
+#include <BulletCollision/CollisionDispatch/btInternalEdgeUtility.h>
+#include <BulletCollision/CollisionShapes/btTriangleInfoMap.h>
 #include "console_subsystem.hpp"
 #include "game_object.hpp"
 #include "rigidbody_component.hpp"
@@ -38,6 +40,7 @@ void VoxelColliderComponent::_releaseShape() {
     _indices.clear();
     _triangleCount = 0;
     _hullPointCount = 0;
+    _centerOfMass = glm::vec3(0.0f);
 }
 
 void VoxelColliderComponent::_build() {
@@ -60,8 +63,21 @@ void VoxelColliderComponent::_build() {
         std::vector<glm::vec3> points;
         volume->BuildConvexHullPoints(points, _props.hullDirections);
         if (points.size() < 4) return;// degenerate: nothing to hull
+
+        // The hull comes back in the volume's local frame, whose origin is the
+        // grid's bottom centre — for a 1.6 m crate the real centre of mass is
+        // 0.8 m above it. Bullet has no separate centre-of-mass concept: it
+        // takes the shape's origin to be one, spins the body about it, and
+        // btPolyhedralConvexShape::calculateLocalInertia assumes the same. Left
+        // uncentred, a prop pivots about its own base and gets the wrong
+        // tensor. Build the hull about the centroid instead and hand the offset
+        // to the body, which puts it back where it is drawn.
+        _centerOfMass = volume->GetSolidCentroidLocal();
         auto hull = std::make_unique<btConvexHullShape>();
-        for (const glm::vec3& p : points) hull->addPoint(btVector3(p.x, p.y, p.z), false);
+        for (const glm::vec3& p : points) {
+            const glm::vec3 q = p - _centerOfMass;
+            hull->addPoint(btVector3(q.x, q.y, q.z), false);
+        }
         hull->setMargin(margin);
         hull->recalcLocalAabb();
         _hullPointCount = static_cast<int>(points.size());
@@ -103,8 +119,21 @@ void VoxelColliderComponent::_build() {
 
         _meshInterface = std::make_unique<btTriangleIndexVertexArray>();
         _meshInterface->addIndexedMesh(mesh, PHY_INTEGER);
-        _shape = std::make_unique<btBvhTriangleMeshShape>(_meshInterface.get(), /*useQuantizedAabbCompression=*/true);
-        _shape->setMargin(margin);
+        auto meshShape =
+            std::make_unique<btBvhTriangleMeshShape>(_meshInterface.get(), /*useQuantizedAabbCompression=*/true);
+        meshShape->setMargin(margin);
+
+        // Internal-edge adjacency. Without it, contacts landing on the shared
+        // edge between two triangles get a normal along the edge instead of out
+        // of the surface, which shoves resting bodies sideways (jitter) and
+        // down into the shell (sinking through). The default edge threshold is
+        // 0.1 m — larger than a collision cell here, which would classify every
+        // contact as an edge contact — so scale it to the voxel grid.
+        _triangleInfo = std::make_unique<btTriangleInfoMap>();
+        _triangleInfo->m_edgeDistanceThreshold = volume->voxelSize * 0.5f;
+        btGenerateInternalEdgeInfo(meshShape.get(), _triangleInfo.get());
+
+        _shape = std::move(meshShape);
         mass = 0.0f;// static
     }
 
@@ -114,8 +143,16 @@ void VoxelColliderComponent::_build() {
     rbProps.mass = mass;
     rbProps.friction = _props.friction;
     rbProps.restitution = _props.restitution;
+    // Zero for the static mesh, which is built in the object's own frame.
+    rbProps.centerOfMass = _centerOfMass;
     auto* body = new RigidbodyComponent(gameObject, rbProps);
     gameObject->AddComponent(body);
+
+    if (!_props.dynamic) {
+        // Opt the mesh body into the contact-added callback that performs the
+        // internal-edge correction (see Physics3DSubsystem).
+        body->SetCustomMaterialCallback(true);
+    }
 
     if (_props.dynamic && _props.continuousCollision) {
         // Sweep once the body would move more than half its thinnest side in a
@@ -140,6 +177,7 @@ void VoxelColliderComponent::DrawImGui() {
     ImGui::Text("%s", _props.dynamic ? "convex hull (dynamic)" : "triangle mesh (static)");
     if (_props.dynamic) {
         ImGui::Text("%d hull points", _hullPointCount);
+        ImGui::Text("CoM %.2f, %.2f, %.2f (local)", _centerOfMass.x, _centerOfMass.y, _centerOfMass.z);
     } else {
         ImGui::Text("%d triangles", _triangleCount);
     }

@@ -92,6 +92,16 @@ public:
     // rises from y=0, i.e. (-half, 0, -half).
     glm::vec3 GetLocalOrigin() const;
 
+    // Centroid of the solid voxels in local space — the centre of mass, since
+    // voxels are uniform. Note this is NOT the local origin: that is the
+    // grid's bottom centre, so a prop's centre of mass sits roughly half its
+    // height above it. Physics needs the difference (Bullet takes a body's
+    // origin to be its centre of mass), and it is well away from zero for
+    // anything whose voxels do not fill the grid symmetrically. Returns zero
+    // if nothing is solid. O(solid bounds) with brick skipping — cheap for a
+    // prop, a full scan for terrain, so call it once at build time.
+    glm::vec3 GetSolidCentroidLocal() const;
+
     // World-space min corner, valid only while the object is unrotated (kept
     // for the WebGPU single-volume path, which has no OBB support yet).
     glm::vec3 GetOrigin() const;

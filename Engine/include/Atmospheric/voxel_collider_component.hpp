@@ -8,6 +8,7 @@
 class VoxelVolumeComponent;
 class btCollisionShape;
 class btTriangleIndexVertexArray;
+struct btTriangleInfoMap;
 
 struct VoxelColliderProps {
     // false: a static triangle mesh of the volume's exposed voxel faces
@@ -87,7 +88,12 @@ private:
     std::vector<glm::vec3> _vertices;
     std::vector<uint32_t> _indices;
     std::unique_ptr<btTriangleIndexVertexArray> _meshInterface;
+    // Triangle adjacency for the internal-edge fix; the shape only borrows it.
+    std::unique_ptr<btTriangleInfoMap> _triangleInfo;
     std::unique_ptr<btCollisionShape> _shape;
+    // Solid centroid the dynamic hull was built about, in the object's local
+    // frame. Zero for the static mesh, which keeps that frame as-is.
+    glm::vec3 _centerOfMass{ 0.0f };
     int _triangleCount = 0;
     int _hullPointCount = 0;
 };

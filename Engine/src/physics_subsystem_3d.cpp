@@ -6,6 +6,8 @@
 #include "physics_debug_drawer.hpp"
 #include "rigidbody_component.hpp"
 #include <BulletCollision/CollisionDispatch/btCollisionDispatcherMt.h>
+#include <BulletCollision/CollisionDispatch/btInternalEdgeUtility.h>
+#include <BulletCollision/CollisionDispatch/btManifoldResult.h>// gContactAddedCallback
 #include <BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolverMt.h>
 #include <BulletDynamics/Dynamics/btDiscreteDynamicsWorldMt.h>// also declares btConstraintSolverPoolMt
 #include <algorithm>
@@ -47,6 +49,28 @@ Physics3DSubsystem::~Physics3DSubsystem() {
     if (_instance == this) {
         _instance = nullptr;
     }
+}
+
+// Internal-edge correction for triangle-mesh colliders. A box resting across a
+// triangle soup generates contacts on the shared edges between triangles, and
+// the raw contact normal there points along the edge rather than out of the
+// surface — so bodies get shoved sideways or downwards, which reads as endless
+// jitter and, on a mesh (a shell, not a solid), as slowly sinking through it.
+// Bullet fixes this by snapping such normals back to the face normal, using the
+// triangle adjacency map built by btGenerateInternalEdgeInfo. Only bodies that
+// opt in with CF_CUSTOM_MATERIAL_CALLBACK reach this, so nothing else is
+// affected.
+static bool MvInternalEdgeContactCallback(
+    btManifoldPoint& cp, const btCollisionObjectWrapper* colObj0Wrap, int partId0, int index0,
+    const btCollisionObjectWrapper* colObj1Wrap, int partId1, int index1
+) {
+    // Whichever side is the triangle is the one to correct against.
+    if (colObj1Wrap->getCollisionShape()->getShapeType() == TRIANGLE_SHAPE_PROXYTYPE) {
+        btAdjustInternalEdgeContacts(cp, colObj1Wrap, colObj0Wrap, partId1, index1);
+    } else if (colObj0Wrap->getCollisionShape()->getShapeType() == TRIANGLE_SHAPE_PROXYTYPE) {
+        btAdjustInternalEdgeContacts(cp, colObj0Wrap, colObj1Wrap, partId0, index0);
+    }
+    return true;
 }
 
 void Physics3DSubsystem::Init(Application* app) {
@@ -94,6 +118,18 @@ void Physics3DSubsystem::Init(Application* app) {
     spdlog::info("[Physics] Single-threaded world (BT_THREADSAFE not defined)");
 #endif
     SetGravity(glm::vec3(0, -GRAVITY, 0));
+
+    gContactAddedCallback = MvInternalEdgeContactCallback;
+
+    // Bullet's solver defaults assume metre-scale bodies. Split impulse — the
+    // mechanism that pushes overlapping bodies apart WITHOUT feeding the energy
+    // back as bounce — only engages past m_splitImpulsePenetrationThreshold,
+    // and its default of -4 cm is deeper than a 5 cm voxel: at this scale a
+    // resting body's overlap never reaches it, so recovery goes through the
+    // normal impulse instead and the body visibly buzzes. Pull the threshold
+    // down to a fraction of a voxel.
+    btContactSolverInfo& solverInfo = _world->getSolverInfo();
+    solverInfo.m_splitImpulsePenetrationThreshold = -0.01f;
 
     _debugDrawer = std::make_unique<PhysicsDebugDrawer>();
     _world->setDebugDrawer(_debugDrawer.get());

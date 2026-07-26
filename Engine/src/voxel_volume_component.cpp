@@ -125,6 +125,40 @@ glm::vec3 VoxelVolumeComponent::GetLocalOrigin() const {
     return glm::vec3(-half, 0.0f, -half);
 }
 
+glm::vec3 VoxelVolumeComponent::GetSolidCentroidLocal() const {
+    if (volume.empty() || !HasSolid()) return glm::vec3(0.0f);
+
+    const int N = gridDim;
+    const int B = brickDim;
+    const int BG = N / B;
+    // Accumulate in double: a 256^3 volume can hold millions of solid voxels
+    // and a float sum would start dropping the low bits well before the end.
+    glm::dvec3 sum(0.0);
+    uint64_t count = 0;
+
+    for (int z = solidMin.z; z <= solidMax.z; z++) {
+        for (int y = solidMin.y; y <= solidMax.y; y++) {
+            for (int x = solidMin.x; x <= solidMax.x;) {
+                const glm::ivec3 bc(x / B, y / B, z / B);
+                if (occupancy[(static_cast<size_t>(bc.z) * BG + bc.y) * BG + bc.x] == 0) {
+                    x = (bc.x + 1) * B;// whole brick is air: skip the run
+                    continue;
+                }
+                if (volume[(static_cast<size_t>(z) * N + y) * N + x] != 0) {
+                    sum += glm::dvec3(x, y, z);
+                    count++;
+                }
+                x++;
+            }
+        }
+    }
+    if (count == 0) return glm::vec3(0.0f);
+
+    // +0.5 moves from voxel min corners to voxel centres.
+    const glm::vec3 avg = glm::vec3(sum / static_cast<double>(count)) + 0.5f;
+    return GetLocalOrigin() + avg * voxelSize;
+}
+
 glm::vec3 VoxelVolumeComponent::GetOrigin() const {
     float half = WorldExtent() * 0.5f;
     glm::vec3 pos = gameObject ? gameObject->GetPosition() : glm::vec3(0.0f);
