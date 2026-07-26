@@ -96,8 +96,15 @@ class MicroVoxelApp : public Application {
         // rather than a coarse approximation.
         terrainObj->AddComponent(new VoxelColliderComponent(terrainObj, VoxelColliderProps{ .dynamic = false }));
 
+        // How many of the props above to actually spawn. Physics cost scales
+        // with this (each is a dynamic body against the terrain's big static
+        // mesh), so turn it down when profiling or running an unoptimized
+        // build; the full set is std::size(kObjects).
+        constexpr size_t kPropCount = 5;
+
         int objIndex = 0;
         for (const auto& od : kObjects) {
+            if (static_cast<size_t>(objIndex) >= kPropCount) break;
             auto* obj = CreateGameObject();
             obj->SetName(fmt::format("Volume.Obj{}", objIndex));
             // Drop the props in from above everything solid so none start
