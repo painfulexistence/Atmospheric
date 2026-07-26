@@ -59,6 +59,26 @@ public:
     // maxDist.
     bool RaycastVoxel(const glm::vec3& worldRo, const glm::vec3& worldRd, float maxDist, glm::vec3& outHitWorld) const;
 
+    // ---- Collision geometry -------------------------------------------------
+    // Both emit points in the volume's LOCAL space — the same frame the
+    // raymarch marches in, whose origin is the GameObject's pivot. A Bullet
+    // shape built from these can be attached to a body placed at the object
+    // transform with no further offset, so collider and visuals agree,
+    // rotation included.
+
+    // Triangle mesh of every exposed voxel face, greedy-merged into maximal
+    // rectangles per slice, with outward winding. Feeds a static
+    // btBvhTriangleMeshShape (Bullet's triangle meshes cannot move), so it is
+    // the terrain path. Voxel-precise rather than brick-coarse, and empty
+    // regions are skipped a whole brick at a time via the occupancy grid.
+    void BuildSurfaceMesh(std::vector<glm::vec3>& outVertices, std::vector<uint32_t>& outIndices) const;
+
+    // Support points of the solid voxels over `directions` roughly even
+    // directions — a small bounded set whose convex hull approximates (and is
+    // inscribed in) the true hull, for a dynamic btConvexHullShape. Intended
+    // for props; a whole terrain would hull to something useless.
+    void BuildConvexHullPoints(std::vector<glm::vec3>& outPoints, int directions = 64) const;
+
     // Local-space min corner: the grid is centred over the object in x/z and
     // rises from y=0, i.e. (-half, 0, -half).
     glm::vec3 GetLocalOrigin() const;

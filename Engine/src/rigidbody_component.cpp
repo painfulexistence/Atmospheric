@@ -1,4 +1,5 @@
 #include "rigidbody_component.hpp"
+#include <glm/gtc/quaternion.hpp>
 #include "application.hpp"
 #include "bullet_linear_math.hpp"
 #include "game_object.hpp"
@@ -37,7 +38,12 @@ RigidbodyComponent::RigidbodyComponent(
     btTransform t;
     t.setIdentity();
     t.setOrigin(btVector3(position.x, position.y, position.z));
-    t.setRotation(btQuaternion(rotation.x, rotation.y, rotation.z, 1.0f));
+    // Euler radians -> quaternion with the SAME conversion TransformComponent
+    // uses to build its matrix (glm::quat(vec3)), so the body starts exactly
+    // where the object is drawn. The old btQuaternion(x, y, z, 1) fed euler
+    // angles in as raw quaternion components — identity only at zero rotation.
+    const glm::quat q(rotation);
+    t.setRotation(btQuaternion(q.x, q.y, q.z, q.w));
 
     _motionState = std::make_unique<btDefaultMotionState>(t);
     _rigidbody =
@@ -59,7 +65,12 @@ RigidbodyComponent::RigidbodyComponent(GameObject* gameObject, const RigidbodyPr
     btTransform t;
     t.setIdentity();
     t.setOrigin(btVector3(position.x, position.y, position.z));
-    t.setRotation(btQuaternion(rotation.x, rotation.y, rotation.z, 1.0f));
+    // Euler radians -> quaternion with the SAME conversion TransformComponent
+    // uses to build its matrix (glm::quat(vec3)), so the body starts exactly
+    // where the object is drawn. The old btQuaternion(x, y, z, 1) fed euler
+    // angles in as raw quaternion components — identity only at zero rotation.
+    const glm::quat q(rotation);
+    t.setRotation(btQuaternion(q.x, q.y, q.z, q.w));
 
     _motionState = std::make_unique<btDefaultMotionState>(t);
     _rigidbody = std::make_unique<btRigidBody>(
@@ -125,7 +136,12 @@ void RigidbodyComponent::SetWorldTransform(const glm::vec3& position, const glm:
     btTransform t;
     t.setIdentity();
     t.setOrigin(btVector3(position.x, position.y, position.z));
-    t.setRotation(btQuaternion(rotation.x, rotation.y, rotation.z, 1.0f));
+    // Euler radians -> quaternion with the SAME conversion TransformComponent
+    // uses to build its matrix (glm::quat(vec3)), so the body starts exactly
+    // where the object is drawn. The old btQuaternion(x, y, z, 1) fed euler
+    // angles in as raw quaternion components — identity only at zero rotation.
+    const glm::quat q(rotation);
+    t.setRotation(btQuaternion(q.x, q.y, q.z, q.w));
     _rigidbody->setWorldTransform(t);
     _rigidbody->getMotionState()->setWorldTransform(t);
 }

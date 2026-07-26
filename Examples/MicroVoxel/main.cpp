@@ -1,6 +1,7 @@
 #include "Atmospheric.hpp"
 #include "Atmospheric/camera_controller_3d.hpp"
 #include "Atmospheric/light_component.hpp"
+#include "Atmospheric/voxel_collider_component.hpp"
 #include "Atmospheric/voxel_volume_component.hpp"
 #include "Atmospheric/window.hpp"
 #include <fmt/format.h>
@@ -11,12 +12,18 @@
 #endif
 
 // Micro voxel rendering demo: a raymarched 12.8m terrain of 5cm voxels
-// (procedural terrain + caves + ore + floating crystals) plus ~20 small
+// (procedural terrain + caves + ore + water + floating crystals) plus ~20 small
 // per-object volumes (crates / boulders / crystal clusters, several rotated),
 // depth-composited with the rasterized scene by MicroVoxelPass. Contrast with
 // the VoxelWorld example, which greedy-meshes 1m macro voxels into triangles —
 // here no triangles are generated at all; every pixel raymarches a volume with
 // a two-level DDA (brick skip + per-voxel walk) in that volume's local space.
+//
+// The props are also physics bodies: VoxelColliderComponent derives a convex
+// hull from each prop's own voxels and a static triangle mesh from the
+// terrain's exposed faces, so they drop in, bounce and pile into each other.
+// Bullet writes each body's pose back to its object and the raymarch reads
+// that transform, so a tumbling crate renders tumbling.
 class MicroVoxelApp : public Application {
     using Application::Application;
 
@@ -84,21 +91,32 @@ class MicroVoxelApp : public Application {
             { VoxelVolumeKind::CrystalCluster, 24, 1.9f * s, 3.2f * s, 30.0f, -9.0f },
             { VoxelVolumeKind::CrystalCluster, 16, -2.1f * s, -0.9f * s, 60.0f, 0.0f },
         };
+        // The terrain is a static collider: a triangle mesh of its exposed
+        // voxel faces, so props rest on the real surface (and on cave floors)
+        // rather than a coarse approximation.
+        terrainObj->AddComponent(new VoxelColliderComponent(terrainObj, VoxelColliderProps{ .dynamic = false }));
+
         int objIndex = 0;
         for (const auto& od : kObjects) {
             auto* obj = CreateGameObject();
             obj->SetName(fmt::format("Volume.Obj{}", objIndex));
-            // Position first (sunk 5cm so objects seat into the terrain), then
-            // attach: Generate runs on attach and the volume follows the
-            // object's transform every frame after.
-            obj->SetPosition(glm::vec3(od.x, surfaceY(od.x, od.z) - 0.05f, od.z));
+            // Drop the props in from above the terrain's highest peak so none
+            // start embedded; they fall, bounce and pile into each other.
+            // Physics writes each body's pose back to the object every frame
+            // and the raymarch reads that transform, so they render tumbling.
+            const float dropY = 9.0f + 0.45f * static_cast<float>(objIndex % 9);
+            obj->SetPosition(glm::vec3(od.x, dropY, od.z));
             obj->SetRotation(glm::vec3(glm::radians(od.tiltDeg), glm::radians(od.yawDeg), 0.0f));
             auto* vc = static_cast<VoxelVolumeComponent*>(
                 obj->AddComponent<VoxelVolumeComponent>(1000u + static_cast<uint32_t>(objIndex) * 17u, od.gridDim, od.kind)
             );
+            // Collider after the volume: it reads the freshly generated voxels
+            // and adds the rigid body. A convex hull of the prop's own voxels.
+            obj->AddComponent(new VoxelColliderComponent(obj, VoxelColliderProps{ .dynamic = true }));
             _carveTargets.push_back(vc);
             objIndex++;
         }
+        (void)surfaceY;// physics places the props now; kept for hand-placing
 
         // An angled warm sun. Without one the engine falls back to its default
         // directional light, which points straight down (0,-1,0) — that lights
@@ -167,6 +185,10 @@ class MicroVoxelApp : public Application {
                 _carveTargets.size(),
                 _carveTargets.size() - 1
             )
+        );
+        ConsoleSubsystem::Get()->Info(
+            "Props are rigid bodies with voxel-derived hulls; they drop onto the terrain mesh collider "
+            "and collide with each other."
         );
         ConsoleSubsystem::Get()->Info(
             "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P/X/N/V toggle "
