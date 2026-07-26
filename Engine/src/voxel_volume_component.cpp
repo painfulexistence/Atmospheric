@@ -653,28 +653,45 @@ bool VoxelVolumeComponent::RaycastVoxel(
 // ============================================================================
 
 void VoxelVolumeComponent::BuildSurfaceMesh(
-    std::vector<glm::vec3>& outVertices, std::vector<uint32_t>& outIndices
+    std::vector<glm::vec3>& outVertices, std::vector<uint32_t>& outIndices, int step
 ) const {
     outVertices.clear();
     outIndices.clear();
     if (volume.empty() || !HasSolid()) return;
 
+    // Round the requested coarsening down to a power of two in [1, brickDim].
+    // Keeping it a divisor of brickDim means one coarse cell never straddles
+    // two bricks, so the occupancy fast path below stays a single lookup.
+    int cstep = 1;
+    while (cstep * 2 <= step && cstep * 2 <= brickDim) cstep *= 2;
+
     const int N = gridDim;
     const int B = brickDim;
     const int BG = N / B;
+    const int Nc = N / cstep;// coarse cells per edge
+    const int Bc = B / cstep;// coarse cells per brick
+    const float cell = voxelSize * static_cast<float>(cstep);// coarse cell size, meters
     const glm::vec3 origin = GetLocalOrigin();
-    const glm::ivec3 lo = solidMin, hi = solidMax;
+    const glm::ivec3 lo = solidMin / cstep, hi = solidMax / cstep;
 
     auto brickEmpty = [&](const glm::ivec3& b) {
         if (b.x < 0 || b.y < 0 || b.z < 0 || b.x >= BG || b.y >= BG || b.z >= BG) return true;
         return occupancy[(static_cast<size_t>(b.z) * BG + b.y) * BG + b.x] == 0;
     };
+    // A coarse cell is solid if ANY voxel inside it is. Conservative on
+    // purpose: inflating the collider is safe, punching holes in it is not.
     auto solidAt = [&](const glm::ivec3& c) {
-        if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= N || c.y >= N || c.z >= N) return false;
-        return volume[(static_cast<size_t>(c.z) * N + c.y) * N + c.x] != 0;
+        if (c.x < 0 || c.y < 0 || c.z < 0 || c.x >= Nc || c.y >= Nc || c.z >= Nc) return false;
+        if (cstep == 1) return volume[(static_cast<size_t>(c.z) * N + c.y) * N + c.x] != 0;
+        const glm::ivec3 v0 = c * cstep;
+        for (int z = v0.z; z < v0.z + cstep; z++)
+            for (int y = v0.y; y < v0.y + cstep; y++)
+                for (int x = v0.x; x < v0.x + cstep; x++)
+                    if (volume[(static_cast<size_t>(z) * N + y) * N + x] != 0) return true;
+        return false;
     };
 
-    // Per-axis sweep: for each plane between two voxel slabs, mark the faces
+    // Per-axis sweep: for each plane between two cell slabs, mark the faces
     // where exactly one side is solid (+1 = normal along +d, -1 = along -d),
     // then merge equal-sign runs into maximal rectangles (greedy meshing).
     std::vector<int8_t> mask;
@@ -685,21 +702,21 @@ void VoxelVolumeComponent::BuildSurfaceMesh(
         if (du <= 0 || dv <= 0) continue;
         mask.assign(static_cast<size_t>(du) * dv, 0);
 
-        for (int s = lo[d]; s <= hi[d] + 1; s++) {
+        for (int sl = lo[d]; sl <= hi[d] + 1; sl++) {
             std::fill(mask.begin(), mask.end(), static_cast<int8_t>(0));
-            const int baD = (s - 1 >= 0) ? (s - 1) / B : -1;
-            const int bbD = (s < N) ? s / B : -1;
+            const int baD = (sl - 1 >= 0) ? (sl - 1) / Bc : -1;
+            const int bbD = (sl < Nc) ? sl / Bc : -1;
 
             // Fill a brick block at a time: an empty pair costs one occupancy
-            // lookup instead of 64 voxel lookups.
+            // lookup instead of Bc^2 cell tests.
             for (int v0 = lo[v]; v0 <= hi[v];) {
-                const int vEnd = std::min(hi[v], (v0 / B + 1) * B - 1);
+                const int vEnd = std::min(hi[v], (v0 / Bc + 1) * Bc - 1);
                 for (int u0 = lo[u]; u0 <= hi[u];) {
-                    const int uEnd = std::min(hi[u], (u0 / B + 1) * B - 1);
+                    const int uEnd = std::min(hi[u], (u0 / Bc + 1) * Bc - 1);
                     glm::ivec3 ba(0), bb(0);
                     ba[d] = baD;
-                    ba[u] = u0 / B;
-                    ba[v] = v0 / B;
+                    ba[u] = u0 / Bc;
+                    ba[v] = v0 / Bc;
                     bb[d] = bbD;
                     bb[u] = ba[u];
                     bb[v] = ba[v];
@@ -707,10 +724,10 @@ void VoxelVolumeComponent::BuildSurfaceMesh(
                         for (int vv = v0; vv <= vEnd; vv++) {
                             for (int uu = u0; uu <= uEnd; uu++) {
                                 glm::ivec3 ca(0), cb(0);
-                                ca[d] = s - 1;
+                                ca[d] = sl - 1;
                                 ca[u] = uu;
                                 ca[v] = vv;
-                                cb[d] = s;
+                                cb[d] = sl;
                                 cb[u] = uu;
                                 cb[v] = vv;
                                 const bool sa = solidAt(ca);
@@ -750,10 +767,10 @@ void VoxelVolumeComponent::BuildSurfaceMesh(
 
                     auto corner = [&](int uu, int vv) {
                         glm::vec3 p(0.0f);
-                        p[d] = static_cast<float>(s);
+                        p[d] = static_cast<float>(sl);
                         p[u] = static_cast<float>(uu);
                         p[v] = static_cast<float>(vv);
-                        return origin + p * voxelSize;
+                        return origin + p * cell;
                     };
                     const glm::vec3 p00 = corner(lo[u] + i, lo[v] + j);
                     const glm::vec3 p10 = corner(lo[u] + i + w, lo[v] + j);

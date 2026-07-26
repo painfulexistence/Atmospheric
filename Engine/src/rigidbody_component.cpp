@@ -146,6 +146,11 @@ void RigidbodyComponent::SetWorldTransform(const glm::vec3& position, const glm:
     _rigidbody->getMotionState()->setWorldTransform(t);
 }
 
+void RigidbodyComponent::SetContinuousCollision(float motionThreshold, float sweptSphereRadius) {
+    _rigidbody->setCcdMotionThreshold(motionThreshold);
+    _rigidbody->setCcdSweptSphereRadius(sweptSphereRadius);
+}
+
 void RigidbodyComponent::WakeUp() {
     _rigidbody->activate();
 }

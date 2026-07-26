@@ -21,6 +21,22 @@ struct VoxelColliderProps {
     int hullDirections = 64;// support directions sampled for the hull
     float friction = 0.8f;
     float restitution = 0.1f;
+    // Coarsening for the static mesh (1 = voxel-exact, 2/4/8 progressively
+    // cheaper). Narrowphase cost tracks the triangle count, and voxel-exact
+    // terrain is dense: a 256^3 volume is ~237k triangles at 1, ~57k at 2 and
+    // ~12k at 4. Coarsening only inflates the collider outward (never holes),
+    // at the cost of props resting up to step-1 voxels above the visual
+    // surface. Ignored by the hull path.
+    int meshDownsample = 1;
+    // Collision margin in meters. 0 derives one from the voxel size. Bullet's
+    // default is 4 cm, which is CATASTROPHIC here: it is comparable to a voxel,
+    // so every triangle inflates into its neighbours, contact normals contradict
+    // each other, bodies jitter and sink, and props visibly float a voxel above
+    // the ground. Sub-voxel is what this scale needs.
+    float collisionMargin = 0.0f;
+    // Sweep fast-moving bodies instead of only testing their end pose, so a
+    // prop dropped from height cannot pass through the terrain surface.
+    bool continuousCollision = true;
     // Building the mesh is O(surface area) and runs inline on attach, so a huge
     // volume would stall a frame. Volumes with more grid voxels than this get
     // no mesh collider (0 = no limit). The default admits a 256^3 terrain

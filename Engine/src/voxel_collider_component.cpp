@@ -50,6 +50,10 @@ void VoxelColliderComponent::_build() {
         return;
     }
 
+    // Bullet's 4 cm default margin is meant for metre-scale shapes; at 5 cm
+    // voxels it is a whole voxel wide. Keep it well under one voxel.
+    const float margin = _props.collisionMargin > 0.0f ? _props.collisionMargin : volume->voxelSize * 0.2f;
+
     float mass = 0.0f;
     if (_props.dynamic) {
         // A convex hull: what a moving body needs (Bullet cannot move a mesh).
@@ -58,6 +62,7 @@ void VoxelColliderComponent::_build() {
         if (points.size() < 4) return;// degenerate: nothing to hull
         auto hull = std::make_unique<btConvexHullShape>();
         for (const glm::vec3& p : points) hull->addPoint(btVector3(p.x, p.y, p.z), false);
+        hull->setMargin(margin);
         hull->recalcLocalAabb();
         _hullPointCount = static_cast<int>(points.size());
         _shape = std::move(hull);
@@ -81,7 +86,7 @@ void VoxelColliderComponent::_build() {
             }
             return;
         }
-        volume->BuildSurfaceMesh(_vertices, _indices);
+        volume->BuildSurfaceMesh(_vertices, _indices, _props.meshDownsample);
         if (_indices.size() < 3) return;
         _triangleCount = static_cast<int>(_indices.size() / 3);
 
@@ -99,6 +104,7 @@ void VoxelColliderComponent::_build() {
         _meshInterface = std::make_unique<btTriangleIndexVertexArray>();
         _meshInterface->addIndexedMesh(mesh, PHY_INTEGER);
         _shape = std::make_unique<btBvhTriangleMeshShape>(_meshInterface.get(), /*useQuantizedAabbCompression=*/true);
+        _shape->setMargin(margin);
         mass = 0.0f;// static
     }
 
@@ -108,7 +114,18 @@ void VoxelColliderComponent::_build() {
     rbProps.mass = mass;
     rbProps.friction = _props.friction;
     rbProps.restitution = _props.restitution;
-    gameObject->AddComponent(new RigidbodyComponent(gameObject, rbProps));
+    auto* body = new RigidbodyComponent(gameObject, rbProps);
+    gameObject->AddComponent(body);
+
+    if (_props.dynamic && _props.continuousCollision) {
+        // Sweep once the body would move more than half its thinnest side in a
+        // step; the swept sphere is a fraction of that so it approximates the
+        // shape without over-triggering. Props here fall ~10 m, reaching ~0.25 m
+        // per step — comparable to a small prop's own size.
+        const glm::vec3 size = volume->GetLocalBoundsMax() - volume->GetLocalBoundsMin();
+        const float minExtent = std::max(std::min({ size.x, size.y, size.z }), volume->voxelSize);
+        body->SetContinuousCollision(minExtent * 0.5f, minExtent * 0.2f);
+    }
 
     if (auto* console = ConsoleSubsystem::Get()) {
         console->Info(

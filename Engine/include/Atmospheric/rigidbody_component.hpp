@@ -49,6 +49,14 @@ public:
     void WakeUp();
     void Sleep();
 
+    // Continuous collision detection. A body moving further than
+    // motionThreshold in one step is swept as a sphere of sweptSphereRadius
+    // instead of tested only at its end pose, which is what stops fast or
+    // heavy bodies from passing through thin static geometry (a triangle mesh
+    // is a surface, so once something is through it there is nothing left to
+    // push it back). Pass motionThreshold = 0 to disable.
+    void SetContinuousCollision(float motionThreshold, float sweptSphereRadius);
+
     void AddForce(const glm::vec3& force);
     void AddForceAtPosition(const glm::vec3& force, const glm::vec3& position);
     void AddImpulse(const glm::vec3& impulse);

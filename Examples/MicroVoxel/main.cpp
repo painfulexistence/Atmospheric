@@ -92,9 +92,13 @@ class MicroVoxelApp : public Application {
             { VoxelVolumeKind::CrystalCluster, 16, -2.1f * s, -0.9f * s, 60.0f, 0.0f },
         };
         // The terrain is a static collider: a triangle mesh of its exposed
-        // voxel faces, so props rest on the real surface (and on cave floors)
-        // rather than a coarse approximation.
-        terrainObj->AddComponent(new VoxelColliderComponent(terrainObj, VoxelColliderProps{ .dynamic = false }));
+        // faces. Built at 10 cm rather than voxel-exact — narrowphase cost
+        // tracks the triangle count and that is a 4x cut (237k -> 57k) for a
+        // 5 cm stair-step nobody sees. Drop to 1 for a voxel-exact collider,
+        // raise to 4 if physics is still the bottleneck.
+        terrainObj->AddComponent(
+            new VoxelColliderComponent(terrainObj, VoxelColliderProps{ .dynamic = false, .meshDownsample = 2 })
+        );
 
         // How many of the props above to actually spawn. Physics cost scales
         // with this (each is a dynamic body against the terrain's big static

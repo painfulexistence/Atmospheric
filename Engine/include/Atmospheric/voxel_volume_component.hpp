@@ -66,12 +66,21 @@ public:
     // transform with no further offset, so collider and visuals agree,
     // rotation included.
 
-    // Triangle mesh of every exposed voxel face, greedy-merged into maximal
+    // Triangle mesh of every exposed face, greedy-merged into maximal
     // rectangles per slice, with outward winding. Feeds a static
     // btBvhTriangleMeshShape (Bullet's triangle meshes cannot move), so it is
-    // the terrain path. Voxel-precise rather than brick-coarse, and empty
-    // regions are skipped a whole brick at a time via the occupancy grid.
-    void BuildSurfaceMesh(std::vector<glm::vec3>& outVertices, std::vector<uint32_t>& outIndices) const;
+    // the terrain path. Empty regions are skipped a whole brick at a time via
+    // the occupancy grid.
+    //
+    // `step` coarsens the grid the mesh is built from: 1 is voxel-exact, 2/4/8
+    // treat each step^3 block as one cell that is solid if ANY voxel in it is
+    // (conservative — the collider never gains holes, it only inflates outward
+    // by up to step-1 voxels). Triangle count falls roughly with step^2, which
+    // matters because narrowphase cost tracks it: a 256^3 terrain is ~237k
+    // triangles at step 1 and a fraction of that at step 2. Values are rounded
+    // to a power of two in [1, 8] so a coarse cell always sits inside one
+    // brick, keeping the occupancy fast path valid.
+    void BuildSurfaceMesh(std::vector<glm::vec3>& outVertices, std::vector<uint32_t>& outIndices, int step = 1) const;
 
     // Support points of the solid voxels over `directions` roughly even
     // directions — a small bounded set whose convex hull approximates (and is
