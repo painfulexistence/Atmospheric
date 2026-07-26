@@ -222,6 +222,109 @@ fn raycast(ro: vec3<f32>, rd: vec3<f32>) -> Hit {
     return r;
 }
 
+// Interleaved gradient noise — a stable per-pixel [0,1) for the glossy jitter
+// (no temporal accumulation on this pass, so a fixed pattern beats white noise).
+fn ign(px: vec2<f32>) -> f32 {
+    return fract(52.9829189 * fract(0.06711056 * px.x + 0.00583715 * px.y));
+}
+
+// Glossy jitter: tilt `dir` inside a roughness^2-scaled cone (palette row 1's
+// long-reserved byte). Clamped back above the surface.
+fn glossyDir(dir: vec3<f32>, faceN: vec3<f32>, roughness: f32, px: vec2<f32>) -> vec3<f32> {
+    if (roughness < 0.02) { return dir; }
+    let u1 = ign(px) - 0.5;
+    let u2 = ign(px + vec2<f32>(17.0, 31.0)) - 0.5;
+    let axis = select(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), abs(dir.y) < 0.98);
+    let t1 = normalize(cross(dir, axis));
+    let t2 = cross(dir, t1);
+    let cone = roughness * roughness * 0.6;
+    var j = normalize(dir + (t1 * u1 + t2 * u2) * cone);
+    let below = dot(j, faceN);
+    if (below < 0.02) { j = normalize(j + faceN * (0.02 - below)); }
+    return j;
+}
+
+// Radiance along a secondary ray (reflection or the scene behind glass):
+// cheap sun + sky + emission shading on hit, sky on miss. One bounce only.
+fn secondaryRadiance(ro: vec3<f32>, rd: vec3<f32>) -> vec3<f32> {
+    let rh = raycast(ro, rd);
+    if (rh.hit) {
+        let rpal = textureLoad(palette, vec2<i32>(i32(rh.material), 0), 0);
+        let L = normalize(u.sunDirInt.xyz);
+        let rndl = max(dot(rh.normal, L), 0.0);
+        return rpal.rgb * (u.sunDirInt.w * u.sunColAmb.xyz * (1.0 / PI) * rndl + skyRadiance(rh.normal) * u.sunColAmb.w)
+             + rpal.rgb * rpal.a * u.params.y;
+    }
+    return skyRadiance(rd);
+}
+
+// Transmission byte (palette row 1 .b) of a cell's material; -1 for air.
+fn voxelTransmission(cell: vec3<i32>) -> f32 {
+    if (any(cell < vec3<i32>(0)) || any(cell >= u.gridDim.xyz)) { return -1.0; }
+    let mat = textureLoad(volume, cell, 0).r;
+    if (mat == 0u) { return -1.0; }
+    return textureLoad(palette, vec2<i32>(i32(mat), 1), 0).b;
+}
+
+// The BTDF: march THROUGH the transmissive medium voxel-by-voxel, accumulate
+// the in-glass path length for Beer-Lambert, bend out at the first glass->air
+// face (TIR continues straight — the one-bounce approximation), then gather
+// the scene behind with the normal DDA. Opaque voxels inside the medium
+// terminate the march and shade directly. `mediumAlbedo` tints the absorption.
+fn transmitRadiance(entryPos: vec3<f32>, tdirIn: vec3<f32>, ior: f32, mediumAlbedo: vec3<f32>) -> vec3<f32> {
+    let MAX_GLASS_STEPS = 128;
+    let BEER_K = 3.0;
+    let tdir = tdirIn;
+    let vsize = u.originVoxel.w;
+    let origin = u.originVoxel.xyz;
+
+    let local = entryPos - origin;
+    let p = local + tdir * (vsize * 1e-3);
+    var cell = vec3<i32>(floor(p / vsize));
+    let stepDir = vec3<i32>(sign(tdir));
+    let invD = select(vec3<f32>(1e30), vec3<f32>(1.0) / tdir, tdir != vec3<f32>(0.0));
+    let tDelta = abs(vec3<f32>(vsize) * invD);
+    let boundary = (vec3<f32>(cell) + stepPos(tdir)) * vsize;
+    var tMax = select(vec3<f32>(1e30), (boundary - local) * invD, tdir != vec3<f32>(0.0));
+    var t = 0.0;
+    var exitN = vec3<f32>(0.0);
+
+    for (var i = 0; i < MAX_GLASS_STEPS; i = i + 1) {
+        if (tMax.x < tMax.y && tMax.x < tMax.z) {
+            t = tMax.x; tMax.x = tMax.x + tDelta.x; cell.x = cell.x + stepDir.x;
+            exitN = vec3<f32>(-f32(stepDir.x), 0.0, 0.0);
+        } else if (tMax.y < tMax.z) {
+            t = tMax.y; tMax.y = tMax.y + tDelta.y; cell.y = cell.y + stepDir.y;
+            exitN = vec3<f32>(0.0, -f32(stepDir.y), 0.0);
+        } else {
+            t = tMax.z; tMax.z = tMax.z + tDelta.z; cell.z = cell.z + stepDir.z;
+            exitN = vec3<f32>(0.0, 0.0, -f32(stepDir.z));
+        }
+        let trans = voxelTransmission(cell);
+        if (trans > 0.001) { continue; }  // still inside the medium
+
+        let beer = exp(-(vec3<f32>(1.0) - mediumAlbedo) * BEER_K * t);
+        let inBounds = all(cell >= vec3<i32>(0)) && all(cell < u.gridDim.xyz);
+        var mat = 0u;
+        if (inBounds) { mat = textureLoad(volume, cell, 0).r; }
+        if (mat != 0u) {
+            // Opaque voxel embedded in / behind the glass: shade at this face.
+            let mpal = textureLoad(palette, vec2<i32>(i32(mat), 0), 0);
+            let L = normalize(u.sunDirInt.xyz);
+            let mndl = max(dot(exitN, L), 0.0);
+            let lit = mpal.rgb * (u.sunDirInt.w * u.sunColAmb.xyz * (1.0 / PI) * mndl + skyRadiance(exitN) * u.sunColAmb.w)
+                    + mpal.rgb * mpal.a * u.params.y;
+            return lit * beer;
+        }
+        // Glass -> air: bend out (eta = ior). TIR keeps the direction.
+        var outDir = refract(tdir, exitN, ior);
+        if (dot(outDir, outDir) < 1e-6) { outDir = tdir; }
+        let exitPos = entryPos + tdir * t;
+        return secondaryRadiance(exitPos + outDir * (vsize * 0.51), outDir) * beer;
+    }
+    return skyRadiance(tdir) * exp(-(vec3<f32>(1.0) - mediumAlbedo) * BEER_K * t);
+}
+
 struct FOut {
     @location(0) color: vec4<f32>,
     @builtin(frag_depth) depth: f32,
@@ -293,30 +396,48 @@ struct FOut {
     }
 
     let direct = u.sunDirInt.w * u.sunColAmb.xyz * (1.0 / PI) * ndl * shadow;
-    // AO fully attenuates ambient; a stylized 30% also darkens direct. Emission
-    // is self-lit, added after AO so glowing voxels stay bright in crevices.
+    // AO fully attenuates ambient; a stylized 30% also darkens direct.
     // (The WebGPU path keeps flat ambient + self-emission; traced GI is GL-only,
-    // matching the GI split. Point lights and reflections have parity here.)
-    let emissive = albedo * emission * u.params.y;
-    var color = albedo * (direct * (0.7 + 0.3 * ao) + skyAmbient * u.sunColAmb.w * ao + pointLight * ao) + emissive;
+    // matching the GI split. Point lights and secondary rays have parity here.)
+    var color = albedo * (direct * (0.7 + 0.3 * ao) + skyAmbient * u.sunColAmb.w * ao + pointLight * ao);
 
-    // ── Per-material mirror reflections (palette row 1) ─────────────────────
-    let reflectivity = textureLoad(palette, vec2<i32>(i32(h.material), 1), 0).r;
-    if (u.misc.z != 0 && reflectivity > 0.0) {
-        let rdir = reflect(rd, h.normal);
-        let rh = raycast(hitPos + h.normal * vsize * 0.51, rdir);
-        var refl: vec3<f32>;
-        if (rh.hit) {
-            let rpal = textureLoad(palette, vec2<i32>(i32(rh.material), 0), 0);
-            let rndl = max(dot(rh.normal, L), 0.0);
-            refl = rpal.rgb * (u.sunDirInt.w * u.sunColAmb.xyz * (1.0 / PI) * rndl + skyRadiance(rh.normal) * u.sunColAmb.w)
-                 + rpal.rgb * rpal.a * u.params.y;
+    // ── Secondary rays: glossy reflection + dielectric transmission ─────────
+    // Palette row 1 = reflectivity.r, roughness.g, transmission.b, ior.a
+    // (ior decodes to 1.0 + a). GL parity: reflective materials cast one
+    // roughness-jittered ray; glass runs the Fresnel-split BTDF with
+    // Beer-Lambert absorption (see transmitRadiance).
+    let mparams = textureLoad(palette, vec2<i32>(i32(h.material), 1), 0);
+    let reflectivity = mparams.r;
+    let roughness = mparams.g;
+    let transmission = mparams.b;
+    let ior = 1.0 + mparams.a;
+    if (u.misc.z != 0 && (transmission > 0.001 || reflectivity > 0.0)) {
+        let px = in.uv * vec2<f32>(4096.0, 4096.0);  // uv-derived jitter seed (no frag coord here)
+        let cosI = max(dot(-rd, h.normal), 0.0);
+        let rdir = glossyDir(reflect(rd, h.normal), h.normal, roughness, px);
+        let refl = secondaryRadiance(hitPos + h.normal * vsize * 0.51, rdir);
+        if (transmission > 0.001) {
+            var f0 = (ior - 1.0) / (ior + 1.0);
+            f0 = f0 * f0;
+            let F = f0 + (1.0 - f0) * pow(1.0 - cosI, 5.0);
+            let tdir0 = refract(rd, h.normal, 1.0 / ior);
+            var trans: vec3<f32>;
+            if (dot(tdir0, tdir0) < 1e-6) {
+                trans = refl;  // grazing entry TIR: everything reflects
+            } else {
+                let tdir = glossyDir(tdir0, -h.normal, roughness, px + vec2<f32>(7.0, 13.0));  // frosted
+                trans = transmitRadiance(hitPos, tdir, ior, pal.rgb);
+            }
+            let glass = F * refl + (1.0 - F) * trans;
+            color = mix(color, glass, transmission);
         } else {
-            refl = skyRadiance(rdir);
+            let fres = reflectivity + (1.0 - reflectivity) * pow(1.0 - cosI, 5.0);
+            color = mix(color, refl, clamp(fres, 0.0, 1.0));
         }
-        let fres = reflectivity + (1.0 - reflectivity) * pow(1.0 - max(dot(-rd, h.normal), 0.0), 5.0);
-        color = mix(color, refl, clamp(fres, 0.0, 1.0));
     }
+    // Emission after the secondary mix: an emissive surface glows regardless
+    // of how reflective/transmissive it is (the crystal keeps its inner light).
+    color = color + albedo * emission * u.params.y;
 
     // Scene convention: gamma-encoded into sceneRT (see FORWARD_OPAQUE_WGSL);
     // the tonemap pass decodes with pow(2.2) first.

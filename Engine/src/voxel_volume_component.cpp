@@ -101,7 +101,8 @@ enum : uint8_t {
     MatSand = 5,
     MatOre = 6,
     MatCrystal = 7,
-    MatGlow = 8
+    MatGlow = 8,
+    MatWater = 9
 };
 
 // ============================================================================
@@ -143,8 +144,9 @@ glm::vec3 VoxelVolumeComponent::GetLocalBoundsMax() const {
 void VoxelVolumeComponent::_buildPalette() {
     // 2-row material table (256 x 2 RGBA8), uploaded as a 2-row 2D texture:
     //   row 0: albedo.rgb, emission.a         (surface color + self-illumination)
-    //   row 1: reflectivity.r, roughness.g    (mirror reflection; roughness
-    //          reserved for future glossy jitter)
+    //   row 1: reflectivity.r, roughness.g,   (glossy-jittered reflection)
+    //          transmission.b, ior.a          (dielectric BTDF; actual IOR
+    //                                          decodes as 1.0 + a/255)
     // The shader reads row 0 with texelFetch(u_palette, ivec2(mat, 0)) and the
     // material params with ivec2(mat, 1). The alpha channel is repurposed as
     // per-material emission strength (0 = not emissive): voxels are always
@@ -162,7 +164,14 @@ void VoxelVolumeComponent::_buildPalette() {
         paletteRGBA[base + 0] = reflectivity;
         paletteRGBA[base + 1] = roughness;
     };
-    for (int i = 9; i < 256; i++)
+    // Dielectric transmission (the BTDF path): iorByte encodes actual IOR as
+    // 1.0 + iorByte/255 (glass 1.5 -> 128, crystal 1.55 -> 140).
+    auto setGlass = [this](uint8_t idx, uint8_t transmission, uint8_t iorByte) {
+        const int base = (256 + idx) * 4;// row 1
+        paletteRGBA[base + 2] = transmission;
+        paletteRGBA[base + 3] = iorByte;
+    };
+    for (int i = 10; i < 256; i++)
         setPalette(static_cast<uint8_t>(i), 128, 128, 128);
     setPalette(MatGrass, 64, 140, 46);
     setPalette(MatDirt, 107, 77, 46);
@@ -170,13 +179,19 @@ void VoxelVolumeComponent::_buildPalette() {
     setPalette(MatSnow, 235, 240, 250);
     setPalette(MatSand, 204, 184, 122);
     setPalette(MatOre, 242, 191, 64);
-    setPalette(MatCrystal, 115, 191, 242, 160);// cool cyan glow
+    setPalette(MatCrystal, 115, 191, 242, 160);// cool cyan glow (the original look)
     setPalette(MatGlow, 255, 140, 48, 255);// warm glowstone, full emission
-    // Reflective materials: crystals are near-mirror; ore and snow catch a
-    // faint sheen. Everything else stays matte (reflectivity 0).
+    setPalette(MatWater, 56, 130, 196);// deep blue; Beer tints what's below
+    // Reflective materials: crystals keep the original near-mirror; ore and
+    // snow catch a roughness-jittered sheen. Everything else stays matte.
     setMaterial(MatCrystal, 210, 20);// glossy crystal — mirrors the scene
     setMaterial(MatOre, 90, 60);// metallic-ish speckle
     setMaterial(MatSnow, 40, 120);// faint wet sheen
+    // Water is the transmission showcase: IOR 1.33 (byte 84), lightly rippled
+    // refraction via the glossy jitter (roughness 25). Fresnel comes from the
+    // IOR on the glass path, so reflectivity stays 0.
+    setMaterial(MatWater, 0, 25);
+    setGlass(MatWater, 215, 84);
 }
 
 void VoxelVolumeComponent::_generateTerrain() {
@@ -192,6 +207,8 @@ void VoxelVolumeComponent::_generateTerrain() {
     const float varH = 0.34f * static_cast<float>(N);
     const float snowLine = baseH + 0.75f * varH;
     const float sandLine = baseH + 0.12f * varH;
+    // Water fills valleys up to just under the sand line, so beaches ring it.
+    const uint32_t waterLevel = static_cast<uint32_t>(baseH + 0.08f * varH);
     std::vector<float> heights(static_cast<size_t>(N) * N);
     for (uint32_t z = 0; z < N; z++) {
         for (uint32_t x = 0; x < N; x++) {
@@ -231,6 +248,13 @@ void VoxelVolumeComponent::_generateTerrain() {
                         mat = MatOre;
                     }
                     voxelAt(x, y, z) = mat;
+                    localSolid++;
+                }
+                // Water column: from the terrain surface up to the water level.
+                // Water voxels are solid to the DDA; the shader's transmission
+                // path refracts through them (Beer-tinted) to the bed below.
+                for (uint32_t y = top + 1; y <= waterLevel && y < N; y++) {
+                    voxelAt(x, y, z) = MatWater;
                     localSolid++;
                 }
             }
