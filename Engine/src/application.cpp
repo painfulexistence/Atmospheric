@@ -1844,7 +1844,14 @@ void Application::Update(const FrameData& props) {
 #ifdef TRACY_ENABLE
     ZoneScopedN("Application::Update");
 #endif
-    float dt = props.deltaTime;
+    // Clamp the frame delta before anything consumes it. A blocking load (scene
+    // generation, a big collider build) or a breakpoint produces a delta of
+    // seconds, and every fixed-step consumer downstream then tries to catch up
+    // across it at once — which is slower than the frame it is already behind
+    // on. Losing simulated time after a stall is always better than compounding
+    // it. 0.25 s = 15 physics substeps at 60 Hz, a generous ceiling.
+    constexpr float kMaxFrameDelta = 0.25f;
+    float dt = std::min(props.deltaTime, kMaxFrameDelta);
 
     // Update RmlUI and tick the loading-screen transition regardless of whether
     // the scene is ready, so the overlay animates during transitions.

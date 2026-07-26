@@ -86,10 +86,22 @@ void Physics3DSubsystem::Process(float dt) {
 #ifdef TRACY_ENABLE
     ZoneScopedN("Physics3DSubsystem::Process");
 #endif
+    // Fixed-step catch-up, CAPPED. Without a cap this is the classic spiral of
+    // death: one slow frame (or a long blocking load — a big voxel collider
+    // build is seconds) leaves an accumulator needing more substeps than the
+    // next frame can afford, so that frame is slower still and the backlog
+    // grows without bound. Past the cap we drop the backlog and let simulated
+    // time slip behind wall time, which is the only stable choice.
+    constexpr int MAX_PHYSICS_STEPS_PER_FRAME = 4;
     _timeAccum += dt;
-    while (_timeAccum >= FIXED_TIME_STEP) {
+    int stepsThisFrame = 0;
+    while (_timeAccum >= FIXED_TIME_STEP && stepsThisFrame < MAX_PHYSICS_STEPS_PER_FRAME) {
         _world->stepSimulation(FIXED_TIME_STEP, 0);
         _timeAccum -= FIXED_TIME_STEP;
+        stepsThisFrame++;
+    }
+    if (_timeAccum > FIXED_TIME_STEP * MAX_PHYSICS_STEPS_PER_FRAME) {
+        _timeAccum = FIXED_TIME_STEP;
     }
 
     int numManifolds = _dispatcher->getNumManifolds();
