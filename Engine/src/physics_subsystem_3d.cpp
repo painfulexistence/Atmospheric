@@ -7,6 +7,7 @@
 #include "rigidbody_component.hpp"
 #include <BulletCollision/CollisionDispatch/btCollisionDispatcherMt.h>
 #include <BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolverMt.h>
+#include <BulletDynamics/Dynamics/btDiscreteDynamicsWorldMt.h>// also declares btConstraintSolverPoolMt
 #include <algorithm>
 #include <spdlog/spdlog.h>
 
@@ -71,8 +72,27 @@ void Physics3DSubsystem::Init(Application* app) {
     // Use parallel solver
     _solver = std::make_unique<btSequentialImpulseConstraintSolverMt>();
 
+#ifdef BT_THREADSAFE
+    // Bullet's island-level parallelism lives in btDiscreteDynamicsWorldMt, not
+    // in the solver: it hands each simulation island to a solver taken from the
+    // pool (one per thread, mutex-guarded, so it never spin-waits as long as
+    // the pool is at least thread-count deep) and falls back to the single
+    // multi-threaded solver for islands large enough to be worth parallelising
+    // internally. The plain btDiscreteDynamicsWorld ignores all of that and
+    // solves islands serially, which left the Mt dispatcher and Mt solver above
+    // doing only half the job — exactly the part that costs most when many
+    // bodies pile up and merge into one big island.
+    const int solverCount = std::max(1, scheduler ? scheduler->getNumThreads() : 1);
+    _solverPool = std::make_unique<btConstraintSolverPoolMt>(solverCount);
+    _world = std::make_unique<btDiscreteDynamicsWorldMt>(
+        _dispatcher.get(), _broadphase.get(), _solverPool.get(), _solver.get(), _config.get()
+    );
+    spdlog::info("[Physics] Multithreaded world, {} pooled constraint solvers", solverCount);
+#else
     _world =
         std::make_unique<btDiscreteDynamicsWorld>(_dispatcher.get(), _broadphase.get(), _solver.get(), _config.get());
+    spdlog::info("[Physics] Single-threaded world (BT_THREADSAFE not defined)");
+#endif
     SetGravity(glm::vec3(0, -GRAVITY, 0));
 
     _debugDrawer = std::make_unique<PhysicsDebugDrawer>();

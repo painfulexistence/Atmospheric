@@ -23,6 +23,7 @@ class btBroadphaseInterface;
 class btConstraintSolver;
 class btDiscreteDynamicsWorld;
 class btCollisionShape;
+class btConstraintSolverPoolMt;
 class RaycastCallback;
 class PhysicsDebugDrawer;
 class RigidbodyComponent;
@@ -67,6 +68,10 @@ private:
     std::unique_ptr<btCollisionDispatcher> _dispatcher;
     std::unique_ptr<btBroadphaseInterface> _broadphase;
     std::unique_ptr<btConstraintSolver> _solver;
+    // One constraint solver per worker thread, handed out per simulation
+    // island by btDiscreteDynamicsWorldMt. Declared before _world so it
+    // outlives the world that points at it.
+    std::unique_ptr<btConstraintSolverPoolMt> _solverPool;
     std::unique_ptr<PhysicsDebugDrawer> _debugDrawer;
     std::unique_ptr<btDiscreteDynamicsWorld> _world;
     std::unique_ptr<BulletTaskScheduler> _taskScheduler;
