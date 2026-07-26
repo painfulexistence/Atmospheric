@@ -100,11 +100,15 @@ class MicroVoxelApp : public Application {
         for (const auto& od : kObjects) {
             auto* obj = CreateGameObject();
             obj->SetName(fmt::format("Volume.Obj{}", objIndex));
-            // Drop the props in from above the terrain's highest peak so none
-            // start embedded; they fall, bounce and pile into each other.
+            // Drop the props in from above everything solid so none start
+            // embedded: the terrain peaks at ~5.6 m, and the generator's
+            // floating crystal spheres reach ~12.4 m (they are part of the
+            // terrain volume, so they are solid to the mesh collider too — the
+            // props bounce off them on the way down). A volume's local origin
+            // is its base, so a prop spawned at 13 m is entirely above that.
             // Physics writes each body's pose back to the object every frame
             // and the raymarch reads that transform, so they render tumbling.
-            const float dropY = 9.0f + 0.45f * static_cast<float>(objIndex % 9);
+            const float dropY = 13.0f + 0.45f * static_cast<float>(objIndex % 9);
             obj->SetPosition(glm::vec3(od.x, dropY, od.z));
             obj->SetRotation(glm::vec3(glm::radians(od.tiltDeg), glm::radians(od.yawDeg), 0.0f));
             auto* vc = static_cast<VoxelVolumeComponent*>(
