@@ -252,9 +252,12 @@ void VoxelColliderComponent::_finishBuild() {
         existing->SwapShape(_shape.get(), pending->mass, _centerOfMass);
         if (auto* console = ConsoleSubsystem::Get()) {
             console->Info(
-                _props.dynamic
-                    ? fmt::format("VoxelCollider: rebuilt hull, {} points, mass {:.1f} kg", _hullPointCount, pending->mass)
-                    : fmt::format("VoxelCollider: rebuilt mesh, {} triangles", _triangleCount)
+                _props.dynamic ? fmt::format(
+                                     "VoxelCollider: rebuilt hull, {} points, mass {:.1f} kg",
+                                     _hullPointCount,
+                                     pending->mass
+                                 )
+                               : fmt::format("VoxelCollider: rebuilt mesh, {} triangles", _triangleCount)
             );
         }
         return;

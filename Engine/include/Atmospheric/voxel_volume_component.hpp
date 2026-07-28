@@ -86,6 +86,26 @@ public:
     // directions — a small bounded set whose convex hull approximates (and is
     // inscribed in) the true hull, for a dynamic btConvexHullShape. Intended
     // for props; a whole terrain would hull to something useless.
+    // As above, but restricted to voxels inside [regionMin, regionMax]
+    // (inclusive, voxel coordinates, clamped to the solid bounds). Whether a
+    // face on the region's own boundary is emitted is still decided against the
+    // voxels OUTSIDE it, so meshing a grid in pieces yields exactly the same
+    // surface as meshing it whole: no seams, and no internal walls where two
+    // pieces meet. That is what lets a collider be rebuilt one chunk at a time
+    // after an edit instead of re-meshing the whole volume.
+    //
+    // The region should be aligned to `step` (any multiple of brickDim is,
+    // since step is rounded down to a power-of-two divisor of brickDim);
+    // otherwise coarse cells straddle the boundary and neighbouring regions
+    // both emit them.
+    void BuildSurfaceMeshRegion(
+        std::vector<glm::vec3>& outVertices,
+        std::vector<uint32_t>& outIndices,
+        const glm::ivec3& regionMin,
+        const glm::ivec3& regionMax,
+        int step = 1
+    ) const;
+
     void BuildConvexHullPoints(std::vector<glm::vec3>& outPoints, int directions = 64) const;
 
     // Local-space min corner: the grid is centred over the object in x/z and

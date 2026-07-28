@@ -689,6 +689,15 @@ bool VoxelVolumeComponent::RaycastVoxel(
 void VoxelVolumeComponent::BuildSurfaceMesh(
     std::vector<glm::vec3>& outVertices, std::vector<uint32_t>& outIndices, int step
 ) const {
+    BuildSurfaceMeshRegion(
+        outVertices, outIndices, glm::ivec3(0), glm::ivec3(gridDim > 0 ? gridDim - 1 : 0), step
+    );
+}
+
+void VoxelVolumeComponent::BuildSurfaceMeshRegion(
+    std::vector<glm::vec3>& outVertices, std::vector<uint32_t>& outIndices, const glm::ivec3& regionMin,
+    const glm::ivec3& regionMax, int step
+) const {
     outVertices.clear();
     outIndices.clear();
     if (volume.empty() || !HasSolid()) return;
@@ -706,7 +715,13 @@ void VoxelVolumeComponent::BuildSurfaceMesh(
     const int Bc = B / cstep;// coarse cells per brick
     const float cell = voxelSize * static_cast<float>(cstep);// coarse cell size, meters
     const glm::vec3 origin = GetLocalOrigin();
-    const glm::ivec3 lo = solidMin / cstep, hi = solidMax / cstep;
+    // Sweep only where the region and the solid bounds overlap. solidAt below
+    // still reads the whole grid, so faces on the region boundary are judged
+    // against the neighbours outside it — that is what keeps chunks seamless.
+    const glm::ivec3 rMin = glm::max(regionMin, solidMin);
+    const glm::ivec3 rMax = glm::min(regionMax, solidMax);
+    if (rMin.x > rMax.x || rMin.y > rMax.y || rMin.z > rMax.z) return;
+    const glm::ivec3 lo = rMin / cstep, hi = rMax / cstep;
 
     auto brickEmpty = [&](const glm::ivec3& b) {
         if (b.x < 0 || b.y < 0 || b.z < 0 || b.x >= BG || b.y >= BG || b.z >= BG) return true;
@@ -736,7 +751,13 @@ void VoxelVolumeComponent::BuildSurfaceMesh(
         if (du <= 0 || dv <= 0) continue;
         mask.assign(static_cast<size_t>(du) * dv, 0);
 
-        for (int sl = lo[d]; sl <= hi[d] + 1; sl++) {
+        // A face lives on the plane between cells sl-1 and sl, so the plane at
+        // hi+1 is shared with the region above: both would emit it and the
+        // surface would be doubled there. Give each plane one owner — the
+        // region whose cells start at it — and let only the topmost region
+        // close off the far side, since nothing above it will.
+        const int slEnd = (rMax[d] >= solidMax[d]) ? hi[d] + 1 : hi[d];
+        for (int sl = lo[d]; sl <= slEnd; sl++) {
             std::fill(mask.begin(), mask.end(), static_cast<int8_t>(0));
             const int baD = (sl - 1 >= 0) ? (sl - 1) / Bc : -1;
             const int bbD = (sl < Nc) ? sl / Bc : -1;
