@@ -102,8 +102,12 @@ class MicroVoxelApp : public Application {
         // tracks the triangle count and that is a 4x cut (237k -> 57k) for a
         // 5 cm stair-step nobody sees. Drop to 1 for a voxel-exact collider,
         // raise to 4 if physics is still the bottleneck.
+        // chunkVoxels splits the collider into 32^3 pieces (1.6 m each), so a
+        // dig re-meshes only the couple of chunks it touched — around a
+        // millisecond — instead of the whole 256^3 volume at ~60 ms, which
+        // would be unaffordable every frame the dig key is held.
         _terrainCollider = new VoxelColliderComponent(
-            terrainObj, VoxelColliderProps{ .dynamic = false, .meshDownsample = 2 }
+            terrainObj, VoxelColliderProps{ .dynamic = false, .meshDownsample = 2, .chunkVoxels = 32 }
         );
         terrainObj->AddComponent(_terrainCollider);
 
@@ -258,7 +262,18 @@ class MicroVoxelApp : public Application {
                     }
                 }
             }
-            if (target) target->CarveSphere(hitPos, 0.45f);
+            if (target) {
+                target->CarveSphere(hitPos, 0.45f);
+                // Tell the collider what changed, so the hole is something you
+                // can actually walk into rather than a purely visual one. The
+                // volume already tracks this exact box for its partial GPU
+                // upload; only the chunks it overlaps get re-meshed.
+                if (target->HasDirtyRegion()) {
+                    if (auto* col = target->gameObject->GetComponent<VoxelColliderComponent>()) {
+                        col->MarkDirtyRegion(target->dirtyMin, target->dirtyMax);
+                    }
+                }
+            }
         }
 
         // Debug hotkeys: 0-6 view individual shading terms in isolation,

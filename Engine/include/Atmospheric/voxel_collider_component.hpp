@@ -29,6 +29,16 @@ struct VoxelColliderProps {
     // at the cost of props resting up to step-1 voxels above the visual
     // surface. Ignored by the hull path.
     int meshDownsample = 1;
+    // Split the static mesh into a grid of chunks this many voxels on a side,
+    // each its own body (0 = a single shape for the whole volume). This is what
+    // makes editing affordable: carving re-meshes only the chunks it touched,
+    // around a millisecond each, instead of the whole volume — 60 ms at 256^3
+    // and downsample 2, which is unusable while a dig key is held down.
+    // Costs a few percent more triangles, since greedy runs cannot span chunk
+    // boundaries, plus one body per non-empty chunk. Must be a multiple of
+    // brickDim; ignored by the dynamic hull path, which is small enough to
+    // rebuild whole.
+    int chunkVoxels = 0;
     // Collision margin in meters. 0 derives one from the voxel size. Bullet's
     // default is 4 cm, which is CATASTROPHIC here: it is comparable to a voxel,
     // so every triangle inflates into its neighbours, contact normals contradict
@@ -73,9 +83,23 @@ public:
     void OnTick(float dt) override;
     void DrawImGui() override;
 
-    // Rebuild the shape from the current voxels (e.g. after a big edit) and
-    // replace the rigid body. Cheap for a prop, a full re-mesh for terrain.
+    // Rebuild everything from the current voxels. Cheap for a prop, a full
+    // re-mesh for terrain — prefer MarkDirtyRegion after an edit, which only
+    // redoes the chunks that actually changed.
     void Rebuild();
+
+    // Queue a rebuild of just the chunks overlapping this voxel-space box
+    // (inclusive), which is what a carve should call: VoxelVolumeComponent
+    // already tracks exactly this region for its partial GPU upload, so the
+    // same box drives both. Coalesces — marking during an in-flight build
+    // simply rebuilds again afterwards, so holding a dig key down costs one
+    // rebuild per completed pass rather than one per frame. No-op on an
+    // unchunked collider's dynamic hull, which Rebuild handles whole.
+    void MarkDirtyRegion(const glm::ivec3& voxelMin, const glm::ivec3& voxelMax);
+
+    // Chunks still waiting to be re-meshed. Zero means the collider matches
+    // the voxels.
+    int GetDirtyChunkCount() const;
 
     // True from the moment a build is queued until its body is attached. The
     // object has no rigid body during this window, so anything that must not
@@ -94,27 +118,36 @@ private:
     // thread once `done` flips. Held by shared_ptr so the worker's copy keeps
     // it alive even if the component is torn down mid-build.
     struct PendingBuild;
+    // One piece of the static mesh, with its own body. Separate bodies rather
+    // than a btCompoundShape on purpose: Bullet's internal-edge correction
+    // casts the BODY's root shape to btBvhTriangleMeshShape to reach its
+    // triangle info map, so a compound root would have it reinterpreting
+    // unrelated memory. An unchunked collider is simply one chunk covering
+    // the whole grid.
+    struct Chunk;
 
     void _beginBuild();
     void _finishBuild();
     // Blocks until any in-flight extraction finishes. Required before the
     // voxel volume it reads can be destroyed.
     void _waitForBuild();
-    // Runs on a worker thread: reads voxels, produces the Bullet shape. Static
-    // and taking everything by parameter so it cannot touch component state
-    // the main thread owns.
+    // Runs on a worker thread: reads voxels, produces the Bullet shapes.
+    // Static and taking everything by parameter so it cannot touch component
+    // state the main thread owns.
     static void _extract(PendingBuild& out, const VoxelVolumeComponent& volume, const VoxelColliderProps& props);
-    void _releaseShape();
+    // Lays out the chunk grid over the volume. Called once, before any build.
+    void _initChunks(const VoxelVolumeComponent& volume);
+    void _releaseChunk(Chunk& chunk);
+    void _releaseAll();
 
     VoxelColliderProps _props;
-    // Kept alive for Bullet, which stores raw pointers to these.
-    std::vector<glm::vec3> _vertices;
-    std::vector<uint32_t> _indices;
-    std::unique_ptr<btTriangleIndexVertexArray> _meshInterface;
-    // Triangle adjacency for the internal-edge fix; the shape only borrows it.
-    std::unique_ptr<btTriangleInfoMap> _triangleInfo;
-    std::unique_ptr<btCollisionShape> _shape;
+    std::vector<Chunk> _chunks;
+    // Dynamic props keep the single-shape path: one hull, one body.
+    std::unique_ptr<btCollisionShape> _hull;
     std::shared_ptr<PendingBuild> _pending;
+    // Chunk indices queued for re-meshing, including any marked while a build
+    // was already running.
+    std::vector<int> _dirtyChunks;
     // Solid centroid the dynamic hull was built about, in the object's local
     // frame. Zero for the static mesh, which keeps that frame as-is.
     glm::vec3 _centerOfMass{ 0.0f };

@@ -6,10 +6,10 @@
 #include <BulletCollision/CollisionShapes/btTriangleInfoMap.h>
 #include "console_subsystem.hpp"
 #include "game_object.hpp"
+#include "job_system.hpp"
+#include "physics_subsystem_3d.hpp"
 #include "rigidbody_component.hpp"
 #include "voxel_volume_component.hpp"
-
-#include "job_system.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -17,18 +17,44 @@
 #include <imgui.h>
 #include <thread>
 
-struct VoxelColliderComponent::PendingBuild {
-    // Bullet keeps raw pointers into these two, so they move into the
-    // component and stay there. A vector move hands over the same heap buffer,
-    // which is what lets the btIndexedMesh built here stay valid afterwards.
+// A live piece of the static collider. Everything here is referenced by raw
+// pointer from Bullet, so it is owned for as long as the body exists.
+struct VoxelColliderComponent::Chunk {
+    glm::ivec3 min{ 0 };// voxel bounds, inclusive
+    glm::ivec3 max{ 0 };
     std::vector<glm::vec3> vertices;
     std::vector<uint32_t> indices;
     std::unique_ptr<btTriangleIndexVertexArray> meshInterface;
     std::unique_ptr<btTriangleInfoMap> triangleInfo;
     std::unique_ptr<btCollisionShape> shape;
+    // Owned here rather than attached to the GameObject: a terrain has many of
+    // these, and they are not something the object model should have to model
+    // as many RigidbodyComponents. Registered with the physics subsystem
+    // directly, and unregistered before destruction.
+    std::unique_ptr<RigidbodyComponent> body;
+    int triangleCount = 0;
+};
+
+struct VoxelColliderComponent::PendingBuild {
+    // What one worker pass produced. A chunk with a null shape has become
+    // empty and its body is dropped.
+    struct ChunkResult {
+        int index = -1;
+        std::vector<glm::vec3> vertices;
+        std::vector<uint32_t> indices;
+        std::unique_ptr<btTriangleIndexVertexArray> meshInterface;
+        std::unique_ptr<btTriangleInfoMap> triangleInfo;
+        std::unique_ptr<btCollisionShape> shape;
+        int triangleCount = 0;
+    };
+    // Which chunks this pass covers, and their extracted geometry.
+    std::vector<glm::ivec3> chunkMin, chunkMax;
+    std::vector<int> chunkIndex;
+    std::vector<ChunkResult> results;
+    // Dynamic-hull path.
+    std::unique_ptr<btCollisionShape> hull;
     glm::vec3 centerOfMass{ 0.0f };
     float mass = 0.0f;
-    int triangleCount = 0;
     int hullPointCount = 0;
     // Release/acquire pairs with the main thread's read in OnTick, publishing
     // everything written above it.
@@ -41,6 +67,7 @@ VoxelColliderComponent::VoxelColliderComponent(GameObject* owner, const VoxelCol
 
 VoxelColliderComponent::~VoxelColliderComponent() {
     _waitForBuild();
+    _releaseAll();
 }
 
 void VoxelColliderComponent::OnAttach() {
@@ -52,20 +79,49 @@ void VoxelColliderComponent::OnDetach() {
     // destruction order within a GameObject is not ours to pick, so the wait
     // has to happen while the object is still whole.
     _waitForBuild();
+    _releaseAll();
 }
 
 void VoxelColliderComponent::OnTick(float /*dt*/) {
-    if (_pending && _pending->done.load(std::memory_order_acquire)) {
-        _finishBuild();
+    if (_pending) {
+        if (_pending->done.load(std::memory_order_acquire)) _finishBuild();
+        return;
     }
+    // Anything marked while the last pass was running gets picked up here.
+    if (!_dirtyChunks.empty()) _beginBuild();
 }
 
 void VoxelColliderComponent::Rebuild() {
     _waitForBuild();
-    // The body stays: _finishBuild swaps the new shape into it, which keeps the
-    // velocity of anything carved mid-flight. The old shape stays alive until
-    // that swap, so nothing is freed here.
+    if (_props.dynamic) {
+        _beginBuild();
+        return;
+    }
+    _dirtyChunks.clear();
+    for (size_t i = 0; i < _chunks.size(); i++) _dirtyChunks.push_back(static_cast<int>(i));
     _beginBuild();
+}
+
+void VoxelColliderComponent::MarkDirtyRegion(const glm::ivec3& voxelMin, const glm::ivec3& voxelMax) {
+    if (_props.dynamic || _chunks.empty()) return;
+    for (size_t i = 0; i < _chunks.size(); i++) {
+        const Chunk& c = _chunks[i];
+        // Grow the test by one voxel: removing a voxel at a chunk's edge
+        // uncovers a face on the far side of the boundary, which belongs to
+        // the neighbour. Missing that would leave a one-voxel wall standing
+        // where the dig went through.
+        if (voxelMax.x < c.min.x - 1 || voxelMin.x > c.max.x + 1) continue;
+        if (voxelMax.y < c.min.y - 1 || voxelMin.y > c.max.y + 1) continue;
+        if (voxelMax.z < c.min.z - 1 || voxelMin.z > c.max.z + 1) continue;
+        const int idx = static_cast<int>(i);
+        if (std::find(_dirtyChunks.begin(), _dirtyChunks.end(), idx) == _dirtyChunks.end()) {
+            _dirtyChunks.push_back(idx);
+        }
+    }
+}
+
+int VoxelColliderComponent::GetDirtyChunkCount() const {
+    return static_cast<int>(_dirtyChunks.size());
 }
 
 void VoxelColliderComponent::_waitForBuild() {
@@ -78,14 +134,57 @@ void VoxelColliderComponent::_waitForBuild() {
     _pending.reset();
 }
 
-void VoxelColliderComponent::_releaseShape() {
-    _shape.reset();
-    _meshInterface.reset();
-    _vertices.clear();
-    _indices.clear();
+void VoxelColliderComponent::_releaseChunk(Chunk& chunk) {
+    if (chunk.body) {
+        if (Physics3DSubsystem::Get()) Physics3DSubsystem::Get()->RemoveRigidbody(chunk.body.get());
+        chunk.body.reset();
+    }
+    chunk.shape.reset();
+    chunk.triangleInfo.reset();
+    chunk.meshInterface.reset();
+    chunk.vertices.clear();
+    chunk.indices.clear();
+    chunk.triangleCount = 0;
+}
+
+void VoxelColliderComponent::_releaseAll() {
+    for (Chunk& c : _chunks) _releaseChunk(c);
+    _chunks.clear();
+    _dirtyChunks.clear();
+    _hull.reset();
     _triangleCount = 0;
-    _hullPointCount = 0;
-    _centerOfMass = glm::vec3(0.0f);
+}
+
+void VoxelColliderComponent::_initChunks(const VoxelVolumeComponent& volume) {
+    _chunks.clear();
+    const int N = volume.gridDim;
+    // Round the requested size to a multiple of brickDim so a chunk never
+    // splits a brick — the mesher's occupancy fast path assumes that, and the
+    // coarsening step is a divisor of brickDim too, so regions stay aligned.
+    int cv = _props.chunkVoxels;
+    if (cv > 0) {
+        cv = std::max(volume.brickDim, (cv / volume.brickDim) * volume.brickDim);
+        cv = std::min(cv, N);
+    }
+    if (cv <= 0) {
+        Chunk whole;
+        whole.min = glm::ivec3(0);
+        whole.max = glm::ivec3(N - 1);
+        _chunks.push_back(std::move(whole));
+    } else {
+        for (int z = 0; z < N; z += cv) {
+            for (int y = 0; y < N; y += cv) {
+                for (int x = 0; x < N; x += cv) {
+                    Chunk c;
+                    c.min = glm::ivec3(x, y, z);
+                    c.max = glm::min(glm::ivec3(x + cv - 1, y + cv - 1, z + cv - 1), glm::ivec3(N - 1));
+                    _chunks.push_back(std::move(c));
+                }
+            }
+        }
+    }
+    _dirtyChunks.clear();
+    for (size_t i = 0; i < _chunks.size(); i++) _dirtyChunks.push_back(static_cast<int>(i));
 }
 
 void VoxelColliderComponent::_beginBuild() {
@@ -112,12 +211,14 @@ void VoxelColliderComponent::_beginBuild() {
             }
             return;
         }
+        if (_chunks.empty()) _initChunks(*volume);
+        if (_dirtyChunks.empty()) return;
     }
 
     // Extraction is the expensive half — a 256^3 terrain is ~60 ms of meshing
     // plus the BVH build, which used to land inline on the frame the volume
     // finished generating. It reads finished voxel data and touches no engine
-    // state, so it moves to a worker; only the body creation, which mutates the
+    // state, so it moves to a worker; only body creation, which mutates the
     // Bullet world, stays on the main thread (see _finishBuild).
     //
     // The job holds the result by shared_ptr, so a component destroyed
@@ -126,6 +227,14 @@ void VoxelColliderComponent::_beginBuild() {
     // the volume must outlive the job, and so must the voxels, which means
     // nothing may carve while a build is in flight.
     auto pending = std::make_shared<PendingBuild>();
+    if (!_props.dynamic) {
+        for (int idx : _dirtyChunks) {
+            pending->chunkIndex.push_back(idx);
+            pending->chunkMin.push_back(_chunks[static_cast<size_t>(idx)].min);
+            pending->chunkMax.push_back(_chunks[static_cast<size_t>(idx)].max);
+        }
+        _dirtyChunks.clear();
+    }
     _pending = pending;
     const VoxelColliderProps props = _props;
     JobSystem::Get()->Execute([pending, volume, props](int /*threadIndex*/) {
@@ -164,7 +273,7 @@ void VoxelColliderComponent::_extract(
         hull->setMargin(margin);
         hull->recalcLocalAabb();
         out.hullPointCount = static_cast<int>(points.size());
-        out.shape = std::move(hull);
+        out.hull = std::move(hull);
 
         out.mass = props.mass;
         if (out.mass <= 0.0f) {
@@ -172,30 +281,36 @@ void VoxelColliderComponent::_extract(
             out.mass = static_cast<float>(volume.solidCount) * v * v * v * props.density;
             out.mass = std::max(out.mass, 0.01f);// never hand Bullet a zero mass for a dynamic body
         }
-    } else {
-        volume.BuildSurfaceMesh(out.vertices, out.indices, props.meshDownsample);
-        if (out.indices.size() < 3) return;
-        out.triangleCount = static_cast<int>(out.indices.size() / 3);
+        return;
+    }
+
+    out.results.resize(out.chunkIndex.size());
+    for (size_t k = 0; k < out.chunkIndex.size(); k++) {
+        auto& r = out.results[k];
+        r.index = out.chunkIndex[k];
+        volume.BuildSurfaceMeshRegion(r.vertices, r.indices, out.chunkMin[k], out.chunkMax[k], props.meshDownsample);
+        if (r.indices.size() < 3) continue;// chunk is empty (or became empty)
+        r.triangleCount = static_cast<int>(r.indices.size() / 3);
 
         // Bullet reads these arrays on every query, so they stay owned by the
-        // component. Moving the vectors out of here later keeps the same heap
-        // buffer, so the pointers taken now stay valid.
+        // chunk. Moving the vectors over later keeps the same heap buffer, so
+        // the pointers taken now stay valid.
         btIndexedMesh mesh;
-        mesh.m_numTriangles = out.triangleCount;
-        mesh.m_triangleIndexBase = reinterpret_cast<const unsigned char*>(out.indices.data());
+        mesh.m_numTriangles = r.triangleCount;
+        mesh.m_triangleIndexBase = reinterpret_cast<const unsigned char*>(r.indices.data());
         mesh.m_triangleIndexStride = 3 * static_cast<int>(sizeof(uint32_t));
-        mesh.m_numVertices = static_cast<int>(out.vertices.size());
-        mesh.m_vertexBase = reinterpret_cast<const unsigned char*>(out.vertices.data());
+        mesh.m_numVertices = static_cast<int>(r.vertices.size());
+        mesh.m_vertexBase = reinterpret_cast<const unsigned char*>(r.vertices.data());
         mesh.m_vertexStride = static_cast<int>(sizeof(glm::vec3));
         mesh.m_indexType = PHY_INTEGER;
         mesh.m_vertexType = PHY_FLOAT;
 
-        out.meshInterface = std::make_unique<btTriangleIndexVertexArray>();
-        out.meshInterface->addIndexedMesh(mesh, PHY_INTEGER);
+        r.meshInterface = std::make_unique<btTriangleIndexVertexArray>();
+        r.meshInterface->addIndexedMesh(mesh, PHY_INTEGER);
         // The BVH is built right here, in the constructor — which is most of
         // why this whole function belongs off the main thread.
         auto meshShape =
-            std::make_unique<btBvhTriangleMeshShape>(out.meshInterface.get(), /*useQuantizedAabbCompression=*/true);
+            std::make_unique<btBvhTriangleMeshShape>(r.meshInterface.get(), /*useQuantizedAabbCompression=*/true);
         meshShape->setMargin(margin);
 
         // Internal-edge adjacency. Without it, contacts landing on the shared
@@ -204,12 +319,11 @@ void VoxelColliderComponent::_extract(
         // down into the shell (sinking through). The default edge threshold is
         // 0.1 m — larger than a collision cell here, which would classify every
         // contact as an edge contact — so scale it to the voxel grid.
-        out.triangleInfo = std::make_unique<btTriangleInfoMap>();
-        out.triangleInfo->m_edgeDistanceThreshold = volume.voxelSize * 0.5f;
-        btGenerateInternalEdgeInfo(meshShape.get(), out.triangleInfo.get());
+        r.triangleInfo = std::make_unique<btTriangleInfoMap>();
+        r.triangleInfo->m_edgeDistanceThreshold = volume.voxelSize * 0.5f;
+        btGenerateInternalEdgeInfo(meshShape.get(), r.triangleInfo.get());
 
-        out.shape = std::move(meshShape);
-        out.mass = 0.0f;// static
+        r.shape = std::move(meshShape);
     }
 }
 
@@ -219,82 +333,96 @@ void VoxelColliderComponent::_finishBuild() {
     const std::shared_ptr<PendingBuild> pending = std::move(_pending);
     _pending.reset();
 
-    if (!pending->shape) {
-        if (auto* console = ConsoleSubsystem::Get()) {
-            console->Warn("VoxelCollider: nothing to collide with — no body created");
-        }
-        return;
-    }
     auto* volume = gameObject ? gameObject->GetComponent<VoxelVolumeComponent>() : nullptr;
     if (volume == nullptr) return;
 
-    // Hold on to what the body currently points at until the swap is done —
-    // Bullet reads the shape, and through it the vertex/index arrays, so
-    // freeing any of them first would leave it dereferencing dead memory.
-    auto oldShape = std::move(_shape);
-    auto oldMeshInterface = std::move(_meshInterface);
-    auto oldTriangleInfo = std::move(_triangleInfo);
-    auto oldVertices = std::move(_vertices);
-    auto oldIndices = std::move(_indices);
+    if (_props.dynamic) {
+        if (!pending->hull) {
+            if (auto* console = ConsoleSubsystem::Get()) {
+                console->Warn("VoxelCollider: nothing to collide with — no body created");
+            }
+            return;
+        }
+        // Hold what the body currently points at until the swap is done —
+        // Bullet reads the shape, so freeing it first would leave it
+        // dereferencing dead memory.
+        auto oldHull = std::move(_hull);
+        _hull = std::move(pending->hull);
+        _centerOfMass = pending->centerOfMass;
+        _hullPointCount = pending->hullPointCount;
 
-    _vertices = std::move(pending->vertices);
-    _indices = std::move(pending->indices);
-    _meshInterface = std::move(pending->meshInterface);
-    _triangleInfo = std::move(pending->triangleInfo);
-    _shape = std::move(pending->shape);
-    _centerOfMass = pending->centerOfMass;
-    _triangleCount = pending->triangleCount;
-    _hullPointCount = pending->hullPointCount;
-
-    // A rebuild keeps the existing body so its velocity, contacts and place in
-    // the world survive; only the first build creates one.
-    if (auto* existing = gameObject->GetComponent<RigidbodyComponent>()) {
-        existing->SwapShape(_shape.get(), pending->mass, _centerOfMass);
+        // A rebuild keeps the existing body so its velocity, contacts and place
+        // in the world survive; only the first build creates one.
+        if (auto* existing = gameObject->GetComponent<RigidbodyComponent>()) {
+            existing->SwapShape(_hull.get(), pending->mass, _centerOfMass);
+            return;
+        }
+        RigidbodyProps rbProps;
+        rbProps.shape = _hull.get();
+        rbProps.mass = pending->mass;
+        rbProps.friction = _props.friction;
+        rbProps.restitution = _props.restitution;
+        rbProps.centerOfMass = _centerOfMass;
+        auto* body = new RigidbodyComponent(gameObject, rbProps);
+        gameObject->AddComponent(body);
+        if (_props.continuousCollision) {
+            // Sweep once the body would move more than half its thinnest side
+            // in a step; the swept sphere is a fraction of that so it
+            // approximates the shape without over-triggering.
+            const glm::vec3 size = volume->GetLocalBoundsMax() - volume->GetLocalBoundsMin();
+            const float minExtent = std::max(std::min({ size.x, size.y, size.z }), volume->voxelSize);
+            body->SetContinuousCollision(minExtent * 0.5f, minExtent * 0.2f);
+        }
         if (auto* console = ConsoleSubsystem::Get()) {
             console->Info(
-                _props.dynamic ? fmt::format(
-                                     "VoxelCollider: rebuilt hull, {} points, mass {:.1f} kg",
-                                     _hullPointCount,
-                                     pending->mass
-                                 )
-                               : fmt::format("VoxelCollider: rebuilt mesh, {} triangles", _triangleCount)
+                fmt::format("VoxelCollider: convex hull, {} points, mass {:.1f} kg", _hullPointCount, pending->mass)
             );
         }
         return;
     }
 
-    RigidbodyProps rbProps;
-    rbProps.shape = _shape.get();
-    rbProps.mass = pending->mass;
-    rbProps.friction = _props.friction;
-    rbProps.restitution = _props.restitution;
-    // Zero for the static mesh, which is built in the object's own frame.
-    rbProps.centerOfMass = _centerOfMass;
-    auto* body = new RigidbodyComponent(gameObject, rbProps);
-    gameObject->AddComponent(body);
+    for (auto& r : pending->results) {
+        if (r.index < 0 || static_cast<size_t>(r.index) >= _chunks.size()) continue;
+        Chunk& chunk = _chunks[static_cast<size_t>(r.index)];
 
-    if (!_props.dynamic) {
-        // Opt the mesh body into the contact-added callback that performs the
-        // internal-edge correction (see Physics3DSubsystem).
-        body->SetCustomMaterialCallback(true);
+        if (!r.shape) {
+            // Everything in this chunk was dug away; it holds no surface now.
+            _releaseChunk(chunk);
+            continue;
+        }
+        // A chunk's body is dropped and rebuilt rather than shape-swapped: it
+        // is static, so it has no velocity worth preserving, and this keeps
+        // the geometry and the body that reads it changing together.
+        _releaseChunk(chunk);
+        chunk.vertices = std::move(r.vertices);
+        chunk.indices = std::move(r.indices);
+        chunk.meshInterface = std::move(r.meshInterface);
+        chunk.triangleInfo = std::move(r.triangleInfo);
+        chunk.shape = std::move(r.shape);
+        chunk.triangleCount = r.triangleCount;
+
+        RigidbodyProps rbProps;
+        rbProps.shape = chunk.shape.get();
+        rbProps.mass = 0.0f;// static
+        rbProps.friction = _props.friction;
+        rbProps.restitution = _props.restitution;
+        chunk.body = std::make_unique<RigidbodyComponent>(gameObject, rbProps);
+        // Opt into the contact-added callback that performs the internal-edge
+        // correction (see Physics3DSubsystem).
+        chunk.body->SetCustomMaterialCallback(true);
+        if (Physics3DSubsystem::Get()) Physics3DSubsystem::Get()->AddRigidbody(chunk.body.get());
     }
 
-    if (_props.dynamic && _props.continuousCollision) {
-        // Sweep once the body would move more than half its thinnest side in a
-        // step; the swept sphere is a fraction of that so it approximates the
-        // shape without over-triggering. Props here fall ~10 m, reaching ~0.25 m
-        // per step — comparable to a small prop's own size.
-        const glm::vec3 size = volume->GetLocalBoundsMax() - volume->GetLocalBoundsMin();
-        const float minExtent = std::max(std::min({ size.x, size.y, size.z }), volume->voxelSize);
-        body->SetContinuousCollision(minExtent * 0.5f, minExtent * 0.2f);
+    _triangleCount = 0;
+    int liveChunks = 0;
+    for (const Chunk& c : _chunks) {
+        _triangleCount += c.triangleCount;
+        if (c.body) liveChunks++;
     }
-
     if (auto* console = ConsoleSubsystem::Get()) {
-        console->Info(
-            _props.dynamic
-                ? fmt::format("VoxelCollider: convex hull, {} points, mass {:.1f} kg", _hullPointCount, pending->mass)
-                : fmt::format("VoxelCollider: static mesh, {} triangles", _triangleCount)
-        );
+        console->Info(fmt::format(
+            "VoxelCollider: static mesh, {} triangles across {} chunk(s)", _triangleCount, liveChunks
+        ));
     }
 }
 
@@ -304,7 +432,11 @@ void VoxelColliderComponent::DrawImGui() {
         ImGui::Text("%d hull points", _hullPointCount);
         ImGui::Text("CoM %.2f, %.2f, %.2f (local)", _centerOfMass.x, _centerOfMass.y, _centerOfMass.z);
     } else {
-        ImGui::Text("%d triangles", _triangleCount);
+        int live = 0;
+        for (const Chunk& c : _chunks)
+            if (c.body) live++;
+        ImGui::Text("%d triangles, %d/%zu chunks", _triangleCount, live, _chunks.size());
+        ImGui::Text("%d dirty%s", GetDirtyChunkCount(), IsBuilding() ? " (building)" : "");
     }
     if (ImGui::Button("Rebuild collider")) {
         Rebuild();
