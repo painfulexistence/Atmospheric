@@ -286,6 +286,12 @@ void VoxelColliderComponent::_beginBuild() {
 void VoxelColliderComponent::_extract(
     PendingBuild& out, const VoxelVolumeComponent& volume, const VoxelColliderProps& props
 ) {
+    // Held for the whole extraction: this runs on a worker while the main
+    // thread may be carving the very voxels being read. Without it, holding a
+    // dig key edits the grid mid-mesh and the chunk that lands can be a torn
+    // mix of before and after — which reads as the hole simply not appearing.
+    const auto voxelLock = volume.LockVoxelsShared();
+
     // Bullet's 4 cm default margin is meant for metre-scale shapes; at 5 cm
     // voxels it is a whole voxel wide. Keep it well under one voxel.
     const float margin = props.collisionMargin > 0.0f ? props.collisionMargin : volume.voxelSize * 0.2f;

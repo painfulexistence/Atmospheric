@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <mutex>
 #include <fmt/format.h>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <imgui.h>
@@ -580,6 +581,12 @@ void VoxelVolumeComponent::Generate(uint32_t seedIn) {
 
 void VoxelVolumeComponent::CarveSphere(const glm::vec3& worldCenter, float radius) {
     if (volume.empty() || radius <= 0.0f) return;
+    // Exclusive against collider extraction running on a worker: without it,
+    // holding a dig key rewrites these voxels while a chunk is being meshed
+    // from them. Uncontended in the common case — only an edit that lands
+    // exactly during a rebuild waits, and a chunk rebuild is well under a
+    // millisecond.
+    const std::unique_lock<std::shared_mutex> lock(_voxelMutex);
     const int N = gridDim;
     const int B = brickDim;
 
@@ -650,10 +657,23 @@ bool VoxelVolumeComponent::RaycastVoxel(
     glm::ivec3 cell = glm::clamp(glm::ivec3(glm::floor((p - origin) / voxelSize)), glm::ivec3(0), glm::ivec3(N - 1));
 
     const glm::ivec3 step = glm::ivec3(glm::sign(rd));
-    const glm::vec3 tDelta = glm::abs(glm::vec3(voxelSize) * invD);
+    glm::vec3 tDelta = glm::abs(glm::vec3(voxelSize) * invD);
     const glm::vec3 stepPos = glm::vec3(glm::greaterThan(rd, glm::vec3(0.0f)));
     const glm::vec3 boundary = origin + (glm::vec3(cell) + stepPos) * voxelSize;
     glm::vec3 tMax = (boundary - ro) * invD;
+    // An axis the ray does not travel along never gets crossed, so its next
+    // crossing is at infinity. Computing it instead gives 0 * inf = NaN — the
+    // boundary offset is exactly zero there — and since every comparison
+    // against NaN is false, the walk below would pick that axis every
+    // iteration, advance by step = 0, and spin on one cell until the step
+    // budget ran out. A perfectly vertical probe ray (0, -1, 0) hits this
+    // exactly, and reported a miss straight through solid ground.
+    for (int k = 0; k < 3; k++) {
+        if (rd[k] == 0.0f) {
+            tMax[k] = std::numeric_limits<float>::infinity();
+            tDelta[k] = std::numeric_limits<float>::infinity();
+        }
+    }
 
     for (int i = 0; i < 3 * N; i++) {
         if (volume[(static_cast<size_t>(cell.z) * N + cell.y) * N + cell.x] != 0) {

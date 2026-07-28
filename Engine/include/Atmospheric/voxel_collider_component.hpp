@@ -115,6 +115,13 @@ public:
     // the voxels.
     int GetDirtyChunkCount() const;
 
+    // Triangles across every live chunk of the static mesh. Changes whenever an
+    // edit is actually reflected in the collider, which makes it the cheapest
+    // way to confirm a dug hole reached physics and not just the renderer.
+    int GetTriangleCount() const {
+        return _triangleCount;
+    }
+
     // Called once, on the frame a dynamic prop's remaining voxels drop below
     // destroyBelowSolidFraction. The collider does not delete anything itself
     // — what "destroyed" means (despawn, spawn debris, swap in a broken

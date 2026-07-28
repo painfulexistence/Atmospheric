@@ -3,6 +3,7 @@
 #include <climits>
 #include <cstdint>
 #include <glm/glm.hpp>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
@@ -82,10 +83,6 @@ public:
     // brick, keeping the occupancy fast path valid.
     void BuildSurfaceMesh(std::vector<glm::vec3>& outVertices, std::vector<uint32_t>& outIndices, int step = 1) const;
 
-    // Support points of the solid voxels over `directions` roughly even
-    // directions — a small bounded set whose convex hull approximates (and is
-    // inscribed in) the true hull, for a dynamic btConvexHullShape. Intended
-    // for props; a whole terrain would hull to something useless.
     // As above, but restricted to voxels inside [regionMin, regionMax]
     // (inclusive, voxel coordinates, clamped to the solid bounds). Whether a
     // face on the region's own boundary is emitted is still decided against the
@@ -106,7 +103,23 @@ public:
         int step = 1
     ) const;
 
+    // Support points of the solid voxels over `directions` roughly even
+    // directions — a small bounded set whose convex hull approximates (and is
+    // inscribed in) the true hull, for a dynamic btConvexHullShape. Intended
+    // for props; a whole terrain would hull to something useless.
     void BuildConvexHullPoints(std::vector<glm::vec3>& outPoints, int directions = 64) const;
+
+    // The extractors above and the raw voxel arrays are NOT internally locked:
+    // meshing walks millions of cells and paying for a lock per voxel would be
+    // absurd. Anything reading them from another thread must hold this shared
+    // lock for the whole read instead — VoxelColliderComponent takes it once
+    // around an entire extraction. CarveSphere and Generate take the matching
+    // exclusive lock, so an edit cannot land halfway through a mesh build.
+    // Without it, holding a dig key carves on the main thread while a worker is
+    // reading the same voxels.
+    [[nodiscard]] std::shared_lock<std::shared_mutex> LockVoxelsShared() const {
+        return std::shared_lock<std::shared_mutex>(_voxelMutex);
+    }
 
     // Local-space min corner: the grid is centred over the object in x/z and
     // rises from y=0, i.e. (-half, 0, -half).
@@ -188,6 +201,10 @@ public:
     }
 
 private:
+    // Guards the voxel/occupancy arrays against edits landing mid-read. Only
+    // ever contended when an edit coincides with a collider rebuild.
+    mutable std::shared_mutex _voxelMutex;
+
     void _buildPalette();
     void _generateTerrain();
     void _generateCrate();
