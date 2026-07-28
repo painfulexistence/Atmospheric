@@ -4,6 +4,7 @@
 #include "Atmospheric/voxel_collider_component.hpp"
 #include "Atmospheric/voxel_volume_component.hpp"
 #include "Atmospheric/window.hpp"
+#include <algorithm>
 #include <fmt/format.h>
 #if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
 // SDL_main.h renames main() to SDL_main so SDLActivity/UIKit can invoke it.
@@ -34,6 +35,9 @@ class MicroVoxelApp : public Application {
     // would spend that window falling through where the terrain is about to be.
     VoxelColliderComponent* _terrainCollider = nullptr;
     std::vector<GameObject*> _propsAwaitingCollider;
+    // Props whose collider reported them dug apart, removed at a safe point in
+    // the frame rather than from inside the tick that noticed.
+    std::vector<GameObject*> _propsToDestroy;
 #if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     TouchControlsComponent* _touchControls = nullptr;
 #endif
@@ -227,10 +231,33 @@ class MicroVoxelApp : public Application {
         auto* input = InputSubsystem::Get();
         if (input->IsKeyPressed(Key::ESCAPE)) Quit();
 
+        // Props dug past their destruction threshold, retired here rather than
+        // from inside the tick that noticed. Order matters: the collider goes
+        // first because tearing it down waits on any in-flight mesh job, and
+        // that job is reading the volume's voxels.
+        for (GameObject* obj : _propsToDestroy) {
+            if (auto* col = obj->GetComponent<VoxelColliderComponent>()) obj->RemoveComponent(col);
+            if (auto* rb = obj->GetComponent<RigidbodyComponent>()) obj->RemoveComponent(rb);
+            if (auto* vol = obj->GetComponent<VoxelVolumeComponent>()) {
+                _carveTargets.erase(
+                    std::remove(_carveTargets.begin(), _carveTargets.end(), vol), _carveTargets.end()
+                );
+                obj->RemoveComponent(vol);// unregisters it from the raymarch pass
+            }
+            obj->SetActive(false);
+        }
+        _propsToDestroy.clear();
+
         // Release the props the frame the ground becomes collidable.
         if (!_propsAwaitingCollider.empty() && _terrainCollider != nullptr && !_terrainCollider->IsBuilding()) {
             for (GameObject* obj : _propsAwaitingCollider) {
-                obj->AddComponent(new VoxelColliderComponent(obj, VoxelColliderProps{ .dynamic = true }));
+                auto* col = new VoxelColliderComponent(obj, VoxelColliderProps{ .dynamic = true });
+                // Dig a prop down past 40% of its voxels and it breaks apart.
+                // Queue the removal instead of doing it here: this fires from
+                // the object's own tick, so destroying it inline would pull the
+                // components out from under the loop walking them.
+                col->OnDestroyed = [this, obj](VoxelColliderComponent&) { _propsToDestroy.push_back(obj); };
+                obj->AddComponent(col);
             }
             _propsAwaitingCollider.clear();
         }

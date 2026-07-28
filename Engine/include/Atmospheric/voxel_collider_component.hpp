@@ -1,6 +1,7 @@
 #pragma once
 #include "component.hpp"
 #include <cstdint>
+#include <functional>
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
@@ -53,6 +54,19 @@ struct VoxelColliderProps {
     // no mesh collider (0 = no limit). The default admits a 256^3 terrain
     // (16.7M) and rejects anything an order of magnitude past it.
     uint64_t maxMeshVoxels = 32ull * 1024ull * 1024ull;
+    // Carving a prop away: once its remaining solid voxels fall below this
+    // fraction of what it was built with, it is considered destroyed and
+    // OnDestroyed fires (0 disables). Note this is deliberately NOT "rebuild
+    // the hull and carry on" — a convex hull is the object's outer envelope,
+    // so hollowing a crate out does not change it at all, and no amount of
+    // rebuilding will let you fall through the hole. Erode the silhouette,
+    // then break the thing. Dynamic bodies only.
+    float destroyBelowSolidFraction = 0.4f;
+    // Above that threshold, re-hull after this much of the ORIGINAL volume has
+    // been carved away since the last rebuild, so the silhouette follows
+    // corners being knocked off without re-hulling on every dig frame
+    // (0 disables). Dynamic bodies only.
+    float rehullAfterSolidFraction = 0.08f;
 };
 
 // Gives a voxel volume a physics body whose collider comes from its own voxels.
@@ -101,6 +115,22 @@ public:
     // the voxels.
     int GetDirtyChunkCount() const;
 
+    // Called once, on the frame a dynamic prop's remaining voxels drop below
+    // destroyBelowSolidFraction. The collider does not delete anything itself
+    // — what "destroyed" means (despawn, spawn debris, swap in a broken
+    // variant) belongs to the game, not the engine. The component stops
+    // simulating meaningfully after this: it is expected to be removed.
+    std::function<void(VoxelColliderComponent&)> OnDestroyed;
+
+    bool IsDestroyed() const {
+        return _destroyed;
+    }
+    // Solid voxels the collider was last built from, and what the volume
+    // started with — the ratio is what the destroy threshold tests.
+    uint32_t GetInitialSolidCount() const {
+        return _initialSolidCount;
+    }
+
     // True from the moment a build is queued until its body is attached. The
     // object has no rigid body during this window, so anything that must not
     // start simulating before the world is collidable can gate on it — a demo
@@ -137,6 +167,10 @@ private:
     static void _extract(PendingBuild& out, const VoxelVolumeComponent& volume, const VoxelColliderProps& props);
     // Lays out the chunk grid over the volume. Called once, before any build.
     void _initChunks(const VoxelVolumeComponent& volume);
+    // Dynamic props only: fires OnDestroyed once the remaining voxels fall
+    // past the threshold, otherwise re-hulls when enough has been carved
+    // away to change the silhouette.
+    void _checkDestruction();
     void _releaseChunk(Chunk& chunk);
     void _releaseAll();
 
@@ -153,4 +187,10 @@ private:
     glm::vec3 _centerOfMass{ 0.0f };
     int _triangleCount = 0;
     int _hullPointCount = 0;
+    // Destruction bookkeeping for dynamic props: what the volume held when the
+    // collider was first built, what it held at the last hull rebuild, and
+    // whether OnDestroyed has already fired (it fires once).
+    uint32_t _initialSolidCount = 0;
+    uint32_t _solidCountAtLastBuild = 0;
+    bool _destroyed = false;
 };

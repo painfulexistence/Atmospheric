@@ -88,7 +88,40 @@ void VoxelColliderComponent::OnTick(float /*dt*/) {
         return;
     }
     // Anything marked while the last pass was running gets picked up here.
-    if (!_dirtyChunks.empty()) _beginBuild();
+    if (!_dirtyChunks.empty()) {
+        _beginBuild();
+        return;
+    }
+    if (_props.dynamic && !_destroyed) _checkDestruction();
+}
+
+void VoxelColliderComponent::_checkDestruction() {
+    auto* volume = gameObject ? gameObject->GetComponent<VoxelVolumeComponent>() : nullptr;
+    if (volume == nullptr || _initialSolidCount == 0) return;
+
+    const float remaining = static_cast<float>(volume->solidCount) / static_cast<float>(_initialSolidCount);
+    if (_props.destroyBelowSolidFraction > 0.0f && remaining < _props.destroyBelowSolidFraction) {
+        _destroyed = true;
+        if (auto* console = ConsoleSubsystem::Get()) {
+            console->Info(fmt::format(
+                "VoxelCollider: prop destroyed ({:.0f}% of its voxels left)", remaining * 100.0f
+            ));
+        }
+        // The game decides what destruction looks like; the engine only says
+        // when. Called last so a handler is free to remove this component.
+        if (OnDestroyed) OnDestroyed(*this);
+        return;
+    }
+
+    // Still standing: re-hull once enough has been carved away for the
+    // silhouette to have actually changed. Carving the middle out of a crate
+    // changes nothing here, which is correct — a hull cannot represent that,
+    // and re-running it every dig frame would be pure waste.
+    if (_props.rehullAfterSolidFraction <= 0.0f) return;
+    if (volume->solidCount >= _solidCountAtLastBuild) return;
+    const float carvedSinceBuild =
+        static_cast<float>(_solidCountAtLastBuild - volume->solidCount) / static_cast<float>(_initialSolidCount);
+    if (carvedSinceBuild >= _props.rehullAfterSolidFraction) _beginBuild();
 }
 
 void VoxelColliderComponent::Rebuild() {
@@ -226,6 +259,13 @@ void VoxelColliderComponent::_beginBuild() {
     // volume by raw pointer, which is why teardown waits (see _waitForBuild):
     // the volume must outlive the job, and so must the voxels, which means
     // nothing may carve while a build is in flight.
+    // Snapshot what this build is being made from. The first one also fixes the
+    // baseline the destroy threshold is measured against, so a prop spawned
+    // already partly carved is judged against how it spawned, not against a
+    // full grid it never had.
+    if (_initialSolidCount == 0) _initialSolidCount = volume->solidCount;
+    _solidCountAtLastBuild = volume->solidCount;
+
     auto pending = std::make_shared<PendingBuild>();
     if (!_props.dynamic) {
         for (int idx : _dirtyChunks) {
@@ -431,6 +471,13 @@ void VoxelColliderComponent::DrawImGui() {
     if (_props.dynamic) {
         ImGui::Text("%d hull points", _hullPointCount);
         ImGui::Text("CoM %.2f, %.2f, %.2f (local)", _centerOfMass.x, _centerOfMass.y, _centerOfMass.z);
+        if (auto* vol = gameObject ? gameObject->GetComponent<VoxelVolumeComponent>() : nullptr) {
+            const float pct = _initialSolidCount > 0
+                                  ? 100.0f * static_cast<float>(vol->solidCount) / static_cast<float>(_initialSolidCount)
+                                  : 100.0f;
+            ImGui::Text("%.0f%% intact%s (destroys below %.0f%%)", pct, _destroyed ? " DESTROYED" : "",
+                        _props.destroyBelowSolidFraction * 100.0f);
+        }
     } else {
         int live = 0;
         for (const Chunk& c : _chunks)
