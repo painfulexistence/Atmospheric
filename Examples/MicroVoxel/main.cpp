@@ -25,6 +25,11 @@
 // terrain's exposed faces, so they drop in, bounce and pile into each other.
 // Bullet writes each body's pose back to its object and the raymarch reads
 // that transform, so a tumbling crate renders tumbling.
+// Radius of one dig, in metres. At 5 cm voxels this is the difference between
+// carving progressively and taking a chunk out of the world per frame: the
+// terrain collider is voxel-exact, so the hole in physics is exactly this size.
+constexpr float kDigRadius = 0.25f;
+
 class MicroVoxelApp : public Application {
     using Application::Application;
 
@@ -102,16 +107,22 @@ class MicroVoxelApp : public Application {
             { VoxelVolumeKind::CrystalCluster, 16, -2.1f * s, -0.9f * s, 60.0f, 0.0f },
         };
         // The terrain is a static collider: a triangle mesh of its exposed
-        // faces. Built at 10 cm rather than voxel-exact — narrowphase cost
-        // tracks the triangle count and that is a 4x cut (237k -> 57k) for a
-        // 5 cm stair-step nobody sees. Drop to 1 for a voxel-exact collider,
-        // raise to 4 if physics is still the bottleneck.
-        // chunkVoxels splits the collider into 32^3 pieces (1.6 m each), so a
-        // dig re-meshes only the couple of chunks it touched — around a
-        // millisecond — instead of the whole 256^3 volume at ~60 ms, which
-        // would be unaffordable every frame the dig key is held.
+        // faces, voxel-exact so a dug hole in the collider matches the hole you
+        // see. Coarsening it (meshDownsample 2 or 4) is much cheaper — 241k
+        // triangles drop to 59k at 2 — but each carve then loses up to step-1
+        // voxels off every side of the hole, which at this dig size is most of
+        // it. Raise it if terrain narrowphase becomes the bottleneck; the cost
+        // tracks the triangle count.
+        //
+        // chunkVoxels splits the collider into 16^3 pieces (0.8 m each) so a
+        // dig re-meshes only what it touched instead of the whole volume, which
+        // is 235 ms and completely unaffordable per frame. Smaller chunks are
+        // what make voxel-exact affordable at all: at 16 a chunk re-meshes in
+        // 0.14 ms (1.07 ms worst case), at 32 it is 1.12 ms (5.13 ms worst) for
+        // the same total work, since each chunk holds four times the triangles.
+        // The cost is one body per non-empty chunk — 1009 rather than 181.
         _terrainCollider = new VoxelColliderComponent(
-            terrainObj, VoxelColliderProps{ .dynamic = false, .meshDownsample = 2, .chunkVoxels = 32 }
+            terrainObj, VoxelColliderProps{ .dynamic = false, .meshDownsample = 1, .chunkVoxels = 16 }
         );
         terrainObj->AddComponent(_terrainCollider);
 
@@ -290,7 +301,11 @@ class MicroVoxelApp : public Application {
                 }
             }
             if (target) {
-                target->CarveSphere(hitPos, 0.45f);
+                // A 25 cm bite: 265 voxels, leaving a 0.50 x 0.30 x 0.50 m hole
+                // in a voxel-exact collider. Small enough that holding the key
+                // digs progressively rather than in big jumps, and small enough
+                // that one carve touches only a couple of collider chunks.
+                target->CarveSphere(hitPos, kDigRadius);
                 // Tell the collider what changed, so the hole is something you
                 // can actually walk into rather than a purely visual one. The
                 // volume already tracks this exact box for its partial GPU
