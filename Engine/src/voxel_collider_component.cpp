@@ -472,9 +472,10 @@ void VoxelColliderComponent::DrawImGui() {
         ImGui::Text("%d hull points", _hullPointCount);
         ImGui::Text("CoM %.2f, %.2f, %.2f (local)", _centerOfMass.x, _centerOfMass.y, _centerOfMass.z);
         if (auto* vol = gameObject ? gameObject->GetComponent<VoxelVolumeComponent>() : nullptr) {
-            const float pct = _initialSolidCount > 0
-                                  ? 100.0f * static_cast<float>(vol->solidCount) / static_cast<float>(_initialSolidCount)
-                                  : 100.0f;
+            const float pct =
+                _initialSolidCount > 0
+                    ? 100.0f * static_cast<float>(vol->solidCount) / static_cast<float>(_initialSolidCount)
+                    : 100.0f;
             ImGui::Text("%.0f%% intact%s (destroys below %.0f%%)", pct, _destroyed ? " DESTROYED" : "",
                         _props.destroyBelowSolidFraction * 100.0f);
         }
