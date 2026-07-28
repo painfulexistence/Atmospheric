@@ -50,6 +50,10 @@ public:
 
     void AddRigidbody(RigidbodyComponent*);
     void RemoveRigidbody(RigidbodyComponent*);
+    // Re-measure a body's broadphase AABB. Needed after its shape changes
+    // under it (RigidbodyComponent::SwapShape), since the cached AABB was
+    // computed from the shape it replaced.
+    void RefreshAabb(RigidbodyComponent*);
 
     ColliderID CreateCollider(const Shape& shape);
     void DestroyCollider(ColliderID col);

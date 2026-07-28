@@ -62,12 +62,9 @@ void VoxelColliderComponent::OnTick(float /*dt*/) {
 
 void VoxelColliderComponent::Rebuild() {
     _waitForBuild();
-    // Drop the old body first: it holds a raw pointer to the shape we are about
-    // to free.
-    if (gameObject) {
-        if (auto* rb = gameObject->GetComponent<RigidbodyComponent>()) gameObject->RemoveComponent(rb);
-    }
-    _releaseShape();
+    // The body stays: _finishBuild swaps the new shape into it, which keeps the
+    // velocity of anything carved mid-flight. The old shape stays alive until
+    // that swap, so nothing is freed here.
     _beginBuild();
 }
 
@@ -228,6 +225,18 @@ void VoxelColliderComponent::_finishBuild() {
         }
         return;
     }
+    auto* volume = gameObject ? gameObject->GetComponent<VoxelVolumeComponent>() : nullptr;
+    if (volume == nullptr) return;
+
+    // Hold on to what the body currently points at until the swap is done —
+    // Bullet reads the shape, and through it the vertex/index arrays, so
+    // freeing any of them first would leave it dereferencing dead memory.
+    auto oldShape = std::move(_shape);
+    auto oldMeshInterface = std::move(_meshInterface);
+    auto oldTriangleInfo = std::move(_triangleInfo);
+    auto oldVertices = std::move(_vertices);
+    auto oldIndices = std::move(_indices);
+
     _vertices = std::move(pending->vertices);
     _indices = std::move(pending->indices);
     _meshInterface = std::move(pending->meshInterface);
@@ -237,8 +246,19 @@ void VoxelColliderComponent::_finishBuild() {
     _triangleCount = pending->triangleCount;
     _hullPointCount = pending->hullPointCount;
 
-    auto* volume = gameObject ? gameObject->GetComponent<VoxelVolumeComponent>() : nullptr;
-    if (volume == nullptr) return;
+    // A rebuild keeps the existing body so its velocity, contacts and place in
+    // the world survive; only the first build creates one.
+    if (auto* existing = gameObject->GetComponent<RigidbodyComponent>()) {
+        existing->SwapShape(_shape.get(), pending->mass, _centerOfMass);
+        if (auto* console = ConsoleSubsystem::Get()) {
+            console->Info(
+                _props.dynamic
+                    ? fmt::format("VoxelCollider: rebuilt hull, {} points, mass {:.1f} kg", _hullPointCount, pending->mass)
+                    : fmt::format("VoxelCollider: rebuilt mesh, {} triangles", _triangleCount)
+            );
+        }
+        return;
+    }
 
     RigidbodyProps rbProps;
     rbProps.shape = _shape.get();

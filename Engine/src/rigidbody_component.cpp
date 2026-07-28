@@ -191,6 +191,33 @@ void RigidbodyComponent::SetWorldTransform(const glm::vec3& position, const glm:
     _motionState->setWorldTransform(com);
 }
 
+void RigidbodyComponent::SwapShape(btCollisionShape* shape, float mass, const glm::vec3& centerOfMass) {
+    if (shape == nullptr) return;
+
+    // Where the object is drawn does not change; where its centre of mass sits
+    // inside it may. Capture the graphics transform before touching the offset,
+    // then rebuild the body's pose from it and the NEW offset.
+    const btTransform graphics = _motionState->m_graphicsWorldTrans;
+    btTransform comOffset;
+    comOffset.setIdentity();
+    comOffset.setOrigin(btVector3(-centerOfMass.x, -centerOfMass.y, -centerOfMass.z));
+    _motionState->m_centerOfMassOffset = comOffset;
+
+    _rigidbody->setCollisionShape(shape);
+    // A carved prop is lighter and differently balanced, so both the mass and
+    // the tensor are re-derived. setCenterOfMassTransform then refreshes the
+    // world-space inertia tensor from them.
+    _rigidbody->setMassProps(static_cast<btScalar>(mass), ComputeLocalInertia(shape, mass));
+    _rigidbody->setCenterOfMassTransform(graphics * comOffset.inverse());
+
+    // The broadphase still holds an AABB measured from the old shape.
+    if (Physics3DSubsystem::Get()) {
+        Physics3DSubsystem::Get()->RefreshAabb(this);
+    }
+    // A sleeping body would keep its stale contacts and never notice the swap.
+    _rigidbody->activate();
+}
+
 void RigidbodyComponent::SetContinuousCollision(float motionThreshold, float sweptSphereRadius) {
     _rigidbody->setCcdMotionThreshold(motionThreshold);
     _rigidbody->setCcdSweptSphereRadius(sweptSphereRadius);

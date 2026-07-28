@@ -65,6 +65,18 @@ public:
     // push it back). Pass motionThreshold = 0 to disable.
     void SetContinuousCollision(float motionThreshold, float sweptSphereRadius);
 
+    // Replace the collision shape in place, keeping the body itself — and so
+    // its velocity, its place in the world and its contacts. This is what a
+    // collider rebuilt from edited voxels needs: destroying and recreating the
+    // body instead would drop a prop's motion, so one carved mid-flight would
+    // freeze in mid-air.
+    //
+    // centerOfMass is where the new shape's mass sits in the object's local
+    // frame; carving moves it, and since Bullet positions a body BY its centre
+    // of mass, the pose is re-derived so the object does not jump. The caller
+    // must keep the OLD shape alive until this returns.
+    void SwapShape(btCollisionShape* shape, float mass, const glm::vec3& centerOfMass);
+
     // Route this body's contacts through the global contact-added callback.
     // Triangle-mesh colliders need it so internal-edge contact normals can be
     // snapped back to the face normal; nothing else should turn it on.

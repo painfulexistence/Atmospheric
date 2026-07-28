@@ -221,6 +221,11 @@ void Physics3DSubsystem::RemoveRigidbody(RigidbodyComponent* impostor) {
     _impostors.erase(std::remove(_impostors.begin(), _impostors.end(), impostor), _impostors.end());
 }
 
+void Physics3DSubsystem::RefreshAabb(RigidbodyComponent* impostor) {
+    if (impostor == nullptr || !_world) return;
+    _world->updateSingleAabb(impostor->_rigidbody.get());
+}
+
 ColliderID Physics3DSubsystem::CreateCollider(const Shape& shape) {
     btCollisionShape* col = nullptr;
     switch (shape.type) {
