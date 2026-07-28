@@ -28,6 +28,12 @@ class MicroVoxelApp : public Application {
     using Application::Application;
 
     std::vector<VoxelVolumeComponent*> _carveTargets;// volumes the E key / DIG button can dig into
+    // The terrain's collider is extracted on a worker, so for the first few
+    // frames there is no ground to land on. Props wait here until it lands,
+    // then get their colliders (and with them, their bodies) — otherwise they
+    // would spend that window falling through where the terrain is about to be.
+    VoxelColliderComponent* _terrainCollider = nullptr;
+    std::vector<GameObject*> _propsAwaitingCollider;
 #if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     TouchControlsComponent* _touchControls = nullptr;
 #endif
@@ -96,9 +102,10 @@ class MicroVoxelApp : public Application {
         // tracks the triangle count and that is a 4x cut (237k -> 57k) for a
         // 5 cm stair-step nobody sees. Drop to 1 for a voxel-exact collider,
         // raise to 4 if physics is still the bottleneck.
-        terrainObj->AddComponent(
-            new VoxelColliderComponent(terrainObj, VoxelColliderProps{ .dynamic = false, .meshDownsample = 2 })
+        _terrainCollider = new VoxelColliderComponent(
+            terrainObj, VoxelColliderProps{ .dynamic = false, .meshDownsample = 2 }
         );
+        terrainObj->AddComponent(_terrainCollider);
 
         // How many of the props above to actually spawn. Physics cost scales
         // with this (each is a dynamic body against the terrain's big static
@@ -125,9 +132,10 @@ class MicroVoxelApp : public Application {
             auto* vc = static_cast<VoxelVolumeComponent*>(
                 obj->AddComponent<VoxelVolumeComponent>(1000u + static_cast<uint32_t>(objIndex) * 17u, od.gridDim, od.kind)
             );
-            // Collider after the volume: it reads the freshly generated voxels
-            // and adds the rigid body. A convex hull of the prop's own voxels.
-            obj->AddComponent(new VoxelColliderComponent(obj, VoxelColliderProps{ .dynamic = true }));
+            // The collider (and with it the body) is attached later, once the
+            // terrain is collidable — see _propsAwaitingCollider. Until then the
+            // prop just hangs at its spawn height, drawn but not simulated.
+            _propsAwaitingCollider.push_back(obj);
             _carveTargets.push_back(vc);
             objIndex++;
         }
@@ -214,6 +222,14 @@ class MicroVoxelApp : public Application {
     void OnUpdate(float /*dt*/, float /*time*/) override {
         auto* input = InputSubsystem::Get();
         if (input->IsKeyPressed(Key::ESCAPE)) Quit();
+
+        // Release the props the frame the ground becomes collidable.
+        if (!_propsAwaitingCollider.empty() && _terrainCollider != nullptr && !_terrainCollider->IsBuilding()) {
+            for (GameObject* obj : _propsAwaitingCollider) {
+                obj->AddComponent(new VoxelColliderComponent(obj, VoxelColliderProps{ .dynamic = true }));
+            }
+            _propsAwaitingCollider.clear();
+        }
 
         // Hold E (or the touch DIG button) to dig: raycast the camera's aim into
         // the volumes and carve a sphere of air at the first solid voxel. No

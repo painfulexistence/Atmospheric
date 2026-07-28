@@ -69,18 +69,41 @@ public:
         return "VoxelCollider";
     }
     void OnAttach() override;
+    void OnDetach() override;
+    void OnTick(float dt) override;
     void DrawImGui() override;
 
     // Rebuild the shape from the current voxels (e.g. after a big edit) and
     // replace the rigid body. Cheap for a prop, a full re-mesh for terrain.
     void Rebuild();
 
+    // True from the moment a build is queued until its body is attached. The
+    // object has no rigid body during this window, so anything that must not
+    // start simulating before the world is collidable can gate on it — a demo
+    // holding its props until the terrain's mesh lands, for instance.
+    bool IsBuilding() const {
+        return _pending != nullptr;
+    }
+
     const VoxelColliderProps& GetProps() const {
         return _props;
     }
 
 private:
-    void _build();
+    // Extraction result, filled on a worker thread and consumed on the main
+    // thread once `done` flips. Held by shared_ptr so the worker's copy keeps
+    // it alive even if the component is torn down mid-build.
+    struct PendingBuild;
+
+    void _beginBuild();
+    void _finishBuild();
+    // Blocks until any in-flight extraction finishes. Required before the
+    // voxel volume it reads can be destroyed.
+    void _waitForBuild();
+    // Runs on a worker thread: reads voxels, produces the Bullet shape. Static
+    // and taking everything by parameter so it cannot touch component state
+    // the main thread owns.
+    static void _extract(PendingBuild& out, const VoxelVolumeComponent& volume, const VoxelColliderProps& props);
     void _releaseShape();
 
     VoxelColliderProps _props;
@@ -91,6 +114,7 @@ private:
     // Triangle adjacency for the internal-edge fix; the shape only borrows it.
     std::unique_ptr<btTriangleInfoMap> _triangleInfo;
     std::unique_ptr<btCollisionShape> _shape;
+    std::shared_ptr<PendingBuild> _pending;
     // Solid centroid the dynamic hull was built about, in the object's local
     // frame. Zero for the static mesh, which keeps that frame as-is.
     glm::vec3 _centerOfMass{ 0.0f };
