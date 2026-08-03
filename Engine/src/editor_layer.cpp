@@ -201,7 +201,7 @@ void EditorLayer::DrawEngineView() {
         InputSubsystem::Get()->DrawImGui(dt);
         GraphicsSubsystem::Get()->DrawImGui(dt);
         AnimationSubsystem::Get()->DrawImGui(dt);
-        Physics3DSubsystem::Get()->DrawImGui(dt);
+        if (auto* phys = Physics3DSubsystem::Get()) phys->DrawImGui(dt);// absent when enablePhysics3D is off
 #ifndef __EMSCRIPTEN__
         AudioSubsystem::Get()->DrawImGui(dt);
         if (ImGui::CollapsingHeader("Recording (F2)")) {

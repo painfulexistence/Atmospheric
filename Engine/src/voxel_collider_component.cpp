@@ -222,6 +222,10 @@ void VoxelColliderComponent::_initChunks(const VoxelVolumeComponent& volume) {
 
 void VoxelColliderComponent::_beginBuild() {
     if (!gameObject) return;
+    // No physics subsystem (enablePhysics3D off) means nothing could ever
+    // consume the shape: bodies would be built, BVHs computed and memory held
+    // for a world that does not exist. Skip the whole extraction.
+    if (Physics3DSubsystem::Get() == nullptr) return;
     auto* volume = gameObject->GetComponent<VoxelVolumeComponent>();
     if (volume == nullptr || !volume->HasSolid()) {
         if (auto* console = ConsoleSubsystem::Get()) {

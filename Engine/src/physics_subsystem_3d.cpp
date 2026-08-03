@@ -149,15 +149,26 @@ void Physics3DSubsystem::Process(float dt) {
     // grows without bound. Past the cap we drop the backlog and let simulated
     // time slip behind wall time, which is the only stable choice.
     constexpr int MAX_PHYSICS_STEPS_PER_FRAME = 4;
-    _timeAccum += dt;
-    int stepsThisFrame = 0;
-    while (_timeAccum >= FIXED_TIME_STEP && stepsThisFrame < MAX_PHYSICS_STEPS_PER_FRAME) {
-        _world->stepSimulation(FIXED_TIME_STEP, 0);
-        _timeAccum -= FIXED_TIME_STEP;
-        stepsThisFrame++;
-    }
-    if (_timeAccum > FIXED_TIME_STEP * MAX_PHYSICS_STEPS_PER_FRAME) {
-        _timeAccum = FIXED_TIME_STEP;
+    if (_paused) {
+        // Frozen: no accumulation (unpausing must not replay the pause), no
+        // stepping — unless a single step was requested, which runs exactly
+        // one fixed step and freezes again. Contact callbacks and the debug
+        // draw below still run, so the frozen state stays inspectable.
+        if (_stepOnce) {
+            _stepOnce = false;
+            _world->stepSimulation(FIXED_TIME_STEP, 0);
+        }
+    } else {
+        _timeAccum += dt;
+        int stepsThisFrame = 0;
+        while (_timeAccum >= FIXED_TIME_STEP && stepsThisFrame < MAX_PHYSICS_STEPS_PER_FRAME) {
+            _world->stepSimulation(FIXED_TIME_STEP, 0);
+            _timeAccum -= FIXED_TIME_STEP;
+            stepsThisFrame++;
+        }
+        if (_timeAccum > FIXED_TIME_STEP * MAX_PHYSICS_STEPS_PER_FRAME) {
+            _timeAccum = FIXED_TIME_STEP;
+        }
     }
 
     int numManifolds = _dispatcher->getNumManifolds();
@@ -199,6 +210,16 @@ void Physics3DSubsystem::DrawImGui(float dt) {
             ImGui::TreePop();
         }
     }
+}
+
+void Physics3DSubsystem::SetPaused(bool paused) {
+    if (_paused == paused) return;
+    _paused = paused;
+    _stepOnce = false;
+    // Resume from the frozen state: the time that passed while paused is
+    // discarded, not owed.
+    if (!paused) _timeAccum = 0.0f;
+    spdlog::info("[Physics] {}", paused ? "paused (StepOnce advances one fixed step)" : "resumed");
 }
 
 void Physics3DSubsystem::Reset() {

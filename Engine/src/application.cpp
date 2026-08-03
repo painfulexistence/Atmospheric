@@ -257,7 +257,11 @@ Application::Application(AppConfig config) : _config(config) {
     _input = std::make_unique<InputSubsystem>();
     _audio = std::make_unique<AudioSubsystem>();
     _graphics = std::make_unique<GraphicsSubsystem>();
-    _physics = std::make_unique<Physics3DSubsystem>();
+    // Skipping construction (not just Init) is what makes the flag work:
+    // Physics3DSubsystem::Get() locates the constructed instance, and every
+    // consumer — RigidbodyComponent, voxel/heightfield colliders, the scene
+    // loader — already null-checks Get(). No subsystem, no bodies, no cost.
+    if (config.enablePhysics3D) _physics = std::make_unique<Physics3DSubsystem>();
     _physics2D = std::make_unique<Physics2DSubsystem>();
     _animation = std::make_unique<AnimationSubsystem>();
 
@@ -806,7 +810,7 @@ void Application::Run() {
     if (!_config.headless) {
         _graphics->Init(this);// glad + GL device setup — needs the window's GL context
     }
-    _physics->Init(this);// Note that physics debug drawer is dependent on graphics server
+    if (_physics) _physics->Init(this);// physics debug drawer depends on the graphics server
     _physics2D->Init(this);
     _animation->Init(this);
     for (auto& subsystem : _subsystems) {
@@ -1699,7 +1703,7 @@ void Application::LoadEditorScene(const uint8_t* data, size_t len) {
     _graphics->pointLights.clear();
 
     _audio->StopAll();
-    _physics->Reset();
+    if (_physics) _physics->Reset();
 
     SceneLoader loader(this);
     auto result = loader.LoadFromBuffer(data, len);
@@ -1780,7 +1784,7 @@ void Application::UnloadCurrentScene() {
     _graphics->canvasDrawables.clear();// SpriteComponent / Text2DComponent / ...
 
     _audio->StopAll();
-    _physics->Reset();
+    if (_physics) _physics->Reset();
     if (!_currentSceneName.empty()) AssetManager::Get().ClearSceneAssets();// free scene GPU assets
     _currentSceneName.clear();
 }
@@ -1876,7 +1880,7 @@ void Application::Update(const FrameData& props) {
     _console->Process(dt);
     if (!_config.headless) _input->Process(dt);// polls Window::Get(), which is null headless
     _audio->Process(dt);
-    _physics->Process(dt);// TODO: Update only every entity's physics transform
+    if (_physics) _physics->Process(dt);// TODO: Update only every entity's physics transform
     _physics2D->Process(dt);
     _graphics->Process(dt);
     for (auto& subsystem : _subsystems) {

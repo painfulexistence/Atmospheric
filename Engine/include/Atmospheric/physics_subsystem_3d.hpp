@@ -48,6 +48,21 @@ public:
     void DrawImGui(float dt) override;
     void Reset();
 
+    // Freeze the simulation without touching it: bodies, contacts and the
+    // broadphase all stay resident, Process just stops stepping. Unpausing
+    // clears the accumulated backlog, so time simply resumes from the frozen
+    // state instead of fast-forwarding through the pause.
+    void SetPaused(bool paused);
+    bool IsPaused() const {
+        return _paused;
+    }
+    // While paused, advance exactly one fixed step on the next Process — the
+    // debugging tool this exists for: freeze a pile mid-collapse and watch the
+    // solver resolve it a step at a time. Ignored when not paused.
+    void StepOnce() {
+        _stepOnce = true;
+    }
+
     void AddRigidbody(RigidbodyComponent*);
     void RemoveRigidbody(RigidbodyComponent*);
     // Re-measure a body's broadphase AABB. Needed after its shape changes
@@ -82,6 +97,8 @@ private:
     std::unordered_map<ColliderID, std::unique_ptr<btCollisionShape>> _colliders;
     std::vector<RigidbodyComponent*> _impostors;
     float _timeAccum = 0.0f;
+    bool _paused = false;
+    bool _stepOnce = false;
 
     bool _debugUIEnabled = false;
     ColliderID _nextColliderID = 0;
