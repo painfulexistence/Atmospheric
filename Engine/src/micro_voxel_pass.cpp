@@ -26,13 +26,23 @@
 // ============================================================================
 //  MicroVoxelPass — raymarched micro voxels (experimental)
 // ============================================================================
-// Renders a dense voxel volume (10 cm voxels by default) with a fullscreen
-// two-level DDA raymarch: a coarse pass strides brick-by-brick, skipping
-// empty bricks via the occupancy texture, and a fine pass walks individual
-// voxels inside occupied bricks. Hits write real depth, so voxels
-// depth-composite with the rasterized scene. This is the Teardown-style
-// storage model (CPU-built 3D texture + fragment DDA); contrast with
-// VoxelChunkPass, which meshes 1m macro voxels into triangles.
+// Renders dense voxel volumes (5 cm voxels by default) with a per-volume
+// two-level DDA raymarch: each volume rasterizes its tight bounding box and
+// every covered pixel marches the volume's 3D texture in the volume's LOCAL
+// space (so physics-driven rotation works) — a coarse pass strides
+// brick-by-brick, skipping empty bricks via the occupancy texture, and a fine
+// pass walks individual voxels inside occupied bricks. Hits write real depth,
+// so volumes depth-composite with each other and the rasterized scene. This is
+// the Teardown-style storage model (CPU-built 3D texture + fragment DDA);
+// contrast with VoxelChunkPass, which meshes 1m macro voxels into triangles.
+//
+// Scaling behaviors (the "many objects" contract):
+//  - volumes are frustum-culled and drawn near-to-far with front-face culling
+//    (exactly one marched fragment per covered pixel);
+//  - runtime edits upload only the edited sub-box (a carve is KBs, not the
+//    full grid) and preserve GI history;
+//  - the GI pass traces only the nearest-K volumes; other volumes' pixels fall
+//    back to flat ambient via the GI sample validity check in the composite.
 //
 // The DDA and the demo-volume generator are ports of the (reference-
 // validated) implementation in project-vapor's Metal renderer.
@@ -44,6 +54,43 @@ static void DrawScreenQuadVAO(GLuint vao) {
     glBindVertexArray(0);
 }
 
+// ---- Helpers: frustum culling ------------------------------------------------
+
+// Gribb-Hartmann plane extraction from a viewProj matrix (GL clip conventions).
+// Planes point inward; a point p is inside when dot(plane.xyz, p) + plane.w > 0.
+static void MvExtractFrustumPlanes(const glm::mat4& vp, glm::vec4 planes[6]) {
+    auto row = [&vp](int i) { return glm::vec4(vp[0][i], vp[1][i], vp[2][i], vp[3][i]); };
+    const glm::vec4 r0 = row(0), r1 = row(1), r2 = row(2), r3 = row(3);
+    planes[0] = r3 + r0;// left
+    planes[1] = r3 - r0;// right
+    planes[2] = r3 + r1;// bottom
+    planes[3] = r3 - r1;// top
+    planes[4] = r3 + r2;// near
+    planes[5] = r3 - r2;// far
+}
+
+// Conservative OBB-vs-frustum: the local-space bounds' 8 corners are taken to
+// world space; a volume is culled only when all corners are outside one plane.
+static bool MvBoxVisible(const glm::vec4 planes[6], const glm::mat4& model, const glm::vec3& bMinL, const glm::vec3& bMaxL) {
+    glm::vec3 corners[8];
+    for (int i = 0; i < 8; i++) {
+        const glm::vec3 c(
+            (i & 1) ? bMaxL.x : bMinL.x, (i & 2) ? bMaxL.y : bMinL.y, (i & 4) ? bMaxL.z : bMinL.z
+        );
+        corners[i] = glm::vec3(model * glm::vec4(c, 1.0f));
+    }
+    for (int p = 0; p < 6; p++) {
+        bool anyInside = false;
+        for (int i = 0; i < 8; i++) {
+            if (glm::dot(glm::vec3(planes[p]), corners[i]) + planes[p].w > 0.0f) {
+                anyInside = true;
+                break;
+            }
+        }
+        if (!anyInside) return false;
+    }
+    return true;
+}
 
 // ---- OpenGL upload ------------------------------------------------------------
 
@@ -71,18 +118,60 @@ void MicroVoxelPass::UnregisterVolume(VoxelVolumeComponent* v) {
     if (_uploadedVolume == v) _uploadedVolume = nullptr;// force re-upload of whatever renders next
 }
 
+// Upload an inclusive voxel sub-box of a dense R8UI grid into an existing 3D
+// texture. The source pointer is the full grid; GL's unpack skip/stride
+// parameters address the sub-box in place (supported on GL 4.1, GLES 3, and
+// WebGL2), so no staging copy is needed.
+static void MvUploadSubRegion3D(GLuint tex, const uint8_t* fullGrid, int fullDim, glm::ivec3 lo, glm::ivec3 hi) {
+    lo = glm::clamp(lo, glm::ivec3(0), glm::ivec3(fullDim - 1));
+    hi = glm::clamp(hi, glm::ivec3(0), glm::ivec3(fullDim - 1));
+    const glm::ivec3 size = hi - lo + 1;
+    if (size.x <= 0 || size.y <= 0 || size.z <= 0) return;
+
+    glBindTexture(GL_TEXTURE_3D, tex);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, fullDim);
+    glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, fullDim);
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, lo.x);
+    glPixelStorei(GL_UNPACK_SKIP_ROWS, lo.y);
+    glPixelStorei(GL_UNPACK_SKIP_IMAGES, lo.z);
+    glTexSubImage3D(
+        GL_TEXTURE_3D, 0, lo.x, lo.y, lo.z, size.x, size.y, size.z, GL_RED_INTEGER, GL_UNSIGNED_BYTE, fullGrid
+    );
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0);
+    glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+    glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+    glPixelStorei(GL_UNPACK_SKIP_IMAGES, 0);
+}
+
 void MicroVoxelPass::_uploadGL(VoxelVolumeComponent* v) {
     GLVolume& gv = _glVolumes[v];// creates the entry on first upload
     const auto N = static_cast<GLsizei>(v->gridDim);
     const auto BG = static_cast<GLsizei>(v->gridDim / v->brickDim);
 
-    if (gv.volumeTex == 0) {
+    const bool fresh = (gv.volumeTex == 0);
+    if (fresh) {
         glGenTextures(1, &gv.volumeTex);
         glGenTextures(1, &gv.occupancyTex);
         glGenTextures(1, &gv.paletteTex);
     }
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    if (!fresh && !v->fullDirty) {
+        // Runtime edit: upload only the recorded voxel sub-box (and the brick
+        // range it spans in the occupancy grid). A carve touches ~KBs instead
+        // of the full grid (16.8 MB at 256^3), and GI history stays valid —
+        // the GI pass's per-pixel distance check rejects stale samples where
+        // the surface actually moved.
+        if (v->HasDirtyRegion()) {
+            MvUploadSubRegion3D(gv.volumeTex, v->volume.data(), N, v->dirtyMin, v->dirtyMax);
+            MvUploadSubRegion3D(
+                gv.occupancyTex, v->occupancy.data(), BG, v->dirtyMin / v->brickDim, v->dirtyMax / v->brickDim
+            );
+        }
+        return;
+    }
 
     auto setupIntTexParams = [](GLenum target) {
         // Integer textures require NEAREST filtering
@@ -112,7 +201,8 @@ void MicroVoxelPass::_uploadGL(VoxelVolumeComponent* v) {
     glBindTexture(GL_TEXTURE_3D, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    // Volume changed: accumulated GI history no longer matches the geometry.
+    // Full re-generation: accumulated GI history no longer matches the
+    // geometry at all, so reset it. (Partial edits above keep history.)
     for (int i = 0; i < 2; i++) {
         if (_giFBOGL[i] != 0) {
             glBindFramebuffer(GL_FRAMEBUFFER, _giFBOGL[i]);
@@ -121,6 +211,39 @@ void MicroVoxelPass::_uploadGL(VoxelVolumeComponent* v) {
         }
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+// The volume bounding box mesh: a unit cube with consistent outward CCW
+// winding (the shared skybox cube is mixed-winding and can't be face-culled).
+// The pass draws it with front-face culling, so each covered pixel gets exactly
+// one fragment — from the box's far side — whether the camera is outside or
+// inside the volume.
+void MicroVoxelPass::_ensureCubeVAO() {
+    if (_cubeVAO != 0) return;
+    // clang-format off
+    static const float kCube[] = {
+        // -Z
+        -1,-1,-1,  -1, 1,-1,   1, 1,-1,   -1,-1,-1,   1, 1,-1,   1,-1,-1,
+        // +Z
+        -1,-1, 1,   1,-1, 1,   1, 1, 1,   -1,-1, 1,   1, 1, 1,  -1, 1, 1,
+        // -X
+        -1,-1,-1,  -1,-1, 1,  -1, 1, 1,   -1,-1,-1,  -1, 1, 1,  -1, 1,-1,
+        // +X
+         1,-1,-1,   1, 1,-1,   1, 1, 1,    1,-1,-1,   1, 1, 1,   1,-1, 1,
+        // -Y
+        -1,-1,-1,   1,-1,-1,   1,-1, 1,   -1,-1,-1,   1,-1, 1,  -1,-1, 1,
+        // +Y
+        -1, 1,-1,  -1, 1, 1,   1, 1, 1,   -1, 1,-1,   1, 1, 1,   1, 1,-1,
+    };
+    // clang-format on
+    glGenVertexArrays(1, &_cubeVAO);
+    glGenBuffers(1, &_cubeVBO);
+    glBindVertexArray(_cubeVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, _cubeVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(kCube), kCube, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+    glBindVertexArray(0);
 }
 
 // Creates/resizes the GI accumulation ping-pong targets, the shared normal
@@ -218,7 +341,34 @@ void MicroVoxelPass::_uploadGPU(VoxelVolumeComponent* v) {
     const auto N = static_cast<uint32_t>(v->gridDim);
     const auto BG = static_cast<uint32_t>(v->gridDim / v->brickDim);
 
-    // Recreate on every upload: sizes can change with gridDim, and WebGPU
+    // Partial path: the textures already hold this volume at this size, and
+    // only a sub-box changed (a carve). writeTexture with a dst origin and the
+    // full grid as a strided source uploads just that region.
+    if (_volumeTexGPU && _uploadedVolume == v && _gpuVolDim == N && !v->fullDirty && v->HasDirtyRegion()) {
+        auto writeSub = [this](WGPUTexture tex, const std::vector<uint8_t>& data, uint32_t dim, glm::ivec3 lo,
+                               glm::ivec3 hi) {
+            lo = glm::clamp(lo, glm::ivec3(0), glm::ivec3(static_cast<int>(dim) - 1));
+            hi = glm::clamp(hi, glm::ivec3(0), glm::ivec3(static_cast<int>(dim) - 1));
+            if (hi.x < lo.x || hi.y < lo.y || hi.z < lo.z) return;
+            WGPUTexelCopyTextureInfo dst{};
+            dst.texture = tex;
+            dst.aspect = WGPUTextureAspect_All;
+            dst.origin = { static_cast<uint32_t>(lo.x), static_cast<uint32_t>(lo.y), static_cast<uint32_t>(lo.z) };
+            WGPUTexelCopyBufferLayout layout{};
+            layout.offset = static_cast<uint64_t>(lo.z) * dim * dim + static_cast<uint64_t>(lo.y) * dim
+                            + static_cast<uint64_t>(lo.x);
+            layout.bytesPerRow = dim;// 1 byte per texel; source rows stride the full grid
+            layout.rowsPerImage = dim;
+            WGPUExtent3D extent{ static_cast<uint32_t>(hi.x - lo.x + 1), static_cast<uint32_t>(hi.y - lo.y + 1),
+                                 static_cast<uint32_t>(hi.z - lo.z + 1) };
+            wgpuQueueWriteTexture(_gpuQueue, &dst, data.data(), data.size(), &layout, &extent);
+        };
+        writeSub(_volumeTexGPU, v->volume, N, v->dirtyMin, v->dirtyMax);
+        writeSub(_occupancyTexGPU, v->occupancy, BG, v->dirtyMin / v->brickDim, v->dirtyMax / v->brickDim);
+        return;
+    }
+
+    // Recreate on full upload: sizes can change with gridDim, and WebGPU
     // textures are immutable in size/format.
     if (_texBG) {
         wgpuBindGroupRelease(_texBG);
@@ -260,6 +410,7 @@ void MicroVoxelPass::_uploadGPU(VoxelVolumeComponent* v) {
 
     _volumeTexGPU = make3D(N, v->volume.data());
     _occupancyTexGPU = make3D(BG, v->occupancy.data());
+    _gpuVolDim = N;
 
     {
         WGPUTextureDescriptor td{};
@@ -294,13 +445,20 @@ void MicroVoxelPass::_uploadGPU(VoxelVolumeComponent* v) {
 
 void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, CommandEncoder* enc) {
     if (_volumes.empty()) return;
-    VoxelVolumeComponent* vol = _volumes[0];// stage 1: render the first registered volume
-    if (vol->volume.empty()) return;
+    // Representative volume: palette source and the WebGPU single-volume
+    // target. First registered non-empty volume (the demo registers the big
+    // terrain first).
+    VoxelVolumeComponent* vol = nullptr;
+    for (auto* v : _volumes) {
+        if (!v->volume.empty()) {
+            vol = v;
+            break;
+        }
+    }
+    if (!vol) return;
 
-    // Representative grid config from the first volume; the GI subpass uses these
-    // as fallbacks, and the GL main loop reads per-volume values in its own loop.
-    // (gridDim / world origin are per-volume too and only the WebGPU single-volume
-    // path needs the primary's, so they're read inline there.)
+    // Representative grid config; the GI subpass uses these as fallbacks. The
+    // GL main loop reads per-volume values in its own loop.
     const int brickDim = vol->brickDim;
     const float voxelSize = vol->voxelSize;
 
@@ -329,12 +487,13 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
             if (!dev) return;
             _initGPU(dev, q, WGPUTextureFormat_RGBA16Float, static_cast<uint32_t>(renderer.sceneRT->GetNumSamples()));
         }
-        // WebGPU stays single-volume (renders _volumes[0]) for now.
+        // WebGPU stays single-volume (renders the representative volume) and
+        // translation-only for now.
         const int gridDim = vol->gridDim;
         const glm::vec3 volumeOrigin = vol->GetOrigin();
         if (vol->dirty || _uploadedVolume != vol) {
             _uploadGPU(vol);
-            vol->dirty = false;
+            vol->ClearDirty();
             _uploadedVolume = vol;
         }
         if (!_texBG) return;
@@ -390,20 +549,94 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     ShaderProgram* shader = AssetManager::Get().GetShader("microvoxel");
     if (!shader) return;
 
-    // Upload every registered volume's textures (lazy; re-upload on dirty).
+    // Upload every registered volume's textures (lazy; sub-region on edits,
+    // full on (re)generation).
     for (auto* v : _volumes) {
         if (v->volume.empty()) continue;
         if (v->dirty || _glVolumes.find(v) == _glVolumes.end()) {
             _uploadGL(v);
-            v->dirty = false;
+            v->ClearDirty();
         }
     }
-    const GLVolume& primaryTex = _glVolumes[vol];// vol == _volumes[0]; palette source
-    // Active (non-empty, uploaded) volumes the GI traces brute-force (nearest hit
-    // across all of them, so light bleeds between volumes).
-    std::vector<VoxelVolumeComponent*> giVolumes;
-    for (auto* av : _volumes)
-        if (!av->volume.empty() && _glVolumes.find(av) != _glVolumes.end()) giVolumes.push_back(av);
+
+    // Per-frame volume data: transforms, tight bounds, camera distance, and
+    // whether the transform changed since last frame (GI history rejection).
+    struct VolDraw {
+        VoxelVolumeComponent* v;
+        const GLVolume* gl;
+        glm::mat4 model;
+        glm::mat4 invModel;
+        glm::vec3 bMinL, bMaxL;// tight local-space bounds
+        float dist;
+        bool moved;
+    };
+    std::vector<VolDraw> draws;
+    draws.reserve(_volumes.size());
+    for (auto* v : _volumes) {
+        if (v->volume.empty() || !v->HasSolid()) continue;
+        auto it = _glVolumes.find(v);
+        if (it == _glVolumes.end()) continue;
+        VolDraw d;
+        d.v = v;
+        d.gl = &it->second;
+        d.model = v->GetModelMatrix();
+        d.invModel = glm::inverse(d.model);
+        d.bMinL = v->GetLocalBoundsMin();
+        d.bMaxL = v->GetLocalBoundsMax();
+        const glm::vec3 centerW = glm::vec3(d.model * glm::vec4(0.5f * (d.bMinL + d.bMaxL), 1.0f));
+        // Approximate distance to the volume's SURFACE (center minus half
+        // diagonal), so a big terrain whose center is far doesn't lose to small
+        // nearby props in the nearest-K sort.
+        d.dist = glm::max(0.0f, glm::length(centerW - cameraPos) - 0.5f * glm::length(d.bMaxL - d.bMinL));
+        d.moved = it->second.prevModelValid && (d.model != it->second.prevModel);
+        draws.push_back(d);
+    }
+
+    auto rollPrevModels = [this, &draws]() {
+        for (const auto& d : draws) {
+            GLVolume& gv = _glVolumes[d.v];
+            gv.prevModel = d.model;
+            gv.prevModelValid = true;
+        }
+    };
+
+    if (draws.empty()) {
+        rollPrevModels();
+        return;
+    }
+
+    const GLVolume& primaryTex = *(_glVolumes.find(vol) != _glVolumes.end() ? &_glVolumes[vol] : draws[0].gl);
+
+    // Nearest-K GI set: sorted by camera distance so the traced volumes are the
+    // ones dominating the view. No frustum culling here — off-screen volumes
+    // still bounce light into the frame.
+    std::vector<const VolDraw*> sortedByDist;
+    sortedByDist.reserve(draws.size());
+    for (const auto& d : draws)
+        sortedByDist.push_back(&d);
+    std::sort(sortedByDist.begin(), sortedByDist.end(), [](const VolDraw* a, const VolDraw* b) {
+        return a->dist < b->dist;
+    });
+
+    constexpr int kMaxGiVolumes = 4;// must match MAX_VOLUMES in microvoxel_gi.frag
+    std::vector<const VolDraw*> giSet;
+    if (giCrossVolume) {
+        for (const VolDraw* d : sortedByDist) {
+            giSet.push_back(d);
+            if (static_cast<int>(giSet.size()) >= kMaxGiVolumes) break;
+        }
+    } else {
+        // Primary volume only (old single-volume GI behavior).
+        const VolDraw* primary = nullptr;
+        for (const auto& d : draws)
+            if (d.v == vol) primary = &d;
+        giSet.push_back(primary ? primary : sortedByDist[0]);
+    }
+    auto inGiSet = [&giSet](const VoxelVolumeComponent* v) {
+        for (const VolDraw* d : giSet)
+            if (d->v == v) return true;
+        return false;
+    };
 
     auto [width, height] = Window::Get()->GetPhysicalSize();
 
@@ -452,25 +685,28 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         // Bind up to MAX_VOLUMES (matches the shader) volume/occupancy pairs on
         // units 0..7; every slot gets a valid texture (unused ones fall back to
         // the primary) for macOS sampler validation. u_volumeCount bounds the
-        // shader's dispatch: all volumes when cross-volume, else just the primary.
-        constexpr int kMaxGiVolumes = 4;// must match MAX_VOLUMES in microvoxel_gi.frag
-        const int giCount = giCrossVolume ? std::min(static_cast<int>(giVolumes.size()), kMaxGiVolumes) : 1;
+        // shader's dispatch to the nearest-K set selected above.
+        const int giCount = static_cast<int>(giSet.size());
         giShader->SetUniform(std::string("u_volumeCount"), giCount);
         const char* volNames[kMaxGiVolumes] = { "u_vol0", "u_vol1", "u_vol2", "u_vol3" };
         const char* occNames[kMaxGiVolumes] = { "u_occ0", "u_occ1", "u_occ2", "u_occ3" };
         for (int i = 0; i < kMaxGiVolumes; i++) {
-            VoxelVolumeComponent* av = (i < static_cast<int>(giVolumes.size())) ? giVolumes[i] : vol;
-            const GLVolume& gvol = _glVolumes[av];
+            const VolDraw* d = (i < giCount) ? giSet[i] : giSet[0];
             const std::string idx = "[" + std::to_string(i) + "]";
-            giShader->SetUniform(std::string("u_origins") + idx, av->GetOrigin());
-            giShader->SetUniform(std::string("u_voxelSizes") + idx, av->voxelSize);
-            giShader->SetUniform(std::string("u_gridDims") + idx, av->gridDim);
+            giShader->SetUniform(std::string("u_origins") + idx, d->v->GetLocalOrigin());
+            giShader->SetUniform(std::string("u_boundsMin") + idx, d->bMinL);
+            giShader->SetUniform(std::string("u_boundsMax") + idx, d->bMaxL);
+            giShader->SetUniform(std::string("u_models") + idx, d->model);
+            giShader->SetUniform(std::string("u_invModels") + idx, d->invModel);
+            giShader->SetUniform(std::string("u_moved") + idx, d->moved ? 1 : 0);
+            giShader->SetUniform(std::string("u_voxelSizes") + idx, d->v->voxelSize);
+            giShader->SetUniform(std::string("u_gridDims") + idx, d->v->gridDim);
             giShader->SetUniform(std::string(volNames[i]), i * 2);
             giShader->SetUniform(std::string(occNames[i]), i * 2 + 1);
             glActiveTexture(GL_TEXTURE0 + i * 2);
-            glBindTexture(GL_TEXTURE_3D, gvol.volumeTex);
+            glBindTexture(GL_TEXTURE_3D, d->gl->volumeTex);
             glActiveTexture(GL_TEXTURE0 + i * 2 + 1);
-            glBindTexture(GL_TEXTURE_3D, gvol.occupancyTex);
+            glBindTexture(GL_TEXTURE_3D, d->gl->occupancyTex);
         }
         giShader->SetUniform(std::string("u_palette"), 8);
         giShader->SetUniform(std::string("u_history"), 9);
@@ -529,10 +765,11 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     // against the rasterized scene, and hits write depth for later passes)
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLRenderTarget*>(renderer.sceneRT.get())->GetNativeFBOID());
 
-    // ── Main pass: one bounding box per volume, depth-composited ─────────────
+    // ── Main pass: one tight bounding box per volume, depth-composited ───────
     // Frame-global uniforms are set once; per-volume grid/transform/textures are
-    // set inside the loop. Each volume draws its world AABB (unit cube scaled by
-    // u_model); the shader writes gl_FragDepth so overlapping volumes and the
+    // set inside the loop. Volumes are frustum-culled and drawn near-to-far.
+    // Each volume draws its tight OBB (unit cube scaled by u_model = objModel *
+    // bounds); the shader writes gl_FragDepth so overlapping volumes and the
     // rasterized scene composite correctly.
     shader->Activate();
     shader->SetUniform(std::string("u_viewProj"), viewProj);
@@ -568,35 +805,50 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glDepthMask(GL_TRUE);
-    // Cull disabled so each box still covers its footprint when the camera is
-    // inside it (front faces would be clipped); the shader writes gl_FragDepth
-    // from the DDA hit, so the late depth test composites correctly regardless.
-    glDisable(GL_CULL_FACE);
+    // Front-face culling on a consistently-wound cube: exactly one fragment
+    // (the box's far side) per covered pixel, from outside AND from inside the
+    // volume — half the marched fragments of the old cull-disabled double-face
+    // draw. The shader writes gl_FragDepth from the DDA hit, so the late depth
+    // test composites correctly regardless.
+    _ensureCubeVAO();
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
     glDisable(GL_BLEND);// voxel fragments are opaque (alpha=1); don't inherit a blend state
 
-    for (auto* v : _volumes) {
-        if (v->volume.empty()) continue;
-        auto texIt = _glVolumes.find(v);
-        if (texIt == _glVolumes.end()) continue;
-        const GLVolume& gv = texIt->second;
+    // Frustum-cull, then draw near-to-far: with late-Z the ordering doesn't
+    // save shading, but nearer volumes land their depth first so farther
+    // fragments' writes are rejected instead of thrashing the depth buffer.
+    glm::vec4 frustum[6];
+    MvExtractFrustumPlanes(viewProj, frustum);
+    std::vector<const VolDraw*> visible;
+    visible.reserve(sortedByDist.size());
+    for (const VolDraw* d : sortedByDist) {
+        if (MvBoxVisible(frustum, d->model, d->bMinL, d->bMaxL)) visible.push_back(d);
+    }
 
-        const int vGrid = v->gridDim;
-        const float vVox = v->voxelSize;
-        const glm::vec3 vOrigin = v->GetOrigin();
-        const float boxExtent = static_cast<float>(vGrid) * vVox;
-        const glm::vec3 boxCenter = vOrigin + glm::vec3(boxExtent * 0.5f);
-        const glm::mat4 model =
-            glm::translate(glm::mat4(1.0f), boxCenter) * glm::scale(glm::mat4(1.0f), glm::vec3(boxExtent * 0.5f));
+    for (const VolDraw* d : visible) {
+        VoxelVolumeComponent* v = d->v;
+        const GLVolume& gv = *d->gl;
 
-        // Cross-volume GI traces the merged global grid, so its screen-space
-        // buffer is valid for every volume's pixels; single-volume GI is valid
-        // only for the primary, and others fall back to flat ambient.
-        const bool useGI = giActive && (giCrossVolume || v == vol);
+        // Tight box in local space -> world via the object's rigid transform.
+        const glm::vec3 centerL = 0.5f * (d->bMinL + d->bMaxL);
+        const glm::vec3 halfL = 0.5f * (d->bMaxL - d->bMinL);
+        const glm::mat4 boxModel =
+            d->model * glm::translate(glm::mat4(1.0f), centerL) * glm::scale(glm::mat4(1.0f), halfL);
 
-        shader->SetUniform(std::string("u_model"), model);
-        shader->SetUniform(std::string("u_volumeOrigin"), vOrigin);
-        shader->SetUniform(std::string("u_voxelSize"), vVox);
-        shader->SetUniform(std::string("u_gridDim"), vGrid);
+        // GI is valid only for pixels of volumes the GI pass traced; everything
+        // else falls back to flat ambient (the shader also checks per-sample
+        // validity, so overlaps degrade gracefully).
+        const bool useGI = giActive && inGiSet(v);
+
+        shader->SetUniform(std::string("u_model"), boxModel);
+        shader->SetUniform(std::string("u_objModel"), d->model);
+        shader->SetUniform(std::string("u_invObjModel"), d->invModel);
+        shader->SetUniform(std::string("u_volumeOrigin"), v->GetLocalOrigin());
+        shader->SetUniform(std::string("u_boundsMin"), d->bMinL);
+        shader->SetUniform(std::string("u_boundsMax"), d->bMaxL);
+        shader->SetUniform(std::string("u_voxelSize"), v->voxelSize);
+        shader->SetUniform(std::string("u_gridDim"), v->gridDim);
         shader->SetUniform(std::string("u_brickDim"), v->brickDim);
         shader->SetUniform(std::string("u_giStrength"), useGI ? giStrength : 0.0f);
 
@@ -617,13 +869,16 @@ void MicroVoxelPass::Execute(GraphicsSubsystem* ctx, Renderer& renderer, Command
         glActiveTexture(GL_TEXTURE4);
         glBindTexture(GL_TEXTURE_2D, (useGI && _giTexGL[_giCur]) ? _giTexGL[_giCur] : gv.paletteTex);
 
-        glBindVertexArray(renderer.gl.skyboxVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 36);// unit cube -> volume AABB via u_model
+        glBindVertexArray(_cubeVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 36);// unit cube -> tight volume OBB via u_model
         glBindVertexArray(0);
     }
 
+    glCullFace(GL_BACK);
+    glDisable(GL_CULL_FACE);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_3D, 0);
 
+    rollPrevModels();
     if (giActive) _giCur = 1 - _giCur;// ping-pong for the next frame
 }

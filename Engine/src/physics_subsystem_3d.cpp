@@ -6,7 +6,10 @@
 #include "physics_debug_drawer.hpp"
 #include "rigidbody_component.hpp"
 #include <BulletCollision/CollisionDispatch/btCollisionDispatcherMt.h>
+#include <BulletCollision/CollisionDispatch/btInternalEdgeUtility.h>
+#include <BulletCollision/CollisionDispatch/btManifoldResult.h>// gContactAddedCallback
 #include <BulletDynamics/ConstraintSolver/btSequentialImpulseConstraintSolverMt.h>
+#include <BulletDynamics/Dynamics/btDiscreteDynamicsWorldMt.h>// also declares btConstraintSolverPoolMt
 #include <algorithm>
 #include <spdlog/spdlog.h>
 
@@ -48,6 +51,28 @@ Physics3DSubsystem::~Physics3DSubsystem() {
     }
 }
 
+// Internal-edge correction for triangle-mesh colliders. A box resting across a
+// triangle soup generates contacts on the shared edges between triangles, and
+// the raw contact normal there points along the edge rather than out of the
+// surface — so bodies get shoved sideways or downwards, which reads as endless
+// jitter and, on a mesh (a shell, not a solid), as slowly sinking through it.
+// Bullet fixes this by snapping such normals back to the face normal, using the
+// triangle adjacency map built by btGenerateInternalEdgeInfo. Only bodies that
+// opt in with CF_CUSTOM_MATERIAL_CALLBACK reach this, so nothing else is
+// affected.
+static bool MvInternalEdgeContactCallback(
+    btManifoldPoint& cp, const btCollisionObjectWrapper* colObj0Wrap, int partId0, int index0,
+    const btCollisionObjectWrapper* colObj1Wrap, int partId1, int index1
+) {
+    // Whichever side is the triangle is the one to correct against.
+    if (colObj1Wrap->getCollisionShape()->getShapeType() == TRIANGLE_SHAPE_PROXYTYPE) {
+        btAdjustInternalEdgeContacts(cp, colObj1Wrap, colObj0Wrap, partId1, index1);
+    } else if (colObj0Wrap->getCollisionShape()->getShapeType() == TRIANGLE_SHAPE_PROXYTYPE) {
+        btAdjustInternalEdgeContacts(cp, colObj0Wrap, colObj1Wrap, partId0, index0);
+    }
+    return true;
+}
+
 void Physics3DSubsystem::Init(Application* app) {
     Subsystem::Init(app);
 
@@ -71,9 +96,40 @@ void Physics3DSubsystem::Init(Application* app) {
     // Use parallel solver
     _solver = std::make_unique<btSequentialImpulseConstraintSolverMt>();
 
+#ifdef BT_THREADSAFE
+    // Bullet's island-level parallelism lives in btDiscreteDynamicsWorldMt, not
+    // in the solver: it hands each simulation island to a solver taken from the
+    // pool (one per thread, mutex-guarded, so it never spin-waits as long as
+    // the pool is at least thread-count deep) and falls back to the single
+    // multi-threaded solver for islands large enough to be worth parallelising
+    // internally. The plain btDiscreteDynamicsWorld ignores all of that and
+    // solves islands serially, which left the Mt dispatcher and Mt solver above
+    // doing only half the job — exactly the part that costs most when many
+    // bodies pile up and merge into one big island.
+    const int solverCount = std::max(1, scheduler ? scheduler->getNumThreads() : 1);
+    _solverPool = std::make_unique<btConstraintSolverPoolMt>(solverCount);
+    _world = std::make_unique<btDiscreteDynamicsWorldMt>(
+        _dispatcher.get(), _broadphase.get(), _solverPool.get(), _solver.get(), _config.get()
+    );
+    spdlog::info("[Physics] Multithreaded world, {} pooled constraint solvers", solverCount);
+#else
     _world =
         std::make_unique<btDiscreteDynamicsWorld>(_dispatcher.get(), _broadphase.get(), _solver.get(), _config.get());
+    spdlog::info("[Physics] Single-threaded world (BT_THREADSAFE not defined)");
+#endif
     SetGravity(glm::vec3(0, -GRAVITY, 0));
+
+    gContactAddedCallback = MvInternalEdgeContactCallback;
+
+    // Bullet's solver defaults assume metre-scale bodies. Split impulse — the
+    // mechanism that pushes overlapping bodies apart WITHOUT feeding the energy
+    // back as bounce — only engages past m_splitImpulsePenetrationThreshold,
+    // and its default of -4 cm is deeper than a 5 cm voxel: at this scale a
+    // resting body's overlap never reaches it, so recovery goes through the
+    // normal impulse instead and the body visibly buzzes. Pull the threshold
+    // down to a fraction of a voxel.
+    btContactSolverInfo& solverInfo = _world->getSolverInfo();
+    solverInfo.m_splitImpulsePenetrationThreshold = -0.01f;
 
     _debugDrawer = std::make_unique<PhysicsDebugDrawer>();
     _world->setDebugDrawer(_debugDrawer.get());
@@ -86,10 +142,33 @@ void Physics3DSubsystem::Process(float dt) {
 #ifdef TRACY_ENABLE
     ZoneScopedN("Physics3DSubsystem::Process");
 #endif
-    _timeAccum += dt;
-    while (_timeAccum >= FIXED_TIME_STEP) {
-        _world->stepSimulation(FIXED_TIME_STEP, 0);
-        _timeAccum -= FIXED_TIME_STEP;
+    // Fixed-step catch-up, CAPPED. Without a cap this is the classic spiral of
+    // death: one slow frame (or a long blocking load — a big voxel collider
+    // build is seconds) leaves an accumulator needing more substeps than the
+    // next frame can afford, so that frame is slower still and the backlog
+    // grows without bound. Past the cap we drop the backlog and let simulated
+    // time slip behind wall time, which is the only stable choice.
+    constexpr int MAX_PHYSICS_STEPS_PER_FRAME = 4;
+    if (_paused) {
+        // Frozen: no accumulation (unpausing must not replay the pause), no
+        // stepping — unless a single step was requested, which runs exactly
+        // one fixed step and freezes again. Contact callbacks and the debug
+        // draw below still run, so the frozen state stays inspectable.
+        if (_stepOnce) {
+            _stepOnce = false;
+            _world->stepSimulation(FIXED_TIME_STEP, 0);
+        }
+    } else {
+        _timeAccum += dt;
+        int stepsThisFrame = 0;
+        while (_timeAccum >= FIXED_TIME_STEP && stepsThisFrame < MAX_PHYSICS_STEPS_PER_FRAME) {
+            _world->stepSimulation(FIXED_TIME_STEP, 0);
+            _timeAccum -= FIXED_TIME_STEP;
+            stepsThisFrame++;
+        }
+        if (_timeAccum > FIXED_TIME_STEP * MAX_PHYSICS_STEPS_PER_FRAME) {
+            _timeAccum = FIXED_TIME_STEP;
+        }
     }
 
     int numManifolds = _dispatcher->getNumManifolds();
@@ -133,6 +212,16 @@ void Physics3DSubsystem::DrawImGui(float dt) {
     }
 }
 
+void Physics3DSubsystem::SetPaused(bool paused) {
+    if (_paused == paused) return;
+    _paused = paused;
+    _stepOnce = false;
+    // Resume from the frozen state: the time that passed while paused is
+    // discarded, not owed.
+    if (!paused) _timeAccum = 0.0f;
+    spdlog::info("[Physics] {}", paused ? "paused (StepOnce advances one fixed step)" : "resumed");
+}
+
 void Physics3DSubsystem::Reset() {
     // Components are owned by their GameObjects (which unregister themselves
     // via OnDetach on destruction); here we only detach whatever is left from
@@ -151,6 +240,11 @@ void Physics3DSubsystem::AddRigidbody(RigidbodyComponent* impostor) {
 void Physics3DSubsystem::RemoveRigidbody(RigidbodyComponent* impostor) {
     _world->removeRigidBody(impostor->_rigidbody.get());
     _impostors.erase(std::remove(_impostors.begin(), _impostors.end(), impostor), _impostors.end());
+}
+
+void Physics3DSubsystem::RefreshAabb(RigidbodyComponent* impostor) {
+    if (impostor == nullptr || !_world) return;
+    _world->updateSingleAabb(impostor->_rigidbody.get());
 }
 
 ColliderID Physics3DSubsystem::CreateCollider(const Shape& shape) {

@@ -17,6 +17,14 @@ struct RigidbodyProps {
     btCollisionShape* shape = nullptr;
     bool useGravity = true;
     bool isKinematic = false;
+    // Centre of mass in the object's local frame. Bullet has no separate
+    // notion of one: a body's local origin IS its centre of mass, and the
+    // inertia tensor is taken about it. Colliders whose mass is not centred on
+    // the object pivot (a voxel volume's local origin is the grid's bottom
+    // centre) must build their shape about the real centroid and report it
+    // here; the motion state then carries the offset so the transform read
+    // back is still the object's own.
+    glm::vec3 centerOfMass = glm::vec3(0.0f);
 };
 
 class GameObject;
@@ -48,6 +56,31 @@ public:
 
     void WakeUp();
     void Sleep();
+
+    // Continuous collision detection. A body moving further than
+    // motionThreshold in one step is swept as a sphere of sweptSphereRadius
+    // instead of tested only at its end pose, which is what stops fast or
+    // heavy bodies from passing through thin static geometry (a triangle mesh
+    // is a surface, so once something is through it there is nothing left to
+    // push it back). Pass motionThreshold = 0 to disable.
+    void SetContinuousCollision(float motionThreshold, float sweptSphereRadius);
+
+    // Replace the collision shape in place, keeping the body itself — and so
+    // its velocity, its place in the world and its contacts. This is what a
+    // collider rebuilt from edited voxels needs: destroying and recreating the
+    // body instead would drop a prop's motion, so one carved mid-flight would
+    // freeze in mid-air.
+    //
+    // centerOfMass is where the new shape's mass sits in the object's local
+    // frame; carving moves it, and since Bullet positions a body BY its centre
+    // of mass, the pose is re-derived so the object does not jump. The caller
+    // must keep the OLD shape alive until this returns.
+    void SwapShape(btCollisionShape* shape, float mass, const glm::vec3& centerOfMass);
+
+    // Route this body's contacts through the global contact-added callback.
+    // Triangle-mesh colliders need it so internal-edge contact normals can be
+    // snapped back to the face normal; nothing else should turn it on.
+    void SetCustomMaterialCallback(bool enabled);
 
     void AddForce(const glm::vec3& force);
     void AddForceAtPosition(const glm::vec3& force, const glm::vec3& position);

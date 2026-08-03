@@ -1,24 +1,79 @@
 #include "Atmospheric.hpp"
 #include "Atmospheric/camera_controller_3d.hpp"
 #include "Atmospheric/light_component.hpp"
+#include "Atmospheric/physics_subsystem_3d.hpp"
+#include "Atmospheric/voxel_collider_component.hpp"
 #include "Atmospheric/voxel_volume_component.hpp"
 #include "Atmospheric/window.hpp"
+#include <algorithm>
+#include <cstring>
+#include <iterator>// std::size
+#include <fmt/format.h>
 #if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
 // SDL_main.h renames main() to SDL_main so SDLActivity/UIKit can invoke it.
 #include "Atmospheric/touch_controls_component.hpp"
 #include <SDL3/SDL_main.h>
 #endif
 
-// Micro voxel rendering demo: a raymarched 12.8m diorama of 5cm voxels
-// (procedural terrain + caves + ore + floating crystals), depth-composited
-// with the rasterized scene by MicroVoxelPass. Contrast with the VoxelWorld
-// example, which greedy-meshes 1m macro voxels into triangles — here no
-// triangles are generated at all; every pixel raymarches the volume with a
-// two-level DDA (brick skip + per-voxel walk).
+// Micro voxel rendering demo: a raymarched 12.8m terrain of 5cm voxels
+// (procedural terrain + caves + ore + water + floating crystals) plus ~20 small
+// per-object volumes (crates / boulders / crystal clusters, several rotated),
+// depth-composited with the rasterized scene by MicroVoxelPass. Contrast with
+// the VoxelWorld example, which greedy-meshes 1m macro voxels into triangles —
+// here no triangles are generated at all; every pixel raymarches a volume with
+// a two-level DDA (brick skip + per-voxel walk) in that volume's local space.
+//
+// The props are also physics bodies: VoxelColliderComponent derives a convex
+// hull from each prop's own voxels and a static triangle mesh from the
+// terrain's exposed faces, so they drop in, bounce and pile into each other.
+// Bullet writes each body's pose back to its object and the raymarch reads
+// that transform, so a tumbling crate renders tumbling.
+
+// Radius of one dig, in metres. At 5 cm voxels this is the difference between
+// carving progressively and taking a chunk out of the world per frame: the
+// terrain collider is voxel-exact, so the hole in physics is exactly this size.
+constexpr float kDigRadius = 0.25f;
+
+// The palette of props the B key spawns from, cycled in order: kind, grid
+// size, yaw, tilt (degrees — tilt exercises the full OBB path). Position is
+// wherever the camera is aimed at spawn time, so there are no authored
+// coordinates; spawning one at a time is also the load-testing knob that
+// replaced the old compile-time prop count — keep pressing B and watch the
+// frame time.
+struct PropDef {
+    VoxelVolumeKind kind;
+    int gridDim;
+    float yawDeg;
+    float tiltDeg;
+};
+constexpr PropDef kProps[] = {
+    { VoxelVolumeKind::Crate, 32, 15.0f, 0.0f },          { VoxelVolumeKind::Boulder, 48, 0.0f, 0.0f },
+    { VoxelVolumeKind::CrystalCluster, 24, 0.0f, 0.0f },  { VoxelVolumeKind::Crate, 32, 40.0f, 0.0f },
+    { VoxelVolumeKind::Boulder, 32, 30.0f, 0.0f },        { VoxelVolumeKind::CrystalCluster, 16, 45.0f, 0.0f },
+    { VoxelVolumeKind::Crate, 24, 70.0f, 8.0f },          { VoxelVolumeKind::Boulder, 32, 60.0f, 12.0f },
+    { VoxelVolumeKind::CrystalCluster, 24, 15.0f, 0.0f }, { VoxelVolumeKind::Crate, 24, 25.0f, 0.0f },
+    { VoxelVolumeKind::Boulder, 24, 90.0f, 0.0f },        { VoxelVolumeKind::CrystalCluster, 16, 75.0f, 0.0f },
+    { VoxelVolumeKind::Crate, 32, 55.0f, 0.0f },          { VoxelVolumeKind::Boulder, 48, 45.0f, 0.0f },
+    { VoxelVolumeKind::CrystalCluster, 24, 30.0f, -9.0f },{ VoxelVolumeKind::Crate, 24, 10.0f, -6.0f },
+    { VoxelVolumeKind::Boulder, 24, 20.0f, 0.0f },        { VoxelVolumeKind::CrystalCluster, 16, 60.0f, 0.0f },
+    { VoxelVolumeKind::Crate, 32, 80.0f, 0.0f },          { VoxelVolumeKind::Crate, 24, 35.0f, 0.0f },
+};
+
 class MicroVoxelApp : public Application {
     using Application::Application;
 
     std::vector<VoxelVolumeComponent*> _carveTargets;// volumes the E key / DIG button can dig into
+    // The terrain's collider is extracted on a worker, so for the first few
+    // frames there is no ground to land on. Props wait here until it lands,
+    // then get their colliders (and with them, their bodies) — otherwise they
+    // would spend that window falling through where the terrain is about to be.
+    VoxelColliderComponent* _terrainCollider = nullptr;
+    std::vector<GameObject*> _propsAwaitingCollider;
+    // Props whose collider reported them dug apart, removed at a safe point in
+    // the frame rather than from inside the tick that noticed.
+    std::vector<GameObject*> _propsToDestroy;
+    // Next entry of kProps the B key spawns.
+    size_t _nextPropIndex = 0;
 #if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
     TouchControlsComponent* _touchControls = nullptr;
 #endif
@@ -28,29 +83,54 @@ class MicroVoxelApp : public Application {
     }
 
     void OnLoad() override {
-        // Several independent voxel volumes, each attached to its own
-        // GameObject. Each grid is centred over its object in x/z and rises from
-        // y=0; MicroVoxelPass draws one bounding box per volume, so they
-        // depth-composite with each other. Different seeds give different
-        // terrain — proof the renderer handles many independent volumes.
-        // Three volumes sitting edge-to-edge along x; spacing is one grid
-        // width, derived from the component so it stays right whether gridDim
-        // is 256 (native, 12.8m) or 192 (web, 9.6m).
-        struct {
-            float xOffset;// in grid widths
-            uint32_t seed;
-            const char* name;
-        } kVolumes[] = {
-            { 0.0f, 1337u, "Volume.Center" },
-            { 1.0f, 7u, "Volume.Right" },
-            { -1.0f, 99u, "Volume.Left" },
-        };
-        for (const auto& vd : kVolumes) {
-            auto* volumeObj = CreateGameObject();
-            volumeObj->SetName(vd.name);
-            auto* vc = static_cast<VoxelVolumeComponent*>(volumeObj->AddComponent<VoxelVolumeComponent>(vd.seed));
-            volumeObj->SetPosition(glm::vec3(vd.xOffset * vc->WorldExtent(), 0.0f, 0.0f));
-            _carveTargets.push_back(vc);
+        // One big terrain volume plus a scatter of small per-object volumes
+        // (crates / boulders / crystal clusters, 16-48 voxels per edge — a few
+        // dozen KB each instead of terrain's megabytes). This is the
+        // right-sizing layout the physics stage builds on: every object has its
+        // own grid, its own transform (several are rotated to exercise the OBB
+        // raymarch), and MicroVoxelPass frustum-culls and draws each tight box
+        // depth-composited.
+        auto* terrainObj = CreateGameObject();
+        terrainObj->SetName("Volume.Terrain");
+        auto* terrain = static_cast<VoxelVolumeComponent*>(terrainObj->AddComponent<VoxelVolumeComponent>(1337u));
+        terrainObj->SetPosition(glm::vec3(0.0f));
+        _carveTargets.push_back(terrain);
+
+        // The terrain is a static collider: a triangle mesh of its exposed
+        // faces, voxel-exact so a dug hole in the collider matches the hole you
+        // see. Coarsening it (meshDownsample 2 or 4) is much cheaper — 241k
+        // triangles drop to 59k at 2 — but each carve then loses up to step-1
+        // voxels off every side of the hole, which at this dig size is most of
+        // it. Raise it if terrain narrowphase becomes the bottleneck; the cost
+        // tracks the triangle count.
+        //
+        // chunkVoxels splits the collider into 16^3 pieces (0.8 m each) so a
+        // dig re-meshes only what it touched instead of the whole volume, which
+        // is 235 ms and completely unaffordable per frame. Smaller chunks are
+        // what make voxel-exact affordable at all: at 16 a chunk re-meshes in
+        // 0.14 ms (1.07 ms worst case), at 32 it is 1.12 ms (5.13 ms worst) for
+        // the same total work, since each chunk holds four times the triangles.
+        // The cost is one body per non-empty chunk — 1009 rather than 181.
+        // No collider when physics is off (--no-physics): the component would
+        // early-out anyway, but skipping it entirely keeps _terrainCollider
+        // null, which is what gates the prop queue below.
+        if (Physics3DSubsystem::Get() != nullptr) {
+            _terrainCollider = new VoxelColliderComponent(
+                terrainObj, VoxelColliderProps{ .dynamic = false, .meshDownsample = 1, .chunkVoxels = 16 }
+            );
+            terrainObj->AddComponent(_terrainCollider);
+        }
+
+        // Props are spawned by the B key (see _spawnNextProp), one per press,
+        // instead of a fixed set at load: with physics on that is the
+        // incremental load test, with physics off the world just is not
+        // littered with hovering boxes.
+        if (auto* console = ConsoleSubsystem::Get()) {
+            console->Info(
+                Physics3DSubsystem::Get() != nullptr
+                    ? "E dig | B spawn prop at crosshair | P pause physics | N step once while paused"
+                    : "E dig | B place prop at crosshair (physics OFF: props are static decoration)"
+            );
         }
 
         // An angled warm sun. Without one the engine falls back to its default
@@ -113,16 +193,130 @@ class MicroVoxelApp : public Application {
         }
 
         ConsoleSubsystem::Get()->Info("MicroVoxel loaded. WASD move, RF up/down, Arrow keys look, Z slow, ESC quit.");
-        ConsoleSubsystem::Get()->Info("Three raymarched 5cm-voxel volumes — no triangles. Hold E to dig into them.");
+        ConsoleSubsystem::Get()->Info(
+            fmt::format(
+                "{} raymarched 5cm-voxel volumes (1 terrain + {} objects, several rotated) — no triangles. "
+                "Hold E to dig into any of them.",
+                _carveTargets.size(),
+                _carveTargets.size() - 1
+            )
+        );
+        ConsoleSubsystem::Get()->Info(
+            "Props are rigid bodies with voxel-derived hulls; they drop onto the terrain mesh collider "
+            "and collide with each other."
+        );
         ConsoleSubsystem::Get()->Info(
             "Debug: 0=final 1=albedo 2=normals 3=AO 4=shadow 5=GI 6=material | G/O/H/P/X/N/V toggle "
             "GI/AO/shadow/point light/reflections/denoiser/cross-volume | B = split raw|denoised."
         );
     }
 
+    // Spawn the next prop from kProps at the crosshair. With physics on it
+    // drops in from 3 m above the aimed point and gets a voxel collider
+    // (queued until the terrain is collidable); with physics off it is placed
+    // standing on the surface as static decoration — a volume's local origin
+    // is its base, so putting the object at the hit point rests it on the
+    // ground. This is also the path M3 fracture will use: fragments are
+    // runtime-spawned volumes with bodies, exactly what this exercises.
+    void _spawnNextProp() {
+        auto* console = ConsoleSubsystem::Get();
+        if (_nextPropIndex >= std::size(kProps)) {
+            if (console) console->Warn(fmt::format("All {} props spawned", std::size(kProps)));
+            return;
+        }
+        const bool physicsOn = Physics3DSubsystem::Get() != nullptr;
+
+        // Aim exactly like the dig: nearest voxel hit along the camera ray.
+        const glm::vec3 ro = mainCamera->GetEyePosition();
+        const glm::vec3 rd = mainCamera->GetEyeDirection();
+        float best = 1e9f;
+        glm::vec3 hitPos(0.0f);
+        for (auto* vc : _carveTargets) {
+            glm::vec3 hit;
+            if (vc->RaycastVoxel(ro, rd, 60.0f, hit)) {
+                const float d = glm::length(hit - ro);
+                if (d < best) {
+                    best = d;
+                    hitPos = hit;
+                }
+            }
+        }
+        glm::vec3 spawnPos;
+        if (best < 1e9f) {
+            spawnPos = physicsOn ? hitPos + glm::vec3(0.0f, 3.0f, 0.0f) : hitPos;
+        } else if (physicsOn) {
+            spawnPos = ro + rd * 4.0f;// aimed at the sky: drop it mid-air ahead
+        } else {
+            if (console) console->Warn("Aim at terrain to place a prop");
+            return;
+        }
+
+        const PropDef& od = kProps[_nextPropIndex];
+        auto* obj = CreateGameObject();
+        obj->SetName(fmt::format("Volume.Obj{}", _nextPropIndex));
+        obj->SetPosition(spawnPos);
+        obj->SetRotation(glm::vec3(glm::radians(od.tiltDeg), glm::radians(od.yawDeg), 0.0f));
+        auto* vc = static_cast<VoxelVolumeComponent*>(obj->AddComponent<VoxelVolumeComponent>(
+            1000u + static_cast<uint32_t>(_nextPropIndex) * 17u, od.gridDim, od.kind
+        ));
+        _carveTargets.push_back(vc);
+        if (physicsOn) {
+            // Collider (and body) attach once the terrain is collidable — the
+            // same queue the load-time spawn used; see the release loop below.
+            _propsAwaitingCollider.push_back(obj);
+        }
+        _nextPropIndex++;
+        if (console) {
+            console->Info(fmt::format(
+                "Prop {}/{} spawned ({} props live)", _nextPropIndex, std::size(kProps), _carveTargets.size() - 1
+            ));
+        }
+    }
+
     void OnUpdate(float /*dt*/, float /*time*/) override {
         auto* input = InputSubsystem::Get();
         if (input->IsKeyPressed(Key::ESCAPE)) Quit();
+
+        // B spawns the next prop at the crosshair; P freezes the simulation in
+        // place (bodies and contacts stay resident, stepping stops); N advances
+        // one fixed step while frozen — the tool for watching the solver
+        // resolve a pile one step at a time.
+        if (input->IsKeyPressed(Key::B)) _spawnNextProp();
+        if (auto* phys = Physics3DSubsystem::Get()) {
+            if (input->IsKeyPressed(Key::P)) phys->SetPaused(!phys->IsPaused());
+            if (input->IsKeyPressed(Key::N)) phys->StepOnce();
+        }
+
+        // Props dug past their destruction threshold, retired here rather than
+        // from inside the tick that noticed. Order matters: the collider goes
+        // first because tearing it down waits on any in-flight mesh job, and
+        // that job is reading the volume's voxels.
+        for (GameObject* obj : _propsToDestroy) {
+            if (auto* col = obj->GetComponent<VoxelColliderComponent>()) obj->RemoveComponent(col);
+            if (auto* rb = obj->GetComponent<RigidbodyComponent>()) obj->RemoveComponent(rb);
+            if (auto* vol = obj->GetComponent<VoxelVolumeComponent>()) {
+                _carveTargets.erase(
+                    std::remove(_carveTargets.begin(), _carveTargets.end(), vol), _carveTargets.end()
+                );
+                obj->RemoveComponent(vol);// unregisters it from the raymarch pass
+            }
+            obj->SetActive(false);
+        }
+        _propsToDestroy.clear();
+
+        // Release the props the frame the ground becomes collidable.
+        if (!_propsAwaitingCollider.empty() && _terrainCollider != nullptr && !_terrainCollider->IsBuilding()) {
+            for (GameObject* obj : _propsAwaitingCollider) {
+                auto* col = new VoxelColliderComponent(obj, VoxelColliderProps{ .dynamic = true });
+                // Dig a prop down past 40% of its voxels and it breaks apart.
+                // Queue the removal instead of doing it here: this fires from
+                // the object's own tick, so destroying it inline would pull the
+                // components out from under the loop walking them.
+                col->OnDestroyed = [this, obj](VoxelColliderComponent&) { _propsToDestroy.push_back(obj); };
+                obj->AddComponent(col);
+            }
+            _propsAwaitingCollider.clear();
+        }
 
         // Hold E (or the touch DIG button) to dig: raycast the camera's aim into
         // the volumes and carve a sphere of air at the first solid voxel. No
@@ -151,7 +345,22 @@ class MicroVoxelApp : public Application {
                     }
                 }
             }
-            if (target) target->CarveSphere(hitPos, 0.45f);
+            if (target) {
+                // A 25 cm bite: 265 voxels, leaving a 0.50 x 0.30 x 0.50 m hole
+                // in a voxel-exact collider. Small enough that holding the key
+                // digs progressively rather than in big jumps, and small enough
+                // that one carve touches only a couple of collider chunks.
+                target->CarveSphere(hitPos, kDigRadius);
+                // Tell the collider what changed, so the hole is something you
+                // can actually walk into rather than a purely visual one. The
+                // volume already tracks this exact box for its partial GPU
+                // upload; only the chunks it overlaps get re-meshed.
+                if (target->HasDirtyRegion()) {
+                    if (auto* col = target->gameObject->GetComponent<VoxelColliderComponent>()) {
+                        col->MarkDirtyRegion(target->dirtyMin, target->dirtyMax);
+                    }
+                }
+            }
         }
 
         // Debug hotkeys: 0-6 view individual shading terms in isolation,
@@ -249,8 +458,18 @@ static void StartGame() {
 }
 #else
 int main(int argc, char* argv[]) {
+    // --no-physics runs the demo with no Physics3DSubsystem at all: no bodies,
+    // no collider extraction (the components early-out), no stepping. Props
+    // placed with B become static decoration standing on the terrain. This is
+    // the rendering-only profile — digging still works, since carving is
+    // independent of physics.
+    bool physics = true;
+    for (int i = 1; i < argc; i++) {
+        if (std::strcmp(argv[i], "--no-physics") == 0) physics = false;
+    }
     MicroVoxelApp game(
         {
+            .enablePhysics3D = physics,
             .useDefaultTextures = true,
             .useDefaultShaders = true,
         }

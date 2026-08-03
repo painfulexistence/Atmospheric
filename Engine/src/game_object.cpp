@@ -49,20 +49,28 @@ void GameObject::RemoveComponent(Component* component) {
 //         return it->second;
 // }
 
+// Index loop, size re-read every iteration: an OnTick handler may AddComponent
+// on its own object (VoxelColliderComponent attaches a RigidbodyComponent once
+// its shape finishes extracting on a worker), which push_backs into this vector
+// — a range-for's cached iterators dangle when that push_back reallocates. This
+// mirrors what GameLayer::OnUpdate already does at the entity level. Components
+// appended mid-loop get their first tick this same frame; REMOVING a component
+// during the loop is still not safe (indices shift and the unique_ptr dies
+// under us), which is why Rebuild() defers its swap to the next tick.
 void GameObject::Tick(float dt) {
     if (!isActive) return;
-    for (const auto& component : _components) {
-        if (component->CanTick()) {
-            component->OnTick(dt);
+    for (size_t i = 0; i < _components.size(); ++i) {
+        if (_components[i]->CanTick()) {
+            _components[i]->OnTick(dt);
         }
     }
 }
 
 void GameObject::PhysicsTick(float dt) {
     if (!isActive) return;
-    for (const auto& component : _components) {
-        if (component->CanPhysicsTick()) {
-            component->OnPhysicsTick(dt);
+    for (size_t i = 0; i < _components.size(); ++i) {
+        if (_components[i]->CanPhysicsTick()) {
+            _components[i]->OnPhysicsTick(dt);
         }
     }
 }

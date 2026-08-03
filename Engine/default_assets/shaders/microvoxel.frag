@@ -10,10 +10,20 @@
 // Hits write gl_FragDepth so voxels depth-composite with the rasterized scene
 // (this pass runs after ForwardOpaque, before the sky fills remaining pixels).
 //
-// Storage (all CPU-built, uploaded once; edits re-upload affected regions):
+// The DDA runs in the volume's LOCAL space: the pixel's view ray is transformed
+// by u_invObjModel (a rigid transform — rotation + translation, unit scale — so
+// ray parameter t is a world distance too), marched against the axis-aligned
+// local grid, and the hit is transformed back for shading/depth. This is what
+// lets physics-driven volumes rotate freely while the DDA stays axis-aligned.
+//
+// The slab test uses u_boundsMin/u_boundsMax — the tight solid bounds from the
+// occupancy grid — rather than the full grid box, so rays skip the volume's
+// empty margins entirely (the rasterized box is shrunk to the same bounds).
+//
+// Storage (all CPU-built; edits re-upload affected regions):
 //   u_volume    usampler3D  R8UI, gridDim^3, per-voxel palette index (0 = air)
 //   u_occupancy usampler3D  R8UI, (gridDim/BRICK_DIM)^3, nonzero = brick solid
-//   u_palette   sampler2D   256x1 RGBA8, albedo per material index
+//   u_palette   sampler2D   256x2 RGBA8, albedo+emission / material params
 
 #ifdef GL_ES
 precision highp float;
@@ -31,13 +41,17 @@ uniform sampler2D  u_giTex;    // accumulated 1-bounce indirect (microvoxel_gi.f
 
 uniform mat4  u_viewProj;      // world -> clip (for depth output)
 uniform vec2  u_viewportSize;  // pixels, for screen-space GI lookup
-uniform vec3  u_cameraPos;
-uniform vec3  u_volumeOrigin;  // world-space min corner
+uniform vec3  u_cameraPos;     // world space
+uniform mat4  u_objModel;      // volume local -> world (rigid: rotation + translation)
+uniform mat4  u_invObjModel;   // world -> volume local
+uniform vec3  u_volumeOrigin;  // LOCAL-space min corner of the grid
+uniform vec3  u_boundsMin;     // LOCAL-space tight solid bounds (slab test)
+uniform vec3  u_boundsMax;
 uniform float u_voxelSize;     // world edge length of one voxel
 uniform int   u_gridDim;       // voxels per volume edge (cubic)
 uniform int   u_brickDim;      // voxels per brick edge (8)
 uniform int   u_maxRaySteps;   // cap on coarse DDA iterations
-uniform vec3  u_sunDir;        // normalized, toward the sun
+uniform vec3  u_sunDir;        // world space, normalized, toward the sun
 uniform vec3  u_sunColor;
 uniform float u_sunIntensity;
 uniform float u_ambient;
@@ -63,9 +77,32 @@ out vec4 fragColor;
 const float PI = 3.1415927;
 
 // Sky hemisphere gradient (matches the GI pass), used for ambient and as the
-// reflection ray's miss color.
+// reflection ray's miss color. Takes a WORLD-space direction.
 vec3 skyRadiance(vec3 dir) {
     return mix(vec3(0.20, 0.22, 0.28), vec3(0.45, 0.55, 0.75), dir.y * 0.5 + 0.5);
+}
+
+// Interleaved gradient noise — a stable per-pixel [0,1) used by the glossy
+// jitter. A fixed dither pattern (no temporal accumulation on this pass) reads
+// better than white noise.
+float ign(vec2 px) {
+    return fract(52.9829189 * fract(0.06711056 * px.x + 0.00583715 * px.y));
+}
+
+// Glossy jitter: tilt `dir` inside a roughness^2-scaled cone (the palette byte
+// row 1 always reserved for this). Clamped back above the surface so a
+// jittered reflection never dives through its own face.
+vec3 glossyDir(vec3 dir, vec3 faceN, float roughness, vec2 px) {
+    if (roughness < 0.02) return dir;
+    float u1 = ign(px) - 0.5;
+    float u2 = ign(px + vec2(17.0, 31.0)) - 0.5;
+    vec3 t1 = normalize(cross(dir, abs(dir.y) < 0.98 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+    vec3 t2 = cross(dir, t1);
+    float cone = roughness * roughness * 0.6;
+    vec3 j = normalize(dir + (t1 * u1 + t2 * u2) * cone);
+    float below = dot(j, faceN);
+    if (below < 0.02) j = normalize(j + faceN * (0.02 - below));
+    return j;
 }
 
 // Per-voxel value hash for subtle albedo variation (keeps micro voxels legible).
@@ -77,7 +114,7 @@ float voxelHash(ivec3 c) {
 
 struct Hit {
     float t;
-    vec3  normal;
+    vec3  normal;   // LOCAL-space axis-aligned face normal
     uint  material;
     bool  hit;
 };
@@ -85,7 +122,7 @@ struct Hit {
 // ── Minecraft-style per-pixel corner AO ─────────────────────────────────────
 // Darkens hit points near solid neighbors of the hit face: the classic trick
 // that makes micro voxel scenes read as detailed. 8 extra texel fetches, only
-// on primary hits.
+// on primary hits. All in local/voxel space.
 
 float voxelSolidAt(ivec3 c) {
     if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(u_gridDim)))) return 0.0;
@@ -97,7 +134,7 @@ float cornerAO(float side1, float side2, float corner) {
     return 1.0 - (side1 + side2 + corner) / 3.0;
 }
 
-float faceAO(ivec3 cell, vec3 normal, vec3 hitPos) {
+float faceAO(ivec3 cell, vec3 normal, vec3 hitPosLocal) {
     ivec3 n = ivec3(round(normal));
     ivec3 outside = cell + n;
     // The two axes spanning the hit face
@@ -105,7 +142,7 @@ float faceAO(ivec3 cell, vec3 normal, vec3 hitPos) {
     ivec3 t2 = (n.z != 0) ? ivec3(0, 1, 0) : ivec3(0, 0, 1);
 
     // Fractional position within the face
-    vec3 f = (hitPos - u_volumeOrigin) / u_voxelSize - vec3(cell);
+    vec3 f = (hitPosLocal - u_volumeOrigin) / u_voxelSize - vec3(cell);
     float u = clamp(dot(f, vec3(t1)), 0.0, 1.0);
     float v = clamp(dot(f, vec3(t2)), 0.0, 1.0);
 
@@ -166,17 +203,17 @@ Hit traverseBrick(vec3 ro, vec3 rd, vec3 invDir, float tStart, ivec3 brickCell, 
     return r;
 }
 
-// Coarse DDA over bricks; descends into occupied bricks.
-Hit raycast(vec3 ro, vec3 rd) {
+// Coarse DDA over bricks; descends into occupied bricks. Takes a LOCAL-space
+// ray. The slab test clips against the tight solid bounds; brick cell indexing
+// stays relative to the full grid origin.
+Hit raycastLocal(vec3 ro, vec3 rd) {
     Hit r;
     r.hit = false; r.t = 0.0; r.normal = vec3(0.0); r.material = 0u;
 
     vec3 invDir = mix(vec3(1e30), 1.0 / rd, notEqual(rd, vec3(0.0)));
-    vec3 bmin = u_volumeOrigin;
-    vec3 bmax = bmin + vec3(float(u_gridDim)) * u_voxelSize;
 
-    vec3 tA = (bmin - ro) * invDir;
-    vec3 tB = (bmax - ro) * invDir;
+    vec3 tA = (u_boundsMin - ro) * invDir;
+    vec3 tB = (u_boundsMax - ro) * invDir;
     vec3 tNear = min(tA, tB);
     vec3 tFar  = max(tA, tB);
     float tEnter = max(max(tNear.x, tNear.y), tNear.z);
@@ -202,12 +239,12 @@ Hit raycast(vec3 ro, vec3 rd) {
     float t = max(tEnter, 0.0);
     float eps = u_voxelSize * 1e-3;
     vec3 p = ro + rd * (t + eps);
-    ivec3 cell = clamp(ivec3(floor((p - bmin) / brickSize)), ivec3(0), brickGrid - 1);
+    ivec3 cell = clamp(ivec3(floor((p - u_volumeOrigin) / brickSize)), ivec3(0), brickGrid - 1);
 
     ivec3 stepDir = ivec3(sign(rd));
     vec3 tDelta = abs(vec3(brickSize) * invDir);
     vec3 stepPos = vec3(greaterThan(rd, vec3(0.0)));
-    vec3 boundary = bmin + (vec3(cell) + stepPos) * brickSize;
+    vec3 boundary = u_volumeOrigin + (vec3(cell) + stepPos) * brickSize;
     vec3 tMax = mix(vec3(1e30), (boundary - ro) * invDir, notEqual(rd, vec3(0.0)));
 
     vec3 normal = enterNormal;
@@ -235,21 +272,122 @@ Hit raycast(vec3 ro, vec3 rd) {
     return r;
 }
 
+// World-space ray -> local DDA. t is preserved by the rigid transform, so
+// callers can keep reasoning in world distances.
+Hit raycastWorld(vec3 roWorld, vec3 rdWorld) {
+    vec3 ro = (u_invObjModel * vec4(roWorld, 1.0)).xyz;
+    vec3 rd = normalize(mat3(u_invObjModel) * rdWorld);
+    return raycastLocal(ro, rd);
+}
+
+// ── Secondary-ray helpers (LOCAL space) ─────────────────────────────────────
+// Reflection and transmission march the same axis-aligned grid the primary DDA
+// does, so they take LOCAL positions/directions. That is exact for a rigid
+// transform (dot products and refraction are rotation-invariant), and it is
+// required for transmitRadiance, which indexes voxel cells directly. Only the
+// lighting terms leave local space: hit normals and miss directions are rotated
+// back to world, because the sun and sky gradient are world-space.
+
+// Radiance along a secondary ray (reflection or the scene behind glass):
+// opaque hit shaded with the same cheap sun + sky + emission the reflection
+// path always used; miss returns sky. One bounce only.
+vec3 secondaryRadiance(vec3 roL, vec3 rdL) {
+    Hit rh = raycastLocal(roL, rdL);
+    if (rh.hit) {
+        vec4 rpal = texelFetch(u_palette, ivec2(int(rh.material), 0), 0);
+        vec3 rnW = normalize(mat3(u_objModel) * rh.normal);
+        float rndl = max(dot(rnW, normalize(u_sunDir)), 0.0);
+        return rpal.rgb * (u_sunColor * u_sunIntensity * (1.0 / PI) * rndl + skyRadiance(rnW) * u_ambient)
+             + rpal.rgb * rpal.a * u_emissiveStrength;
+    }
+    return skyRadiance(normalize(mat3(u_objModel) * rdL));
+}
+
+// Transmission byte (palette row 1 .b) of a cell's material; -1 for air.
+float voxelTransmission(ivec3 cell) {
+    if (any(lessThan(cell, ivec3(0))) || any(greaterThanEqual(cell, ivec3(u_gridDim)))) return -1.0;
+    uint mat = texelFetch(u_volume, cell, 0).r;
+    if (mat == 0u) return -1.0;
+    return texelFetch(u_palette, ivec2(int(mat), 1), 0).b;
+}
+
+// The BTDF: march THROUGH the transmissive medium voxel-by-voxel from the
+// entry hit, accumulating the in-glass path length for Beer-Lambert, then bend
+// out at the first glass->air face (total internal reflection continues
+// straight — the one-bounce approximation) and gather the scene behind with
+// the normal DDA. An opaque voxel inside the medium terminates the march and
+// is shaded directly. `mediumAlbedo` tints the absorption.
+vec3 transmitRadiance(vec3 entryPosL, vec3 tdir, float ior, vec3 mediumAlbedo) {
+    const int MAX_GLASS_STEPS = 128;
+    const float BEER_K = 3.0;  // absorption strength per meter
+
+    vec3 local = entryPosL - u_volumeOrigin;  // grid-relative meters
+    vec3 p = local + tdir * (u_voxelSize * 1e-3);
+    ivec3 cell = ivec3(floor(p / u_voxelSize));
+    ivec3 stepDir = ivec3(sign(tdir));
+    vec3 invD = 1.0 / tdir;
+    vec3 tDelta = abs(vec3(u_voxelSize) * invD);
+    vec3 stepPos = vec3(greaterThan(tdir, vec3(0.0)));
+    vec3 tMax = ((vec3(cell) + stepPos) * u_voxelSize - local) * invD;
+    float t = 0.0;
+    vec3 exitN = vec3(0.0);
+
+    for (int i = 0; i < MAX_GLASS_STEPS; i++) {
+        if (tMax.x < tMax.y && tMax.x < tMax.z) {
+            t = tMax.x; tMax.x += tDelta.x; cell.x += stepDir.x;
+            exitN = vec3(-float(stepDir.x), 0.0, 0.0);
+        } else if (tMax.y < tMax.z) {
+            t = tMax.y; tMax.y += tDelta.y; cell.y += stepDir.y;
+            exitN = vec3(0.0, -float(stepDir.y), 0.0);
+        } else {
+            t = tMax.z; tMax.z += tDelta.z; cell.z += stepDir.z;
+            exitN = vec3(0.0, 0.0, -float(stepDir.z));
+        }
+        float trans = voxelTransmission(cell);
+        if (trans > 0.001) continue;  // still inside the medium (stacked glass blends)
+
+        vec3 beer = exp(-(vec3(1.0) - mediumAlbedo) * BEER_K * t);
+        bool inBounds = all(greaterThanEqual(cell, ivec3(0))) && all(lessThan(cell, ivec3(u_gridDim)));
+        uint mat = inBounds ? texelFetch(u_volume, cell, 0).r : 0u;
+        if (mat != 0u) {
+            // Opaque voxel embedded in / behind the glass: shade it at this face.
+            vec4 mpal = texelFetch(u_palette, ivec2(int(mat), 0), 0);
+            vec3 exitNW = normalize(mat3(u_objModel) * exitN);
+            float mndl = max(dot(exitNW, normalize(u_sunDir)), 0.0);
+            vec3 lit = mpal.rgb * (u_sunColor * u_sunIntensity * (1.0 / PI) * mndl + skyRadiance(exitNW) * u_ambient)
+                     + mpal.rgb * mpal.a * u_emissiveStrength;
+            return lit * beer;
+        }
+        // Glass -> air: bend out (eta = ior). TIR keeps the direction — the
+        // cheap approximation instead of bouncing back into the medium.
+        vec3 outDir = refract(tdir, exitN, ior);
+        if (dot(outDir, outDir) < 1e-6) outDir = tdir;
+        vec3 exitPos = entryPosL + tdir * t;
+        return secondaryRadiance(exitPos + outDir * (u_voxelSize * 0.51), outDir) * beer;
+    }
+    return skyRadiance(normalize(mat3(u_objModel) * tdir)) * exp(-(vec3(1.0) - mediumAlbedo) * BEER_K * t);
+}
+
 void main() {
     // The bounding box was rasterized, so the view ray for this pixel goes from
     // the camera through this box-surface fragment. Screen uv (for the
     // screen-space GI texture) comes from the window-space fragment coordinate.
     vec2 v_uv = gl_FragCoord.xy / u_viewportSize;
-    vec3 ro = u_cameraPos;
-    vec3 rd = normalize(v_worldPos - ro);
+    vec3 roW = u_cameraPos;
+    vec3 rdW = normalize(v_worldPos - roW);
 
-    Hit h = raycast(ro, rd);
+    // March in local space (t doubles as world distance — rigid transform).
+    vec3 roL = (u_invObjModel * vec4(roW, 1.0)).xyz;
+    vec3 rdL = normalize(mat3(u_invObjModel) * rdW);
+    Hit h = raycastLocal(roL, rdL);
     if (!h.hit) {
         discard;
     }
 
-    vec3 hitPos = ro + rd * h.t;
-    ivec3 cell = clamp(ivec3(floor((hitPos + rd * u_voxelSize * 0.01 - u_volumeOrigin) / u_voxelSize)),
+    vec3 hitPosL = roL + rdL * h.t;
+    vec3 hitPosW = (u_objModel * vec4(hitPosL, 1.0)).xyz;
+    vec3 nW = normalize(mat3(u_objModel) * h.normal);// world normal for shading
+    ivec3 cell = clamp(ivec3(floor((hitPosL + rdL * u_voxelSize * 0.01 - u_volumeOrigin) / u_voxelSize)),
                        ivec3(0), ivec3(u_gridDim - 1));
 
     vec4 pal = texelFetch(u_palette, ivec2(int(h.material), 0), 0);
@@ -258,32 +396,35 @@ void main() {
     albedo *= 0.85 + 0.3 * voxelHash(cell);
 
     vec3 L = normalize(u_sunDir);
-    float ndl = max(dot(h.normal, L), 0.0);
+    float ndl = max(dot(nW, L), 0.0);
 
     float shadow = 1.0;
     if (u_shadowEnabled != 0 && ndl > 0.0) {
-        vec3 so = hitPos + h.normal * u_voxelSize * 0.51;
-        Hit sh = raycast(so, L);
+        vec3 so = hitPosW + nW * u_voxelSize * 0.51;
+        Hit sh = raycastWorld(so, L);
         if (sh.hit) shadow = 0.0;
     }
 
     float ao = 1.0;
     if (u_aoStrength > 0.0) {
-        ao = mix(1.0, faceAO(cell, h.normal, hitPos), u_aoStrength);
+        ao = mix(1.0, faceAO(cell, h.normal, hitPosL), u_aoStrength);
     }
 
     // Indirect light: traced 1-bounce GI when enabled (sky light + bounce,
     // so occlusion and color bleeding emerge naturally), else flat ambient.
+    // The GI buffer only covers the nearest-K volumes the GI pass traced, so
+    // fall back to flat ambient where the sample is invalid (alpha 0 = the GI
+    // ray missed / this pixel's volume wasn't in the traced set).
+    vec3 skyAmbient = skyRadiance(nW);
     vec3 indirect;
     if (u_giStrength > 0.0) {
         // Split-screen compare: left half samples the raw (un-denoised) GI,
         // right half the denoised GI, so the à-trous effect is visible in one
         // frame. u_giSplitX < 0 disables it (always denoised).
-        vec3 gi = (u_giSplitX >= 0.0 && v_uv.x < u_giSplitX) ? texture(u_giRaw, v_uv).rgb
-                                                             : texture(u_giTex, v_uv).rgb;
-        indirect = gi * u_giStrength;
+        vec4 gi = (u_giSplitX >= 0.0 && v_uv.x < u_giSplitX) ? texture(u_giRaw, v_uv)
+                                                             : texture(u_giTex, v_uv);
+        indirect = (gi.a > 0.0) ? gi.rgb * u_giStrength : skyAmbient * u_ambient;
     } else {
-        vec3 skyAmbient = mix(vec3(0.20, 0.22, 0.28), vec3(0.45, 0.55, 0.75), h.normal.y * 0.5 + 0.5);
         indirect = skyAmbient * u_ambient;
     }
 
@@ -292,18 +433,18 @@ void main() {
     vec3 pointLight = vec3(0.0);
     for (int i = 0; i < MAX_POINT_LIGHTS; i++) {
         if (i >= u_pointLightCount) break;
-        vec3 d = u_pointLightPos[i] - hitPos;
+        vec3 d = u_pointLightPos[i] - hitPosW;
         float dist = length(d);
         float radius = u_pointLightRadius[i];
         if (dist >= radius) continue;
         vec3 Lp = d / max(dist, 1e-4);
-        float pndl = max(dot(h.normal, Lp), 0.0);
+        float pndl = max(dot(nW, Lp), 0.0);
         if (pndl <= 0.0) continue;
         float a = 1.0 - dist / radius;
         float atten = a * a;    // smooth falloff, exactly 0 at the radius
         float psh = 1.0;
         if (u_shadowEnabled != 0) {
-            Hit sh = raycast(hitPos + h.normal * u_voxelSize * 0.51, Lp);
+            Hit sh = raycastWorld(hitPosW + nW * u_voxelSize * 0.51, Lp);
             if (sh.hit && sh.t < dist) psh = 0.0;
         }
         pointLight += u_pointLightColor[i] * (1.0 / PI) * pndl * atten * psh;
@@ -311,38 +452,57 @@ void main() {
 
     vec3 direct = u_sunColor * u_sunIntensity * (1.0 / PI) * ndl * shadow;
     // AO fully attenuates indirect; a stylized 30% also darkens direct so
-    // corners stay readable in full sun (Teardown-ish look). Emission is
-    // self-lit, added after AO so glowing voxels stay bright in their crevices.
-    vec3 emissive = albedo * emission * u_emissiveStrength;
-    vec3 color = albedo * (direct * (0.7 + 0.3 * ao) + indirect * ao + pointLight * ao) + emissive;
+    // corners stay readable in full sun (Teardown-ish look).
+    vec3 color = albedo * (direct * (0.7 + 0.3 * ao) + indirect * ao + pointLight * ao);
 
-    // ── Per-material mirror reflections ─────────────────────────────────────
-    // Reflective materials (crystal/ore/snow; palette row 1) cast one extra
-    // reflection ray through the same DDA and blend the reflected radiance in
-    // by a Schlick Fresnel term (F0 = reflectivity), so grazing angles read as
-    // near-mirror. The reflected sample is cheaply shaded (sun + sky ambient +
-    // emission) — enough to mirror the glowing orbs, terrain, and sky.
-    float reflectivity = texelFetch(u_palette, ivec2(int(h.material), 1), 0).r;
-    if (u_reflectionsEnabled != 0 && reflectivity > 0.0) {
-        vec3 rdir = reflect(rd, h.normal);
-        vec3 rorig = hitPos + h.normal * u_voxelSize * 0.51;
-        Hit rh = raycast(rorig, rdir);
-        vec3 refl;
-        if (rh.hit) {
-            vec4 rpal = texelFetch(u_palette, ivec2(int(rh.material), 0), 0);
-            float rndl = max(dot(rh.normal, L), 0.0);
-            refl = rpal.rgb * (u_sunColor * u_sunIntensity * (1.0 / PI) * rndl + skyRadiance(rh.normal) * u_ambient)
-                 + rpal.rgb * rpal.a * u_emissiveStrength;
+    // ── Secondary rays: glossy reflection + dielectric transmission ─────────
+    // Palette row 1 = reflectivity.r, roughness.g, transmission.b, ior.a
+    // (ior decodes to 1.0 + a, so 1.0..2.0). Reflective materials cast one
+    // roughness-jittered reflection ray; transmissive materials (water/glass)
+    // run the full BTDF — Fresnel from the IOR splits the energy into that
+    // reflection and a refraction ray that marches through the medium with
+    // Beer-Lambert absorption, bends out at the far face, and gathers the
+    // scene behind (see transmitRadiance).
+    //
+    // All of this runs in LOCAL space (rdL / h.normal / hitPosL): the rigid
+    // transform preserves the dot products and refraction here, and the voxel
+    // march inside transmitRadiance needs grid coordinates anyway. The helpers
+    // rotate normals back to world for lighting.
+    vec4 mparams = texelFetch(u_palette, ivec2(int(h.material), 1), 0);
+    float reflectivity = mparams.r;
+    float roughness = mparams.g;
+    float transmission = mparams.b;
+    float ior = 1.0 + mparams.a;
+    if (u_reflectionsEnabled != 0 && (transmission > 0.001 || reflectivity > 0.0)) {
+        float cosI = max(dot(-rdL, h.normal), 0.0);
+        vec3 rdir = glossyDir(reflect(rdL, h.normal), h.normal, roughness, gl_FragCoord.xy);
+        vec3 refl = secondaryRadiance(hitPosL + h.normal * u_voxelSize * 0.51, rdir);
+        if (transmission > 0.001) {
+            float f0 = (ior - 1.0) / (ior + 1.0);
+            f0 *= f0;
+            float F = f0 + (1.0 - f0) * pow(1.0 - cosI, 5.0);
+            vec3 tdir = refract(rdL, h.normal, 1.0 / ior);
+            vec3 trans;
+            if (dot(tdir, tdir) < 1e-6) {
+                trans = refl;  // grazing entry TIR: everything reflects
+            } else {
+                tdir = glossyDir(tdir, -h.normal, roughness, gl_FragCoord.xy + vec2(7.0, 13.0));  // frosted
+                trans = transmitRadiance(hitPosL, tdir, ior, pal.rgb);
+            }
+            vec3 glass = F * refl + (1.0 - F) * trans;
+            color = mix(color, glass, transmission);
         } else {
-            refl = skyRadiance(rdir);
+            float fres = reflectivity + (1.0 - reflectivity) * pow(1.0 - cosI, 5.0);
+            color = mix(color, refl, clamp(fres, 0.0, 1.0));
         }
-        float fres = reflectivity + (1.0 - reflectivity) * pow(1.0 - max(dot(-rd, h.normal), 0.0), 5.0);
-        color = mix(color, refl, clamp(fres, 0.0, 1.0));
     }
+    // Emission after the secondary mix: an emissive surface glows regardless
+    // of how reflective/transmissive it is (the crystal keeps its inner light).
+    color += albedo * emission * u_emissiveStrength;
 
     // Debug visualization of individual terms (keys in the MicroVoxel example)
     if (u_debugMode == 1) color = albedo;
-    else if (u_debugMode == 2) color = h.normal * 0.5 + 0.5;
+    else if (u_debugMode == 2) color = nW * 0.5 + 0.5;
     else if (u_debugMode == 3) color = vec3(ao);
     else if (u_debugMode == 4) color = vec3(shadow);
     else if (u_debugMode == 5)
@@ -356,7 +516,7 @@ void main() {
     // tonemap pass decodes with pow(2.2) first.
     fragColor = vec4(pow(max(color, vec3(0.0)), vec3(1.0 / 2.2)), 1.0);
 
-    vec4 clip = u_viewProj * vec4(hitPos, 1.0);
+    vec4 clip = u_viewProj * vec4(hitPosW, 1.0);
     float ndcDepth = clip.z / clip.w;           // GL clip space: -1..1
     gl_FragDepth = clamp(ndcDepth * 0.5 + 0.5, 0.0, 0.999999);
 }

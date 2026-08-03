@@ -9,7 +9,9 @@ void BindPhysicsAPI(sol::state& lua, LuaApplication* app) {
     // ===== Raycast =====
     physics["raycast"] = [&lua](const glm::vec3& from, const glm::vec3& to) -> sol::object {
         RaycastHit hit;
-        if (Physics3DSubsystem::Get()->Raycast(from, to, hit)) {
+        // Get() is null when the app runs with enablePhysics3D off; a script
+        // raycast then simply misses instead of crashing the VM.
+        if (Physics3DSubsystem::Get() && Physics3DSubsystem::Get()->Raycast(from, to, hit)) {
             sol::table result = lua.create_table();
             result["point"] = hit.point;
             result["normal"] = hit.normal;
@@ -20,9 +22,12 @@ void BindPhysicsAPI(sol::state& lua, LuaApplication* app) {
         return sol::lua_nil;
     };
 
-    // Set global gravity — bind the member pointer directly so the signature
-    // auto-tracks the C++ API (see bindings/README.md).
-    physics.set_function("setGravity", &Physics3DSubsystem::SetGravity, Physics3DSubsystem::Get());
+    // Set global gravity. A lambda rather than the bound member pointer: the
+    // subsystem may not exist (enablePhysics3D off), and sol2 would happily
+    // call the member on the null instance captured at bind time.
+    physics.set_function("setGravity", [](const glm::vec3& acc) {
+        if (auto* phys = Physics3DSubsystem::Get()) phys->SetGravity(acc);
+    });
 
     // ===== RigidbodyComponent usertype =====
     lua.new_usertype<RigidbodyComponent>(
