@@ -181,49 +181,51 @@
   </div>
   <p class="showcase-caption">// <b>10&nbsp;km² streaming terrain</b> — tiled ring LOD, shader-based dynamic tessellation</p>
 
-  <!-- Example grid: one cell per example. Each links to the live demo. TODO: drop a short muted loop per cell (plays on hover). -->
+  <!-- Example grid: each cell links straight to its own live WASM build.
+       Paired on purpose — two voxel approaches, two netcode models.
+       TODO: drop a short muted loop per cell (plays on hover). -->
   <div class="showcase-grid">
-    <a class="shot" href="demo/index.html">
-      <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-voxel.jpg">
-        <source src="media/ex-voxel.mp4" type="video/mp4" />
+    <a class="shot" href="demo/VoxelWorld/">
+      <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-voxelworld.jpg">
+        <source src="media/ex-voxelworld.mp4" type="video/mp4" />
       </video>
-      <div class="shot-label"><b>Voxel World</b></div>
+      <div class="shot-label"><b>Voxel World</b> · greedy-meshed 1&nbsp;m voxels</div>
     </a>
-    <a class="shot" href="demo/index.html">
-      <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-cardbattle.jpg">
-        <source src="media/ex-cardbattle.mp4" type="video/mp4" />
+    <a class="shot" href="demo/MicroVoxel/">
+      <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-microvoxel.jpg">
+        <source src="media/ex-microvoxel.mp4" type="video/mp4" />
       </video>
-      <div class="shot-label"><b>Card Battle</b></div>
+      <div class="shot-label"><b>MicroVoxel</b> · raymarched 5&nbsp;cm voxels</div>
     </a>
-    <a class="shot" href="demo/index.html">
-      <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-rpg.jpg">
-        <source src="media/ex-rpg.mp4" type="video/mp4" />
+    <a class="shot" href="demo/Deathmatch/">
+      <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-deathmatch.jpg">
+        <source src="media/ex-deathmatch.mp4" type="video/mp4" />
       </video>
-      <div class="shot-label"><b>RPG</b></div>
+      <div class="shot-label"><b>Deathmatch</b> · server-authoritative FPS</div>
     </a>
-    <a class="shot" href="demo/index.html">
-      <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-multiplayer.jpg">
-        <source src="media/ex-multiplayer.mp4" type="video/mp4" />
+    <a class="shot" href="demo/MultiplayerSandbox/">
+      <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-sandbox.jpg">
+        <source src="media/ex-sandbox.mp4" type="video/mp4" />
       </video>
-      <div class="shot-label"><b>Multiplayer</b> · netcode</div>
+      <div class="shot-label"><b>Falling-Sand Arena</b> · P2P lockstep</div>
     </a>
-    <a class="shot" href="demo/index.html">
+    <a class="shot" href="demo/Physics2DDemo/">
       <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-physics2d.jpg">
         <source src="media/ex-physics2d.mp4" type="video/mp4" />
       </video>
-      <div class="shot-label"><b>2D Physics</b></div>
+      <div class="shot-label"><b>2D Physics</b> · Box2D</div>
     </a>
-    <a class="shot" href="demo/index.html">
+    <a class="shot" href="demo/MidnightSkyraiders/">
       <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-skyraiders.jpg">
         <source src="media/ex-skyraiders.mp4" type="video/mp4" />
       </video>
-      <div class="shot-label"><b>Skyraiders</b> · shmup</div>
+      <div class="shot-label"><b>Midnight Skyraiders</b> · 2D shmup</div>
     </a>
   </div>
 
   <div class="showcase-cta">
-    <span class="showcase-cta__text">Every example runs in your browser — no install.</span>
-    <a class="btn btn-primary" href="demo/index.html">▶ Play them live</a>
+    <span class="showcase-cta__text">14 examples, every one playable in the browser — no install.</span>
+    <a class="btn btn-primary" href="demo/index.html">▶ See all demos</a>
   </div>
 
   <p class="section-label">// 02 · Explore</p>
