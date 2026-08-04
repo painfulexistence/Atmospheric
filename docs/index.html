@@ -65,6 +65,81 @@
       background: transparent;
     }
     .btn-ghost:hover { border-color: var(--line-hover); color: var(--text); opacity: 1; }
+
+    /* Showcase — small hero video + a grid of example clips */
+    .showcase-reel {
+      background: rgba(9,9,11,0.6);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 5px;
+      margin-bottom: 14px;
+      transition: border-color var(--t-normal);
+    }
+    .showcase-reel:hover { border-color: var(--line-hover); }
+    .showcase-media {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+      border-radius: 2px;
+      background: var(--surface-2);
+      border: 1px solid rgba(255,255,255,0.03);
+    }
+    .showcase-caption {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+      margin-bottom: 32px;
+      padding: 0 2px;
+    }
+    .showcase-caption b { color: var(--text); font-weight: 700; }
+    .showcase-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .shot {
+      background: rgba(9,9,11,0.6);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 4px;
+      display: block;
+      text-decoration: none;
+      transition: border-color var(--t-normal);
+    }
+    .shot:hover { border-color: var(--line-hover); opacity: 1; }
+    .shot-media {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+      border-radius: 2px;
+      background: var(--surface-2);
+    }
+    .shot-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      padding: 9px 8px 5px;
+    }
+    .shot-label b { color: var(--text); font-weight: 700; }
+    .showcase-cta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 48px;
+    }
+    .showcase-cta__text {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-muted);
+      letter-spacing: 0.03em;
+    }
   </style>
 </head>
 <body>
@@ -97,7 +172,61 @@
     </div>
   </div>
 
-  <p class="section-label">// 01 · Explore</p>
+  <p class="section-label">// 01 · Showcase</p>
+  <!-- Small hero: terrain streaming. TODO: drop in the 10km² streaming-terrain clip. `poster` = first frame. Swap paths for your CDN if you host video elsewhere. -->
+  <div class="showcase-reel">
+    <video class="showcase-media" data-hero autoplay muted loop playsinline preload="metadata" poster="media/atmos-terrain.jpg">
+      <source src="media/atmos-terrain.mp4" type="video/mp4" />
+    </video>
+  </div>
+  <p class="showcase-caption">// <b>10&nbsp;km² streaming terrain</b> — tiled ring LOD, shader-based dynamic tessellation</p>
+
+  <!-- Example grid: one cell per example. Each links to the live demo. TODO: drop a short muted loop per cell (plays on hover). -->
+  <div class="showcase-grid">
+    <a class="shot" href="demo/index.html">
+      <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-voxel.jpg">
+        <source src="media/ex-voxel.mp4" type="video/mp4" />
+      </video>
+      <div class="shot-label"><b>Voxel World</b></div>
+    </a>
+    <a class="shot" href="demo/index.html">
+      <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-cardbattle.jpg">
+        <source src="media/ex-cardbattle.mp4" type="video/mp4" />
+      </video>
+      <div class="shot-label"><b>Card Battle</b></div>
+    </a>
+    <a class="shot" href="demo/index.html">
+      <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-rpg.jpg">
+        <source src="media/ex-rpg.mp4" type="video/mp4" />
+      </video>
+      <div class="shot-label"><b>RPG</b></div>
+    </a>
+    <a class="shot" href="demo/index.html">
+      <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-multiplayer.jpg">
+        <source src="media/ex-multiplayer.mp4" type="video/mp4" />
+      </video>
+      <div class="shot-label"><b>Multiplayer</b> · netcode</div>
+    </a>
+    <a class="shot" href="demo/index.html">
+      <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-physics2d.jpg">
+        <source src="media/ex-physics2d.mp4" type="video/mp4" />
+      </video>
+      <div class="shot-label"><b>2D Physics</b></div>
+    </a>
+    <a class="shot" href="demo/index.html">
+      <video class="shot-media" data-hover muted loop playsinline preload="none" poster="media/ex-skyraiders.jpg">
+        <source src="media/ex-skyraiders.mp4" type="video/mp4" />
+      </video>
+      <div class="shot-label"><b>Skyraiders</b> · shmup</div>
+    </a>
+  </div>
+
+  <div class="showcase-cta">
+    <span class="showcase-cta__text">Every example runs in your browser — no install.</span>
+    <a class="btn btn-primary" href="demo/index.html">▶ Play them live</a>
+  </div>
+
+  <p class="section-label">// 02 · Explore</p>
   <div class="card-grid">
     <a class="card-outer" href="documentation/index.html">
       <div class="card-inner">
@@ -113,18 +242,11 @@
         <p>Engineering write-ups on graphics features, debugging, and design decisions.</p>
       </div>
     </a>
-    <a class="card-outer" href="demo/index.html">
-      <div class="card-inner">
-        <div class="card-tag">// demo</div>
-        <h3>Demo</h3>
-        <p>Live WebAssembly builds running in the browser — no install required.</p>
-      </div>
-    </a>
   </div>
 
   <hr class="divider" />
 
-  <p class="section-label">// 02 · Features</p>
+  <p class="section-label">// 03 · Features</p>
   <div class="feature-list">
     <span class="feature-item">2D + 3D in one engine</span>
     <span class="feature-item">Unity-like component-based architecture</span>
@@ -145,6 +267,22 @@
     <a href="https://github.com/painfulexistence/Atmospheric" target="_blank">GitHub</a>
   </div>
 </footer>
+
+<script>
+  // Autoplaying hero honors reduced-motion; grid cells play on hover only (bandwidth-friendly).
+  (function () {
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.querySelectorAll('video[data-hero]').forEach(function (v) {
+      if (reduce) { v.removeAttribute('autoplay'); v.pause(); }
+    });
+    document.querySelectorAll('.shot video[data-hover]').forEach(function (v) {
+      var cell = v.closest('.shot');
+      if (!cell) return;
+      cell.addEventListener('mouseenter', function () { if (!reduce) { var p = v.play(); if (p) p.catch(function () {}); } });
+      cell.addEventListener('mouseleave', function () { v.pause(); try { v.currentTime = 0; } catch (e) {} });
+    });
+  })();
+</script>
 
 </body>
 </html>
