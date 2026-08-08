@@ -3,6 +3,11 @@
 #include "Atmospheric/light_component.hpp"
 #include "Atmospheric/voxel_volume_component.hpp"
 #include "Atmospheric/window.hpp"
+#if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
+// SDL_main.h renames main() to SDL_main so SDLActivity/UIKit can invoke it.
+#include "Atmospheric/touch_controls_component.hpp"
+#include <SDL3/SDL_main.h>
+#endif
 
 // Micro voxel rendering demo: a raymarched 12.8m diorama of 5cm voxels
 // (procedural terrain + caves + ore + floating crystals), depth-composited
@@ -13,7 +18,10 @@
 class MicroVoxelApp : public Application {
     using Application::Application;
 
-    std::vector<VoxelVolumeComponent*> _carveTargets;// volumes the E key can dig into
+    std::vector<VoxelVolumeComponent*> _carveTargets;// volumes the E key / DIG button can dig into
+#if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
+    TouchControlsComponent* _touchControls = nullptr;
+#endif
 
     void OnInit() override {
         GoScene("main", [this] { OnLoad(); });
@@ -74,6 +82,12 @@ class MicroVoxelApp : public Application {
         mainCamera->Yaw(glm::radians(-90.0f));
         mainCamera->Pitch(glm::radians(-16.0f));
         mainCamera->gameObject->AddComponent<CameraController3D>(/*moveSpeed=*/6.0f, /*lookSpeed=*/1.5f);
+#if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
+        // Touch overlay: floating joystick (move), drag (look), DIG button.
+        _touchControls = static_cast<TouchControlsComponent*>(
+            mainCamera->gameObject->AddComponent<TouchControlsComponent>(/*moveSpeed=*/6.0f, /*lookSpeed=*/2.6f)
+        );
+#endif
 
         // A warm local point light pooling over the terrain, to show off local
         // illumination alongside the sun. Toggle with P. (The scene also has
@@ -110,11 +124,17 @@ class MicroVoxelApp : public Application {
         auto* input = InputSubsystem::Get();
         if (input->IsKeyPressed(Key::ESCAPE)) Quit();
 
-        // Hold E to dig: raycast the camera's aim into the volumes and carve a
-        // sphere of air at the first solid voxel. No remeshing — the pass just
-        // re-uploads the edited volume, which is the whole point of the raymarch
-        // model (a greedy-meshed world would have to rebuild its mesh here).
-        if (input->IsKeyDown(Key::E) && !_carveTargets.empty()) {
+        // Hold E (or the touch DIG button) to dig: raycast the camera's aim into
+        // the volumes and carve a sphere of air at the first solid voxel. No
+        // remeshing — the pass just re-uploads the edited volume, which is the
+        // whole point of the raymarch model (a greedy-meshed world would have to
+        // rebuild its mesh here). Aim is the screen-center crosshair, so the
+        // same code serves keyboard and touch.
+        bool digHeld = input->IsKeyDown(Key::E);
+#if defined(ANDROID) || (defined(__APPLE__) && TARGET_OS_IOS)
+        digHeld = digHeld || (_touchControls && _touchControls->IsActionHeld());
+#endif
+        if (digHeld && !_carveTargets.empty()) {
             const glm::vec3 ro = mainCamera->GetEyePosition();
             const glm::vec3 rd = mainCamera->GetEyeDirection();
             float best = 1e9f;

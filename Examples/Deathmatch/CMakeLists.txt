@@ -113,6 +113,10 @@ if(NOT EMSCRIPTEN)
         server_main.cpp
         authority.cpp
         ${CMAKE_SOURCE_DIR}/Engine/src/udp_socket.cpp
+        # authority.cpp now uses ReliableChannel for the reliable kill-feed; the
+        # server doesn't link AtmosphericEngine, so compile the (dependency-free)
+        # implementation in directly, same as udp_socket.cpp.
+        ${CMAKE_SOURCE_DIR}/Engine/src/reliable_channel.cpp
     )
     set_target_properties(DeathmatchServer PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/DeathmatchServer

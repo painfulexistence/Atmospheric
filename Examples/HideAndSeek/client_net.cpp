@@ -12,7 +12,7 @@ namespace {
 ClientNet::~ClientNet() = default;
 
 bool ClientNet::Connect(const std::string& serverIp, uint16_t serverPort, proto::Role role) {
-    if (!_socket.Open(0)) return false;
+    if (!_net.Open(0)) return false;
 
     if (!DatagramSocket::Resolve(serverIp, serverPort, _serverAddr, _serverPort)) {
         spdlog::error("ClientNet: invalid server address: {}", serverIp);
@@ -24,12 +24,12 @@ bool ClientNet::Connect(const std::string& serverIp, uint16_t serverPort, proto:
     proto::PutU32(buf, proto::kMagic);
     buf[4] = static_cast<uint8_t>(proto::PacketType::ClientHello);
     buf[5] = static_cast<uint8_t>(role);
-    _socket.SendTo(_serverAddr, _serverPort, buf, sizeof(buf));
+    _net.Send(_serverAddr, _serverPort, buf, sizeof(buf));
     return true;
 }
 
 void ClientNet::SubmitInput(uint32_t nowMs, uint32_t tick, float dx, float dy) {
-    if (!_socket.IsOpen()) return;
+    if (!_net.IsOpen()) return;
 
     _predictedPos = sim::Step(_predictedPos, dx, dy);
 
@@ -39,8 +39,7 @@ void ClientNet::SubmitInput(uint32_t nowMs, uint32_t tick, float dx, float dy) {
     proto::PutU32(buf + 5, tick);
     buf[9] = static_cast<uint8_t>(proto::QuantizeAxis(dx));
     buf[10] = static_cast<uint8_t>(proto::QuantizeAxis(dy));
-    _socket.SendTo(_serverAddr, _serverPort, buf, sizeof(buf));
-    _metrics.OnSent(sizeof(buf));
+    _net.Send(_serverAddr, _serverPort, buf, sizeof(buf));// Send counts bytes in Metrics
     _inputSendMs[tick] = nowMs;// matched against ackedInputTick for RTT
 }
 
@@ -57,15 +56,11 @@ void ClientNet::HandlePacket(const uint8_t* buf, int n, uint32_t fromAddr, uint1
 }
 
 void ClientNet::Pump(uint32_t nowMs) {
-    if (!_socket.IsOpen()) return;
-    PumpConditioned(
-        _cond,
-        _metrics,
-        nowMs,
-        [&](uint8_t* b, int max, uint32_t& from, uint16_t& port) { return _socket.RecvFrom(b, max, from, port); },
-        [&](const uint8_t* b, int n, uint32_t from, uint16_t port) { HandlePacket(b, n, from, port, nowMs); }
-    );
-    _metrics.lossPct = _cond.Active() ? _cond.MeasuredLossPct() : 0.0f;
+    if (!_net.IsOpen()) return;
+    _net.Poll(nowMs, [&](const uint8_t* b, int n, uint32_t from, uint16_t port) {
+        HandlePacket(b, n, from, port, nowMs);
+    });
+    _net.Metrics().lossPct = _net.Conditioner().Active() ? _net.Conditioner().MeasuredLossPct() : 0.0f;
     // pendingInputs stays n/a: this model has no per-tick input buffer to replay.
 }
 
@@ -74,7 +69,7 @@ void ClientNet::HandleSnapshot(const uint8_t* data, int len, uint32_t nowMs) {
     // trip naturally includes any emulated latency the conditioner added).
     const uint32_t ackedInputTick = proto::GetU32(data + 9);
     auto sent = _inputSendMs.find(ackedInputTick);
-    if (sent != _inputSendMs.end()) _metrics.FeedRtt(static_cast<float>(nowMs - sent->second));
+    if (sent != _inputSendMs.end()) _net.Metrics().FeedRtt(static_cast<float>(nowMs - sent->second));
     _inputSendMs.erase(_inputSendMs.begin(), _inputSendMs.upper_bound(ackedInputTick));
 
     sim::Vec2 serverOwnPos{ proto::GetF32(data + 13), proto::GetF32(data + 17) };
@@ -86,7 +81,7 @@ void ClientNet::HandleSnapshot(const uint8_t* data, int len, uint32_t nowMs) {
     float ddy = serverOwnPos.y - _predictedPos.y;
     // Prediction error = the raw divergence this snapshot reveals (world units),
     // before smoothing folds it in. Spikes under loss/latency, then settles.
-    _metrics.predErr = std::sqrt(ddx * ddx + ddy * ddy);
+    _net.Metrics().predErr = std::sqrt(ddx * ddx + ddy * ddy);
     constexpr float kHardSnapDistSq = 150.0f * 150.0f;
     constexpr float kSmoothFactor = 0.15f;
     if ((ddx * ddx + ddy * ddy) > kHardSnapDistSq) {

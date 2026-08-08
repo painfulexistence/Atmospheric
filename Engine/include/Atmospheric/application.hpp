@@ -184,6 +184,16 @@ public:
     // instantiation shared by every prefab format. Returns the spawned root.
     GameObject* Instantiate(const Prefab& prefab, GameObject* parent, const std::string& baseName);
 
+    // Destroy a single GameObject and its whole subtree (children by `parent`
+    // pointer), unregistering each object's components from the graphics/physics
+    // servers as it dies. No-op if `go` is null. Counterpart to Instantiate for
+    // callers that spawn and later remove a subtree themselves (e.g. a viewer
+    // swapping the model on screen) without reloading the whole scene. Shared
+    // AssetManager resources (meshes/materials/textures) are NOT freed here —
+    // they are deduped and may be referenced elsewhere; use scene unload for
+    // scene-scoped asset cleanup.
+    void DestroyGameObject(GameObject* go);
+
     // Queue a factory lambda to run at the start of the next frame, outside any
     // entity-tick loop. The GameLayer tick loop itself tolerates CreateGameObject
     // mid-tick (index-based; appends get their first Tick the same frame), so

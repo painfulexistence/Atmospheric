@@ -1,4 +1,4 @@
-package com.atmospheric.helloworld
+package com.atmospheric.threedbasics
 
 import android.os.Bundle
 import org.libsdl.app.SDLActivity

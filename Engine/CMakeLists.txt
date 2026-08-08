@@ -166,6 +166,14 @@ list(APPEND SOURCES src/net_conditioner.cpp)
 # --local single-player on the web, where there is no raw UDP. Dep-free, pure
 # logic — compiled on all platforms (it's what DatagramSocket aliases to on web).
 list(APPEND SOURCES src/loopback_datagram_socket.cpp)
+# ReliableChannel: sequencing + ack-bitfield + reliable-ordered messages on top
+# of an unreliable datagram transport (the "reliable UDP" layer for must-arrive
+# events). Dep-free, pure logic — usable by clients and servers alike.
+list(APPEND SOURCES src/reliable_channel.cpp)
+# WebTransportSocket: DatagramSocket-shaped wrapper over a browser WebTransport
+# session (QUIC datagrams) for browser<->server PvP. WIP skeleton. Empty TU on
+# native (whole file is #ifdef __EMSCRIPTEN__); the EM_JS glue is web-only.
+list(APPEND SOURCES src/web_transport_socket.cpp)
 # NetHud: the shared netgraph renderer (DrawNetHud) for the realtime examples.
 # Graphics-side (needs GraphicsSubsystem), so part of the engine target only —
 # unlike the primitives above, not for the dep-free servers.
@@ -428,6 +436,12 @@ endif()
 if(AE_BUILD_EXAMPLES AND NOT EMSCRIPTEN)
     add_executable(HeadlessSmokeTest tests/headless_smoke_test.cpp)
     target_link_libraries(HeadlessSmokeTest PRIVATE AtmosphericEngine)
+
+    # Animation data/sampling layer: GL-free and deterministic (no window, no
+    # asset files), so unlike HeadlessSmokeTest it is safe to gate CI on.
+    add_executable(AnimationSmokeTest tests/animation_smoke_test.cpp)
+    target_link_libraries(AnimationSmokeTest PRIVATE AtmosphericEngine)
+    add_test(NAME AnimationSmokeTest COMMAND AnimationSmokeTest)
 endif()
 
 set(AE_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/default_assets" PARENT_SCOPE)

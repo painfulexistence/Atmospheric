@@ -125,6 +125,29 @@ void InputSubsystem::Init(Application* app) {
             _keyPressHistory.pop_front();
         }
     });
+
+    // Touch events fire during the window's event pump, before Update runs, so
+    // mutating _touches here is never concurrent with gameplay reads.
+    Window::Get()->AddTouchDownCallback([this](int64_t id, float x, float y) {
+        for (auto& touch : _touches) {
+            if (touch.id == id) {
+                touch.position = { x, y };
+                return;
+            }
+        }
+        _touches.push_back({ id, { x, y }, { x, y } });
+    });
+    Window::Get()->AddTouchMoveCallback([this](int64_t id, float x, float y) {
+        for (auto& touch : _touches) {
+            if (touch.id == id) {
+                touch.position = { x, y };
+                return;
+            }
+        }
+    });
+    Window::Get()->AddTouchUpCallback([this](int64_t id, float, float) {
+        std::erase_if(_touches, [id](const TouchPoint& touch) { return touch.id == id; });
+    });
 }
 
 void InputSubsystem::Process(float dt) {

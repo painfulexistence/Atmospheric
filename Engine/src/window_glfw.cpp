@@ -668,6 +668,23 @@ WindowEventCallbackID Window::AddFramebufferResizeCallback(FramebufferResizeCall
     return _nextCallbackID++;
 }
 
+// Touch callbacks are registered but never fired on the GLFW/web backend —
+// mobile browsers already synthesize mouse events from the primary finger.
+WindowEventCallbackID Window::AddTouchDownCallback(TouchCallback callback) {
+    _touchDownCallbacks[_nextCallbackID] = callback;
+    return _nextCallbackID++;
+}
+
+WindowEventCallbackID Window::AddTouchMoveCallback(TouchCallback callback) {
+    _touchMoveCallbacks[_nextCallbackID] = callback;
+    return _nextCallbackID++;
+}
+
+WindowEventCallbackID Window::AddTouchUpCallback(TouchCallback callback) {
+    _touchUpCallbacks[_nextCallbackID] = callback;
+    return _nextCallbackID++;
+}
+
 void Window::RemoveMouseMoveCallback(WindowEventCallbackID id) {
     _mouseMoveCallbacks.erase(id);
 }
@@ -696,6 +713,18 @@ void Window::RemoveFramebufferResizeCallback(WindowEventCallbackID id) {
     _framebufferResizeCallbacks.erase(id);
 }
 
+void Window::RemoveTouchDownCallback(WindowEventCallbackID id) {
+    _touchDownCallbacks.erase(id);
+}
+
+void Window::RemoveTouchMoveCallback(WindowEventCallbackID id) {
+    _touchMoveCallbacks.erase(id);
+}
+
+void Window::RemoveTouchUpCallback(WindowEventCallbackID id) {
+    _touchUpCallbacks.erase(id);
+}
+
 void Window::RemoveAllEventCallbacks() {
     _mouseMoveCallbacks.clear();
     _mouseEnterCallbacks.clear();
@@ -704,6 +733,9 @@ void Window::RemoveAllEventCallbacks() {
     _keyReleaseCallbacks.clear();
     _viewportResizeCallbacks.clear();
     _framebufferResizeCallbacks.clear();
+    _touchDownCallbacks.clear();
+    _touchMoveCallbacks.clear();
+    _touchUpCallbacks.clear();
 }
 void Window::SetClipboardText(const std::string& text) {
     glfwSetClipboardString(static_cast<GLFWwindow*>(_internal), text.c_str());
