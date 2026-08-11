@@ -21,16 +21,15 @@
     {
       "name": "ninja",
       "displayName": "Ninja Multi-Config (bundled vcpkg)",
-      "description": "On Windows, run from a 'x64 Native Tools for VS 2022' prompt or use a VS Code CMake Tools kit.",
+      "description": "On Windows, run from an x64 Native Tools developer prompt or use a VS Code CMake Tools kit.",
       "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build",
       "inherits": ["vcpkg"]
     },
     {
       "name": "vs",
-      "displayName": "Visual Studio 2022 (x64)",
-      "description": "Produces Atmospheric.sln in build-vs/ — no developer prompt needed.",
-      "generator": "Visual Studio 17 2022",
+      "displayName": "Visual Studio (x64)",
+      "description": "Produces Atmospheric.sln in build-vs/ for the newest installed Visual Studio — no developer prompt needed.",
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build-vs",
       "inherits": ["vcpkg"],

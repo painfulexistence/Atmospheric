@@ -55,7 +55,7 @@ cd Atmospheric
 cmake --preset ninja
 cmake --build --preset debug   # or --preset release
 ```
-On Windows the `ninja` preset needs an *x64 Native Tools for VS 2022* prompt; from a plain shell use `cmake --preset vs` + `cmake --build --preset vs-debug` instead, which generates `build-vs/Atmospheric.sln`.
+On Windows the `ninja` preset needs an *x64 Native Tools* developer prompt; from a plain shell use `cmake --preset vs` + `cmake --build --preset vs-debug` instead, which generates `build-vs/Atmospheric.sln` for the newest installed Visual Studio.
 (Optional: `cp CMakeUserPresets.json.example CMakeUserPresets.json` for a personal `dev` preset with ccache.)
 
 ### WebAssembly (Emscripten)
