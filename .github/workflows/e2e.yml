@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: true
 
       - uses: rlalik/setup-cpp-compiler@master
         with:
@@ -40,12 +40,6 @@ jobs:
         shell: bash
         run: |
           echo "build-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
-
-      - name: Install vcpkg
-        uses: actions/checkout@v4
-        with:
-          repository: "microsoft/vcpkg"
-          path: "vcpkg"
 
       - name: Bootstrap vcpkg on Unix
         if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'

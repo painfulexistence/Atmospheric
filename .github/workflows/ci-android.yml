@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: true
           sparse-checkout: |
             Engine
             cmake
@@ -38,6 +38,7 @@ jobs:
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json
+            vcpkg
 
       - name: Check NDK version pin matches vcpkg triplets
         run: ./scripts/checkNdkVersion.sh
@@ -52,12 +53,6 @@ jobs:
         run: |
           NDK_VERSION=$(./scripts/checkNdkVersion.sh --print-primary-version)
           yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null
-
-      - name: Install vcpkg
-        uses: actions/checkout@v4
-        with:
-          repository: microsoft/vcpkg
-          path: vcpkg
 
       - name: Bootstrap vcpkg
         run: ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
