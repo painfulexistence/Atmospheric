@@ -29,10 +29,7 @@ endif()
 
 project(Atmospheric VERSION 0.2)
 
-# Android cross-builds: synthesize a per-ABI vcpkg triplet before the vcpkg
-# toolchain include below — order matters. The Gradle externalNativeBuild
-# passes ANDROID_ABI/NDK; this maps it to a vcpkg architecture, writes
-# triplets/<arch>-android.cmake, and forces VCPKG_TARGET_TRIPLET to it.
+# Android: synthesize the per-ABI vcpkg triplet before the vcpkg toolchain include below.
 if(ANDROID AND DEFINED CMAKE_ANDROID_NDK)
     # Determine the architecture and build triplet for vcpkg
     # VCPKG_ARCH: the architecture name used inside the triplet file (VCPKG_TARGET_ARCHITECTURE)
@@ -98,9 +95,7 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-# FIXME: `!MSVC` is not CMake syntax, so this condition is never true and the
-# flag below has never applied. Fixing it is a behavior change (the warning is
-# Clang-only; GCC would reject the flag) — tracked as a follow-up, not here.
+# FIXME: !MSVC is not valid CMake — never true, so this flag has never applied.
 if(!MSVC)
     add_compile_options(-Werror=reorder-init-list)
 endif()

@@ -7,26 +7,6 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/helpers")
 include(AssetPipeline)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Third-party dependencies — every external the engine consumes, grouped by
-# acquisition mechanism. Feature-gated wiring (networking, FFmpeg, TinyUSDZ)
-# stays further below, next to the feature blocks that own it.
-#
-#   Tier 1 — vcpkg manifest (/vcpkg.json): the default. Prebuilt per-triplet
-#            artifacts with binary caching. A dependency lives here unless it
-#            has a written reason not to.
-#   Tier 2 — FetchContent: compiled from source at configure time. Each entry
-#            documents why the vcpkg port can't serve it (no port / need the
-#            source tree itself / custom per-platform compilation / version
-#            pinned independently of the baseline).
-#   Tier 3 — vendored (Engine/external/): trees committed into the repo and
-#            built as our own code.
-#
-# FFmpeg is the one deliberate exception to the tiers: an optional *system*
-# dependency via pkg-config (see the AE_USE_FFMPEG block below) — the vcpkg
-# ffmpeg port is enormous, so the system install is used instead.
-# ─────────────────────────────────────────────────────────────────────────────
-
 # FetchContent_Populate is called directly for lua_src, sol2_src, and
 # basis_universal to avoid running their own CMakeLists.txt (which would
 # conflict with our custom targets).  Suppress the CMP0169 deprecation warning.
@@ -34,7 +14,7 @@ if(POLICY CMP0169)
     cmake_policy(SET CMP0169 OLD)
 endif()
 
-# ═══ Tier 1 — vcpkg manifest ═════════════════════════════════════════════════
+# ═══ Dependencies: vcpkg manifest ════════════════════════════════════════════
 
 find_package(glm CONFIG REQUIRED)
 find_package(Tracy CONFIG)
@@ -59,32 +39,20 @@ find_package(RmlUi REQUIRED)
 find_package(flatbuffers CONFIG REQUIRED)
 find_package(tinyexr CONFIG REQUIRED)
 
-# nlohmann-json — the engine's scene/blueprint JSON layer (json_deserializer.hpp,
-# scene_blueprint.hpp, application.cpp) and tinygltf both parse with it. Declared
-# explicitly here and linked as a target: until now it arrived only as a
-# transitive install of the vcpkg tinygltf port, and its headers resolved by
-# accident through another package's exported include root — so moving tinygltf
-# off vcpkg (tier 2, below) would have silently broken scene loading.
 find_package(nlohmann_json CONFIG REQUIRED)
 
-# glad — GL function loader for desktop GL. The web build uses the browser's
-# GL and iOS links OpenGLES directly, so neither needs it.
 if(NOT EMSCRIPTEN AND NOT IOS)
     find_package(glad CONFIG REQUIRED)
 endif()
 
-# curl + libwebsockets — behind the vcpkg "networking" manifest feature (the
-# root CMakeLists appends it to VCPKG_MANIFEST_FEATURES before project()).
-# Native only: the web build uses emscripten_fetch / Emscripten WebSocket.
 if(AE_USE_NETWORKING AND NOT EMSCRIPTEN)
     find_package(CURL REQUIRED)
     find_package(libwebsockets CONFIG REQUIRED)
 endif()
 
-# ═══ Tier 2 — FetchContent (each entry must justify itself) ══════════════════
+# ═══ Dependencies: FetchContent ══════════════════════════════════════════════
 
 # ── FastNoiseLite (single-header noise library) ────────────────────────────────────────────
-# (FetchContent because the vcpkg registry has no fastnoiselite port.)
 FetchContent_Declare(
     FastNoiseLite
     GIT_REPOSITORY https://github.com/Auburn/FastNoiseLite.git
@@ -98,20 +66,6 @@ if(NOT FastNoiseLite_POPULATED)
 endif()
 
 # ── tinygltf (single-header glTF reader) ──────────────────────────────────────
-# FetchContent rather than the vcpkg tinygltf port, for supply-chain reasons
-# rather than build ones:
-#   * vcpkg fetches ports as GitHub .tar.gz archives verified by a SHA512 pinned
-#     in the portfile. Those archives are recompressed on demand, so their bytes
-#     — and their hash — can change under a fixed tag; when that happens every
-#     cold build fails at the download step until someone re-pins upstream.
-#     A git clone is content-addressed and immune.
-#   * Nobody will re-pin our version: upstream vcpkg moved tinygltf to 3.0.0 in
-#     March 2026 and only fixes hashes there. 2.9.7's port is effectively
-#     unmaintained, so staying on it via vcpkg means owning the hash forever.
-# Pinned to the same 2.9.7 the vcpkg port carried, so this is a pure acquisition
-# change with no API movement (3.0.0 is a major bump — its own decision).
-# Same shape as FastNoiseLite above: header-only, Populate (never MakeAvailable,
-# which would build tinygltf's examples/tests), consumed via an include dir.
 FetchContent_Declare(
     tinygltf
     GIT_REPOSITORY https://github.com/syoyo/tinygltf.git
@@ -124,12 +78,6 @@ if(NOT tinygltf_POPULATED)
     FetchContent_Populate(tinygltf)
 endif()
 
-# SDL3 — FetchContent, not the vcpkg sdl3 port, for two load-bearing reasons:
-#   1. The Android Gradle projects copy SDL's Java scaffolding
-#      (android-project/app/src/main/java) straight out of this source tree;
-#      the vcpkg port installs only headers + libraries.
-#   2. The tag is pinned to what the vendored imgui SDL3 backend supports,
-#      independent of whatever the vcpkg baseline ships.
 if(NOT EMSCRIPTEN)
     FetchContent_Declare(
         SDL3
@@ -217,9 +165,6 @@ target_link_libraries(sol2_iface INTERFACE lua_static)
 # so existing target_link_libraries(... sol2::sol2) lines continue to work.
 add_library(sol2::sol2 ALIAS sol2_iface)
 
-# TinyUSDZ — no vcpkg port exists; pinned to a commit and configured/patched
-# below. Target wiring (link/include/defines) stays with the feature
-# block further below.
 if(AE_USE_TINYUSDZ)
     set(TINYUSDZ_WITH_TYDRA ON CACHE BOOL "" FORCE)
     set(TINYUSDZ_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -248,10 +193,6 @@ if(AE_USE_TINYUSDZ)
     endif()
 endif()
 
-# Basis Universal — FetchContent, not the vcpkg basisu port: only the
-# transcoder is compiled (with size-trimming defines for the wasm payload),
-# and the host-arch encoder CLI must be built while cross-compiling for
-# Emscripten — neither of which the per-triplet port provides.
 # ============================================================================
 # Basis Universal transcoder (KTX2 GPU-compressed texture support)
 # Only the transcoder is compiled — the encoder is not needed at runtime.
@@ -335,11 +276,8 @@ if(AE_USE_BASIS_UNIVERSAL)
     endif()
 endif()
 
-# ═══ Tier 3 — vendored (Engine/external/) ════════════════════════════════════
+# ═══ Dependencies: vendored (Engine/external/) ═══════════════════════════════
 
-# raudio — no vcpkg port exists. Vendored and built by its own CMakeLists; on
-# iOS its miniaudio backend pulls in ObjC frameworks, so the sources are
-# compiled as Objective-C.
 if(NOT EMSCRIPTEN)
     add_subdirectory(external/raudio/projects/CMake)
     if(IOS)
@@ -348,12 +286,6 @@ if(NOT EMSCRIPTEN)
         target_compile_options(raudio PRIVATE -x objective-c)
     endif()
 endif()
-
-# imgui — vendored at external/imgui and compiled straight into the engine
-# target (see SOURCES_EXT below): the backends are the engine's
-# integration surface, and the version is upgraded by hand together with the
-# SDL3 pin above.
-# stb — vendored single-file headers at external/stb (include dir only).
 
 # Generate FlatBuffers headers from schema
 set(FLATBUFFERS_SCHEMA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/schemas)
@@ -537,7 +469,6 @@ else()
     list(APPEND SOURCES_EXT external/imgui/backends/imgui_impl_sdl3.cpp)
 endif()
 
-# (Basis Universal transcoder targets come from the dependencies section above.)
 
 
 
@@ -552,7 +483,6 @@ if(AE_USE_NETWORKING)
         src/network_subsystem.cpp
     )
     if(NOT EMSCRIPTEN)
-        # curl / libwebsockets are found in the dependencies section above (tier 1).
         message(STATUS "Networking enabled (libcurl + libwebsockets, OpenSSL, HTTP/2)")
     else()
         message(STATUS "Networking enabled (emscripten_fetch + Emscripten WebSocket)")
@@ -570,11 +500,6 @@ target_include_directories(AtmosphericEngine
         ${CMAKE_CURRENT_SOURCE_DIR}/include/Atmospheric
         ${FLATBUFFERS_GENERATED_DIR}
         ${fastnoiselite_SOURCE_DIR}/Cpp
-        # tiny_gltf.h — the fetched source root (see the dependencies section above).
-        # Its sibling json.hpp is deliberately NOT used: both TUs that include
-        # tiny_gltf.h define TINYGLTF_NO_INCLUDE_JSON and pull in the same
-        # nlohmann the engine's own scene code uses, so one json type flows
-        # through the whole build.
         ${tinygltf_SOURCE_DIR}
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui
@@ -587,8 +512,6 @@ target_link_libraries(AtmosphericEngine
         lua_static sol2::sol2
         RmlUi::RmlUi box2d::box2d flatbuffers::flatbuffers
         unofficial::tinyexr::tinyexr
-        # PUBLIC: nlohmann::json appears in public headers (json_deserializer.hpp,
-        # scene_blueprint.hpp), so consumers need its include dir too.
         nlohmann_json::nlohmann_json
 )
 if(NOT EMSCRIPTEN)
@@ -634,8 +557,6 @@ elseif(NOT AE_USE_FFMPEG)
     message(STATUS "FFmpeg disabled (AE_USE_FFMPEG=OFF). VideoPlayer and VideoRecorder will be unavailable.")
 endif()
 if(AE_USE_TINYUSDZ)
-    # TinyUSDZ itself is fetched in the dependencies section above (tier 2 — no
-    # vcpkg port); this block only wires the resulting targets in.
     target_link_libraries(AtmosphericEngine PUBLIC tinyusdz::tinyusdz_static)
     target_include_directories(AtmosphericEngine PRIVATE ${tinyusdz_SOURCE_DIR}/src)
     target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_TINYUSDZ)
