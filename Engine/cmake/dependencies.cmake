@@ -51,6 +51,14 @@ find_package(RmlUi REQUIRED)
 find_package(flatbuffers CONFIG REQUIRED)
 find_package(tinyexr CONFIG REQUIRED)
 
+# nlohmann-json — the engine's scene/blueprint JSON layer (json_deserializer.hpp,
+# scene_blueprint.hpp, application.cpp) and tinygltf both parse with it. Declared
+# explicitly here and linked as a target: until now it arrived only as a
+# transitive install of the vcpkg tinygltf port, and its headers resolved by
+# accident through another package's exported include root — so moving tinygltf
+# off vcpkg (tier 2, below) would have silently broken scene loading.
+find_package(nlohmann_json CONFIG REQUIRED)
+
 # glad — GL function loader for desktop GL. The web build uses the browser's
 # GL and iOS links OpenGLES directly, so neither needs it.
 if(NOT EMSCRIPTEN AND NOT IOS)
@@ -79,6 +87,33 @@ FetchContent_Declare(
 FetchContent_GetProperties(FastNoiseLite)
 if(NOT FastNoiseLite_POPULATED)
     FetchContent_Populate(FastNoiseLite)
+endif()
+
+# ── tinygltf (single-header glTF reader) ──────────────────────────────────────
+# FetchContent rather than the vcpkg tinygltf port, for supply-chain reasons
+# rather than build ones:
+#   * vcpkg fetches ports as GitHub .tar.gz archives verified by a SHA512 pinned
+#     in the portfile. Those archives are recompressed on demand, so their bytes
+#     — and their hash — can change under a fixed tag; when that happens every
+#     cold build fails at the download step until someone re-pins upstream.
+#     A git clone is content-addressed and immune.
+#   * Nobody will re-pin our version: upstream vcpkg moved tinygltf to 3.0.0 in
+#     March 2026 and only fixes hashes there. 2.9.7's port is effectively
+#     unmaintained, so staying on it via vcpkg means owning the hash forever.
+# Pinned to the same 2.9.7 the vcpkg port carried, so this is a pure acquisition
+# change with no API movement (3.0.0 is a major bump — its own decision).
+# Same shape as FastNoiseLite above: header-only, Populate (never MakeAvailable,
+# which would build tinygltf's examples/tests), consumed via an include dir.
+FetchContent_Declare(
+    tinygltf
+    GIT_REPOSITORY https://github.com/syoyo/tinygltf.git
+    GIT_TAG        v2.9.7
+    GIT_SHALLOW    TRUE
+    UPDATE_DISCONNECTED TRUE
+)
+FetchContent_GetProperties(tinygltf)
+if(NOT tinygltf_POPULATED)
+    FetchContent_Populate(tinygltf)
 endif()
 
 # SDL3 — FetchContent, not the vcpkg sdl3 port, for two load-bearing reasons:

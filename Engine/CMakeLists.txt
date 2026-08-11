@@ -228,6 +228,12 @@ target_include_directories(AtmosphericEngine
         ${CMAKE_CURRENT_SOURCE_DIR}/include/Atmospheric
         ${FLATBUFFERS_GENERATED_DIR}
         ${fastnoiselite_SOURCE_DIR}/Cpp
+        # tiny_gltf.h — the fetched source root (see cmake/dependencies.cmake).
+        # Its sibling json.hpp is deliberately NOT used: both TUs that include
+        # tiny_gltf.h define TINYGLTF_NO_INCLUDE_JSON and pull in the same
+        # nlohmann the engine's own scene code uses, so one json type flows
+        # through the whole build.
+        ${tinygltf_SOURCE_DIR}
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui
         ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -239,6 +245,9 @@ target_link_libraries(AtmosphericEngine
         lua_static sol2::sol2
         RmlUi::RmlUi box2d::box2d flatbuffers::flatbuffers
         unofficial::tinyexr::tinyexr
+        # PUBLIC: nlohmann::json appears in public headers (json_deserializer.hpp,
+        # scene_blueprint.hpp), so consumers need its include dir too.
+        nlohmann_json::nlohmann_json
 )
 if(NOT EMSCRIPTEN)
     target_link_libraries(AtmosphericEngine PUBLIC raudio)

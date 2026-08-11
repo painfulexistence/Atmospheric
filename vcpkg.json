@@ -13,7 +13,7 @@
     },
     "fmt",
     "spdlog",
-    "tinygltf",
+    "nlohmann-json",
     "tinyexr",
     "tracy",
     "rmlui",
