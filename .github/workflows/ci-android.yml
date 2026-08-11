@@ -22,6 +22,9 @@ jobs:
     name: Android, Release
     runs-on: ubuntu-latest
 
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,14 +62,15 @@ jobs:
       - name: Bootstrap vcpkg
         run: ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
-      - name: Cache vcpkg installed packages
+      - name: Cache vcpkg binary cache
         uses: actions/cache@v4
         with:
-          path: |
-            ${{ github.workspace }}/vcpkg/installed
-            ${{ github.workspace }}/vcpkg/packages
-          key: vcpkg-android-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-android-
+          path: ${{ github.workspace }}/.vcpkg-cache
+          key: vcpkg-bin-android-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-bin-android-
+
+      - name: Ensure vcpkg binary cache directory exists
+        run: mkdir -p .vcpkg-cache
 
       - name: Build APK (Gradle)
         working-directory: Examples/3DBasics/platforms/android

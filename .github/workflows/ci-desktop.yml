@@ -19,6 +19,10 @@ jobs:
         os: [macos-latest, ubuntu-latest, windows-latest]
         build-type: [Debug, MinSizeRel]
 
+    # One binary-cache path for every runner; the vcpkg default is per-OS.
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,15 +57,21 @@ jobs:
         run: |
           ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.bat -disableMetrics
 
-      - name: Cache vcpkg installed packages
+      # Manifest mode never writes vcpkg/installed; the binary cache is what
+      # carries across runs. Fresh vcpkg-bin-* key namespace — the old keys
+      # hold the previous (useless) paths and would block the save.
+      - name: Cache vcpkg binary cache
         uses: actions/cache@v4
         with:
-          path: |
-            ${{ github.workspace }}/vcpkg/installed
-            ${{ github.workspace }}/vcpkg/packages
-          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          path: ${{ github.workspace }}/.vcpkg-cache
+          key: vcpkg-bin-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
-            vcpkg-${{ runner.os }}-
+            vcpkg-bin-${{ runner.os }}-
+
+      # actions/cache skips saving a path that doesn't exist, so seed it cold.
+      - name: Ensure vcpkg binary cache directory exists
+        shell: bash
+        run: mkdir -p .vcpkg-cache
 
       - name: Install CMake and other dependencies on Ubuntu
         if: matrix.os == 'ubuntu-latest'
