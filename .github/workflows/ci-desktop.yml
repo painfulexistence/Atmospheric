@@ -107,8 +107,8 @@ jobs:
   # here sets up a developer prompt — that's the claim under test.
   # Full-source coverage stays with the matrix; this builds the engine only, so
   # an MSBuild pass doesn't double the job's cost.
-  presets-windows:
-    name: Presets (Windows, Visual Studio)
+  build-vs:
+    name: Desktop (vs preset), Release
     runs-on: windows-latest
 
     env:
