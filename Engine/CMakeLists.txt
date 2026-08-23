@@ -65,19 +65,6 @@ if(NOT FastNoiseLite_POPULATED)
     FetchContent_Populate(FastNoiseLite)
 endif()
 
-# ── tinygltf (single-header glTF reader) ──────────────────────────────────────
-FetchContent_Declare(
-    tinygltf
-    GIT_REPOSITORY https://github.com/syoyo/tinygltf.git
-    GIT_TAG        v2.9.7
-    GIT_SHALLOW    TRUE
-    UPDATE_DISCONNECTED TRUE
-)
-FetchContent_GetProperties(tinygltf)
-if(NOT tinygltf_POPULATED)
-    FetchContent_Populate(tinygltf)
-endif()
-
 if(NOT EMSCRIPTEN)
     FetchContent_Declare(
         SDL3
@@ -500,7 +487,6 @@ target_include_directories(AtmosphericEngine
         ${CMAKE_CURRENT_SOURCE_DIR}/include/Atmospheric
         ${FLATBUFFERS_GENERATED_DIR}
         ${fastnoiselite_SOURCE_DIR}/Cpp
-        ${tinygltf_SOURCE_DIR}
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui
         ${CMAKE_CURRENT_SOURCE_DIR}/include

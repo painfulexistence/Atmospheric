@@ -17,6 +17,13 @@ endif()
 # Custom triplets (Android, iOS, etc.) override vcpkg community triplets.
 # Must be set before vcpkg.cmake is included.
 list(APPEND VCPKG_OVERLAY_TRIPLETS "${CMAKE_CURRENT_LIST_DIR}/triplets")
+
+# Our own tinygltf port replaces the registry's: same v2.9.7, fetched via git
+# (content-addressed) instead of a GitHub release tarball (hash can drift
+# under a fixed tag when GitHub recompresses it — see ports/tinygltf).
+# Must be set before vcpkg.cmake is included.
+list(APPEND VCPKG_OVERLAY_PORTS "${CMAKE_CURRENT_LIST_DIR}/ports")
+
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/helpers")
 
 if(VCPKG_TARGET_TRIPLET STREQUAL "wasm32-emscripten" AND NOT VCPKG_CHAINLOAD_TOOLCHAIN_FILE)
