@@ -12,7 +12,7 @@
     {
       "name": "ccache",
       "hidden": true,
-      "description": "Opt-in mixin — enable from your CMakeUserPresets.json (see CMakeUserPresets.json.example).",
+      "description": "Opt-in mixin; the dev preset in CMakeUserPresets.json enables it.",
       "cacheVariables": {
         "CMAKE_C_COMPILER_LAUNCHER": "ccache",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"

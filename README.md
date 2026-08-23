@@ -59,7 +59,7 @@ cmake --preset ninja
 cmake --build --preset debug   # or --preset release
 ```
 On Windows this needs an *x64 Native Tools* developer prompt from a plain shell; alternatively, open the folder directly in Visual Studio or VS Code (with the CMake Tools extension) — both read `CMakePresets.json` and supply the compiler environment automatically, with full native debugging.
-(Optional: `cp CMakeUserPresets.json.example CMakeUserPresets.json` for a personal `dev` preset with ccache — install ccache first, or configuring will fail.)
+A `dev` preset (`cmake --preset dev`) is also checked in, with ccache enabled — install ccache first, or configuring with it will fail.
 
 ### WebAssembly (Emscripten)
 We support building WebAssembly targets for browser deployment.

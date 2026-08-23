@@ -4,7 +4,7 @@
     {
       "name": "dev",
       "displayName": "Dev (ninja + ccache)",
-      "description": "Requires ccache on PATH (see README Prerequisites). Copy this file to CMakeUserPresets.json (gitignored) and adjust freely.",
+      "description": "Requires ccache on PATH (see README Prerequisites).",
       "inherits": ["ninja", "ccache"]
     }
   ],

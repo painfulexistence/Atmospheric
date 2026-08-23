@@ -39,5 +39,3 @@ local.properties
 Examples/USDViewer/assets/models/
 Examples/GLTFViewer/assets/models
 
-# Machine-local CMake presets (cp CMakeUserPresets.json.example to get started)
-CMakeUserPresets.json
