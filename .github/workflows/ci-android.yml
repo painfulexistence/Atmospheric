@@ -39,6 +39,7 @@ jobs:
             CMakePresets.json
             vcpkg.json
             vcpkg
+            ports
 
       - name: Check NDK version pin matches vcpkg triplets
         run: ./scripts/checkNdkVersion.sh

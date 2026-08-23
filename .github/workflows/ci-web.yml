@@ -35,6 +35,7 @@ jobs:
             CMakePresets.json
             vcpkg.json
             vcpkg
+            ports
 
       - name: Detect required Emscripten version
         id: emsdk-version
@@ -126,6 +127,7 @@ jobs:
             CMakePresets.json
             vcpkg.json
             vcpkg
+            ports
 
       - name: Detect required Emscripten version
         id: emsdk-version

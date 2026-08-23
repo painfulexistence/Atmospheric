@@ -24,6 +24,8 @@ set(VCPKG_MANIFEST_DIR "${ROOT_DIR}" CACHE STRING "")
 # arm64-ios / arm64-ios-simulator are custom triplets (triplets/*.cmake), not
 # community vcpkg triplets — without this, vcpkg can't locate them at all.
 list(APPEND VCPKG_OVERLAY_TRIPLETS "${ROOT_DIR}/triplets")
+# Our own tinygltf port replaces the registry's (see ports/tinygltf).
+list(APPEND VCPKG_OVERLAY_PORTS "${ROOT_DIR}/ports")
 include("${ROOT_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake")
 
 project(HelloWorld-iOS LANGUAGES C CXX OBJC OBJCXX Swift)

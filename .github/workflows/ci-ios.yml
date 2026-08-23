@@ -36,6 +36,7 @@ jobs:
             CMakePresets.json
             vcpkg.json
             vcpkg
+            ports
 
       - name: Bootstrap vcpkg
         run: ./vcpkg/bootstrap-vcpkg.sh -disableMetrics

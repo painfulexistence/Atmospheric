@@ -10,6 +10,11 @@
 # Must be set before vcpkg.cmake is included/chainloaded.
 list(APPEND VCPKG_OVERLAY_TRIPLETS "${CMAKE_CURRENT_LIST_DIR}/../triplets")
 
+# Our own tinygltf port replaces the registry's (see ports/tinygltf).
+# Keep in sync with the root CMakeLists.txt and platforms/ios/CMakeLists.txt,
+# which wire vcpkg up independently of this file.
+list(APPEND VCPKG_OVERLAY_PORTS "${CMAKE_CURRENT_LIST_DIR}/../ports")
+
 # Defaults to the engine's own manifest (everything Atmospheric itself needs
 # to build). Downstream projects that require additional packages should
 # set(VCPKG_MANIFEST_DIR ...) to their own vcpkg.json BEFORE including this
