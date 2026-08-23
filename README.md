@@ -39,8 +39,11 @@ The project is a labor of love, acting as my stepping stone to gain a deeper und
 ## Building
 Follow the steps below to build the engine:
 1. Install prerequsites:
-- [CMake](https://cmake.org/download/) (required)
-- [EMSDK](https://emscripten.org/docs/getting_started/downloads.html) (optional)
+- [CMake](https://cmake.org/download/) 3.21+ (required)
+- A C++20 compiler — MSVC (Windows), Clang (macOS), or GCC/Clang (Linux) (required)
+- [Ninja](https://ninja-build.org/) (required)
+- [ccache](https://ccache.dev/) (optional — only needed for the personal `dev` preset below)
+- [EMSDK](https://emscripten.org/docs/getting_started/downloads.html) (optional, for WebAssembly)
 2. Clone this repository
 ```
 git clone --recurse-submodules https://github.com/painfulexistence/Atmospheric.git
@@ -55,8 +58,8 @@ cd Atmospheric
 cmake --preset ninja
 cmake --build --preset debug   # or --preset release
 ```
-On Windows the `ninja` preset needs an *x64 Native Tools* developer prompt; from a plain shell use `cmake --preset vs` + `cmake --build --preset vs-debug` instead, which generates `build-vs/Atmospheric.sln` for the newest installed Visual Studio.
-(Optional: `cp CMakeUserPresets.json.example CMakeUserPresets.json` for a personal `dev` preset with ccache.)
+On Windows this needs an *x64 Native Tools* developer prompt from a plain shell; alternatively, open the folder directly in Visual Studio or VS Code (with the CMake Tools extension) — both read `CMakePresets.json` and supply the compiler environment automatically, with full native debugging.
+(Optional: `cp CMakeUserPresets.json.example CMakeUserPresets.json` for a personal `dev` preset with ccache — install ccache first, or configuring will fail.)
 
 ### WebAssembly (Emscripten)
 We support building WebAssembly targets for browser deployment.

@@ -21,23 +21,10 @@
     {
       "name": "ninja",
       "displayName": "Ninja Multi-Config (bundled vcpkg)",
-      "description": "On Windows, run from an x64 Native Tools developer prompt or use a VS Code CMake Tools kit.",
+      "description": "The supported build path on every OS, including Windows — run from an x64 Native Tools developer prompt, or open the folder in Visual Studio / VS Code and let CMake Tools supply the kit.",
       "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build",
       "inherits": ["vcpkg"]
-    },
-    {
-      "name": "vs",
-      "displayName": "Visual Studio (x64)",
-      "description": "Produces Atmospheric.sln in build-vs/ for the newest installed Visual Studio — no developer prompt needed.",
-      "architecture": "x64",
-      "binaryDir": "${sourceDir}/build-vs",
-      "inherits": ["vcpkg"],
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
-      }
     }
   ],
   "buildPresets": [
@@ -50,26 +37,6 @@
       "name": "release",
       "configurePreset": "ninja",
       "configuration": "Release"
-    },
-    {
-      "name": "vs-debug",
-      "configurePreset": "vs",
-      "configuration": "Debug",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
-      }
-    },
-    {
-      "name": "vs-release",
-      "configurePreset": "vs",
-      "configuration": "Release",
-      "condition": {
-        "type": "equals",
-        "lhs": "${hostSystemName}",
-        "rhs": "Windows"
-      }
     }
   ]
 }
