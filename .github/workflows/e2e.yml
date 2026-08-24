@@ -21,10 +21,13 @@ jobs:
         os: [macos-latest, ubuntu-latest, windows-latest]
         build-type: [Debug, MinSizeRel]
 
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: true
 
       - uses: rlalik/setup-cpp-compiler@master
         with:
@@ -38,12 +41,6 @@ jobs:
         run: |
           echo "build-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
-      - name: Install vcpkg
-        uses: actions/checkout@v4
-        with:
-          repository: "microsoft/vcpkg"
-          path: "vcpkg"
-
       - name: Bootstrap vcpkg on Unix
         if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
         run: |
@@ -55,15 +52,17 @@ jobs:
         run: |
           ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.bat -disableMetrics
 
-      - name: Cache vcpkg installed packages
+      - name: Cache vcpkg binary cache
         uses: actions/cache@v4
         with:
-          path: |
-            ${{ github.workspace }}/vcpkg/installed
-            ${{ github.workspace }}/vcpkg/packages
-          key: vcpkg-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
+          path: ${{ github.workspace }}/.vcpkg-cache
+          key: vcpkg-bin-${{ runner.os }}-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
-            vcpkg-${{ runner.os }}-
+            vcpkg-bin-${{ runner.os }}-
+
+      - name: Ensure vcpkg binary cache directory exists
+        shell: bash
+        run: mkdir -p .vcpkg-cache
 
       - name: Install CMake and other dependencies on Ubuntu
         if: matrix.os == 'ubuntu-latest'

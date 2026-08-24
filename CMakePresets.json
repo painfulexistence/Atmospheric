@@ -2,30 +2,41 @@
   "version": 3,
   "configurePresets": [
     {
-      "name": "local-vcpkg",
+      "name": "vcpkg",
       "hidden": true,
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake"
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
     {
-      "name": "global-vcpkg",
+      "name": "ccache",
       "hidden": true,
+      "description": "Opt-in mixin; the dev preset in CMakeUserPresets.json enables it.",
       "cacheVariables": {
-        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"
       }
     },
     {
-      "name": "ninja-local-vcpkg",
+      "name": "ninja",
+      "displayName": "Ninja Multi-Config (bundled vcpkg)",
+      "description": "The supported build path on every OS, including Windows — run from an x64 Native Tools developer prompt, or open the folder in Visual Studio / VS Code and let CMake Tools supply the kit.",
       "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build",
-      "inherits": ["local-vcpkg"]
+      "inherits": ["vcpkg"]
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "ninja",
+      "configuration": "Debug"
     },
     {
-      "name": "ninja-global-vcpkg",
-      "generator": "Ninja Multi-Config",
-      "binaryDir": "${sourceDir}/build",
-      "inherits": ["global-vcpkg"]
+      "name": "release",
+      "configurePreset": "ninja",
+      "configuration": "Release"
     }
   ]
 }

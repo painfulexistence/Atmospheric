@@ -22,10 +22,13 @@ jobs:
     name: Android, Release
     runs-on: ubuntu-latest
 
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: true
           sparse-checkout: |
             Engine
             cmake
@@ -35,6 +38,8 @@ jobs:
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json
+            vcpkg
+            ports
 
       - name: Check NDK version pin matches vcpkg triplets
         run: ./scripts/checkNdkVersion.sh
@@ -50,23 +55,18 @@ jobs:
           NDK_VERSION=$(./scripts/checkNdkVersion.sh --print-primary-version)
           yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null
 
-      - name: Install vcpkg
-        uses: actions/checkout@v4
-        with:
-          repository: microsoft/vcpkg
-          path: vcpkg
-
       - name: Bootstrap vcpkg
         run: ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
-      - name: Cache vcpkg installed packages
+      - name: Cache vcpkg binary cache
         uses: actions/cache@v4
         with:
-          path: |
-            ${{ github.workspace }}/vcpkg/installed
-            ${{ github.workspace }}/vcpkg/packages
-          key: vcpkg-android-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-android-
+          path: ${{ github.workspace }}/.vcpkg-cache
+          key: vcpkg-bin-android-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-bin-android-
+
+      - name: Ensure vcpkg binary cache directory exists
+        run: mkdir -p .vcpkg-cache
 
       - name: Build APK (Gradle)
         working-directory: Examples/3DBasics/platforms/android

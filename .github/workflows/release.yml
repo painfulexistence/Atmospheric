@@ -1,5 +1,8 @@
 name: Release
 
+permissions:
+  contents: read
+
 on:
   push:
     tags:
@@ -50,10 +53,13 @@ jobs:
   release-web:
     runs-on: ubuntu-latest
 
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: true
           sparse-checkout: |
             Engine
             Examples/3DBasics
@@ -61,6 +67,10 @@ jobs:
             CMakePresets.json
             vcpkg.json
             scripts/checkEmscriptenVersion.sh
+            cmake
+            triplets
+            vcpkg
+            ports
 
       - name: Read Emscripten version
         id: emver
@@ -78,24 +88,19 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config
 
-      - name: Check out vcpkg
-        uses: actions/checkout@v4
-        with:
-          repository: microsoft/vcpkg
-          path: vcpkg
-
       - name: Bootstrap vcpkg
         run: ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
-      - name: Cache vcpkg installed packages
+      - name: Cache vcpkg binary cache
         uses: actions/cache@v4
         with:
-          path: |
-            ${{ github.workspace }}/vcpkg/installed
-            ${{ github.workspace }}/vcpkg/packages
-          key: vcpkg-wasm32-emscripten-${{ hashFiles('vcpkg.json') }}
+          path: ${{ github.workspace }}/.vcpkg-cache
+          key: vcpkg-bin-wasm32-emscripten-${{ hashFiles('vcpkg.json') }}
           restore-keys: |
-            vcpkg-wasm32-emscripten-
+            vcpkg-bin-wasm32-emscripten-
+
+      - name: Ensure vcpkg binary cache directory exists
+        run: mkdir -p .vcpkg-cache
 
       - name: CMake Configure
         run: >

@@ -20,10 +20,13 @@ jobs:
     name: iOS Simulator (arm64), Release
     runs-on: macos-latest
 
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: true
           sparse-checkout: |
             Engine
             cmake
@@ -32,24 +35,21 @@ jobs:
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json
-
-      - name: Install vcpkg
-        uses: actions/checkout@v4
-        with:
-          repository: microsoft/vcpkg
-          path: vcpkg
+            vcpkg
+            ports
 
       - name: Bootstrap vcpkg
         run: ./vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
-      - name: Cache vcpkg packages
+      - name: Cache vcpkg binary cache
         uses: actions/cache@v4
         with:
-          path: |
-            ${{ github.workspace }}/vcpkg/installed
-            ${{ github.workspace }}/vcpkg/packages
-          key: vcpkg-ios-sim-arm64-${{ hashFiles('vcpkg.json') }}
-          restore-keys: vcpkg-ios-sim-arm64-
+          path: ${{ github.workspace }}/.vcpkg-cache
+          key: vcpkg-bin-ios-sim-arm64-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-bin-ios-sim-arm64-
+
+      - name: Ensure vcpkg binary cache directory exists
+        run: mkdir -p .vcpkg-cache
 
       - name: Configure (Xcode, iOS Simulator)
         run: |

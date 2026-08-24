@@ -14,34 +14,8 @@ if(POLICY CMP0169)
     cmake_policy(SET CMP0169 OLD)
 endif()
 
-# ── FastNoiseLite (single-header noise library) ────────────────────────────────────────────
-FetchContent_Declare(
-    FastNoiseLite
-    GIT_REPOSITORY https://github.com/Auburn/FastNoiseLite.git
-    GIT_TAG        v1.1.1
-    GIT_SHALLOW    TRUE
-    UPDATE_DISCONNECTED TRUE
-)
-FetchContent_GetProperties(FastNoiseLite)
-if(NOT FastNoiseLite_POPULATED)
-    FetchContent_Populate(FastNoiseLite)
-endif()
-if(NOT EMSCRIPTEN)
-    FetchContent_Declare(
-        SDL3
-        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-        GIT_TAG release-3.2.12 # TODO: update to 3.2.14 after upgrading imgui
-    )
-    set(SDL_SHARED OFF CACHE BOOL "" FORCE)
-    set(SDL_STATIC ON CACHE BOOL "" FORCE)
-    set(SDL_TESTS OFF CACHE BOOL "" FORCE)
-    set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(SDL_TESTS_LIBRARY OFF CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(SDL3)
-    if(NOT IOS)
-        find_package(glad CONFIG REQUIRED)
-    endif()
-endif()
+# ═══ Dependencies: vcpkg manifest ════════════════════════════════════════════
+
 find_package(glm CONFIG REQUIRED)
 find_package(Tracy CONFIG)
 option(AE_USE_TRACY "Enable Tracy profiler instrumentation" OFF)
@@ -64,6 +38,46 @@ find_package(spdlog REQUIRED)
 find_package(RmlUi REQUIRED)
 find_package(flatbuffers CONFIG REQUIRED)
 find_package(tinyexr CONFIG REQUIRED)
+
+find_package(nlohmann_json CONFIG REQUIRED)
+
+if(NOT EMSCRIPTEN AND NOT IOS)
+    find_package(glad CONFIG REQUIRED)
+endif()
+
+if(AE_USE_NETWORKING AND NOT EMSCRIPTEN)
+    find_package(CURL REQUIRED)
+    find_package(libwebsockets CONFIG REQUIRED)
+endif()
+
+# ═══ Dependencies: FetchContent ══════════════════════════════════════════════
+
+# ── FastNoiseLite (single-header noise library) ────────────────────────────────────────────
+FetchContent_Declare(
+    FastNoiseLite
+    GIT_REPOSITORY https://github.com/Auburn/FastNoiseLite.git
+    GIT_TAG        v1.1.1
+    GIT_SHALLOW    TRUE
+    UPDATE_DISCONNECTED TRUE
+)
+FetchContent_GetProperties(FastNoiseLite)
+if(NOT FastNoiseLite_POPULATED)
+    FetchContent_Populate(FastNoiseLite)
+endif()
+
+if(NOT EMSCRIPTEN)
+    FetchContent_Declare(
+        SDL3
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG release-3.2.12 # TODO: update to 3.2.14 after upgrading imgui
+    )
+    set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+    set(SDL_STATIC ON CACHE BOOL "" FORCE)
+    set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+    set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(SDL_TESTS_LIBRARY OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(SDL3)
+endif()
 
 # ── Lua 5.4 (built from source) ───────────────────────────────────────────────────────────────
 # Building from source rather than find_package(lua) because:
@@ -138,6 +152,128 @@ target_link_libraries(sol2_iface INTERFACE lua_static)
 # so existing target_link_libraries(... sol2::sol2) lines continue to work.
 add_library(sol2::sol2 ALIAS sol2_iface)
 
+if(AE_USE_TINYUSDZ)
+    set(TINYUSDZ_WITH_TYDRA ON CACHE BOOL "" FORCE)
+    set(TINYUSDZ_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(TINYUSDZ_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(TINYUSDZ_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+    # TinyUSDZ vendors its own tinyexr (src/external/tinyexr.cc) for EXR *texture*
+    # decoding inside USD. The engine already links vcpkg's tinyexr (HDR/EXR env
+    # maps), so building both yields duplicate-symbol link errors
+    # (multiple definition of FreeEXRErrorMessage, …). Disable TinyUSDZ's copy —
+    # .exr textures referenced *from USD* are rare, and this is the only overlap.
+    set(TINYUSDZ_WITH_EXR OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        tinyusdz
+        GIT_REPOSITORY https://github.com/lighttransport/tinyusdz.git
+        GIT_TAG 11a2d361a9b6a0c4bf8918027233858d80ed17c5
+    )
+    FetchContent_MakeAvailable(tinyusdz)
+    # On Emscripten the engine builds with -pthread (shared memory). Every object
+    # linked into the module must then carry the WASM 'atomics'/'bulk-memory'
+    # features, or wasm-ld rejects it ("--shared-memory is disallowed by
+    # image-loader.cc.o …"). TinyUSDZ's FetchContent targets don't inherit our
+    # -pthread, so force it onto them — exactly as lua_static does above. (Tydra
+    # is compiled into tinyusdz_static, so this one target covers image-loader.cc.)
+    if(EMSCRIPTEN)
+        target_compile_options(tinyusdz_static PRIVATE -pthread)
+    endif()
+endif()
+
+# ============================================================================
+# Basis Universal transcoder (KTX2 GPU-compressed texture support)
+# Only the transcoder is compiled — the encoder is not needed at runtime.
+# Supported target formats for WebGL2:
+#   - ETC2  (GLES3 required, best for web/mobile)
+#   - S3TC  (desktop browsers, via extension check)
+# Developers convert source textures to KTX2 with:
+#   basisu -ktx2 -mipmap texture.png
+#   toktx --t2 --encode etc1s --mipmap out.ktx2 input.png
+# ============================================================================
+if(AE_USE_BASIS_UNIVERSAL)
+    FetchContent_Declare(
+        basis_universal
+        GIT_REPOSITORY https://github.com/BinomialLLC/basis_universal.git
+        GIT_TAG        1.16.4          # named release tag — allows GIT_SHALLOW
+        GIT_SHALLOW    TRUE
+        UPDATE_DISCONNECTED TRUE
+    )
+    FetchContent_GetProperties(basis_universal)
+    if(NOT basis_universal_POPULATED)
+        # Do NOT process basisu's own CMakeLists.txt (it drags in encoder, etc.)
+        FetchContent_Populate(basis_universal)
+    endif()
+
+    # ── basisu host encoder (for PNG→KTX2 auto-conversion at build time) ─────
+    # The transcoder below is compiled with em++ for WASM; we also need the
+    # basisu CLI as a HOST tool to convert project textures during the build.
+    # Try a system install first; fall back to building from the fetched source
+    # using the default (host) compiler — no Emscripten toolchain involved.
+    if(EMSCRIPTEN)
+        find_program(_BASISU_SYSTEM basisu)
+        if(_BASISU_SYSTEM)
+            set(BASISU_EXECUTABLE "${_BASISU_SYSTEM}" CACHE INTERNAL "basisu encoder")
+            add_custom_target(basisu_host_tool)
+        else()
+            set(_BASISU_HOST_DIR ${CMAKE_BINARY_DIR}/_basisu_host)
+            # basis_universal's CMakeLists hardcodes output to ${SOURCE_DIR}/bin,
+            # so the binary lands in basis_universal_SOURCE_DIR/bin/basisu.
+            set(BASISU_EXECUTABLE "${basis_universal_SOURCE_DIR}/bin/basisu"
+                CACHE INTERNAL "basisu encoder")
+            add_custom_command(
+                OUTPUT "${BASISU_EXECUTABLE}"
+                COMMAND "${CMAKE_COMMAND}"
+                    -B "${_BASISU_HOST_DIR}"
+                    -S "${basis_universal_SOURCE_DIR}"
+                    -DCMAKE_BUILD_TYPE=Release
+                COMMAND "${CMAKE_COMMAND}"
+                    --build "${_BASISU_HOST_DIR}" --target basisu --parallel
+                COMMENT "Building basisu host encoder"
+                VERBATIM
+            )
+            add_custom_target(basisu_host_tool DEPENDS "${BASISU_EXECUTABLE}")
+        endif()
+        message(STATUS "basisu encoder: ${BASISU_EXECUTABLE}")
+    endif()
+
+    add_library(basisu_transcoder STATIC
+        ${basis_universal_SOURCE_DIR}/transcoder/basisu_transcoder.cpp
+    )
+    target_include_directories(basisu_transcoder PUBLIC
+        ${basis_universal_SOURCE_DIR}
+        ${basis_universal_SOURCE_DIR}/transcoder
+    )
+    # Disable formats not needed for web (reduces transcoder binary size)
+    target_compile_definitions(basisu_transcoder PUBLIC
+        BASISD_SUPPORT_KTX2=1          # Enable KTX2 container
+        BASISD_SUPPORT_KTX2_ZSTD=0     # Zstandard supercompression not needed
+        BASISD_SUPPORT_PVRTC1=0        # PowerVR only (legacy mobile)
+        BASISD_SUPPORT_PVRTC2=0        # PowerVR2 only (legacy mobile)
+        BASISD_SUPPORT_FXT1=0          # Intel FXT1 (obsolete)
+        BASISD_SUPPORT_ATC=0           # ATI (obsolete)
+    )
+    if(MSVC)
+        target_compile_options(basisu_transcoder PRIVATE /W0)
+    else()
+        target_compile_options(basisu_transcoder PRIVATE
+            -Wno-unused-variable
+            -Wno-unused-function
+            -Wno-unused-but-set-variable
+        )
+    endif()
+endif()
+
+# ═══ Dependencies: vendored (Engine/external/) ═══════════════════════════════
+
+if(NOT EMSCRIPTEN)
+    add_subdirectory(external/raudio/projects/CMake)
+    if(IOS)
+        # miniaudio on Apple platforms includes ObjC frameworks (CoreAudio, AVFoundation).
+        # Force Clang to treat raudio.c as Objective-C so those headers compile correctly.
+        target_compile_options(raudio PRIVATE -x objective-c)
+    endif()
+endif()
+
 # Generate FlatBuffers headers from schema
 set(FLATBUFFERS_SCHEMA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/schemas)
 set(FLATBUFFERS_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
@@ -149,16 +285,6 @@ add_custom_command(
     DEPENDS ${FLATBUFFERS_SCHEMA_DIR}/Scene.fbs
     COMMENT "Generating FlatBuffers headers for Scene"
 )
-
-if(NOT EMSCRIPTEN)
-    add_subdirectory(external/raudio/projects/CMake)
-    if(IOS)
-        # miniaudio on Apple platforms includes ObjC frameworks (CoreAudio, AVFoundation).
-        # Force Clang to treat raudio.c as Objective-C so those headers compile correctly.
-        target_compile_options(raudio PRIVATE -x objective-c)
-    endif()
-endif()
-
 
 #file(GLOB SOURCES src/*.cpp RECURSIVE)
 set(SOURCES
@@ -330,88 +456,6 @@ else()
     list(APPEND SOURCES_EXT external/imgui/backends/imgui_impl_sdl3.cpp)
 endif()
 
-# ============================================================================
-# Basis Universal transcoder (KTX2 GPU-compressed texture support)
-# Only the transcoder is compiled — the encoder is not needed at runtime.
-# Supported target formats for WebGL2:
-#   - ETC2  (GLES3 required, best for web/mobile)
-#   - S3TC  (desktop browsers, via extension check)
-# Developers convert source textures to KTX2 with:
-#   basisu -ktx2 -mipmap texture.png
-#   toktx --t2 --encode etc1s --mipmap out.ktx2 input.png
-# ============================================================================
-if(AE_USE_BASIS_UNIVERSAL)
-    FetchContent_Declare(
-        basis_universal
-        GIT_REPOSITORY https://github.com/BinomialLLC/basis_universal.git
-        GIT_TAG        1.16.4          # named release tag — allows GIT_SHALLOW
-        GIT_SHALLOW    TRUE
-        UPDATE_DISCONNECTED TRUE
-    )
-    FetchContent_GetProperties(basis_universal)
-    if(NOT basis_universal_POPULATED)
-        # Do NOT process basisu's own CMakeLists.txt (it drags in encoder, etc.)
-        FetchContent_Populate(basis_universal)
-    endif()
-
-    # ── basisu host encoder (for PNG→KTX2 auto-conversion at build time) ─────
-    # The transcoder below is compiled with em++ for WASM; we also need the
-    # basisu CLI as a HOST tool to convert project textures during the build.
-    # Try a system install first; fall back to building from the fetched source
-    # using the default (host) compiler — no Emscripten toolchain involved.
-    if(EMSCRIPTEN)
-        find_program(_BASISU_SYSTEM basisu)
-        if(_BASISU_SYSTEM)
-            set(BASISU_EXECUTABLE "${_BASISU_SYSTEM}" CACHE INTERNAL "basisu encoder")
-            add_custom_target(basisu_host_tool)
-        else()
-            set(_BASISU_HOST_DIR ${CMAKE_BINARY_DIR}/_basisu_host)
-            # basis_universal's CMakeLists hardcodes output to ${SOURCE_DIR}/bin,
-            # so the binary lands in basis_universal_SOURCE_DIR/bin/basisu.
-            set(BASISU_EXECUTABLE "${basis_universal_SOURCE_DIR}/bin/basisu"
-                CACHE INTERNAL "basisu encoder")
-            add_custom_command(
-                OUTPUT "${BASISU_EXECUTABLE}"
-                COMMAND "${CMAKE_COMMAND}"
-                    -B "${_BASISU_HOST_DIR}"
-                    -S "${basis_universal_SOURCE_DIR}"
-                    -DCMAKE_BUILD_TYPE=Release
-                COMMAND "${CMAKE_COMMAND}"
-                    --build "${_BASISU_HOST_DIR}" --target basisu --parallel
-                COMMENT "Building basisu host encoder"
-                VERBATIM
-            )
-            add_custom_target(basisu_host_tool DEPENDS "${BASISU_EXECUTABLE}")
-        endif()
-        message(STATUS "basisu encoder: ${BASISU_EXECUTABLE}")
-    endif()
-
-    add_library(basisu_transcoder STATIC
-        ${basis_universal_SOURCE_DIR}/transcoder/basisu_transcoder.cpp
-    )
-    target_include_directories(basisu_transcoder PUBLIC
-        ${basis_universal_SOURCE_DIR}
-        ${basis_universal_SOURCE_DIR}/transcoder
-    )
-    # Disable formats not needed for web (reduces transcoder binary size)
-    target_compile_definitions(basisu_transcoder PUBLIC
-        BASISD_SUPPORT_KTX2=1          # Enable KTX2 container
-        BASISD_SUPPORT_KTX2_ZSTD=0     # Zstandard supercompression not needed
-        BASISD_SUPPORT_PVRTC1=0        # PowerVR only (legacy mobile)
-        BASISD_SUPPORT_PVRTC2=0        # PowerVR2 only (legacy mobile)
-        BASISD_SUPPORT_FXT1=0          # Intel FXT1 (obsolete)
-        BASISD_SUPPORT_ATC=0           # ATI (obsolete)
-    )
-    if(MSVC)
-        target_compile_options(basisu_transcoder PRIVATE /W0)
-    else()
-        target_compile_options(basisu_transcoder PRIVATE
-            -Wno-unused-variable
-            -Wno-unused-function
-            -Wno-unused-but-set-variable
-        )
-    endif()
-endif()
 
 
 
@@ -426,8 +470,6 @@ if(AE_USE_NETWORKING)
         src/network_subsystem.cpp
     )
     if(NOT EMSCRIPTEN)
-        find_package(CURL REQUIRED)
-        find_package(libwebsockets CONFIG REQUIRED)
         message(STATUS "Networking enabled (libcurl + libwebsockets, OpenSSL, HTTP/2)")
     else()
         message(STATUS "Networking enabled (emscripten_fetch + Emscripten WebSocket)")
@@ -456,6 +498,7 @@ target_link_libraries(AtmosphericEngine
         lua_static sol2::sol2
         RmlUi::RmlUi box2d::box2d flatbuffers::flatbuffers
         unofficial::tinyexr::tinyexr
+        nlohmann_json::nlohmann_json
 )
 if(NOT EMSCRIPTEN)
     target_link_libraries(AtmosphericEngine PUBLIC raudio)
@@ -500,39 +543,6 @@ elseif(NOT AE_USE_FFMPEG)
     message(STATUS "FFmpeg disabled (AE_USE_FFMPEG=OFF). VideoPlayer and VideoRecorder will be unavailable.")
 endif()
 if(AE_USE_TINYUSDZ)
-    # TinyUSDZ: dependency-free USD (USDA/USDC/USDZ) reader plus its Tydra
-    # render-data converter. USD is a first-class import format, so this is on
-    # by default on every platform (like AE_USE_FFMPEG) — it is fetched at
-    # configure time (like SDL3/lua/sol2) so there is no submodule to init.
-    # TinyUSDZ compiles to WASM without threads/SIMD, so this runs on Emscripten
-    # too; pass -DAE_USE_TINYUSDZ=OFF on the web configure to trim the payload.
-    # The static target's include dir is only exposed PRIVATE, so we add
-    # ${tinyusdz_SOURCE_DIR}/src ourselves for <tinyusdz.hh> / <tydra/render-data.hh>.
-    set(TINYUSDZ_WITH_TYDRA ON CACHE BOOL "" FORCE)
-    set(TINYUSDZ_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(TINYUSDZ_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(TINYUSDZ_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
-    # TinyUSDZ vendors its own tinyexr (src/external/tinyexr.cc) for EXR *texture*
-    # decoding inside USD. The engine already links vcpkg's tinyexr (HDR/EXR env
-    # maps), so building both yields duplicate-symbol link errors
-    # (multiple definition of FreeEXRErrorMessage, …). Disable TinyUSDZ's copy —
-    # .exr textures referenced *from USD* are rare, and this is the only overlap.
-    set(TINYUSDZ_WITH_EXR OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(
-        tinyusdz
-        GIT_REPOSITORY https://github.com/lighttransport/tinyusdz.git
-        GIT_TAG 11a2d361a9b6a0c4bf8918027233858d80ed17c5
-    )
-    FetchContent_MakeAvailable(tinyusdz)
-    # On Emscripten the engine builds with -pthread (shared memory). Every object
-    # linked into the module must then carry the WASM 'atomics'/'bulk-memory'
-    # features, or wasm-ld rejects it ("--shared-memory is disallowed by
-    # image-loader.cc.o …"). TinyUSDZ's FetchContent targets don't inherit our
-    # -pthread, so force it onto them — exactly as lua_static does above. (Tydra
-    # is compiled into tinyusdz_static, so this one target covers image-loader.cc.)
-    if(EMSCRIPTEN)
-        target_compile_options(tinyusdz_static PRIVATE -pthread)
-    endif()
     target_link_libraries(AtmosphericEngine PUBLIC tinyusdz::tinyusdz_static)
     target_include_directories(AtmosphericEngine PRIVATE ${tinyusdz_SOURCE_DIR}/src)
     target_compile_definitions(AtmosphericEngine PUBLIC AE_USE_TINYUSDZ)

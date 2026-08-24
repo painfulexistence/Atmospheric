@@ -34,6 +34,9 @@
 // of tinygltf::WriteImageData as the loader's default image-writer callback,
 // leaving an undefined symbol at link (we only read glTF, never write).
 #define TINYGLTF_NO_STB_IMAGE_WRITE
+// Same json wiring as asset_manager.cpp.
+#define TINYGLTF_NO_INCLUDE_JSON
+#include <nlohmann/json.hpp>
 #include <tiny_gltf.h>
 
 #ifdef _WIN32

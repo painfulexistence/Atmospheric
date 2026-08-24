@@ -42,6 +42,9 @@ TextureHandle::TextureHandle(const std::string& path) {
 
 #define TINYGLTF_NO_INCLUDE_STB_IMAGE
 #define TINYGLTF_NO_STB_IMAGE_WRITE
+// Use the engine's nlohmann, not tinygltf's bundled copy — one json type everywhere.
+#define TINYGLTF_NO_INCLUDE_JSON
+#include <nlohmann/json.hpp>
 #define TINYGLTF_IMPLEMENTATION
 #include <tiny_gltf.h>
 

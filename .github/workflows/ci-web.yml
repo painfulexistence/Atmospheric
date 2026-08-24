@@ -1,5 +1,8 @@
 name: CI (WebAssembly)
 
+permissions:
+  contents: read
+
 # The build artifact (.html + .wasm + .js + .data) is uploaded so that
 # manual smoke-testing in a browser is possible without a local emsdk install.
 
@@ -15,10 +18,13 @@ jobs:
     name: WebAssembly WebGL, MinSizeRel
     runs-on: ubuntu-latest
 
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: true
           sparse-checkout: |
             Engine
             cmake
@@ -28,6 +34,8 @@ jobs:
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json
+            vcpkg
+            ports
 
       - name: Detect required Emscripten version
         id: emsdk-version
@@ -49,26 +57,21 @@ jobs:
           sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config
 
       # ── vcpkg ──────────────────────────────────────────────────────────────
-      - name: Check out vcpkg
-        uses: actions/checkout@v4
-        with:
-          repository: microsoft/vcpkg
-          path: vcpkg
-
       - name: Bootstrap vcpkg
         run: ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
       # Cache key includes the triplet file so that changing compile flags
       # (e.g. adding -pthread) correctly invalidates the cached libraries.
-      - name: Cache vcpkg installed packages
+      - name: Cache vcpkg binary cache
         uses: actions/cache@v4
         with:
-          path: |
-            ${{ github.workspace }}/vcpkg/installed
-            ${{ github.workspace }}/vcpkg/packages
-          key: vcpkg-wasm32-emscripten-pthread-${{ hashFiles('vcpkg.json', 'triplets/wasm32-emscripten.cmake') }}
+          path: ${{ github.workspace }}/.vcpkg-cache
+          key: vcpkg-bin-wasm32-emscripten-pthread-${{ hashFiles('vcpkg.json', 'triplets/wasm32-emscripten.cmake') }}
           restore-keys: |
-            vcpkg-wasm32-emscripten-pthread-
+            vcpkg-bin-wasm32-emscripten-pthread-
+
+      - name: Ensure vcpkg binary cache directory exists
+        run: mkdir -p .vcpkg-cache
 
       # ── Configure ──────────────────────────────────────────────────────────
       # Emscripten builds use GLFW (-sUSE_GLFW=3) from the Emscripten sysroot;
@@ -107,10 +110,13 @@ jobs:
     name: WebAssembly WebGPU, MinSizeRel
     runs-on: ubuntu-latest
 
+    env:
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: true
           sparse-checkout: |
             Engine
             cmake
@@ -120,6 +126,8 @@ jobs:
             CMakeLists.txt
             CMakePresets.json
             vcpkg.json
+            vcpkg
+            ports
 
       - name: Detect required Emscripten version
         id: emsdk-version
@@ -136,24 +144,19 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config
 
-      - name: Check out vcpkg
-        uses: actions/checkout@v4
-        with:
-          repository: microsoft/vcpkg
-          path: vcpkg
-
       - name: Bootstrap vcpkg
         run: ${{ github.workspace }}/vcpkg/bootstrap-vcpkg.sh -disableMetrics
 
-      - name: Cache vcpkg installed packages
+      - name: Cache vcpkg binary cache
         uses: actions/cache@v4
         with:
-          path: |
-            ${{ github.workspace }}/vcpkg/installed
-            ${{ github.workspace }}/vcpkg/packages
-          key: vcpkg-wasm32-emscripten-pthread-${{ hashFiles('vcpkg.json', 'triplets/wasm32-emscripten.cmake') }}
+          path: ${{ github.workspace }}/.vcpkg-cache
+          key: vcpkg-bin-wasm32-emscripten-pthread-${{ hashFiles('vcpkg.json', 'triplets/wasm32-emscripten.cmake') }}
           restore-keys: |
-            vcpkg-wasm32-emscripten-pthread-
+            vcpkg-bin-wasm32-emscripten-pthread-
+
+      - name: Ensure vcpkg binary cache directory exists
+        run: mkdir -p .vcpkg-cache
 
       - name: CMake Configure (WebGPU)
         run: >

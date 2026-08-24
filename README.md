@@ -39,8 +39,11 @@ The project is a labor of love, acting as my stepping stone to gain a deeper und
 ## Building
 Follow the steps below to build the engine:
 1. Install prerequsites:
-- [CMake](https://cmake.org/download/) (required)
-- [EMSDK](https://emscripten.org/docs/getting_started/downloads.html) (optional)
+- [CMake](https://cmake.org/download/) 3.21+ (required)
+- A C++20 compiler — MSVC (Windows), Clang (macOS), or GCC/Clang (Linux) (required)
+- [Ninja](https://ninja-build.org/) (required)
+- [ccache](https://ccache.dev/) (optional — only needed for the personal `dev` preset below)
+- [EMSDK](https://emscripten.org/docs/getting_started/downloads.html) (optional, for WebAssembly)
 2. Clone this repository
 ```
 git clone --recurse-submodules https://github.com/painfulexistence/Atmospheric.git
@@ -48,13 +51,15 @@ git clone --recurse-submodules https://github.com/painfulexistence/Atmospheric.g
 3. Setup Vcpkg
 ```
 cd Atmospheric
-./vcpkg/bootstrap-vcpkg.sh -disableMetrics
+./vcpkg/bootstrap-vcpkg.sh -disableMetrics    # Windows: .\vcpkg\bootstrap-vcpkg.bat -disableMetrics
 ```
 4. Build the project with CMake
 ```
-cmake --preset=dev
-cmake --build --preset=dev
+cmake --preset ninja
+cmake --build --preset debug   # or --preset release
 ```
+On Windows this needs an *x64 Native Tools* developer prompt from a plain shell; alternatively, open the folder directly in Visual Studio or VS Code (with the CMake Tools extension) — both read `CMakePresets.json` and supply the compiler environment automatically, with full native debugging.
+A `dev` preset (`cmake --preset dev`) is also checked in, with ccache enabled — install ccache first, or configuring with it will fail.
 
 ### WebAssembly (Emscripten)
 We support building WebAssembly targets for browser deployment.

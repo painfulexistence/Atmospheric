@@ -7,6 +7,9 @@ imgui.ini
 .cache/
 cache/
 
+# vcpkg binary cache (VCPKG_DEFAULT_BINARY_CACHE — see .github/workflows)
+.vcpkg-cache/
+
 # Claude Code internal
 .claude/
 
@@ -35,3 +38,4 @@ local.properties
 # Fetched sample models
 Examples/USDViewer/assets/models/
 Examples/GLTFViewer/assets/models
+
